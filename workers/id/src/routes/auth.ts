@@ -175,8 +175,12 @@ app.get('/callback', async (c) => {
     user.role !== 'admin' &&
     (await countAdminUsers(c.env.DB)) === 0
   ) {
-    await updateUserRole(c.env.DB, user.id, 'admin');
-    user.role = 'admin';
+    try {
+      await updateUserRole(c.env.DB, user.id, 'admin');
+      user.role = 'admin';
+    } catch (err) {
+      console.error('[bootstrap] Failed to elevate bootstrap admin:', err);
+    }
   }
 
   // ワンタイム認可コード発行
