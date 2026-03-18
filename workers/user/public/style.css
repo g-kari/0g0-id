@@ -189,3 +189,40 @@ h1 {
   from { opacity: 0; transform: translateX(0.75rem); }
   to   { opacity: 1; transform: translateX(0); }
 }
+
+/* プログレスバー */
+#progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 3px;
+  width: 0%;
+  background: var(--primary);
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* スピナー */
+.spinner {
+  display: inline-block;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+.loading-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

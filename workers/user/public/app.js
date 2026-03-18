@@ -21,6 +21,48 @@
     }, 3000);
   }
 
+  // プログレスバー
+  var _progressBar = null;
+  var _progressTimer = null;
+  var _progressResetTimer = null;
+  var _progressCount = 0;
+
+  function getProgressBar() {
+    if (!_progressBar) {
+      _progressBar = document.createElement('div');
+      _progressBar.id = 'progress-bar';
+      document.body.insertBefore(_progressBar, document.body.firstChild);
+    }
+    return _progressBar;
+  }
+
+  function showProgress() {
+    _progressCount++;
+    var bar = getProgressBar();
+    clearTimeout(_progressTimer);
+    clearTimeout(_progressResetTimer);
+    bar.style.transition = 'none';
+    bar.style.width = '0%';
+    bar.style.opacity = '1';
+    setTimeout(function () {
+      bar.style.transition = 'width 0.8s ease';
+      bar.style.width = '75%';
+    }, 16);
+  }
+
+  function hideProgress() {
+    _progressCount = Math.max(0, _progressCount - 1);
+    if (_progressCount > 0) return;
+    var bar = getProgressBar();
+    bar.style.transition = 'width 0.15s ease';
+    bar.style.width = '100%';
+    _progressTimer = setTimeout(function () {
+      bar.style.transition = 'opacity 0.3s ease';
+      bar.style.opacity = '0';
+      _progressResetTimer = setTimeout(function () { bar.style.width = '0%'; }, 300);
+    }, 150);
+  }
+
   var path = window.location.pathname;
 
   // エラーパラメータ表示（ログインページ）
@@ -53,12 +95,14 @@
     var logoutBtn = document.getElementById('logout-btn');
 
     // プロフィール取得
+    showProgress();
     fetch('/api/me', { credentials: 'same-origin' })
       .then(function (res) {
         if (res.status === 401) { window.location.href = '/'; return null; }
         return res.json();
       })
       .then(function (data) {
+        hideProgress();
         if (!data) return;
         if (data.error) { window.location.href = '/'; return; }
         var user = data.data;
@@ -72,7 +116,10 @@
         if (loading) loading.style.display = 'none';
         if (card) card.style.display = 'block';
       })
-      .catch(function () { window.location.href = '/'; });
+      .catch(function () {
+        hideProgress();
+        window.location.href = '/';
+      });
 
     // プロフィール更新
     if (editForm) {
@@ -87,6 +134,7 @@
           saveBtn.textContent = '保存中...';
         }
 
+        showProgress();
         fetch('/api/me', {
           method: 'PATCH',
           credentials: 'same-origin',
@@ -95,6 +143,7 @@
         })
           .then(function (res) { return res.json(); })
           .then(function (data) {
+            hideProgress();
             if (data.error) {
               showToast('更新に失敗しました', 'error');
             } else {
@@ -104,6 +153,7 @@
             }
           })
           .catch(function () {
+            hideProgress();
             showToast('通信エラーが発生しました', 'error');
           })
           .finally(function () {
@@ -141,12 +191,14 @@
     }
 
     function loadConnections() {
+      showProgress();
       fetch('/api/connections', { credentials: 'same-origin' })
         .then(function (res) {
           if (res.status === 401) { window.location.href = '/'; return null; }
           return res.json();
         })
         .then(function (data) {
+          hideProgress();
           if (!data) return;
           if (loadingEl) loadingEl.style.display = 'none';
           if (data.error) {
@@ -174,12 +226,14 @@
               btn.addEventListener('click', function () {
                 if (!confirm('「' + btn.closest('.connection-item').querySelector('.connection-name').textContent + '」との連携を解除しますか？')) return;
                 btn.disabled = true;
+                showProgress();
                 fetch('/api/connections/' + btn.dataset.id, {
                   method: 'DELETE',
                   credentials: 'same-origin',
                   headers: { Origin: window.location.origin },
                 })
                   .then(function (res) {
+                    hideProgress();
                     if (res.ok || res.status === 204) {
                       showToast('連携を解除しました', 'success');
                       loadConnections();
@@ -189,6 +243,7 @@
                     }
                   })
                   .catch(function () {
+                    hideProgress();
                     showToast('通信エラーが発生しました', 'error');
                     btn.disabled = false;
                   });
@@ -197,6 +252,7 @@
           }
         })
         .catch(function () {
+          hideProgress();
           if (loadingEl) loadingEl.style.display = 'none';
           if (errorEl) { errorEl.textContent = '通信エラーが発生しました'; errorEl.style.display = 'block'; }
         });

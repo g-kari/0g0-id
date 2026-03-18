@@ -17,7 +17,10 @@
       </div>
       <p class="subtitle">アクセスを許可しているサービスの一覧です。不要なサービスは連携を解除できます。</p>
 
-      <div id="loading" style="text-align:center;color:var(--text-muted);padding:2rem 0;">読み込み中...</div>
+      <div id="loading" class="loading-center">
+        <span class="spinner"></span>
+        <span>読み込み中...</span>
+      </div>
       <div id="connections-list" style="display:none;"></div>
       <div id="empty-msg" style="display:none;text-align:center;color:var(--text-muted);padding:2rem 0;">連携中のサービスはありません</div>
       <div id="error-msg" class="alert alert-error" style="display:none;" role="alert"></div>

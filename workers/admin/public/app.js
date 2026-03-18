@@ -21,6 +21,48 @@
     }, 3000);
   }
 
+  // プログレスバー
+  var _progressBar = null;
+  var _progressTimer = null;
+  var _progressResetTimer = null;
+  var _progressCount = 0;
+
+  function getProgressBar() {
+    if (!_progressBar) {
+      _progressBar = document.createElement('div');
+      _progressBar.id = 'progress-bar';
+      document.body.insertBefore(_progressBar, document.body.firstChild);
+    }
+    return _progressBar;
+  }
+
+  function showProgress() {
+    _progressCount++;
+    var bar = getProgressBar();
+    clearTimeout(_progressTimer);
+    clearTimeout(_progressResetTimer);
+    bar.style.transition = 'none';
+    bar.style.width = '0%';
+    bar.style.opacity = '1';
+    setTimeout(function () {
+      bar.style.transition = 'width 0.8s ease';
+      bar.style.width = '75%';
+    }, 16);
+  }
+
+  function hideProgress() {
+    _progressCount = Math.max(0, _progressCount - 1);
+    if (_progressCount > 0) return;
+    var bar = getProgressBar();
+    bar.style.transition = 'width 0.15s ease';
+    bar.style.width = '100%';
+    _progressTimer = setTimeout(function () {
+      bar.style.transition = 'opacity 0.3s ease';
+      bar.style.opacity = '0';
+      _progressResetTimer = setTimeout(function () { bar.style.width = '0%'; }, 300);
+    }, 150);
+  }
+
   const path = window.location.pathname;
 
   // ログインページ
@@ -66,14 +108,19 @@
     return new Date(iso).toLocaleDateString('ja-JP');
   }
 
+  var SPINNER_HTML = '<span class="spinner"></span>';
+  var LOADING_HTML = '<div class="loading-center">' + SPINNER_HTML + '<span>読み込み中...</span></div>';
+
   // ダッシュボード
   if (path === '/dashboard.html') {
+    showProgress();
     fetch('/api/metrics', { credentials: 'same-origin' })
       .then(function (r) {
         if (r.status === 401) { window.location.href = '/'; return null; }
         return r.json();
       })
       .then(function (data) {
+        hideProgress();
         if (!data || data.error) return;
         var m = data.data;
         var totalUsersEl = document.getElementById('metric-total-users');
@@ -85,7 +132,7 @@
         if (totalServicesEl) totalServicesEl.textContent = m.total_services;
         if (activeSessionsEl) activeSessionsEl.textContent = m.active_sessions;
       })
-      .catch(function () { /* メトリクス取得失敗は無視 */ });
+      .catch(function () { hideProgress(); /* メトリクス取得失敗は無視 */ });
   }
 
   // サービス管理ページ
@@ -101,7 +148,6 @@
 
     // リダイレクトURI管理
     const uriModal = document.getElementById('uri-modal');
-    const uriModalTitle = document.getElementById('uri-modal-title');
     const uriModalServiceName = document.getElementById('uri-modal-service-name');
     const uriList = document.getElementById('uri-list');
     const uriAddForm = document.getElementById('uri-add-form');
@@ -111,10 +157,12 @@
 
     function loadUris(serviceId) {
       if (!uriList) return;
-      uriList.innerHTML = '<p style="color:var(--text-muted);font-size:0.875rem;">読み込み中...</p>';
+      uriList.innerHTML = LOADING_HTML;
+      showProgress();
       fetch('/api/services/' + serviceId + '/redirect-uris', { credentials: 'same-origin' })
         .then(function (r) { return r.json(); })
         .then(function (data) {
+          hideProgress();
           if (data.error) { uriList.innerHTML = '<p style="color:var(--error);font-size:0.875rem;">取得に失敗しました</p>'; return; }
           var uris = data.data || [];
           if (uris.length === 0) {
@@ -130,20 +178,28 @@
           uriList.querySelectorAll('[data-uri-id]').forEach(function (btn) {
             btn.addEventListener('click', function () {
               if (!confirm('このURIを削除しますか？')) return;
+              showProgress();
               fetch('/api/services/' + currentServiceId + '/redirect-uris/' + btn.dataset.uriId, {
                 method: 'DELETE', credentials: 'same-origin',
               }).then(function (r) {
+                hideProgress();
                 if (r.ok || r.status === 204) {
                   showToast('URIを削除しました', 'success');
                   loadUris(currentServiceId);
                 } else {
                   showToast('削除に失敗しました', 'error');
                 }
+              }).catch(function () {
+                hideProgress();
+                showToast('通信エラーが発生しました', 'error');
               });
             });
           });
         })
-        .catch(function () { uriList.innerHTML = '<p style="color:var(--error);font-size:0.875rem;">通信エラーが発生しました</p>'; });
+        .catch(function () {
+          hideProgress();
+          uriList.innerHTML = '<p style="color:var(--error);font-size:0.875rem;">通信エラーが発生しました</p>';
+        });
     }
 
     if (uriCloseBtn && uriModal) {
@@ -156,6 +212,7 @@
         if (!currentServiceId || !uriInput) return;
         var uri = uriInput.value.trim();
         if (!uri) return;
+        showProgress();
         fetch('/api/services/' + currentServiceId + '/redirect-uris', {
           method: 'POST',
           credentials: 'same-origin',
@@ -164,6 +221,7 @@
         })
           .then(function (r) { return r.json(); })
           .then(function (data) {
+            hideProgress();
             if (data.error) {
               showToast(data.error.code === 'CONFLICT' ? 'このURIは既に登録されています' : 'URIの追加に失敗しました', 'error');
             } else {
@@ -172,17 +230,21 @@
               loadUris(currentServiceId);
             }
           })
-          .catch(function () { showToast('通信エラーが発生しました', 'error'); });
+          .catch(function () { hideProgress(); showToast('通信エラーが発生しました', 'error'); });
       });
     }
 
     function loadServices() {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="padding:0;border:none;">' +
+        '<div class="loading-center">' + SPINNER_HTML + '<span>読み込み中...</span></div></td></tr>';
+      showProgress();
       fetch('/api/services', { credentials: 'same-origin' })
         .then(function (r) {
           if (r.status === 401) { window.location.href = '/'; return null; }
           return r.json();
         })
         .then(function (data) {
+          hideProgress();
           if (!data) return;
           if (data.error) { showMsg(msgEl, 'サービスの取得に失敗しました', 'error'); showToast('サービスの取得に失敗しました', 'error'); return; }
           const rows = data.data.map(function (s) {
@@ -203,15 +265,20 @@
             tbody.querySelectorAll('[data-id]').forEach(function (btn) {
               btn.addEventListener('click', function () {
                 if (!confirm('このサービスを削除しますか？')) return;
+                showProgress();
                 fetch('/api/services/' + btn.dataset.id, {
                   method: 'DELETE', credentials: 'same-origin',
                 }).then(function (r) {
+                  hideProgress();
                   if (r.ok || r.status === 204) {
                     showToast('サービスを削除しました', 'success');
                     loadServices();
                   } else {
                     showToast('削除に失敗しました', 'error');
                   }
+                }).catch(function () {
+                  hideProgress();
+                  showToast('通信エラーが発生しました', 'error');
                 });
               });
             });
@@ -228,7 +295,10 @@
             });
           }
         })
-        .catch(function () { showMsg(msgEl, '通信エラーが発生しました', 'error'); });
+        .catch(function () {
+          hideProgress();
+          showMsg(msgEl, '通信エラーが発生しました', 'error');
+        });
     }
 
     loadServices();
@@ -246,6 +316,7 @@
         const name = document.getElementById('service-name').value.trim();
         if (!name) return;
 
+        showProgress();
         fetch('/api/services', {
           method: 'POST',
           credentials: 'same-origin',
@@ -254,6 +325,7 @@
         })
           .then(function (r) { return r.json(); })
           .then(function (data) {
+            hideProgress();
             if (data.error) { showToast('作成に失敗しました', 'error'); return; }
             if (addModal) addModal.hidden = true;
             addForm.reset();
@@ -265,7 +337,7 @@
             if (secretModal) secretModal.hidden = false;
             loadServices();
           })
-          .catch(function () { showToast('通信エラーが発生しました', 'error'); });
+          .catch(function () { hideProgress(); showToast('通信エラーが発生しました', 'error'); });
       });
     }
 
@@ -283,12 +355,17 @@
       showToast(msg, 'error');
     }
 
+    if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="padding:0;border:none;">' +
+      '<div class="loading-center">' + SPINNER_HTML + '<span>読み込み中...</span></div></td></tr>';
+
+    showProgress();
     fetch('/api/users', { credentials: 'same-origin' })
       .then(function (r) {
         if (r.status === 401) { window.location.href = '/'; return null; }
         return r.json();
       })
       .then(function (data) {
+        hideProgress();
         if (!data) return;
         if (data.error) { showUsersError('ユーザーの取得に失敗しました'); return; }
         if (!data.data) { showUsersError('データの形式が不正です'); return; }
@@ -305,6 +382,6 @@
         }).join('');
         if (tbody) tbody.innerHTML = rows || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">ユーザーなし</td></tr>';
       })
-      .catch(function () { showUsersError('通信エラーが発生しました'); });
+      .catch(function () { hideProgress(); showUsersError('通信エラーが発生しました'); });
   }
 })();
