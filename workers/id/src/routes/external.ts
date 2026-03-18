@@ -30,31 +30,46 @@ async function authenticateService(db: D1Database, authHeader: string | undefine
   const clientId = credentials.slice(0, colonIndex);
   const clientSecret = credentials.slice(colonIndex + 1);
 
-  const service = await findServiceByClientId(db, clientId);
-  if (!service) return null;
+  try {
+    const service = await findServiceByClientId(db, clientId);
+    if (!service) return null;
 
-  const secretHash = await sha256(clientSecret);
-  if (!timingSafeEqual(secretHash, service.client_secret_hash)) return null;
+    const secretHash = await sha256(clientSecret);
+    if (!timingSafeEqual(secretHash, service.client_secret_hash)) return null;
 
-  return service;
+    return service;
+  } catch {
+    // DB障害・暗号処理エラーは認証失敗として扱い、呼び出し元で500を返す
+    throw new Error('Service authentication failed due to internal error');
+  }
 }
 
 // GET /api/external/users/:id — IDによるユーザー完全一致検索（外部サービス向け）
 app.get('/users/:id', async (c) => {
-  const service = await authenticateService(c.env.DB, c.req.header('Authorization'));
+  let service: Awaited<ReturnType<typeof authenticateService>>;
+  try {
+    service = await authenticateService(c.env.DB, c.req.header('Authorization'));
+  } catch {
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
   if (!service) {
     return c.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid client credentials' } }, 401);
   }
 
   const userId = c.req.param('id');
 
-  // ユーザーがサービスを認可済みか確認（IDOR防止）
-  const authorized = await hasUserAuthorizedService(c.env.DB, userId, service.id);
-  if (!authorized) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  let authorized: boolean;
+  let user: Awaited<ReturnType<typeof findUserById>>;
+  try {
+    // ユーザーがサービスを認可済みか確認（IDOR防止）
+    authorized = await hasUserAuthorizedService(c.env.DB, userId, service.id);
+    if (!authorized) {
+      return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+    }
+    user = await findUserById(c.env.DB, userId);
+  } catch {
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
   }
-
-  const user = await findUserById(c.env.DB, userId);
   if (!user) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }

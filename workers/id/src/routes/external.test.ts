@@ -118,6 +118,26 @@ describe('GET /api/external/users/:id', () => {
     });
   });
 
+  describe('エラーハンドリング', () => {
+    it('DB障害時（findServiceByClientId） → 500を返す', async () => {
+      mockFindServiceByClientId.mockRejectedValue(new Error('DB error'));
+      const req = new Request(`${baseUrl}/api/external/users/user-1`, {
+        headers: { Authorization: basicAuth('client-abc', 'secret') },
+      });
+      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      expect(res.status).toBe(500);
+    });
+
+    it('DB障害時（hasUserAuthorizedService） → 500を返す', async () => {
+      mockHasUserAuthorizedService.mockRejectedValue(new Error('DB error'));
+      const req = new Request(`${baseUrl}/api/external/users/user-1`, {
+        headers: { Authorization: basicAuth('client-abc', 'secret') },
+      });
+      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      expect(res.status).toBe(500);
+    });
+  });
+
   describe('認可チェック（IDOR防止）', () => {
     it('ユーザーがサービスを認可していない場合 → 404を返す', async () => {
       mockHasUserAuthorizedService.mockResolvedValue(false);
