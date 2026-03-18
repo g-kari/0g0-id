@@ -1,92 +1,221 @@
-# Cloudflare Workers GitHub直接接続設定ガイド
+# Cloudflare Workers × GitHub 接続設定ガイド
 
-## 前提条件
-- Cloudflareアカウント
-- GitHubリポジトリ（0g0-id）
-- Wrangler CLIインストール済み
+同一の GitHub リポジトリから 3 つの Worker をデプロイする手順をまとめます。
 
-## D1データベース作成
+---
+
+## 0. 前提条件
+
+- Cloudflare アカウント（Workers Paid プラン推奨）
+- GitHub リポジトリ: `g-kari/0g0-id`
+- Node.js 20+
+- Wrangler CLI（`npx wrangler` で使用可）
+
+---
+
+## 1. D1 データベース作成（初回のみ）
+
 ```bash
-wrangler d1 create 0g0-id-db
-# 出力されたdatabase_idをworkers/id/wrangler.tomlに設定
+npx wrangler d1 create 0g0-id-db
 ```
 
-## マイグレーション実行
-```bash
-# 本番
-wrangler d1 execute 0g0-id-db --file=migrations/0001_initial.sql
-# ローカル
-wrangler d1 execute 0g0-id-db --local --file=migrations/0001_initial.sql
+出力された `database_id` を `workers/id/wrangler.toml` の以下の箇所に設定:
+
+```toml
+[[d1_databases]]
+binding = "DB"
+database_name = "0g0-id-db"
+database_id = "<ここに貼り付け>"
 ```
 
-## Worker設定
+### マイグレーション実行
 
-### Worker 1: 0g0-id (id.0g0.xyz)
-| 設定項目 | 値 |
-|---|---|
-| Framework preset | None |
-| Build command | `npm ci && npm run deploy:id` |
-| Build output directory | (空) |
-| Root directory | `/` |
-| NODE_VERSION | `20` |
-
-### Worker 2: 0g0-id-user (user.0g0.xyz)
-| 設定項目 | 値 |
-|---|---|
-| Framework preset | None |
-| Build command | `npm ci && npm run deploy:user` |
-| Build output directory | (空) |
-| Root directory | `/` |
-| NODE_VERSION | `20` |
-
-### Worker 3: 0g0-id-admin (admin.0g0.xyz)
-| 設定項目 | 値 |
-|---|---|
-| Framework preset | None |
-| Build command | `npm ci && npm run deploy:admin` |
-| Build output directory | (空) |
-| Root directory | `/` |
-| NODE_VERSION | `20` |
-
-## シークレット設定（Cloudflare Dashboard — id worker）
 ```bash
-wrangler secret put GOOGLE_CLIENT_ID --name 0g0-id
-wrangler secret put GOOGLE_CLIENT_SECRET --name 0g0-id
-wrangler secret put JWT_PRIVATE_KEY --name 0g0-id
-wrangler secret put JWT_PUBLIC_KEY --name 0g0-id
-wrangler secret put BOOTSTRAP_ADMIN_EMAIL --name 0g0-id
+cd workers/id
+npx wrangler d1 execute 0g0-id-db --remote --file=../../migrations/0001_initial.sql
 ```
 
-## ES256鍵ペア生成
+---
+
+## 2. ES256 鍵ペア生成（初回のみ）
+
 ```bash
-# 秘密鍵
 openssl ecparam -genkey -name prime256v1 -noout -out private.pem
-# 公開鍵
 openssl ec -in private.pem -pubout -out public.pem
-# 内容確認
-cat private.pem
-cat public.pem
 ```
 
-## Service Bindings
-wrangler.toml設定後、Cloudflare Dashboardで Service Bindings を有効化:
-- user worker → id worker
-- admin worker → id worker
+> ⚠️ `private.pem` は 1Password 等に保管してください。ファイルはそのまま残さないこと。
 
-## ローカル開発（workers/id/.dev.vars）
+---
+
+## 3. シークレット設定（初回のみ）
+
+`workers/id` ディレクトリで実行:
+
+```bash
+cd workers/id
+
+echo "<Google OAuth Client ID>" | npx wrangler secret put GOOGLE_CLIENT_ID
+echo "<Google OAuth Client Secret>" | npx wrangler secret put GOOGLE_CLIENT_SECRET
+cat private.pem | npx wrangler secret put JWT_PRIVATE_KEY
+cat public.pem  | npx wrangler secret put JWT_PUBLIC_KEY
+echo "admin@0g0.xyz" | npx wrangler secret put BOOTSTRAP_ADMIN_EMAIL
 ```
-GOOGLE_CLIENT_ID=your-client-id
-GOOGLE_CLIENT_SECRET=your-client-secret
+
+| シークレット名 | 説明 | 取得元 |
+|---|---|---|
+| `GOOGLE_CLIENT_ID` | Google OAuth 2.0 クライアント ID | [Google Cloud Console](https://console.cloud.google.com/) |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth 2.0 クライアントシークレット | 同上 |
+| `JWT_PRIVATE_KEY` | ES256 署名用秘密鍵（PEM） | `private.pem` |
+| `JWT_PUBLIC_KEY` | ES256 検証用公開鍵（PEM） | `public.pem` |
+| `BOOTSTRAP_ADMIN_EMAIL` | 初回管理者として登録するメールアドレス | 任意 |
+
+### Google Cloud Console での設定
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → 「認証情報」→「OAuth 2.0 クライアント ID」を作成
+2. アプリケーションの種類: **ウェブアプリケーション**
+3. 承認済みのリダイレクト URI に追加:
+   ```
+   https://id.0g0.xyz/auth/callback
+   ```
+
+---
+
+## 4. GitHub リポジトリ接続（Cloudflare Dashboard）
+
+同じリポジトリを 3 つの Worker それぞれに接続します。
+**Cloudflare Dashboard → Workers & Pages → 各 Worker → Settings → Build**
+
+### Worker 1: `0g0-id`（id.0g0.xyz）
+
+| 項目 | 設定値 |
+|---|---|
+| Git リポジトリ | `g-kari/0g0-id` |
+| Production branch | `master` |
+| Framework preset | **None** |
+| Build command | `npm ci && npm run deploy:id` |
+| Build output directory | （空欄） |
+| Root directory | `/`（リポジトリルート） |
+
+**環境変数（Build のみ）:**
+
+| 変数名 | 値 |
+|---|---|
+| `NODE_VERSION` | `20` |
+
+### Worker 2: `0g0-id-user`（user.0g0.xyz）
+
+| 項目 | 設定値 |
+|---|---|
+| Git リポジトリ | `g-kari/0g0-id` |
+| Production branch | `master` |
+| Framework preset | **None** |
+| Build command | `npm ci && npm run deploy:user` |
+| Build output directory | （空欄） |
+| Root directory | `/` |
+
+**環境変数（Build のみ）:**
+
+| 変数名 | 値 |
+|---|---|
+| `NODE_VERSION` | `20` |
+
+### Worker 3: `0g0-id-admin`（admin.0g0.xyz）
+
+| 項目 | 設定値 |
+|---|---|
+| Git リポジトリ | `g-kari/0g0-id` |
+| Production branch | `master` |
+| Framework preset | **None** |
+| Build command | `npm ci && npm run deploy:admin` |
+| Build output directory | （空欄） |
+| Root directory | `/` |
+
+**環境変数（Build のみ）:**
+
+| 変数名 | 値 |
+|---|---|
+| `NODE_VERSION` | `20` |
+
+> **注意:** シークレット（`GOOGLE_CLIENT_ID` など）は Build 環境変数ではなく、Worker の **Variables & Secrets** に設定してください。Build 時には不要です。
+
+---
+
+## 5. Service Bindings 確認
+
+`workers/user/wrangler.toml` と `workers/admin/wrangler.toml` に以下が設定されています:
+
+```toml
+[[services]]
+binding = "IDP"
+service = "0g0-id"
+```
+
+デプロイ後、Cloudflare Dashboard で各 Worker の **Settings → Bindings** に `IDP → 0g0-id` が表示されていることを確認してください。
+
+---
+
+## 6. カスタムドメイン設定
+
+`id.0g0.xyz` / `user.0g0.xyz` / `admin.0g0.xyz` の DNS が Cloudflare で管理されている場合、`wrangler.toml` の `custom_domain = true` 設定により自動的にルーティングされます。
+
+DNS が未設定の場合は Cloudflare Dashboard → **Workers & Pages → 各 Worker → Settings → Domains & Routes** から手動で追加してください。
+
+---
+
+## 7. ローカル開発
+
+`workers/id/.dev.vars` を作成（`.gitignore` 済み）:
+
+```
+GOOGLE_CLIENT_ID=575085222041-xxxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxxx
 JWT_PRIVATE_KEY=-----BEGIN EC PRIVATE KEY-----
-...
+MHcCAQEE...
 -----END EC PRIVATE KEY-----
 JWT_PUBLIC_KEY=-----BEGIN PUBLIC KEY-----
-...
+MFkwEwYH...
 -----END PUBLIC KEY-----
-BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+BOOTSTRAP_ADMIN_EMAIL=admin@0g0.xyz
+IDP_ORIGIN=http://localhost:8787
+USER_ORIGIN=http://localhost:8788
+ADMIN_ORIGIN=http://localhost:8789
 ```
 
-## 補足
-- 同一リポジトリから3つのWorkerをデプロイ
-- Cloudflare Dashboardで3つのWorkerを作成し、それぞれ同じGitHubリポジトリを接続
-- push時に全Workerが再デプロイ
+```bash
+npm run dev:id     # :8787
+npm run dev:user   # :8788
+npm run dev:admin  # :8789
+```
+
+---
+
+## 8. デプロイ確認
+
+```bash
+curl https://id.0g0.xyz/api/health
+curl https://user.0g0.xyz/api/health
+curl https://admin.0g0.xyz/api/health
+```
+
+すべて `{"status":"ok"}` が返れば正常です。
+
+---
+
+## トラブルシューティング
+
+### `JWT_PRIVATE_KEY` の改行が失われる
+
+PEM 鍵を環境変数として渡す際に改行が消える場合があります。`cat` パイプで設定すると正しく保存されます:
+
+```bash
+cat private.pem | npx wrangler secret put JWT_PRIVATE_KEY
+```
+
+### Service Bindings が `undefined` になる
+
+ローカル開発時は Service Bindings が機能しません。`wrangler dev` の `--service` オプションか、別途 id worker をローカルで起動してください。
+
+### D1 マイグレーション再実行
+
+スキーマ変更時は新しいマイグレーションファイルを追加し、`--remote` フラグ付きで実行してください。`0001_initial.sql` を直接編集すると既存データが失われます。
