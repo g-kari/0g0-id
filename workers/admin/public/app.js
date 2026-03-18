@@ -1,6 +1,26 @@
 'use strict';
 
 (function () {
+  // トースト通知
+  function showToast(message, type) {
+    var container = document.getElementById('toast-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'toast-container';
+      container.className = 'toast-container';
+      document.body.appendChild(container);
+    }
+    var toast = document.createElement('div');
+    toast.className = 'toast toast-' + type;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(function () {
+      toast.style.transition = 'opacity 0.3s';
+      toast.style.opacity = '0';
+      setTimeout(function () { toast.remove(); }, 300);
+    }, 3000);
+  }
+
   const path = window.location.pathname;
 
   // ログインページ
@@ -65,7 +85,7 @@
         })
         .then(function (data) {
           if (!data) return;
-          if (data.error) { showMsg(msgEl, 'サービスの取得に失敗しました', 'error'); return; }
+          if (data.error) { showMsg(msgEl, 'サービスの取得に失敗しました', 'error'); showToast('サービスの取得に失敗しました', 'error'); return; }
           const rows = data.data.map(function (s) {
             return '<tr>' +
               '<td>' + escHtml(s.name) + '</td>' +
@@ -85,10 +105,10 @@
                   method: 'DELETE', credentials: 'same-origin',
                 }).then(function (r) {
                   if (r.ok || r.status === 204) {
-                    showMsg(msgEl, 'サービスを削除しました', 'success');
+                    showToast('サービスを削除しました', 'success');
                     loadServices();
                   } else {
-                    showMsg(msgEl, '削除に失敗しました', 'error');
+                    showToast('削除に失敗しました', 'error');
                   }
                 });
               });
@@ -121,7 +141,7 @@
         })
           .then(function (r) { return r.json(); })
           .then(function (data) {
-            if (data.error) { showMsg(msgEl, '作成に失敗しました', 'error'); return; }
+            if (data.error) { showToast('作成に失敗しました', 'error'); return; }
             if (addModal) addModal.hidden = true;
             addForm.reset();
             // シークレット表示
@@ -132,7 +152,7 @@
             if (secretModal) secretModal.hidden = false;
             loadServices();
           })
-          .catch(function () { showMsg(msgEl, '通信エラーが発生しました', 'error'); });
+          .catch(function () { showToast('通信エラーが発生しました', 'error'); });
       });
     }
 
@@ -146,7 +166,8 @@
     const tbody = document.getElementById('users-body');
 
     function showUsersError(msg) {
-      if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--color-danger);">' + escHtml(msg) + '</td></tr>';
+      if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--error);">' + escHtml(msg) + '</td></tr>';
+      showToast(msg, 'error');
     }
 
     fetch('/api/users', { credentials: 'same-origin' })
