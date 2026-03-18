@@ -5,7 +5,7 @@ import type { BffEnv } from '../types';
 export interface BffSession {
   access_token: string;
   refresh_token: string;
-  user: { id: string; email: string; name: string; role: string };
+  user: { id: string; email: string; name: string; role: 'user' | 'admin' };
 }
 
 /**
