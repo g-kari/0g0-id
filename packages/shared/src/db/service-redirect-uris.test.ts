@@ -11,14 +11,15 @@ function makeD1Mock(
   firstResult: unknown = null,
   allResults: unknown[] = [],
   changes = 1
-): D1Database {
+): D1Database & { _stmt: ReturnType<typeof vi.fn> } {
   const stmt = {
     bind: vi.fn().mockReturnThis(),
     first: vi.fn().mockResolvedValue(firstResult),
     run: vi.fn().mockResolvedValue({ meta: { changes } }),
     all: vi.fn().mockResolvedValue({ results: allResults }),
   };
-  return { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+  const db = { prepare: vi.fn().mockReturnValue(stmt), _stmt: stmt };
+  return db as unknown as D1Database & { _stmt: ReturnType<typeof vi.fn> };
 }
 
 const baseUri: ServiceRedirectUri = {
@@ -101,6 +102,12 @@ describe('deleteRedirectUri', () => {
     expect(db.prepare).toHaveBeenCalledWith(
       'DELETE FROM service_redirect_uris WHERE id = ? AND service_id = ?'
     );
+    expect(db._stmt.bind).toHaveBeenCalledWith('uri-1', 'service-1');
+  });
+
+  it('削除対象が存在しない場合も正常終了する（changes=0）', async () => {
+    const db = makeD1Mock(null, [], 0);
+    await expect(deleteRedirectUri(db, 'non-existent', 'service-1')).resolves.toBeUndefined();
   });
 });
 

@@ -15,14 +15,15 @@ function makeD1Mock(
   firstResult: unknown = null,
   allResults: unknown[] = [],
   changes = 1
-): D1Database {
+): D1Database & { _stmt: ReturnType<typeof vi.fn> } {
   const stmt = {
     bind: vi.fn().mockReturnThis(),
     first: vi.fn().mockResolvedValue(firstResult),
     run: vi.fn().mockResolvedValue({ meta: { changes } }),
     all: vi.fn().mockResolvedValue({ results: allResults }),
   };
-  return { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+  const db = { prepare: vi.fn().mockReturnValue(stmt), _stmt: stmt };
+  return db as unknown as D1Database & { _stmt: ReturnType<typeof vi.fn> };
 }
 
 const baseService: Service = {
@@ -138,6 +139,7 @@ describe('deleteService', () => {
     const db = makeD1Mock(null, [], 1);
     await deleteService(db, 'service-1');
     expect(db.prepare).toHaveBeenCalledWith('DELETE FROM services WHERE id = ?');
+    expect(db._stmt.bind).toHaveBeenCalledWith('service-1');
   });
 });
 
