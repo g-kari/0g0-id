@@ -1,0 +1,17 @@
+name = "0g0-id-user"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+routes = [
+  { pattern = "user.0g0.xyz", custom_domain = true }
+]
+
+[assets]
+directory = "./public"
+
+[vars]
+IDP_ORIGIN = "https://id.0g0.xyz"
+
+[[services]]
+binding = "IDP"
+service = "0g0-id"

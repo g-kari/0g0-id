@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>0g0 ID Admin - サービス管理</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar" aria-label="サイドバーナビゲーション">
+      <div class="sidebar-logo">0g0 ID Admin</div>
+      <div class="sidebar-nav">
+        <a href="/dashboard.html">ダッシュボード</a>
+        <a href="/services.html" class="active">サービス管理</a>
+        <a href="/users.html">ユーザー管理</a>
+      </div>
+    </nav>
+    <main class="main">
+      <div class="page-header">
+        <h1>サービス管理</h1>
+        <button class="btn btn-primary" id="add-service-btn">+ サービス追加</button>
+      </div>
+      <div id="msg" class="alert" style="display:none;" role="alert"></div>
+      <div class="card">
+        <div class="table-wrap">
+          <table id="services-table" aria-label="サービス一覧">
+            <thead>
+              <tr>
+                <th>名前</th>
+                <th>Client ID</th>
+                <th>登録日</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="services-body">
+              <tr><td colspan="4" style="text-align:center;color:var(--text-muted);">読み込み中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- サービス追加モーダル -->
+  <div class="modal-overlay" id="add-modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal">
+      <h2 id="modal-title">サービス追加</h2>
+      <form id="add-form">
+        <div class="form-group">
+          <label for="service-name">サービス名</label>
+          <input type="text" id="service-name" name="name" required>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn" id="cancel-btn">キャンセル</button>
+          <button type="submit" class="btn btn-primary">作成</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- シークレット表示モーダル -->
+  <div class="modal-overlay" id="secret-modal" hidden role="dialog" aria-modal="true" aria-labelledby="secret-modal-title">
+    <div class="modal">
+      <h2 id="secret-modal-title">サービス作成完了</h2>
+      <p style="font-size:0.875rem;color:var(--text-muted);margin-bottom:0.5rem;">Client IDとClient Secretをコピーしてください。Secretは再表示できません。</p>
+      <div class="form-group">
+        <label>Client ID</label>
+        <div class="secret-box" id="client-id-box"></div>
+      </div>
+      <div class="form-group">
+        <label>Client Secret</label>
+        <div class="secret-box" id="client-secret-box"></div>
+      </div>
+      <div class="alert alert-warning">⚠ このClient Secretは一度しか表示されません。必ずコピーして安全な場所に保管してください。</div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-primary" id="close-secret-btn">確認しました</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

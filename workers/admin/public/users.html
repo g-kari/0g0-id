@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>0g0 ID Admin - ユーザー管理</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar" aria-label="サイドバーナビゲーション">
+      <div class="sidebar-logo">0g0 ID Admin</div>
+      <div class="sidebar-nav">
+        <a href="/dashboard.html">ダッシュボード</a>
+        <a href="/services.html">サービス管理</a>
+        <a href="/users.html" class="active">ユーザー管理</a>
+      </div>
+    </nav>
+    <main class="main">
+      <div class="page-header">
+        <h1>ユーザー管理</h1>
+      </div>
+      <div class="card">
+        <div class="table-wrap">
+          <table id="users-table" aria-label="ユーザー一覧">
+            <thead>
+              <tr>
+                <th>名前</th>
+                <th>メールアドレス</th>
+                <th>ロール</th>
+                <th>登録日</th>
+              </tr>
+            </thead>
+            <tbody id="users-body">
+              <tr><td colspan="4" style="text-align:center;color:var(--text-muted);">読み込み中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

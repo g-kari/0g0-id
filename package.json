@@ -1,0 +1,15 @@
+{
+  "name": "0g0-id",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["packages/*", "workers/*"],
+  "scripts": {
+    "dev:id": "npm run dev -w workers/id",
+    "dev:user": "npm run dev -w workers/user",
+    "dev:admin": "npm run dev -w workers/admin",
+    "deploy:id": "npm run deploy -w workers/id",
+    "deploy:user": "npm run deploy -w workers/user",
+    "deploy:admin": "npm run deploy -w workers/admin",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}
