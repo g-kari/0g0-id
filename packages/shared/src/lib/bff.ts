@@ -119,11 +119,11 @@ export async function fetchWithAuth(
  */
 export async function proxyResponse(res: Response): Promise<Response> {
   if (res.status === 204) {
-    return new Response(null, { status: 204 });
+    return new Response(null, { status: 204, headers: res.headers });
   }
   const body = await res.text();
   return new Response(body, {
     status: res.status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: res.headers,
   });
 }
