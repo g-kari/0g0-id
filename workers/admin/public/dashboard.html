@@ -23,7 +23,24 @@
         <h1>ダッシュボード</h1>
         <button class="btn btn-danger btn-sm" id="logout-btn">ログアウト</button>
       </div>
-      <p style="color:var(--text-muted);">管理画面へようこそ。左メニューから操作を選択してください。</p>
+      <div class="metrics-grid" id="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-label">総ユーザー数</div>
+          <div class="metric-value" id="metric-total-users">-</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">管理者数</div>
+          <div class="metric-value" id="metric-admin-users">-</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">登録サービス数</div>
+          <div class="metric-value" id="metric-total-services">-</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">アクティブセッション数</div>
+          <div class="metric-value" id="metric-active-sessions">-</div>
+        </div>
+      </div>
     </main>
   </div>
   <script src="/app.js"></script>

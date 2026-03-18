@@ -98,6 +98,16 @@ export async function listUserConnections(
   return result.results;
 }
 
+export async function countActiveRefreshTokens(db: D1Database): Promise<number> {
+  const result = await db
+    .prepare(
+      `SELECT COUNT(*) as count FROM refresh_tokens
+       WHERE revoked_at IS NULL AND expires_at > datetime('now')`
+    )
+    .first<{ count: number }>();
+  return result?.count ?? 0;
+}
+
 /**
  * 特定サービスのユーザートークンを全て失効させる
  */

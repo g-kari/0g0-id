@@ -51,3 +51,10 @@ export async function listServices(db: D1Database): Promise<Service[]> {
     .all<Service>();
   return result.results;
 }
+
+export async function countServices(db: D1Database): Promise<number> {
+  const result = await db
+    .prepare('SELECT COUNT(*) as count FROM services')
+    .first<{ count: number }>();
+  return result?.count ?? 0;
+}

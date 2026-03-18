@@ -66,6 +66,28 @@
     return new Date(iso).toLocaleDateString('ja-JP');
   }
 
+  // ダッシュボード
+  if (path === '/dashboard.html') {
+    fetch('/api/metrics', { credentials: 'same-origin' })
+      .then(function (r) {
+        if (r.status === 401) { window.location.href = '/'; return null; }
+        return r.json();
+      })
+      .then(function (data) {
+        if (!data || data.error) return;
+        var m = data.data;
+        var totalUsersEl = document.getElementById('metric-total-users');
+        var adminUsersEl = document.getElementById('metric-admin-users');
+        var totalServicesEl = document.getElementById('metric-total-services');
+        var activeSessionsEl = document.getElementById('metric-active-sessions');
+        if (totalUsersEl) totalUsersEl.textContent = m.total_users;
+        if (adminUsersEl) adminUsersEl.textContent = m.admin_users;
+        if (totalServicesEl) totalServicesEl.textContent = m.total_services;
+        if (activeSessionsEl) activeSessionsEl.textContent = m.active_sessions;
+      })
+      .catch(function () { /* メトリクス取得失敗は無視 */ });
+  }
+
   // サービス管理ページ
   if (path === '/services.html') {
     const tbody = document.getElementById('services-body');

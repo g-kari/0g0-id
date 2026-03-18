@@ -5,6 +5,7 @@ import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
 import tokenRoutes from './routes/token';
 import servicesRoutes from './routes/services';
+import metricsRoutes from './routes/metrics';
 import wellKnownRoutes from './routes/well-known';
 import docsRoutes from './routes/docs';
 
@@ -20,6 +21,7 @@ app.route('/.well-known', wellKnownRoutes);
 app.route('/api/users', usersRoutes);
 app.route('/api/token', tokenRoutes);
 app.route('/api/services', servicesRoutes);
+app.route('/api/metrics', metricsRoutes);
 app.route('/docs', docsRoutes);
 
 // ヘルスチェック
