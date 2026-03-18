@@ -52,6 +52,14 @@ export async function listServices(db: D1Database): Promise<Service[]> {
   return result.results;
 }
 
+export async function countServicesByOwner(db: D1Database, userId: string): Promise<number> {
+  const result = await db
+    .prepare('SELECT COUNT(*) as count FROM services WHERE owner_user_id = ?')
+    .bind(userId)
+    .first<{ count: number }>();
+  return result?.count ?? 0;
+}
+
 export async function countServices(db: D1Database): Promise<number> {
   const result = await db
     .prepare('SELECT COUNT(*) as count FROM services')

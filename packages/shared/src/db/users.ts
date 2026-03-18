@@ -52,11 +52,18 @@ export async function updateUserRole(
   db: D1Database,
   userId: string,
   role: 'user' | 'admin'
-): Promise<void> {
-  await db
-    .prepare(`UPDATE users SET role = ?, updated_at = datetime('now') WHERE id = ?`)
+): Promise<User> {
+  const user = await db
+    .prepare(`UPDATE users SET role = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`)
     .bind(role, userId)
-    .run();
+    .first<User>();
+  if (!user) throw new Error('User not found');
+  return user;
+}
+
+export async function deleteUser(db: D1Database, userId: string): Promise<boolean> {
+  const result = await db.prepare('DELETE FROM users WHERE id = ?').bind(userId).run();
+  return (result.meta.changes ?? 0) > 0;
 }
 
 export async function updateUserName(db: D1Database, userId: string, name: string): Promise<User> {
