@@ -1,3 +1,9 @@
+---
+paths:
+  - "workers/user/**"
+  - "workers/admin/**"
+---
+
 # デザイン規約
 
 ## カラーパレット

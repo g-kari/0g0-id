@@ -1,3 +1,9 @@
+---
+paths:
+  - "workers/**/*.ts"
+  - "packages/shared/**/*.ts"
+---
+
 # API設計規約
 
 ## レスポンス形式

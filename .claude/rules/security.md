@@ -1,3 +1,9 @@
+---
+paths:
+  - "workers/**/*.ts"
+  - "packages/shared/**/*.ts"
+---
+
 # セキュリティ規約
 
 ## JWT
