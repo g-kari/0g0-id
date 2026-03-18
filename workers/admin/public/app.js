@@ -116,7 +116,11 @@
     showProgress();
     fetch('/api/metrics', { credentials: 'same-origin' })
       .then(function (r) {
-        if (r.status === 401) { window.location.href = '/'; return null; }
+        if (r.status === 401) {
+          hideProgress();
+          window.location.href = '/';
+          return null;
+        }
         return r.json();
       })
       .then(function (data) {
@@ -234,13 +238,22 @@
       });
     }
 
+    function showServicesError(msg) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--error);">' + escHtml(msg) + '</td></tr>';
+    }
+
     function loadServices() {
       if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="padding:0;border:none;">' +
         '<div class="loading-center">' + SPINNER_HTML + '<span>読み込み中...</span></div></td></tr>';
       showProgress();
       fetch('/api/services', { credentials: 'same-origin' })
         .then(function (r) {
-          if (r.status === 401) { window.location.href = '/'; return null; }
+          if (r.status === 401) {
+            hideProgress();
+            showServicesError('セッションが無効です。再度ログインしてください。');
+            setTimeout(function () { window.location.href = '/'; }, 1500);
+            return null;
+          }
           return r.json();
         })
         .then(function (data) {
@@ -297,6 +310,7 @@
         })
         .catch(function () {
           hideProgress();
+          showServicesError('通信エラーが発生しました');
           showMsg(msgEl, '通信エラーが発生しました', 'error');
         });
     }
@@ -361,7 +375,12 @@
     showProgress();
     fetch('/api/users', { credentials: 'same-origin' })
       .then(function (r) {
-        if (r.status === 401) { window.location.href = '/'; return null; }
+        if (r.status === 401) {
+          hideProgress();
+          showUsersError('セッションが無効です。再度ログインしてください。');
+          setTimeout(function () { window.location.href = '/'; }, 1500);
+          return null;
+        }
         return r.json();
       })
       .then(function (data) {

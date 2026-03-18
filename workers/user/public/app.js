@@ -96,18 +96,38 @@
     var saveBtn = editForm ? editForm.querySelector('button[type="submit"]') : null;
     var logoutBtn = document.getElementById('logout-btn');
 
+    function showProfileError(msg) {
+      hideProgress();
+      if (loading) {
+        loading.innerHTML = '<div style="text-align:center;padding:1rem;">' +
+          '<p style="color:var(--error,#e53e3e);margin-bottom:1rem;">' + msg + '</p>' +
+          '<a href="/" style="color:var(--accent,#4f46e5);">ログインページへ</a>' +
+          '</div>';
+      }
+    }
+
     // プロフィール取得
     showProgress();
     fetch('/api/me', { credentials: 'same-origin' })
       .then(function (res) {
-        if (res.status === 401) { window.location.href = '/'; return null; }
+        if (res.status === 401) {
+          window.location.href = '/';
+          return null;
+        }
         return res.json();
       })
       .then(function (data) {
         hideProgress();
-        if (!data) return;
-        if (data.error) { window.location.href = '/'; return; }
+        if (!data) return; // 401の場合はリダイレクト中
+        if (data.error) {
+          showProfileError('プロフィールの取得に失敗しました。再度ログインしてください。');
+          return;
+        }
         var user = data.data;
+        if (!user) {
+          showProfileError('データの取得に失敗しました。再度ログインしてください。');
+          return;
+        }
         if (avatar) {
           avatar.src = user.picture || '';
           avatar.style.display = user.picture ? 'block' : 'none';
@@ -121,8 +141,7 @@
         if (card) card.style.display = 'block';
       })
       .catch(function () {
-        hideProgress();
-        window.location.href = '/';
+        showProfileError('通信エラーが発生しました。ページを再読み込みしてください。');
       });
 
     // プロフィール更新
