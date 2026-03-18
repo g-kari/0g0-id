@@ -1,6 +1,8 @@
 export interface User {
   id: string;
-  google_sub: string;
+  google_sub: string | null;
+  line_sub: string | null;
+  twitch_sub: string | null;
   email: string;
   email_verified: number;
   name: string;
@@ -67,6 +69,10 @@ export interface IdpEnv {
   DB: D1Database;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
+  LINE_CLIENT_ID?: string;
+  LINE_CLIENT_SECRET?: string;
+  TWITCH_CLIENT_ID?: string;
+  TWITCH_CLIENT_SECRET?: string;
   JWT_PRIVATE_KEY: string;
   JWT_PUBLIC_KEY: string;
   BOOTSTRAP_ADMIN_EMAIL?: string;

@@ -16,6 +16,8 @@ function makeD1Mock(firstResult: unknown, changes = 1): D1Database {
 const baseUser: User = {
   id: 'user-1',
   google_sub: 'google-sub-1',
+  line_sub: null,
+  twitch_sub: null,
   email: 'test@example.com',
   email_verified: 1,
   name: 'Test User',

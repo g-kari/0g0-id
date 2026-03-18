@@ -5,6 +5,12 @@ import {
   buildGoogleAuthUrl,
   exchangeGoogleCode,
   fetchGoogleUserInfo,
+  buildLineAuthUrl,
+  exchangeLineCode,
+  fetchLineUserInfo,
+  buildTwitchAuthUrl,
+  exchangeTwitchCode,
+  fetchTwitchUserInfo,
   generateCodeVerifier,
   generateCodeChallenge,
   generateToken,
@@ -16,6 +22,8 @@ import {
   revokeRefreshToken,
   revokeTokenFamily,
   upsertUser,
+  upsertLineUser,
+  upsertTwitchUser,
   updateUserRole,
   countAdminUsers,
   createAuthCode,
@@ -25,11 +33,13 @@ import type { IdpEnv } from '@0g0-id/shared';
 
 const app = new Hono<{ Bindings: IdpEnv }>();
 
-const GOOGLE_REDIRECT_PATH = '/auth/callback';
+const CALLBACK_PATH = '/auth/callback';
 
 // state/PKCE保存用Cookie名
 const STATE_COOKIE = '__Host-oauth-state';
 const PKCE_COOKIE = '__Host-oauth-pkce';
+
+type OAuthProvider = 'google' | 'line' | 'twitch';
 
 function setSecureCookie(
   c: Context<{ Bindings: IdpEnv }>,
@@ -46,13 +56,37 @@ function setSecureCookie(
   });
 }
 
-// GET /auth/login — BFFからのリダイレクト受け取り + Google認可へリダイレクト
+// GET /auth/login — BFFからのリダイレクト受け取り + プロバイダー認可へリダイレクト
 app.get('/login', async (c) => {
   const redirectTo = c.req.query('redirect_to');
   const bffState = c.req.query('state');
+  const providerParam = c.req.query('provider') ?? 'google';
 
   if (!redirectTo || !bffState) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Missing required parameters' } }, 400);
+  }
+
+  // providerの検証
+  const validProviders: OAuthProvider[] = ['google', 'line', 'twitch'];
+  if (!validProviders.includes(providerParam as OAuthProvider)) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid provider' } }, 400);
+  }
+  const provider = providerParam as OAuthProvider;
+
+  // プロバイダー資格情報の確認
+  if (provider === 'line' && (!c.env.LINE_CLIENT_ID || !c.env.LINE_CLIENT_SECRET)) {
+    return c.json(
+      { error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'LINE provider is not configured' } },
+      400
+    );
+  }
+  if (provider === 'twitch' && (!c.env.TWITCH_CLIENT_ID || !c.env.TWITCH_CLIENT_SECRET)) {
+    return c.json(
+      {
+        error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Twitch provider is not configured' },
+      },
+      400
+    );
   }
 
   // redirect_toの検証（user/adminオリジンのみ許可）
@@ -67,27 +101,49 @@ app.get('/login', async (c) => {
   const idCodeVerifier = generateCodeVerifier();
   const idCodeChallenge = await generateCodeChallenge(idCodeVerifier);
 
-  // BFF情報をstate cookieに結びつけて保存
+  // BFF情報をstate cookieに結びつけて保存（providerも含める）
   const stateData = JSON.stringify({
     idState,
     bffState,
     redirectTo,
+    provider,
   });
   setSecureCookie(c, STATE_COOKIE, btoa(encodeURIComponent(stateData)), 600); // 10分
   setSecureCookie(c, PKCE_COOKIE, idCodeVerifier, 600);
 
-  const callbackUri = `${c.env.IDP_ORIGIN}${GOOGLE_REDIRECT_PATH}`;
+  const callbackUri = `${c.env.IDP_ORIGIN}${CALLBACK_PATH}`;
+
+  if (provider === 'line') {
+    const lineUrl = buildLineAuthUrl({
+      clientId: c.env.LINE_CLIENT_ID!,
+      redirectUri: callbackUri,
+      state: idState,
+      codeChallenge: idCodeChallenge,
+    });
+    return c.redirect(lineUrl);
+  }
+
+  if (provider === 'twitch') {
+    const twitchUrl = buildTwitchAuthUrl({
+      clientId: c.env.TWITCH_CLIENT_ID!,
+      redirectUri: callbackUri,
+      state: idState,
+      codeChallenge: idCodeChallenge,
+    });
+    return c.redirect(twitchUrl);
+  }
+
+  // デフォルト: Google
   const googleUrl = buildGoogleAuthUrl({
     clientId: c.env.GOOGLE_CLIENT_ID,
     redirectUri: callbackUri,
     state: idState,
     codeChallenge: idCodeChallenge,
   });
-
   return c.redirect(googleUrl);
 });
 
-// GET /auth/callback — Googleコールバック
+// GET /auth/callback — OAuthコールバック（全プロバイダー共通）
 app.get('/callback', async (c) => {
   const code = c.req.query('code');
   const state = c.req.query('state');
@@ -113,6 +169,7 @@ app.get('/callback', async (c) => {
     idState: string;
     bffState: string;
     redirectTo: string;
+    provider: OAuthProvider;
   };
   try {
     stateData = JSON.parse(decodeURIComponent(atob(stateCookieRaw)));
@@ -129,44 +186,148 @@ app.get('/callback', async (c) => {
   deleteCookie(c, STATE_COOKIE, { path: '/', secure: true });
   deleteCookie(c, PKCE_COOKIE, { path: '/', secure: true });
 
-  // Googleトークン交換
-  const callbackUri = `${c.env.IDP_ORIGIN}${GOOGLE_REDIRECT_PATH}`;
-  let googleTokens;
-  try {
-    googleTokens = await exchangeGoogleCode({
-      code,
-      clientId: c.env.GOOGLE_CLIENT_ID,
-      clientSecret: c.env.GOOGLE_CLIENT_SECRET,
-      redirectUri: callbackUri,
-      codeVerifier: pkceVerifier,
-    });
-  } catch {
-    return c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to exchange code' } }, 400);
-  }
+  const callbackUri = `${c.env.IDP_ORIGIN}${CALLBACK_PATH}`;
+  const provider = stateData.provider ?? 'google';
 
-  // ユーザー情報取得
-  let userInfo;
-  try {
-    userInfo = await fetchGoogleUserInfo(googleTokens.access_token);
-  } catch {
-    return c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to fetch user info' } }, 400);
-  }
-
-  // email_verified必須チェック
-  if (!userInfo.email_verified) {
-    return c.json({ error: { code: 'UNVERIFIED_EMAIL', message: 'Email not verified' } }, 400);
-  }
-
-  // ユーザーupsert
   const userId = crypto.randomUUID();
-  const user = await upsertUser(c.env.DB, {
-    id: userId,
-    googleSub: userInfo.sub,
-    email: userInfo.email,
-    emailVerified: userInfo.email_verified,
-    name: userInfo.name,
-    picture: userInfo.picture ?? null,
-  });
+  let user;
+
+  if (provider === 'google') {
+    // Googleトークン交換
+    let googleTokens;
+    try {
+      googleTokens = await exchangeGoogleCode({
+        code,
+        clientId: c.env.GOOGLE_CLIENT_ID,
+        clientSecret: c.env.GOOGLE_CLIENT_SECRET,
+        redirectUri: callbackUri,
+        codeVerifier: pkceVerifier,
+      });
+    } catch {
+      return c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to exchange code' } }, 400);
+    }
+
+    let userInfo;
+    try {
+      userInfo = await fetchGoogleUserInfo(googleTokens.access_token);
+    } catch {
+      return c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to fetch user info' } }, 400);
+    }
+
+    if (!userInfo.email_verified) {
+      return c.json({ error: { code: 'UNVERIFIED_EMAIL', message: 'Email not verified' } }, 400);
+    }
+
+    user = await upsertUser(c.env.DB, {
+      id: userId,
+      googleSub: userInfo.sub,
+      email: userInfo.email,
+      emailVerified: userInfo.email_verified,
+      name: userInfo.name,
+      picture: userInfo.picture ?? null,
+    });
+  } else if (provider === 'line') {
+    if (!c.env.LINE_CLIENT_ID || !c.env.LINE_CLIENT_SECRET) {
+      return c.json(
+        {
+          error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'LINE provider is not configured' },
+        },
+        400
+      );
+    }
+
+    let lineTokens;
+    try {
+      lineTokens = await exchangeLineCode({
+        code,
+        clientId: c.env.LINE_CLIENT_ID,
+        clientSecret: c.env.LINE_CLIENT_SECRET,
+        redirectUri: callbackUri,
+        codeVerifier: pkceVerifier,
+      });
+    } catch {
+      return c.json(
+        { error: { code: 'OAUTH_ERROR', message: 'Failed to exchange LINE code' } },
+        400
+      );
+    }
+
+    let userInfo;
+    try {
+      userInfo = await fetchLineUserInfo(lineTokens.access_token);
+    } catch {
+      return c.json(
+        { error: { code: 'OAUTH_ERROR', message: 'Failed to fetch LINE user info' } },
+        400
+      );
+    }
+
+    // LINEはemailが取得できない場合がある（仮メールアドレスを生成）
+    const isPlaceholderEmail = !userInfo.email;
+    const email = userInfo.email ?? `line_${userInfo.sub}@line.placeholder`;
+
+    user = await upsertLineUser(c.env.DB, {
+      id: userId,
+      lineSub: userInfo.sub,
+      email,
+      isPlaceholderEmail,
+      name: userInfo.name,
+      picture: userInfo.picture ?? null,
+    });
+  } else if (provider === 'twitch') {
+    if (!c.env.TWITCH_CLIENT_ID || !c.env.TWITCH_CLIENT_SECRET) {
+      return c.json(
+        {
+          error: {
+            code: 'PROVIDER_NOT_CONFIGURED',
+            message: 'Twitch provider is not configured',
+          },
+        },
+        400
+      );
+    }
+
+    let twitchTokens;
+    try {
+      twitchTokens = await exchangeTwitchCode({
+        code,
+        clientId: c.env.TWITCH_CLIENT_ID,
+        clientSecret: c.env.TWITCH_CLIENT_SECRET,
+        redirectUri: callbackUri,
+        codeVerifier: pkceVerifier,
+      });
+    } catch {
+      return c.json(
+        { error: { code: 'OAUTH_ERROR', message: 'Failed to exchange Twitch code' } },
+        400
+      );
+    }
+
+    let userInfo;
+    try {
+      userInfo = await fetchTwitchUserInfo(twitchTokens.access_token);
+    } catch {
+      return c.json(
+        { error: { code: 'OAUTH_ERROR', message: 'Failed to fetch Twitch user info' } },
+        400
+      );
+    }
+
+    const isPlaceholderEmail = !userInfo.email;
+    const email = userInfo.email ?? `twitch_${userInfo.sub}@twitch.placeholder`;
+
+    user = await upsertTwitchUser(c.env.DB, {
+      id: userId,
+      twitchSub: userInfo.sub,
+      email,
+      isPlaceholderEmail,
+      emailVerified: userInfo.email_verified ?? false,
+      name: userInfo.preferred_username,
+      picture: userInfo.picture ?? null,
+    });
+  } else {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Unknown provider' } }, 400);
+  }
 
   // 管理者ブートストラップ（管理者が0人の場合のみ）
   if (
@@ -184,8 +345,8 @@ app.get('/callback', async (c) => {
   }
 
   // ワンタイム認可コード発行
-  const code60s = generateToken(32);
-  const codeHash = await sha256(code60s);
+  const authCode = generateToken(32);
+  const codeHash = await sha256(authCode);
   const expiresAt = new Date(Date.now() + 60 * 1000).toISOString();
 
   await createAuthCode(c.env.DB, {
@@ -198,7 +359,7 @@ app.get('/callback', async (c) => {
 
   // BFFコールバックへリダイレクト
   const callbackUrl = new URL(stateData.redirectTo);
-  callbackUrl.searchParams.set('code', code60s);
+  callbackUrl.searchParams.set('code', authCode);
   callbackUrl.searchParams.set('state', stateData.bffState);
 
   return c.redirect(callbackUrl.toString());

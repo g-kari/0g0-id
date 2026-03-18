@@ -8,6 +8,14 @@ export async function findUserByGoogleSub(db: D1Database, googleSub: string): Pr
   return db.prepare('SELECT * FROM users WHERE google_sub = ?').bind(googleSub).first<User>();
 }
 
+export async function findUserByLineSub(db: D1Database, lineSub: string): Promise<User | null> {
+  return db.prepare('SELECT * FROM users WHERE line_sub = ?').bind(lineSub).first<User>();
+}
+
+export async function findUserByTwitchSub(db: D1Database, twitchSub: string): Promise<User | null> {
+  return db.prepare('SELECT * FROM users WHERE twitch_sub = ?').bind(twitchSub).first<User>();
+}
+
 export async function findUserByEmail(db: D1Database, email: string): Promise<User | null> {
   return db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first<User>();
 }
@@ -45,6 +53,125 @@ export async function upsertUser(
     )
     .first<User>();
   if (!user) throw new Error('Failed to upsert user');
+  return user;
+}
+
+export async function upsertLineUser(
+  db: D1Database,
+  params: {
+    id: string;
+    lineSub: string;
+    email: string;
+    isPlaceholderEmail: boolean;
+    name: string;
+    picture: string | null;
+  }
+): Promise<User> {
+  // 既存のLINEユーザーがいればプロフィールを更新
+  const existing = await findUserByLineSub(db, params.lineSub);
+  if (existing) {
+    const user = await db
+      .prepare(
+        `UPDATE users SET name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
+      )
+      .bind(params.name, params.picture, existing.id)
+      .first<User>();
+    if (!user) throw new Error('Failed to update LINE user');
+    return user;
+  }
+
+  // 仮メール以外であれば既存ユーザーにLINEアカウントを連携
+  if (!params.isPlaceholderEmail) {
+    const existingByEmail = await findUserByEmail(db, params.email);
+    if (existingByEmail) {
+      const user = await db
+        .prepare(
+          `UPDATE users SET line_sub = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
+        )
+        .bind(params.lineSub, params.name, params.picture, existingByEmail.id)
+        .first<User>();
+      if (!user) throw new Error('Failed to link LINE account');
+      return user;
+    }
+  }
+
+  // 新規ユーザー作成（仮メールはemail_verified=0）
+  const user = await db
+    .prepare(
+      `INSERT INTO users (id, line_sub, email, email_verified, name, picture)
+       VALUES (?, ?, ?, ?, ?, ?)
+       RETURNING *`
+    )
+    .bind(
+      params.id,
+      params.lineSub,
+      params.email,
+      params.isPlaceholderEmail ? 0 : 1,
+      params.name,
+      params.picture
+    )
+    .first<User>();
+  if (!user) throw new Error('Failed to create LINE user');
+  return user;
+}
+
+export async function upsertTwitchUser(
+  db: D1Database,
+  params: {
+    id: string;
+    twitchSub: string;
+    email: string;
+    isPlaceholderEmail: boolean;
+    emailVerified: boolean;
+    name: string;
+    picture: string | null;
+  }
+): Promise<User> {
+  // 既存のTwitchユーザーがいればプロフィールを更新
+  const existing = await findUserByTwitchSub(db, params.twitchSub);
+  if (existing) {
+    const user = await db
+      .prepare(
+        `UPDATE users SET name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
+      )
+      .bind(params.name, params.picture, existing.id)
+      .first<User>();
+    if (!user) throw new Error('Failed to update Twitch user');
+    return user;
+  }
+
+  // 仮メール以外であれば既存ユーザーにTwitchアカウントを連携
+  if (!params.isPlaceholderEmail) {
+    const existingByEmail = await findUserByEmail(db, params.email);
+    if (existingByEmail) {
+      const user = await db
+        .prepare(
+          `UPDATE users SET twitch_sub = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
+        )
+        .bind(params.twitchSub, params.name, params.picture, existingByEmail.id)
+        .first<User>();
+      if (!user) throw new Error('Failed to link Twitch account');
+      return user;
+    }
+  }
+
+  // 新規ユーザー作成
+  const user = await db
+    .prepare(
+      `INSERT INTO users (id, twitch_sub, email, email_verified, name, picture)
+       VALUES (?, ?, ?, ?, ?, ?)
+       RETURNING *`
+    )
+    .bind(
+      params.id,
+      params.twitchSub,
+      params.email,
+      params.isPlaceholderEmail ? 0 : params.emailVerified ? 1 : 0,
+      params.name,
+      params.picture
+    )
+    .first<User>();
+  if (!user) throw new Error('Failed to create Twitch user');
   return user;
 }
 
