@@ -1,0 +1,41 @@
+version: 2
+updates:
+  # ルートワークスペース
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Tokyo"
+    open-pull-requests-limit: 10
+    groups:
+      typescript:
+        patterns:
+          - "typescript"
+          - "@typescript-eslint/*"
+      cloudflare:
+        patterns:
+          - "@cloudflare/*"
+          - "wrangler"
+      hono:
+        patterns:
+          - "hono"
+      testing:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+    labels:
+      - "dependencies"
+
+  # GitHub Actionsの依存関係
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Tokyo"
+    labels:
+      - "dependencies"
+      - "github-actions"
