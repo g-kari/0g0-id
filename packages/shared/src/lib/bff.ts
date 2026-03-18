@@ -1,5 +1,5 @@
 import { type Context } from 'hono';
-import { setCookie, getCookie } from 'hono/cookie';
+import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
 import type { BffEnv } from '../types';
 
 export interface BffSession {
@@ -105,8 +105,11 @@ export async function fetchWithAuth(
     } else if (refreshRes.status >= 500) {
       // リフレッシュエンドポイントが5xx → 502（認証失敗ではなくアップストリーム障害）
       return errorResponse(502, 'UPSTREAM_ERROR', 'Identity provider error');
+    } else {
+      // 400/401: リフレッシュトークン無効/期限切れ → 無効セッションCookieを削除して401を返す
+      deleteCookie(c, sessionCookieName, { path: '/', secure: true, httpOnly: true });
+      return errorResponse(401, 'UNAUTHORIZED', 'Session expired');
     }
-    // 400/401の場合は元の401レスポンスをそのまま返す（セッション切れ）
   }
 
   return res;
