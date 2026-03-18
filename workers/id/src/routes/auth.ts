@@ -12,6 +12,7 @@ import {
   signAccessToken,
   createRefreshToken,
   findRefreshTokenByHash,
+  findUserById,
   revokeRefreshToken,
   revokeTokenFamily,
   revokeUserTokens,
@@ -127,9 +128,9 @@ app.get('/callback', async (c) => {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'State mismatch' } }, 400);
   }
 
-  // Cookie削除
-  deleteCookie(c, STATE_COOKIE, { path: '/' });
-  deleteCookie(c, PKCE_COOKIE, { path: '/' });
+  // Cookie削除（__Host- prefix には secure: true が必須）
+  deleteCookie(c, STATE_COOKIE, { path: '/', secure: true });
+  deleteCookie(c, PKCE_COOKIE, { path: '/', secure: true });
 
   // Googleトークン交換
   const callbackUri = `${c.env.IDP_ORIGIN}${GOOGLE_REDIRECT_PATH}`;
@@ -222,7 +223,6 @@ app.post('/exchange', async (c) => {
   }
 
   // ユーザー情報取得
-  const { findUserById } = await import('@0g0-id/shared');
   const user = await findUserById(c.env.DB, authCode.user_id);
   if (!user) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
@@ -308,7 +308,6 @@ app.post('/refresh', async (c) => {
   await revokeRefreshToken(c.env.DB, storedToken.id);
 
   // ユーザー情報取得
-  const { findUserById } = await import('@0g0-id/shared');
   const user = await findUserById(c.env.DB, storedToken.user_id);
   if (!user) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);

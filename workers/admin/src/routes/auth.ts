@@ -60,8 +60,9 @@ app.get('/callback', async (c) => {
     return c.redirect('/?error=state_mismatch');
   }
 
-  deleteCookie(c, STATE_COOKIE, { path: '/' });
-  deleteCookie(c, PKCE_COOKIE, { path: '/' });
+  // Cookie削除（__Host- prefix には secure: true が必須）
+  deleteCookie(c, STATE_COOKIE, { path: '/', secure: true });
+  deleteCookie(c, PKCE_COOKIE, { path: '/', secure: true });
 
   const exchangeRes = await c.env.IDP.fetch(
     new Request(`${c.env.IDP_ORIGIN}/auth/exchange`, {

@@ -75,9 +75,9 @@ app.get('/callback', async (c) => {
     return c.redirect('/?error=state_mismatch');
   }
 
-  // Cookie削除
-  deleteCookie(c, STATE_COOKIE, { path: '/' });
-  deleteCookie(c, PKCE_COOKIE, { path: '/' });
+  // Cookie削除（__Host- prefix には secure: true が必須）
+  deleteCookie(c, STATE_COOKIE, { path: '/', secure: true });
+  deleteCookie(c, PKCE_COOKIE, { path: '/', secure: true });
 
   // id worker にコード交換リクエスト（Service Bindings使用）
   const exchangeRes = await c.env.IDP.fetch(
