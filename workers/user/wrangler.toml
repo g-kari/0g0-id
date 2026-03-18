@@ -1,6 +1,7 @@
 name = "0g0-id-user"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
+workers_dev = false
 
 [observability.logs]
 enabled = true
