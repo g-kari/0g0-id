@@ -1,10 +1,9 @@
 import { SignJWT, jwtVerify, exportJWK, importPKCS8, importSPKI } from 'jose';
-import type { KeyLike } from 'jose';
 import type { TokenPayload } from '../types';
 
 export interface JWTKeys {
-  privateKey: KeyLike;
-  publicKey: KeyLike;
+  privateKey: CryptoKey;
+  publicKey: CryptoKey;
   kid: string;
 }
 

@@ -2,6 +2,10 @@ name = "0g0-id-admin"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
 
+[observability.logs]
+enabled = true
+invocation_logs = true
+
 routes = [
   { pattern = "admin.0g0.xyz", custom_domain = true }
 ]
