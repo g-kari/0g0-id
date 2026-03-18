@@ -87,10 +87,6 @@ app.post('/', authMiddleware, adminMiddleware, async (c) => {
 // PATCH /api/services/:id — allowed_scopesの更新
 app.patch('/:id', authMiddleware, adminMiddleware, async (c) => {
   const serviceId = c.req.param('id');
-  const service = await findServiceById(c.env.DB, serviceId);
-  if (!service) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
-  }
 
   let body: { allowed_scopes?: string[] };
   try {
