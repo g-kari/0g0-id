@@ -63,10 +63,11 @@
     }, 150);
   }
 
-  const path = window.location.pathname;
+  // Cloudflare Workers Assets は .html 拡張子を除去するため正規化
+  const path = window.location.pathname.replace(/\.html$/, '');
 
   // ログインページ
-  if (path === '/' || path === '/index.html') {
+  if (path === '/' || path === '/index') {
     const params = new URLSearchParams(window.location.search);
     const errorEl = document.getElementById('error-msg');
     if (params.get('error') && errorEl) {
@@ -112,7 +113,7 @@
   var LOADING_HTML = '<div class="loading-center">' + SPINNER_HTML + '<span>読み込み中...</span></div>';
 
   // ダッシュボード
-  if (path === '/dashboard.html') {
+  if (path === '/dashboard') {
     showProgress();
     fetch('/api/metrics', { credentials: 'same-origin' })
       .then(function (r) {
@@ -140,7 +141,7 @@
   }
 
   // サービス管理ページ
-  if (path === '/services.html') {
+  if (path === '/services') {
     const tbody = document.getElementById('services-body');
     const msgEl = document.getElementById('msg');
     const addModal = document.getElementById('add-modal');
@@ -361,7 +362,7 @@
   }
 
   // ユーザー管理ページ
-  if (path === '/users.html') {
+  if (path === '/users') {
     const tbody = document.getElementById('users-body');
 
     function showUsersError(msg) {

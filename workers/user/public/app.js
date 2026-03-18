@@ -63,10 +63,11 @@
     }, 150);
   }
 
-  var path = window.location.pathname;
+  // Cloudflare Workers Assets は .html 拡張子を除去するため正規化
+  var path = window.location.pathname.replace(/\.html$/, '');
 
   // エラーパラメータ表示（ログインページ）
-  if (path === '/' || path === '/index.html') {
+  if (path === '/' || path === '/index') {
     var params = new URLSearchParams(window.location.search);
     var errorEl = document.getElementById('error-msg');
     if (params.get('error') && errorEl) {
@@ -83,7 +84,7 @@
   }
 
   // プロフィールページ
-  if (path === '/profile.html') {
+  if (path === '/profile') {
     var card = document.getElementById('profile-card');
     var loading = document.getElementById('loading');
     var avatar = document.getElementById('avatar');
@@ -204,7 +205,7 @@
   }
 
   // 連携サービスページ
-  if (path === '/connections.html') {
+  if (path === '/connections') {
     var listEl = document.getElementById('connections-list');
     var loadingEl = document.getElementById('loading');
     var emptyEl = document.getElementById('empty-msg');
