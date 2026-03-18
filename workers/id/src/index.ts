@@ -8,6 +8,7 @@ import servicesRoutes from './routes/services';
 import metricsRoutes from './routes/metrics';
 import wellKnownRoutes from './routes/well-known';
 import docsRoutes from './routes/docs';
+import externalRoutes from './routes/external';
 
 type Variables = { user: TokenPayload };
 
@@ -22,6 +23,7 @@ app.route('/api/users', usersRoutes);
 app.route('/api/token', tokenRoutes);
 app.route('/api/services', servicesRoutes);
 app.route('/api/metrics', metricsRoutes);
+app.route('/api/external', externalRoutes);
 app.route('/docs', docsRoutes);
 
 // ヘルスチェック

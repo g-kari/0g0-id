@@ -109,6 +109,25 @@ export async function countActiveRefreshTokens(db: D1Database): Promise<number> 
 }
 
 /**
+ * ユーザーが特定サービスにアクティブな認可を持つか確認する
+ */
+export async function hasUserAuthorizedService(
+  db: D1Database,
+  userId: string,
+  serviceId: string
+): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `SELECT 1 FROM refresh_tokens
+       WHERE user_id = ? AND service_id = ? AND revoked_at IS NULL AND expires_at > datetime('now')
+       LIMIT 1`
+    )
+    .bind(userId, serviceId)
+    .first<{ 1: number }>();
+  return result !== null;
+}
+
+/**
  * 特定サービスのユーザートークンを全て失効させる
  */
 export async function revokeUserServiceTokens(
