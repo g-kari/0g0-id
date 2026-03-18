@@ -111,3 +111,19 @@ export async function fetchWithAuth(
 
   return res;
 }
+
+/**
+ * IdPからのResponseをそのままBFFクライアントへ返すユーティリティ。
+ * c.json() の `as 200` 型アサーション回避のため Response を直接構築する。
+ * 204 No Content の場合は body なしで返す。
+ */
+export async function proxyResponse(res: Response): Promise<Response> {
+  if (res.status === 204) {
+    return new Response(null, { status: 204 });
+  }
+  const body = await res.text();
+  return new Response(body, {
+    status: res.status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}

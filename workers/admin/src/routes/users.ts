@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { fetchWithAuth } from '@0g0-id/shared';
+import { fetchWithAuth, proxyResponse } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 import { SESSION_COOKIE } from './auth';
 
@@ -14,7 +14,7 @@ app.get('/', async (c) => {
   url.searchParams.set('offset', offset);
 
   const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
-  return c.json(await res.json(), res.status as 200);
+  return proxyResponse(res);
 });
 
 export default app;

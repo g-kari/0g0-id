@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { fetchWithAuth } from '@0g0-id/shared';
+import { fetchWithAuth, proxyResponse } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 import { SESSION_COOKIE } from './auth';
 
@@ -8,7 +8,7 @@ const app = new Hono<{ Bindings: BffEnv }>();
 // GET /api/me
 app.get('/', async (c) => {
   const res = await fetchWithAuth(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/me`);
-  return c.json(await res.json(), res.status as 200);
+  return proxyResponse(res);
 });
 
 // PATCH /api/me
@@ -28,7 +28,7 @@ app.patch('/', async (c) => {
     },
     body: JSON.stringify(body),
   });
-  return c.json(await res.json(), res.status as 200);
+  return proxyResponse(res);
 });
 
 export default app;
