@@ -97,8 +97,8 @@ export function normalizeRedirectUri(uri: string): string | null {
   try {
     const url = new URL(uri);
 
-    // fragment禁止
-    if (url.hash) return null;
+    // fragment禁止（空fragmentも含む: `#` 文字自体を禁止）
+    if (uri.includes('#')) return null;
 
     const isLocalhost =
       url.hostname === 'localhost' || url.hostname === '127.0.0.1';

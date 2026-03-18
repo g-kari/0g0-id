@@ -6,6 +6,7 @@ import usersRoutes from './routes/users';
 import tokenRoutes from './routes/token';
 import servicesRoutes from './routes/services';
 import wellKnownRoutes from './routes/well-known';
+import docsRoutes from './routes/docs';
 
 type Variables = { user: TokenPayload };
 
@@ -19,6 +20,7 @@ app.route('/.well-known', wellKnownRoutes);
 app.route('/api/users', usersRoutes);
 app.route('/api/token', tokenRoutes);
 app.route('/api/services', servicesRoutes);
+app.route('/docs', docsRoutes);
 
 // ヘルスチェック
 app.get('/api/health', (c) => {

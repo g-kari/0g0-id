@@ -145,6 +145,10 @@
   if (path === '/users.html') {
     const tbody = document.getElementById('users-body');
 
+    function showUsersError(msg) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--color-danger);">' + escHtml(msg) + '</td></tr>';
+    }
+
     fetch('/api/users', { credentials: 'same-origin' })
       .then(function (r) {
         if (r.status === 401) { window.location.href = '/'; return null; }
@@ -152,7 +156,8 @@
       })
       .then(function (data) {
         if (!data) return;
-        if (data.error || !data.data) return;
+        if (data.error) { showUsersError('ユーザーの取得に失敗しました'); return; }
+        if (!data.data) { showUsersError('データの形式が不正です'); return; }
         const rows = data.data.map(function (u) {
           const badge = u.role === 'admin'
             ? '<span class="badge badge-admin">admin</span>'
@@ -165,6 +170,7 @@
             '</tr>';
         }).join('');
         if (tbody) tbody.innerHTML = rows || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">ユーザーなし</td></tr>';
-      });
+      })
+      .catch(function () { showUsersError('通信エラーが発生しました'); });
   }
 })();

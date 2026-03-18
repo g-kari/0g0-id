@@ -10,6 +10,7 @@
     "deploy:id": "npm run deploy -w workers/id",
     "deploy:user": "npm run deploy -w workers/user",
     "deploy:admin": "npm run deploy -w workers/admin",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
   }
 }

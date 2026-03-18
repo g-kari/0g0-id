@@ -1,30 +1,20 @@
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import { generateCodeVerifier, generateCodeChallenge, generateToken } from '@0g0-id/shared';
+import { generateToken } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
 const SESSION_COOKIE = '__Host-admin-session';
 const STATE_COOKIE = '__Host-admin-oauth-state';
-const PKCE_COOKIE = '__Host-admin-pkce';
 
 // GET /auth/login
 app.get('/login', async (c) => {
-  const codeVerifier = generateCodeVerifier();
-  const codeChallenge = await generateCodeChallenge(codeVerifier);
   const state = generateToken(16);
 
-  const callbackUrl = `${c.req.url.split('/auth/login')[0]}/auth/callback`;
+  const callbackUrl = `${new URL(c.req.url).origin}/auth/callback`;
 
   setCookie(c, STATE_COOKIE, state, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'Lax',
-    path: '/',
-    maxAge: 600,
-  });
-  setCookie(c, PKCE_COOKIE, codeVerifier, {
     httpOnly: true,
     secure: true,
     sameSite: 'Lax',
@@ -35,7 +25,6 @@ app.get('/login', async (c) => {
   const loginUrl = new URL(`${c.env.IDP_ORIGIN}/auth/login`);
   loginUrl.searchParams.set('redirect_to', callbackUrl);
   loginUrl.searchParams.set('state', state);
-  loginUrl.searchParams.set('code_challenge', codeChallenge);
 
   return c.redirect(loginUrl.toString());
 });
@@ -50,9 +39,8 @@ app.get('/callback', async (c) => {
   }
 
   const storedState = getCookie(c, STATE_COOKIE);
-  const codeVerifier = getCookie(c, PKCE_COOKIE);
 
-  if (!storedState || !codeVerifier) {
+  if (!storedState) {
     return c.redirect('/?error=missing_session');
   }
 
@@ -62,7 +50,6 @@ app.get('/callback', async (c) => {
 
   // Cookie削除（__Host- prefix には secure: true が必須）
   deleteCookie(c, STATE_COOKIE, { path: '/', secure: true });
-  deleteCookie(c, PKCE_COOKIE, { path: '/', secure: true });
 
   const exchangeRes = await c.env.IDP.fetch(
     new Request(`${c.env.IDP_ORIGIN}/auth/exchange`, {
@@ -128,7 +115,7 @@ app.post('/logout', async (c) => {
     }
   }
 
-  deleteCookie(c, SESSION_COOKIE, { path: '/' });
+  deleteCookie(c, SESSION_COOKIE, { path: '/', secure: true });
   return c.redirect('/');
 });
 

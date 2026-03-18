@@ -50,9 +50,8 @@ function setSecureCookie(
 app.get('/login', async (c) => {
   const redirectTo = c.req.query('redirect_to');
   const bffState = c.req.query('state');
-  const bffCodeChallenge = c.req.query('code_challenge');
 
-  if (!redirectTo || !bffState || !bffCodeChallenge) {
+  if (!redirectTo || !bffState) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Missing required parameters' } }, 400);
   }
 
@@ -72,7 +71,6 @@ app.get('/login', async (c) => {
   const stateData = JSON.stringify({
     idState,
     bffState,
-    bffCodeChallenge,
     redirectTo,
   });
   setSecureCookie(c, STATE_COOKIE, btoa(encodeURIComponent(stateData)), 600); // 10分
@@ -114,7 +112,6 @@ app.get('/callback', async (c) => {
   let stateData: {
     idState: string;
     bffState: string;
-    bffCodeChallenge: string;
     redirectTo: string;
   };
   try {

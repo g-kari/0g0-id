@@ -85,3 +85,10 @@ export async function listUsers(
     .all<User>();
   return result.results;
 }
+
+export async function countUsers(db: D1Database): Promise<number> {
+  const result = await db
+    .prepare('SELECT COUNT(*) as count FROM users')
+    .first<{ count: number }>();
+  return result?.count ?? 0;
+}

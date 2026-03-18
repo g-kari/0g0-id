@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { findUserById, listUsers, updateUserName } from '@0g0-id/shared';
+import { findUserById, listUsers, countUsers, updateUserName } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
 import { adminMiddleware } from '../middleware/admin';
@@ -66,7 +66,10 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
   const limit = Math.min(parseInt(limitStr, 10) || 50, 100);
   const offset = parseInt(offsetStr, 10) || 0;
 
-  const users = await listUsers(c.env.DB, limit, offset);
+  const [users, total] = await Promise.all([
+    listUsers(c.env.DB, limit, offset),
+    countUsers(c.env.DB),
+  ]);
   return c.json({
     data: users.map((u) => ({
       id: u.id,
@@ -76,6 +79,7 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
       role: u.role,
       created_at: u.created_at,
     })),
+    total,
   });
 });
 

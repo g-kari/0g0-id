@@ -3,6 +3,7 @@ export * from './middleware/logger';
 export * from './lib/jwt';
 export * from './lib/crypto';
 export * from './lib/google';
+export * from './lib/bff';
 export * from './db/users';
 export * from './db/services';
 export * from './db/service-redirect-uris';
