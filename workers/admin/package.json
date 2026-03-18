@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "wrangler dev --port 8789",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@0g0-id/shared": "*",
@@ -14,6 +15,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260317.1",
     "typescript": "^5.9.3",
+    "vitest": "^3.0.0",
     "wrangler": "^4.75.0"
   }
 }

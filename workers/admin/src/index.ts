@@ -5,10 +5,20 @@ import authRoutes from './routes/auth';
 import servicesRoutes from './routes/services';
 import usersRoutes from './routes/users';
 import metricsRoutes from './routes/metrics';
+import { adminCsrfMiddleware } from './middleware/csrf';
+import { adminCorsMiddleware } from './middleware/cors';
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
 app.use('*', logger());
+
+// 管理画面APIへのCORSを管理画面自身のドメインのみに制限
+app.use('/api/*', adminCorsMiddleware);
+
+// 外部サービスからのAPIアクセスを禁止（Originヘッダー検証）
+// /api/* および /auth/logout に適用（強制ログアウトCSRF対策）
+app.use('/api/*', adminCsrfMiddleware);
+app.use('/auth/logout', adminCsrfMiddleware);
 
 app.route('/auth', authRoutes);
 app.route('/api/services', servicesRoutes);
