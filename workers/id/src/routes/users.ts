@@ -3,7 +3,7 @@ import {
   findUserById,
   listUsers,
   countUsers,
-  updateUserName,
+  updateUserProfile,
   listUserConnections,
   revokeUserServiceTokens,
 } from '@0g0-id/shared';
@@ -29,6 +29,8 @@ app.get('/me', authMiddleware, async (c) => {
       email: user.email,
       name: user.name,
       picture: user.picture,
+      phone: user.phone,
+      address: user.address,
       role: user.role,
     },
   });
@@ -38,9 +40,9 @@ app.get('/me', authMiddleware, async (c) => {
 app.patch('/me', authMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
 
-  let body: { name?: string };
+  let body: { name?: string; phone?: string | null; address?: string | null };
   try {
-    body = await c.req.json<{ name?: string }>();
+    body = await c.req.json<{ name?: string; phone?: string | null; address?: string | null }>();
   } catch {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
   }
@@ -49,9 +51,23 @@ app.patch('/me', authMiddleware, csrfMiddleware, async (c) => {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'name is required' } }, 400);
   }
 
+  if (body.phone !== undefined && body.phone !== null && typeof body.phone !== 'string') {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'phone must be a string or null' } }, 400);
+  }
+
+  if (body.address !== undefined && body.address !== null && typeof body.address !== 'string') {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'address must be a string or null' } }, 400);
+  }
+
+  const profileUpdate: { name: string; phone?: string | null; address?: string | null } = {
+    name: body.name.trim(),
+  };
+  if ('phone' in body) profileUpdate.phone = body.phone ? body.phone.trim() || null : null;
+  if ('address' in body) profileUpdate.address = body.address ? body.address.trim() || null : null;
+
   let user: Awaited<ReturnType<typeof findUserById>>;
   try {
-    user = await updateUserName(c.env.DB, tokenUser.sub, body.name.trim());
+    user = await updateUserProfile(c.env.DB, tokenUser.sub, profileUpdate);
   } catch {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
@@ -62,6 +78,8 @@ app.patch('/me', authMiddleware, csrfMiddleware, async (c) => {
       email: user.email,
       name: user.name,
       picture: user.picture,
+      phone: user.phone,
+      address: user.address,
       role: user.role,
     },
   });

@@ -90,6 +90,8 @@
     var nameEl = document.getElementById('profile-name');
     var emailEl = document.getElementById('profile-email');
     var nameInput = document.getElementById('name-input');
+    var phoneInput = document.getElementById('phone-input');
+    var addressInput = document.getElementById('address-input');
     var editForm = document.getElementById('edit-form');
     var saveBtn = editForm ? editForm.querySelector('button[type="submit"]') : null;
     var logoutBtn = document.getElementById('logout-btn');
@@ -113,6 +115,8 @@
         if (nameEl) nameEl.textContent = user.name;
         if (emailEl) emailEl.textContent = user.email;
         if (nameInput) nameInput.value = user.name;
+        if (phoneInput) phoneInput.value = user.phone || '';
+        if (addressInput) addressInput.value = user.address || '';
         if (loading) loading.style.display = 'none';
         if (card) card.style.display = 'block';
       })
@@ -134,12 +138,15 @@
           saveBtn.textContent = '保存中...';
         }
 
+        var phone = phoneInput ? phoneInput.value.trim() || null : null;
+        var address = addressInput ? addressInput.value.trim() || null : null;
+
         showProgress();
         fetch('/api/me', {
           method: 'PATCH',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name }),
+          body: JSON.stringify({ name: name, phone: phone, address: address }),
         })
           .then(function (res) { return res.json(); })
           .then(function (data) {
@@ -149,6 +156,8 @@
             } else {
               if (nameEl) nameEl.textContent = data.data.name;
               if (nameInput) nameInput.value = data.data.name;
+              if (phoneInput) phoneInput.value = data.data.phone || '';
+              if (addressInput) addressInput.value = data.data.address || '';
               showToast('プロフィールを更新しました', 'success');
             }
           })
