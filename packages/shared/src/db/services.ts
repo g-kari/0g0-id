@@ -41,6 +41,21 @@ export async function createService(
   return service;
 }
 
+export async function updateServiceAllowedScopes(
+  db: D1Database,
+  id: string,
+  allowedScopes: string
+): Promise<Service | null> {
+  return db
+    .prepare(
+      `UPDATE services SET allowed_scopes = ?, updated_at = datetime('now')
+       WHERE id = ?
+       RETURNING *`
+    )
+    .bind(allowedScopes, id)
+    .first<Service>();
+}
+
 export async function deleteService(db: D1Database, id: string): Promise<void> {
   await db.prepare('DELETE FROM services WHERE id = ?').bind(id).run();
 }

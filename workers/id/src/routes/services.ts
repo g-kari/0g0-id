@@ -3,6 +3,7 @@ import {
   listServices,
   findServiceById,
   createService,
+  updateServiceAllowedScopes,
   deleteService,
   listRedirectUris,
   addRedirectUri,
@@ -17,6 +18,10 @@ import { authMiddleware } from '../middleware/auth';
 import { adminMiddleware } from '../middleware/admin';
 
 type Variables = { user: TokenPayload };
+
+// サポートされているスコープの一覧
+const SUPPORTED_SCOPES = ['profile', 'email', 'phone', 'address'] as const;
+type SupportedScope = (typeof SUPPORTED_SCOPES)[number];
 
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
@@ -77,6 +82,66 @@ app.post('/', authMiddleware, adminMiddleware, async (c) => {
     },
     201
   );
+});
+
+// PATCH /api/services/:id — allowed_scopesの更新
+app.patch('/:id', authMiddleware, adminMiddleware, async (c) => {
+  const serviceId = c.req.param('id');
+  const service = await findServiceById(c.env.DB, serviceId);
+  if (!service) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+  }
+
+  let body: { allowed_scopes?: string[] };
+  try {
+    body = await c.req.json<{ allowed_scopes?: string[] }>();
+  } catch {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
+  }
+
+  if (!Array.isArray(body.allowed_scopes)) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'allowed_scopes must be an array' } }, 400);
+  }
+
+  // 不正なスコープが含まれていないか検証
+  const invalidScopes = body.allowed_scopes.filter(
+    (s) => !SUPPORTED_SCOPES.includes(s as SupportedScope)
+  );
+  if (invalidScopes.length > 0) {
+    return c.json(
+      {
+        error: {
+          code: 'BAD_REQUEST',
+          message: `Invalid scopes: ${invalidScopes.join(', ')}. Supported scopes: ${SUPPORTED_SCOPES.join(', ')}`,
+        },
+      },
+      400
+    );
+  }
+
+  if (body.allowed_scopes.length === 0) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'allowed_scopes must not be empty' } }, 400);
+  }
+
+  const updated = await updateServiceAllowedScopes(
+    c.env.DB,
+    serviceId,
+    JSON.stringify(body.allowed_scopes)
+  );
+  if (!updated) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+  }
+
+  return c.json({
+    data: {
+      id: updated.id,
+      name: updated.name,
+      client_id: updated.client_id,
+      allowed_scopes: updated.allowed_scopes,
+      owner_user_id: updated.owner_user_id,
+      updated_at: updated.updated_at,
+    },
+  });
 });
 
 // DELETE /api/services/:id

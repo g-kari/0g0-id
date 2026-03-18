@@ -31,6 +31,31 @@ app.post('/', async (c) => {
   return proxyResponse(res);
 });
 
+// PATCH /api/services/:id — allowed_scopesの更新
+app.patch('/:id', async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON' } }, 400);
+  }
+
+  const res = await fetchWithAuth(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/services/${c.req.param('id')}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: c.env.IDP_ORIGIN,
+      },
+      body: JSON.stringify(body),
+    }
+  );
+  return proxyResponse(res);
+});
+
 // DELETE /api/services/:id
 app.delete('/:id', async (c) => {
   const res = await fetchWithAuth(

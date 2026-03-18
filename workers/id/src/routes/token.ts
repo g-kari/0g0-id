@@ -1,5 +1,11 @@
 import { Hono } from 'hono';
-import { findRefreshTokenByHash, findServiceByClientId, sha256, timingSafeEqual } from '@0g0-id/shared';
+import {
+  findRefreshTokenByHash,
+  findServiceByClientId,
+  findUserById,
+  sha256,
+  timingSafeEqual,
+} from '@0g0-id/shared';
 import type { IdpEnv } from '@0g0-id/shared';
 
 const app = new Hono<{ Bindings: IdpEnv }>();
@@ -58,11 +64,47 @@ app.post('/introspect', async (c) => {
       return c.json({ active: false });
     }
     const isExpired = new Date(refreshToken.expires_at) < new Date();
-    return c.json({
-      active: !isExpired,
+    if (isExpired) {
+      return c.json({ active: false });
+    }
+
+    // ユーザー情報をallowed_scopesに基づいてフィルタリングして返却
+    const user = await findUserById(c.env.DB, refreshToken.user_id);
+    if (!user) {
+      return c.json({ active: false });
+    }
+
+    let allowedScopes: string[];
+    try {
+      allowedScopes = JSON.parse(service.allowed_scopes) as string[];
+    } catch {
+      allowedScopes = ['profile', 'email'];
+    }
+
+    const response: Record<string, unknown> = {
+      active: true,
       sub: refreshToken.user_id,
       exp: Math.floor(new Date(refreshToken.expires_at).getTime() / 1000),
-    });
+      scope: allowedScopes.join(' '),
+    };
+
+    // scopeに応じてユーザー情報を付与
+    if (allowedScopes.includes('profile')) {
+      response['name'] = user.name;
+      response['picture'] = user.picture;
+    }
+    if (allowedScopes.includes('email')) {
+      response['email'] = user.email;
+      response['email_verified'] = user.email_verified === 1;
+    }
+    if (allowedScopes.includes('phone')) {
+      response['phone'] = user.phone;
+    }
+    if (allowedScopes.includes('address')) {
+      response['address'] = user.address;
+    }
+
+    return c.json(response);
   }
 
   return c.json({ active: false });
