@@ -44,14 +44,17 @@ app.patch('/me', authMiddleware, csrfMiddleware, async (c) => {
 
   await updateUserName(c.env.DB, tokenUser.sub, body.name.trim());
   const user = await findUserById(c.env.DB, tokenUser.sub);
+  if (!user) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
 
   return c.json({
     data: {
-      id: user!.id,
-      email: user!.email,
-      name: user!.name,
-      picture: user!.picture,
-      role: user!.role,
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      picture: user.picture,
+      role: user.role,
     },
   });
 });

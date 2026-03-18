@@ -22,10 +22,11 @@ export async function createService(
     ownerUserId: string;
   }
 ): Promise<Service> {
-  await db
+  const service = await db
     .prepare(
       `INSERT INTO services (id, name, client_id, client_secret_hash, allowed_scopes, owner_user_id)
-       VALUES (?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?)
+       RETURNING *`
     )
     .bind(
       params.id,
@@ -35,9 +36,7 @@ export async function createService(
       params.allowedScopes,
       params.ownerUserId
     )
-    .run();
-
-  const service = await findServiceById(db, params.id);
+    .first<Service>();
   if (!service) throw new Error('Failed to create service');
   return service;
 }

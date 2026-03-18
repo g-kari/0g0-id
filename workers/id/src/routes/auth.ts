@@ -15,9 +15,9 @@ import {
   findUserById,
   revokeRefreshToken,
   revokeTokenFamily,
-  revokeUserTokens,
   upsertUser,
   updateUserRole,
+  countAdminUsers,
   createAuthCode,
   findAndConsumeAuthCode,
 } from '@0g0-id/shared';
@@ -171,11 +171,12 @@ app.get('/callback', async (c) => {
     picture: userInfo.picture ?? null,
   });
 
-  // 管理者ブートストラップ（初回のみ）
+  // 管理者ブートストラップ（管理者が0人の場合のみ）
   if (
     c.env.BOOTSTRAP_ADMIN_EMAIL &&
     user.email === c.env.BOOTSTRAP_ADMIN_EMAIL &&
-    user.role !== 'admin'
+    user.role !== 'admin' &&
+    (await countAdminUsers(c.env.DB)) === 0
   ) {
     await updateUserRole(c.env.DB, user.id, 'admin');
     user.role = 'admin';
@@ -352,9 +353,9 @@ app.post('/refresh', async (c) => {
 
 // POST /auth/logout — ログアウト（BFFサーバー間専用）
 app.post('/logout', async (c) => {
-  let body: { refresh_token?: string; user_id?: string };
+  let body: { refresh_token?: string };
   try {
-    body = await c.req.json<{ refresh_token?: string; user_id?: string }>();
+    body = await c.req.json<{ refresh_token?: string }>();
   } catch {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
   }
@@ -365,8 +366,6 @@ app.post('/logout', async (c) => {
     if (storedToken) {
       await revokeTokenFamily(c.env.DB, storedToken.family_id);
     }
-  } else if (body.user_id) {
-    await revokeUserTokens(c.env.DB, body.user_id);
   }
 
   return c.json({ data: { success: true } });

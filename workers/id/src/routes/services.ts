@@ -149,7 +149,7 @@ app.delete('/:id/redirect-uris/:uriId', authMiddleware, adminMiddleware, async (
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
 
-  await deleteRedirectUri(c.env.DB, uriId);
+  await deleteRedirectUri(c.env.DB, uriId, serviceId);
   return c.body(null, 204);
 });
 

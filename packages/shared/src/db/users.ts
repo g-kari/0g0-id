@@ -23,7 +23,7 @@ export async function upsertUser(
     picture: string | null;
   }
 ): Promise<User> {
-  await db
+  const user = await db
     .prepare(
       `INSERT INTO users (id, google_sub, email, email_verified, name, picture)
        VALUES (?, ?, ?, ?, ?, ?)
@@ -32,7 +32,8 @@ export async function upsertUser(
          email_verified = excluded.email_verified,
          name = excluded.name,
          picture = excluded.picture,
-         updated_at = datetime('now')`
+         updated_at = datetime('now')
+       RETURNING *`
     )
     .bind(
       params.id,
@@ -42,9 +43,7 @@ export async function upsertUser(
       params.name,
       params.picture
     )
-    .run();
-
-  const user = await findUserByGoogleSub(db, params.googleSub);
+    .first<User>();
   if (!user) throw new Error('Failed to upsert user');
   return user;
 }
@@ -65,6 +64,14 @@ export async function updateUserName(db: D1Database, userId: string, name: strin
     .prepare(`UPDATE users SET name = ?, updated_at = datetime('now') WHERE id = ?`)
     .bind(name, userId)
     .run();
+}
+
+export async function countAdminUsers(db: D1Database): Promise<number> {
+  const result = await db
+    .prepare('SELECT COUNT(*) as count FROM users WHERE role = ?')
+    .bind('admin')
+    .first<{ count: number }>();
+  return result?.count ?? 0;
 }
 
 export async function listUsers(

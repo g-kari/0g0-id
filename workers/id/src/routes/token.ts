@@ -12,7 +12,12 @@ app.post('/introspect', async (c) => {
     return c.json({ active: false }, 401);
   }
 
-  const credentials = atob(authHeader.slice(6));
+  let credentials: string;
+  try {
+    credentials = atob(authHeader.slice(6));
+  } catch {
+    return c.json({ active: false }, 401);
+  }
   const colonIndex = credentials.indexOf(':');
   if (colonIndex === -1) {
     return c.json({ active: false }, 401);

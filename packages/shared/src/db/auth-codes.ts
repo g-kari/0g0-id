@@ -23,21 +23,15 @@ export async function findAndConsumeAuthCode(
   db: D1Database,
   codeHash: string
 ): Promise<AuthCode | null> {
-  const code = await db
-    .prepare('SELECT * FROM auth_codes WHERE code_hash = ? AND used_at IS NULL')
+  return db
+    .prepare(
+      `UPDATE auth_codes
+       SET used_at = datetime('now')
+       WHERE code_hash = ?
+         AND used_at IS NULL
+         AND expires_at >= datetime('now')
+       RETURNING *`
+    )
     .bind(codeHash)
     .first<AuthCode>();
-
-  if (!code) return null;
-
-  // 有効期限チェック
-  if (new Date(code.expires_at) < new Date()) return null;
-
-  // 使用済みにマーク
-  await db
-    .prepare(`UPDATE auth_codes SET used_at = datetime('now') WHERE id = ?`)
-    .bind(code.id)
-    .run();
-
-  return code;
 }

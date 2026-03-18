@@ -8,6 +8,14 @@ export interface JWTKeys {
 }
 
 let cachedKeys: JWTKeys | null = null;
+let cachedPublicKey: CryptoKey | null = null;
+
+async function getCachedPublicKey(publicKeyPem: string): Promise<CryptoKey> {
+  if (!cachedPublicKey) {
+    cachedPublicKey = await importSPKI(publicKeyPem, 'ES256');
+  }
+  return cachedPublicKey;
+}
 
 export async function getJWTKeys(privateKeyPem: string, publicKeyPem: string): Promise<JWTKeys> {
   if (cachedKeys) return cachedKeys;
@@ -55,7 +63,7 @@ export async function verifyAccessToken(
   expectedAud: string,
   expectedIss: string
 ): Promise<TokenPayload> {
-  const publicKey = await importSPKI(publicKeyPem, 'ES256');
+  const publicKey = await getCachedPublicKey(publicKeyPem);
   const { payload } = await jwtVerify(token, publicKey, {
     audience: expectedAud,
     issuer: expectedIss,
@@ -66,7 +74,7 @@ export async function verifyAccessToken(
 }
 
 export async function getJWKS(publicKeyPem: string, kid: string): Promise<object> {
-  const publicKey = await importSPKI(publicKeyPem, 'ES256');
+  const publicKey = await getCachedPublicKey(publicKeyPem);
   const jwk = await exportJWK(publicKey);
   return {
     keys: [
