@@ -37,6 +37,31 @@ const baseUrl = 'https://id.0g0.xyz';
 // Cloudflare Workers Bindingsのモック（DBはsharedモックが肩代わりするためnullで可）
 const mockEnv = { DB: {} as D1Database };
 
+// テストヘルパー: /api/external/users/:id へのリクエストを生成
+function makeRequest(
+  userId: string,
+  auth?: string,
+  headers?: Record<string, string>
+): Request {
+  return new Request(`${baseUrl}/api/external/users/${userId}`, {
+    headers: { ...(auth ? { Authorization: auth } : {}), ...headers },
+  });
+}
+
+// テストヘルパー: アプリにリクエストを送信
+async function requestExternalUser(
+  app: ReturnType<typeof buildApp>,
+  userId: string,
+  clientId = 'client-abc',
+  clientSecret = 'secret'
+) {
+  return app.request(
+    makeRequest(userId, basicAuth(clientId, clientSecret)),
+    undefined,
+    mockEnv as unknown as Record<string, string>
+  );
+}
+
 const mockService = {
   id: 'service-1',
   name: 'Test Service',
@@ -83,7 +108,7 @@ describe('GET /api/external/users/:id', () => {
 
   describe('認証', () => {
     it('Authorizationヘッダーなし → 401を返す', async () => {
-      const req = new Request(`${baseUrl}/api/external/users/user-1`);
+      const req = makeRequest('user-1');
       const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
       expect(res.status).toBe(401);
       const body = await res.json<{ error: { code: string } }>();
@@ -92,28 +117,20 @@ describe('GET /api/external/users/:id', () => {
 
     it('不正なBase64 → 401を返す', async () => {
       mockFindServiceByClientId.mockResolvedValue(null);
-      const req = new Request(`${baseUrl}/api/external/users/user-1`, {
-        headers: { Authorization: 'Basic !!invalid!!' },
-      });
+      const req = makeRequest('user-1', 'Basic !!invalid!!');
       const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
       expect(res.status).toBe(401);
     });
 
     it('存在しないclient_id → 401を返す', async () => {
       mockFindServiceByClientId.mockResolvedValue(null);
-      const req = new Request(`${baseUrl}/api/external/users/user-1`, {
-        headers: { Authorization: basicAuth('no-such-client', 'secret') },
-      });
-      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      const res = await requestExternalUser(app, 'user-1', 'no-such-client', 'secret');
       expect(res.status).toBe(401);
     });
 
     it('client_secretが不一致 → 401を返す', async () => {
       mockTimingSafeEqual.mockReturnValue(false);
-      const req = new Request(`${baseUrl}/api/external/users/user-1`, {
-        headers: { Authorization: basicAuth('client-abc', 'wrong-secret') },
-      });
-      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      const res = await requestExternalUser(app, 'user-1', 'client-abc', 'wrong-secret');
       expect(res.status).toBe(401);
     });
   });
@@ -121,19 +138,13 @@ describe('GET /api/external/users/:id', () => {
   describe('エラーハンドリング', () => {
     it('DB障害時（findServiceByClientId） → 500を返す', async () => {
       mockFindServiceByClientId.mockRejectedValue(new Error('DB error'));
-      const req = new Request(`${baseUrl}/api/external/users/user-1`, {
-        headers: { Authorization: basicAuth('client-abc', 'secret') },
-      });
-      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      const res = await requestExternalUser(app, 'user-1');
       expect(res.status).toBe(500);
     });
 
     it('DB障害時（hasUserAuthorizedService） → 500を返す', async () => {
       mockHasUserAuthorizedService.mockRejectedValue(new Error('DB error'));
-      const req = new Request(`${baseUrl}/api/external/users/user-1`, {
-        headers: { Authorization: basicAuth('client-abc', 'secret') },
-      });
-      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      const res = await requestExternalUser(app, 'user-1');
       expect(res.status).toBe(500);
     });
   });
@@ -141,10 +152,7 @@ describe('GET /api/external/users/:id', () => {
   describe('認可チェック（IDOR防止）', () => {
     it('ユーザーがサービスを認可していない場合 → 404を返す', async () => {
       mockHasUserAuthorizedService.mockResolvedValue(false);
-      const req = new Request(`${baseUrl}/api/external/users/user-1`, {
-        headers: { Authorization: basicAuth('client-abc', 'secret') },
-      });
-      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      const res = await requestExternalUser(app, 'user-1');
       expect(res.status).toBe(404);
       const body = await res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe('NOT_FOUND');
@@ -152,20 +160,14 @@ describe('GET /api/external/users/:id', () => {
 
     it('認可済みの場合はユーザー情報を返す', async () => {
       mockHasUserAuthorizedService.mockResolvedValue(true);
-      const req = new Request(`${baseUrl}/api/external/users/user-1`, {
-        headers: { Authorization: basicAuth('client-abc', 'secret') },
-      });
-      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      const res = await requestExternalUser(app, 'user-1');
       expect(res.status).toBe(200);
     });
   });
 
   describe('ユーザー検索', () => {
     it('存在するユーザーIDで200とユーザー情報を返す', async () => {
-      const req = new Request(`${baseUrl}/api/external/users/user-1`, {
-        headers: { Authorization: basicAuth('client-abc', 'secret') },
-      });
-      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      const res = await requestExternalUser(app, 'user-1');
       expect(res.status).toBe(200);
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data.id).toBe('user-1');
@@ -177,10 +179,7 @@ describe('GET /api/external/users/:id', () => {
 
     it('存在しないユーザーID → 404を返す', async () => {
       mockFindUserById.mockResolvedValue(null);
-      const req = new Request(`${baseUrl}/api/external/users/no-such-user`, {
-        headers: { Authorization: basicAuth('client-abc', 'secret') },
-      });
-      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      const res = await requestExternalUser(app, 'no-such-user');
       expect(res.status).toBe(404);
       const body = await res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe('NOT_FOUND');
@@ -189,10 +188,7 @@ describe('GET /api/external/users/:id', () => {
 
   describe('スコープフィルタリング', () => {
     it('profile/emailスコープのみ → phone/addressを含まない', async () => {
-      const req = new Request(`${baseUrl}/api/external/users/user-1`, {
-        headers: { Authorization: basicAuth('client-abc', 'secret') },
-      });
-      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      const res = await requestExternalUser(app, 'user-1');
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data).not.toHaveProperty('phone');
       expect(body.data).not.toHaveProperty('address');
@@ -203,10 +199,7 @@ describe('GET /api/external/users/:id', () => {
         ...mockService,
         allowed_scopes: JSON.stringify(['profile', 'email', 'phone', 'address']),
       });
-      const req = new Request(`${baseUrl}/api/external/users/user-1`, {
-        headers: { Authorization: basicAuth('client-abc', 'secret') },
-      });
-      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      const res = await requestExternalUser(app, 'user-1');
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data.phone).toBe('090-0000-0000');
       expect(body.data.address).toBe('Tokyo');
@@ -217,10 +210,7 @@ describe('GET /api/external/users/:id', () => {
         ...mockService,
         allowed_scopes: JSON.stringify(['email']),
       });
-      const req = new Request(`${baseUrl}/api/external/users/user-1`, {
-        headers: { Authorization: basicAuth('client-abc', 'secret') },
-      });
-      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      const res = await requestExternalUser(app, 'user-1');
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data).not.toHaveProperty('name');
       expect(body.data).not.toHaveProperty('picture');
@@ -232,10 +222,7 @@ describe('GET /api/external/users/:id', () => {
         ...mockService,
         allowed_scopes: JSON.stringify(['email']),
       });
-      const req = new Request(`${baseUrl}/api/external/users/user-1`, {
-        headers: { Authorization: basicAuth('client-abc', 'secret') },
-      });
-      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      const res = await requestExternalUser(app, 'user-1');
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data.id).toBe('user-1');
     });
@@ -245,10 +232,7 @@ describe('GET /api/external/users/:id', () => {
         ...mockService,
         allowed_scopes: 'invalid-json',
       });
-      const req = new Request(`${baseUrl}/api/external/users/user-1`, {
-        headers: { Authorization: basicAuth('client-abc', 'secret') },
-      });
-      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      const res = await requestExternalUser(app, 'user-1');
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data.id).toBe('user-1');
       expect(body.data).not.toHaveProperty('name');
@@ -258,10 +242,7 @@ describe('GET /api/external/users/:id', () => {
 
   describe('セキュリティ: 内部情報の非公開', () => {
     it('google_sub等の内部IDを返さない', async () => {
-      const req = new Request(`${baseUrl}/api/external/users/user-1`, {
-        headers: { Authorization: basicAuth('client-abc', 'secret') },
-      });
-      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      const res = await requestExternalUser(app, 'user-1');
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data).not.toHaveProperty('google_sub');
       expect(body.data).not.toHaveProperty('line_sub');
@@ -269,10 +250,7 @@ describe('GET /api/external/users/:id', () => {
     });
 
     it('roleを返さない', async () => {
-      const req = new Request(`${baseUrl}/api/external/users/user-1`, {
-        headers: { Authorization: basicAuth('client-abc', 'secret') },
-      });
-      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      const res = await requestExternalUser(app, 'user-1');
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data).not.toHaveProperty('role');
     });

@@ -6,9 +6,17 @@ import {
   timingSafeEqual,
   hasUserAuthorizedService,
 } from '@0g0-id/shared';
-import type { IdpEnv } from '@0g0-id/shared';
+import type { IdpEnv, User } from '@0g0-id/shared';
 
 const app = new Hono<{ Bindings: IdpEnv }>();
+
+// スコープ→フィールド抽出のマップ（スコープ追加時はここに追記するだけ）
+const SCOPE_FIELDS: Record<string, (u: User) => Record<string, unknown>> = {
+  profile: (u) => ({ name: u.name, picture: u.picture }),
+  email: (u) => ({ email: u.email, email_verified: u.email_verified === 1 }),
+  phone: (u) => ({ phone: u.phone }),
+  address: (u) => ({ address: u.address }),
+};
 
 /**
  * Basic認証でサービス認証を行い、サービス情報を返す。
@@ -85,20 +93,10 @@ app.get('/users/:id', async (c) => {
 
   // allowed_scopesに基づいてユーザー情報をフィルタリング
   const data: Record<string, unknown> = { id: user.id };
-
-  if (allowedScopes.includes('profile')) {
-    data['name'] = user.name;
-    data['picture'] = user.picture;
-  }
-  if (allowedScopes.includes('email')) {
-    data['email'] = user.email;
-    data['email_verified'] = user.email_verified === 1;
-  }
-  if (allowedScopes.includes('phone')) {
-    data['phone'] = user.phone;
-  }
-  if (allowedScopes.includes('address')) {
-    data['address'] = user.address;
+  for (const scope of allowedScopes) {
+    if (scope in SCOPE_FIELDS) {
+      Object.assign(data, SCOPE_FIELDS[scope](user));
+    }
   }
 
   return c.json({ data });
