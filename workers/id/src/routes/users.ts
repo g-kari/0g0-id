@@ -42,9 +42,10 @@ app.patch('/me', authMiddleware, csrfMiddleware, async (c) => {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'name is required' } }, 400);
   }
 
-  await updateUserName(c.env.DB, tokenUser.sub, body.name.trim());
-  const user = await findUserById(c.env.DB, tokenUser.sub);
-  if (!user) {
+  let user: Awaited<ReturnType<typeof findUserById>>;
+  try {
+    user = await updateUserName(c.env.DB, tokenUser.sub, body.name.trim());
+  } catch {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 

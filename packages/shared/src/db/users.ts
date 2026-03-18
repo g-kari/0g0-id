@@ -59,11 +59,13 @@ export async function updateUserRole(
     .run();
 }
 
-export async function updateUserName(db: D1Database, userId: string, name: string): Promise<void> {
-  await db
-    .prepare(`UPDATE users SET name = ?, updated_at = datetime('now') WHERE id = ?`)
+export async function updateUserName(db: D1Database, userId: string, name: string): Promise<User> {
+  const user = await db
+    .prepare(`UPDATE users SET name = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`)
     .bind(name, userId)
-    .run();
+    .first<User>();
+  if (!user) throw new Error('User not found');
+  return user;
 }
 
 export async function countAdminUsers(db: D1Database): Promise<number> {

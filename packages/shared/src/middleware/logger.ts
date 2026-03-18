@@ -1,27 +1,15 @@
 import type { MiddlewareHandler } from 'hono';
 
-const SENSITIVE_PARAMS = new Set([
-  'code',
-  'state',
-  'token',
-  'access_token',
-  'refresh_token',
-  'code_verifier',
-  'client_secret',
-]);
+const SENSITIVE_PARAMS_RE =
+  /([?&])(code|state|token|access_token|refresh_token|code_verifier|client_secret)=([^&#]*)/g;
 
 function maskSensitiveParams(urlStr: string): string {
-  try {
-    const u = new URL(urlStr);
-    for (const key of u.searchParams.keys()) {
-      if (SENSITIVE_PARAMS.has(key)) {
-        u.searchParams.set(key, '[REDACTED]');
-      }
-    }
-    return `${u.pathname}${u.search}`;
-  } catch {
-    return urlStr;
-  }
+  // URLパースのオーバーヘッドを回避: スキーム後のパス部分を正規表現で抽出・マスク
+  const schemeEnd = urlStr.indexOf('://');
+  const pathStart = schemeEnd === -1 ? 0 : urlStr.indexOf('/', schemeEnd + 3);
+  const pathAndQuery = pathStart <= 0 ? urlStr : urlStr.slice(pathStart);
+  if (!pathAndQuery.includes('?')) return pathAndQuery;
+  return pathAndQuery.replace(SENSITIVE_PARAMS_RE, '$1$2=[REDACTED]');
 }
 
 export const logger = (): MiddlewareHandler => {
