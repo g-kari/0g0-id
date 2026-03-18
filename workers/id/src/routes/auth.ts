@@ -75,7 +75,7 @@ app.get('/login', async (c) => {
     bffCodeChallenge,
     redirectTo,
   });
-  setSecureCookie(c, STATE_COOKIE, btoa(stateData), 600); // 10分
+  setSecureCookie(c, STATE_COOKIE, btoa(encodeURIComponent(stateData)), 600); // 10分
   setSecureCookie(c, PKCE_COOKIE, idCodeVerifier, 600);
 
   const callbackUri = `${c.env.IDP_ORIGIN}${GOOGLE_REDIRECT_PATH}`;
@@ -118,7 +118,7 @@ app.get('/callback', async (c) => {
     redirectTo: string;
   };
   try {
-    stateData = JSON.parse(atob(stateCookieRaw));
+    stateData = JSON.parse(decodeURIComponent(atob(stateCookieRaw)));
   } catch {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid state cookie' } }, 400);
   }

@@ -12,7 +12,7 @@ function getSession(sessionCookie: string | undefined): {
 } | null {
   if (!sessionCookie) return null;
   try {
-    return JSON.parse(atob(sessionCookie));
+    return JSON.parse(decodeURIComponent(atob(sessionCookie)));
   } catch {
     return null;
   }

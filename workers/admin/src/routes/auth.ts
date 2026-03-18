@@ -90,11 +90,13 @@ app.get('/callback', async (c) => {
   }
 
   const sessionData = btoa(
-    JSON.stringify({
-      access_token: exchangeData.data.access_token,
-      refresh_token: exchangeData.data.refresh_token,
-      user: exchangeData.data.user,
-    })
+    encodeURIComponent(
+      JSON.stringify({
+        access_token: exchangeData.data.access_token,
+        refresh_token: exchangeData.data.refresh_token,
+        user: exchangeData.data.user,
+      })
+    )
   );
 
   setCookie(c, SESSION_COOKIE, sessionData, {
@@ -113,7 +115,7 @@ app.post('/logout', async (c) => {
   const session = getCookie(c, SESSION_COOKIE);
   if (session) {
     try {
-      const data = JSON.parse(atob(session)) as { refresh_token: string };
+      const data = JSON.parse(decodeURIComponent(atob(session))) as { refresh_token: string };
       await c.env.IDP.fetch(
         new Request(`${c.env.IDP_ORIGIN}/auth/logout`, {
           method: 'POST',

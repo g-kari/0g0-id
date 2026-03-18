@@ -8,7 +8,7 @@ const app = new Hono<{ Bindings: BffEnv }>();
 function getSession(cookie: string | undefined): { access_token: string } | null {
   if (!cookie) return null;
   try {
-    return JSON.parse(atob(cookie));
+    return JSON.parse(decodeURIComponent(atob(cookie)));
   } catch {
     return null;
   }
