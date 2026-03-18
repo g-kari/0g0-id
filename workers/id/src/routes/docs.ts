@@ -151,6 +151,25 @@ const HTML = `<!DOCTYPE html>
   "total": 42
 }</div>
     </div>
+
+    <div class="endpoint">
+      <div class="endpoint-title">
+        <span class="badge get">GET</span><span class="path">/api/users/me/connections</span>
+        <span class="auth-required">要認証</span>
+      </div>
+      <div class="desc">ユーザーがアクティブなリフレッシュトークンを持つ連携サービス一覧を返す。</div>
+      <div class="response-block">{
+  "data": [{ "service_id": "...", "service_name": "...", "client_id": "...", "first_authorized_at": "...", "last_authorized_at": "..." }]
+}</div>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-title">
+        <span class="badge delete">DELETE</span><span class="path">/api/users/me/connections/:serviceId</span>
+        <span class="auth-required">要認証</span>
+      </div>
+      <div class="desc">指定サービスへの連携を解除する（そのサービスの全リフレッシュトークンを失効）。Origin/RefererヘッダーによるCSRF検証あり。</div>
+    </div>
   </section>
 
   <section>

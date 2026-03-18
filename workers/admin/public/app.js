@@ -77,6 +77,83 @@
     const cancelBtn = document.getElementById('cancel-btn');
     const closeSecretBtn = document.getElementById('close-secret-btn');
 
+    // リダイレクトURI管理
+    const uriModal = document.getElementById('uri-modal');
+    const uriModalTitle = document.getElementById('uri-modal-title');
+    const uriModalServiceName = document.getElementById('uri-modal-service-name');
+    const uriList = document.getElementById('uri-list');
+    const uriAddForm = document.getElementById('uri-add-form');
+    const uriInput = document.getElementById('uri-input');
+    const uriCloseBtn = document.getElementById('uri-close-btn');
+    var currentServiceId = null;
+
+    function loadUris(serviceId) {
+      if (!uriList) return;
+      uriList.innerHTML = '<p style="color:var(--text-muted);font-size:0.875rem;">読み込み中...</p>';
+      fetch('/api/services/' + serviceId + '/redirect-uris', { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.error) { uriList.innerHTML = '<p style="color:var(--error);font-size:0.875rem;">取得に失敗しました</p>'; return; }
+          var uris = data.data || [];
+          if (uris.length === 0) {
+            uriList.innerHTML = '<p style="color:var(--text-muted);font-size:0.875rem;">URIが登録されていません</p>';
+            return;
+          }
+          uriList.innerHTML = uris.map(function (u) {
+            return '<div style="display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid var(--border);">' +
+              '<span class="mono" style="font-size:0.8125rem;word-break:break-all;flex:1;">' + escHtml(u.uri) + '</span>' +
+              '<button class="btn btn-danger btn-sm" style="margin-left:0.5rem;flex-shrink:0;" data-uri-id="' + escHtml(u.id) + '">削除</button>' +
+              '</div>';
+          }).join('');
+          uriList.querySelectorAll('[data-uri-id]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+              if (!confirm('このURIを削除しますか？')) return;
+              fetch('/api/services/' + currentServiceId + '/redirect-uris/' + btn.dataset.uriId, {
+                method: 'DELETE', credentials: 'same-origin',
+              }).then(function (r) {
+                if (r.ok || r.status === 204) {
+                  showToast('URIを削除しました', 'success');
+                  loadUris(currentServiceId);
+                } else {
+                  showToast('削除に失敗しました', 'error');
+                }
+              });
+            });
+          });
+        })
+        .catch(function () { uriList.innerHTML = '<p style="color:var(--error);font-size:0.875rem;">通信エラーが発生しました</p>'; });
+    }
+
+    if (uriCloseBtn && uriModal) {
+      uriCloseBtn.addEventListener('click', function () { uriModal.hidden = true; currentServiceId = null; });
+    }
+
+    if (uriAddForm) {
+      uriAddForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        if (!currentServiceId || !uriInput) return;
+        var uri = uriInput.value.trim();
+        if (!uri) return;
+        fetch('/api/services/' + currentServiceId + '/redirect-uris', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uri: uri }),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data.error) {
+              showToast(data.error.code === 'CONFLICT' ? 'このURIは既に登録されています' : 'URIの追加に失敗しました', 'error');
+            } else {
+              uriInput.value = '';
+              showToast('URIを追加しました', 'success');
+              loadUris(currentServiceId);
+            }
+          })
+          .catch(function () { showToast('通信エラーが発生しました', 'error'); });
+      });
+    }
+
     function loadServices() {
       fetch('/api/services', { credentials: 'same-origin' })
         .then(function (r) {
@@ -91,7 +168,10 @@
               '<td>' + escHtml(s.name) + '</td>' +
               '<td class="mono">' + escHtml(s.client_id) + '</td>' +
               '<td>' + formatDate(s.created_at) + '</td>' +
-              '<td><button class="btn btn-danger btn-sm" data-id="' + escHtml(s.id) + '">削除</button></td>' +
+              '<td style="white-space:nowrap;">' +
+                '<button class="btn btn-sm" style="background:var(--accent);color:#fff;margin-right:0.25rem;" data-uri-service-id="' + escHtml(s.id) + '" data-uri-service-name="' + escHtml(s.name) + '">URI管理</button>' +
+                '<button class="btn btn-danger btn-sm" data-id="' + escHtml(s.id) + '">削除</button>' +
+              '</td>' +
               '</tr>';
           }).join('');
           if (tbody) tbody.innerHTML = rows || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">サービスなし</td></tr>';
@@ -111,6 +191,17 @@
                     showToast('削除に失敗しました', 'error');
                   }
                 });
+              });
+            });
+
+            // URI管理ボタン
+            tbody.querySelectorAll('[data-uri-service-id]').forEach(function (btn) {
+              btn.addEventListener('click', function () {
+                currentServiceId = btn.dataset.uriServiceId;
+                if (uriModalServiceName) uriModalServiceName.textContent = 'サービス: ' + btn.dataset.uriServiceName;
+                if (uriInput) uriInput.value = '';
+                if (uriModal) uriModal.hidden = false;
+                loadUris(currentServiceId);
               });
             });
           }
