@@ -20,10 +20,18 @@ export function parseSession(cookie: string | undefined): BffSession | null {
   }
 }
 
+function errorResponse(status: number, code: string, message: string): Response {
+  return new Response(JSON.stringify({ error: { code, message } }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 /**
  * BFF→IdP へのリクエストをアクセストークン付きで実行する。
  * 401が返った場合はリフレッシュトークンで再取得してリトライする。
  * リフレッシュに成功した場合はセッションCookieも更新する。
+ * Service Bindingのフェッチ失敗は502として返す。
  */
 export async function fetchWithAuth(
   c: Context<{ Bindings: BffEnv }>,
@@ -33,10 +41,7 @@ export async function fetchWithAuth(
 ): Promise<Response> {
   const session = parseSession(getCookie(c, sessionCookieName));
   if (!session) {
-    return new Response(
-      JSON.stringify({ error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } }),
-      { status: 401, headers: { 'Content-Type': 'application/json' } }
-    );
+    return errorResponse(401, 'UNAUTHORIZED', 'Not authenticated');
   }
 
   const makeRequest = (token: string): Promise<Response> =>
@@ -50,17 +55,28 @@ export async function fetchWithAuth(
       })
     );
 
-  let res = await makeRequest(session.access_token);
+  let res: Response;
+  try {
+    res = await makeRequest(session.access_token);
+  } catch {
+    return errorResponse(502, 'UPSTREAM_ERROR', 'Failed to reach identity provider');
+  }
 
   // アクセストークン期限切れ → リフレッシュして再試行
   if (res.status === 401) {
-    const refreshRes = await c.env.IDP.fetch(
-      new Request(`${c.env.IDP_ORIGIN}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: session.refresh_token }),
-      })
-    );
+    let refreshRes: Response;
+    try {
+      refreshRes = await c.env.IDP.fetch(
+        new Request(`${c.env.IDP_ORIGIN}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: session.refresh_token }),
+        })
+      );
+    } catch {
+      // リフレッシュ自体が通信失敗 → 502
+      return errorResponse(502, 'UPSTREAM_ERROR', 'Failed to reach identity provider');
+    }
 
     if (refreshRes.ok) {
       const refreshData = await refreshRes.json<{
@@ -81,8 +97,16 @@ export async function fetchWithAuth(
         maxAge: 30 * 24 * 60 * 60,
       });
 
-      res = await makeRequest(refreshData.data.access_token);
+      try {
+        res = await makeRequest(refreshData.data.access_token);
+      } catch {
+        return errorResponse(502, 'UPSTREAM_ERROR', 'Failed to reach identity provider');
+      }
+    } else if (refreshRes.status >= 500) {
+      // リフレッシュエンドポイントが5xx → 502（認証失敗ではなくアップストリーム障害）
+      return errorResponse(502, 'UPSTREAM_ERROR', 'Identity provider error');
     }
+    // 400/401の場合は元の401レスポンスをそのまま返す（セッション切れ）
   }
 
   return res;

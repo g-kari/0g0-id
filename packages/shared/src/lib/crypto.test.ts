@@ -17,8 +17,8 @@ describe('generateToken', () => {
 
   it('デフォルトで32バイト相当の長さ', () => {
     const token = generateToken();
-    // 32バイト → base64url で43文字（パディングなし）
-    expect(token.length).toBeGreaterThanOrEqual(42);
+    // 32バイト → base64url で43文字（パディングなし: ceil(32*4/3) = 43）
+    expect(token.length).toBeGreaterThanOrEqual(43);
   });
 
   it('指定バイト長で生成できる', () => {
