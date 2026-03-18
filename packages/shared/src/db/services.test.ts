@@ -1,0 +1,193 @@
+import { describe, it, expect, vi } from 'vitest';
+import {
+  findServiceById,
+  findServiceByClientId,
+  createService,
+  updateServiceAllowedScopes,
+  deleteService,
+  listServices,
+  countServicesByOwner,
+  countServices,
+} from './services';
+import type { Service } from '../types';
+
+function makeD1Mock(
+  firstResult: unknown = null,
+  allResults: unknown[] = [],
+  changes = 1
+): D1Database {
+  const stmt = {
+    bind: vi.fn().mockReturnThis(),
+    first: vi.fn().mockResolvedValue(firstResult),
+    run: vi.fn().mockResolvedValue({ meta: { changes } }),
+    all: vi.fn().mockResolvedValue({ results: allResults }),
+  };
+  return { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+}
+
+const baseService: Service = {
+  id: 'service-1',
+  name: 'テストサービス',
+  client_id: 'client_abc123',
+  client_secret_hash: 'hash_xyz',
+  allowed_scopes: '["profile","email"]',
+  owner_user_id: 'user-1',
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+};
+
+describe('findServiceById', () => {
+  it('サービスが存在する場合はServiceを返す', async () => {
+    const db = makeD1Mock(baseService);
+    const result = await findServiceById(db, 'service-1');
+    expect(result).toEqual(baseService);
+  });
+
+  it('サービスが存在しない場合はnullを返す', async () => {
+    const db = makeD1Mock(null);
+    const result = await findServiceById(db, 'not-exist');
+    expect(result).toBeNull();
+  });
+
+  it('正しいSQLでprepareを呼ぶ', async () => {
+    const db = makeD1Mock(baseService);
+    await findServiceById(db, 'service-1');
+    expect(db.prepare).toHaveBeenCalledWith('SELECT * FROM services WHERE id = ?');
+  });
+});
+
+describe('findServiceByClientId', () => {
+  it('client_idでサービスを取得できる', async () => {
+    const db = makeD1Mock(baseService);
+    const result = await findServiceByClientId(db, 'client_abc123');
+    expect(result).toEqual(baseService);
+  });
+
+  it('存在しないclient_idはnullを返す', async () => {
+    const db = makeD1Mock(null);
+    const result = await findServiceByClientId(db, 'not-exist');
+    expect(result).toBeNull();
+  });
+});
+
+describe('createService', () => {
+  it('サービスを作成してServiceを返す', async () => {
+    const db = makeD1Mock(baseService);
+    const result = await createService(db, {
+      id: 'service-1',
+      name: 'テストサービス',
+      clientId: 'client_abc123',
+      clientSecretHash: 'hash_xyz',
+      allowedScopes: '["profile","email"]',
+      ownerUserId: 'user-1',
+    });
+    expect(result).toEqual(baseService);
+  });
+
+  it('DBがnullを返した場合はエラーを投げる', async () => {
+    const db = makeD1Mock(null);
+    await expect(
+      createService(db, {
+        id: 'service-1',
+        name: 'テストサービス',
+        clientId: 'client_abc123',
+        clientSecretHash: 'hash_xyz',
+        allowedScopes: '["profile","email"]',
+        ownerUserId: 'user-1',
+      })
+    ).rejects.toThrow('Failed to create service');
+  });
+
+  it('INSERTのSQLを使用する', async () => {
+    const db = makeD1Mock(baseService);
+    await createService(db, {
+      id: 'service-1',
+      name: 'テストサービス',
+      clientId: 'client_abc123',
+      clientSecretHash: 'hash_xyz',
+      allowedScopes: '["profile","email"]',
+      ownerUserId: 'user-1',
+    });
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO services'));
+  });
+});
+
+describe('updateServiceAllowedScopes', () => {
+  it('allowed_scopesを更新してServiceを返す', async () => {
+    const updated = { ...baseService, allowed_scopes: '["profile","email","phone"]' };
+    const db = makeD1Mock(updated);
+    const result = await updateServiceAllowedScopes(db, 'service-1', '["profile","email","phone"]');
+    expect(result?.allowed_scopes).toBe('["profile","email","phone"]');
+  });
+
+  it('サービスが存在しない場合はnullを返す', async () => {
+    const db = makeD1Mock(null);
+    const result = await updateServiceAllowedScopes(db, 'not-exist', '["profile"]');
+    expect(result).toBeNull();
+  });
+
+  it('UPDATEのSQLを使用する', async () => {
+    const db = makeD1Mock(baseService);
+    await updateServiceAllowedScopes(db, 'service-1', '["profile"]');
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('UPDATE services SET allowed_scopes'));
+  });
+});
+
+describe('deleteService', () => {
+  it('削除クエリを実行する', async () => {
+    const db = makeD1Mock(null, [], 1);
+    await deleteService(db, 'service-1');
+    expect(db.prepare).toHaveBeenCalledWith('DELETE FROM services WHERE id = ?');
+  });
+});
+
+describe('listServices', () => {
+  it('サービス一覧を返す', async () => {
+    const db = makeD1Mock(null, [baseService]);
+    const result = await listServices(db);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual(baseService);
+  });
+
+  it('サービスがない場合は空配列を返す', async () => {
+    const db = makeD1Mock(null, []);
+    const result = await listServices(db);
+    expect(result).toEqual([]);
+  });
+
+  it('ORDER BY created_at DESCでソートする', async () => {
+    const db = makeD1Mock(null, []);
+    await listServices(db);
+    expect(db.prepare).toHaveBeenCalledWith(
+      expect.stringContaining('ORDER BY created_at DESC')
+    );
+  });
+});
+
+describe('countServicesByOwner', () => {
+  it('オーナーのサービス数を返す', async () => {
+    const db = makeD1Mock({ count: 3 });
+    const result = await countServicesByOwner(db, 'user-1');
+    expect(result).toBe(3);
+  });
+
+  it('DBがnullを返した場合は0を返す', async () => {
+    const db = makeD1Mock(null);
+    const result = await countServicesByOwner(db, 'user-1');
+    expect(result).toBe(0);
+  });
+});
+
+describe('countServices', () => {
+  it('全サービス数を返す', async () => {
+    const db = makeD1Mock({ count: 10 });
+    const result = await countServices(db);
+    expect(result).toBe(10);
+  });
+
+  it('DBがnullを返した場合は0を返す', async () => {
+    const db = makeD1Mock(null);
+    const result = await countServices(db);
+    expect(result).toBe(0);
+  });
+});
