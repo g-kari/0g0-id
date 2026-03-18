@@ -1,5 +1,12 @@
 import { Hono } from 'hono';
-import { findUserById, listUsers, countUsers, updateUserName } from '@0g0-id/shared';
+import {
+  findUserById,
+  listUsers,
+  countUsers,
+  updateUserName,
+  listUserConnections,
+  revokeUserServiceTokens,
+} from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
 import { adminMiddleware } from '../middleware/admin';
@@ -58,6 +65,24 @@ app.patch('/me', authMiddleware, csrfMiddleware, async (c) => {
       role: user.role,
     },
   });
+});
+
+// GET /api/users/me/connections
+app.get('/me/connections', authMiddleware, async (c) => {
+  const tokenUser = c.get('user');
+  const connections = await listUserConnections(c.env.DB, tokenUser.sub);
+  return c.json({ data: connections });
+});
+
+// DELETE /api/users/me/connections/:serviceId
+app.delete('/me/connections/:serviceId', authMiddleware, csrfMiddleware, async (c) => {
+  const tokenUser = c.get('user');
+  const serviceId = c.req.param('serviceId');
+  const revoked = await revokeUserServiceTokens(c.env.DB, tokenUser.sub, serviceId);
+  if (revoked === 0) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Connection not found' } }, 404);
+  }
+  return c.body(null, 204);
 });
 
 // GET /api/users（管理者のみ）

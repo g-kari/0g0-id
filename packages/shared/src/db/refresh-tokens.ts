@@ -64,3 +64,54 @@ export async function revokeUserTokens(db: D1Database, userId: string): Promise<
     .bind(userId)
     .run();
 }
+
+export interface UserConnection {
+  service_id: string;
+  service_name: string;
+  client_id: string;
+  first_authorized_at: string;
+  last_authorized_at: string;
+}
+
+/**
+ * ユーザーがアクティブなリフレッシュトークンを持つサービス一覧を返す
+ */
+export async function listUserConnections(
+  db: D1Database,
+  userId: string
+): Promise<UserConnection[]> {
+  const result = await db
+    .prepare(
+      `SELECT s.id as service_id, s.name as service_name, s.client_id,
+              MIN(rt.created_at) as first_authorized_at,
+              MAX(rt.created_at) as last_authorized_at
+       FROM refresh_tokens rt
+       JOIN services s ON rt.service_id = s.id
+       WHERE rt.user_id = ?
+         AND rt.revoked_at IS NULL
+         AND rt.expires_at > datetime('now')
+       GROUP BY s.id, s.name, s.client_id
+       ORDER BY last_authorized_at DESC`
+    )
+    .bind(userId)
+    .all<UserConnection>();
+  return result.results;
+}
+
+/**
+ * 特定サービスのユーザートークンを全て失効させる
+ */
+export async function revokeUserServiceTokens(
+  db: D1Database,
+  userId: string,
+  serviceId: string
+): Promise<number> {
+  const result = await db
+    .prepare(
+      `UPDATE refresh_tokens SET revoked_at = datetime('now')
+       WHERE user_id = ? AND service_id = ? AND revoked_at IS NULL`
+    )
+    .bind(userId, serviceId)
+    .run();
+  return result.meta.changes ?? 0;
+}

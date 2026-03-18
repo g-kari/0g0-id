@@ -124,4 +124,84 @@
       });
     }
   }
+
+  // 連携サービスページ
+  if (path === '/connections.html') {
+    var listEl = document.getElementById('connections-list');
+    var loadingEl = document.getElementById('loading');
+    var emptyEl = document.getElementById('empty-msg');
+    var errorEl = document.getElementById('error-msg');
+
+    function formatDate(iso) {
+      return new Date(iso).toLocaleDateString('ja-JP');
+    }
+
+    function escHtml(str) {
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function loadConnections() {
+      fetch('/api/connections', { credentials: 'same-origin' })
+        .then(function (res) {
+          if (res.status === 401) { window.location.href = '/'; return null; }
+          return res.json();
+        })
+        .then(function (data) {
+          if (!data) return;
+          if (loadingEl) loadingEl.style.display = 'none';
+          if (data.error) {
+            if (errorEl) { errorEl.textContent = '連携サービスの取得に失敗しました'; errorEl.style.display = 'block'; }
+            return;
+          }
+          var connections = data.data || [];
+          if (connections.length === 0) {
+            if (emptyEl) emptyEl.style.display = 'block';
+            return;
+          }
+          if (listEl) {
+            listEl.style.display = 'block';
+            listEl.innerHTML = connections.map(function (c) {
+              return '<div class="connection-item">' +
+                '<div class="connection-info">' +
+                  '<div class="connection-name">' + escHtml(c.service_name) + '</div>' +
+                  '<div class="connection-meta">連携日: ' + formatDate(c.first_authorized_at) + '</div>' +
+                '</div>' +
+                '<button class="btn btn-danger btn-sm" data-id="' + escHtml(c.service_id) + '">解除</button>' +
+              '</div>';
+            }).join('');
+
+            listEl.querySelectorAll('[data-id]').forEach(function (btn) {
+              btn.addEventListener('click', function () {
+                if (!confirm('「' + btn.closest('.connection-item').querySelector('.connection-name').textContent + '」との連携を解除しますか？')) return;
+                btn.disabled = true;
+                fetch('/api/connections/' + btn.dataset.id, {
+                  method: 'DELETE',
+                  credentials: 'same-origin',
+                  headers: { Origin: window.location.origin },
+                })
+                  .then(function (res) {
+                    if (res.ok || res.status === 204) {
+                      showToast('連携を解除しました', 'success');
+                      loadConnections();
+                    } else {
+                      showToast('解除に失敗しました', 'error');
+                      btn.disabled = false;
+                    }
+                  })
+                  .catch(function () {
+                    showToast('通信エラーが発生しました', 'error');
+                    btn.disabled = false;
+                  });
+              });
+            });
+          }
+        })
+        .catch(function () {
+          if (loadingEl) loadingEl.style.display = 'none';
+          if (errorEl) { errorEl.textContent = '通信エラーが発生しました'; errorEl.style.display = 'block'; }
+        });
+    }
+
+    loadConnections();
+  }
 })();
