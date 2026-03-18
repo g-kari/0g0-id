@@ -202,15 +202,15 @@ app.get('/callback', async (c) => {
 
 // POST /auth/exchange — ワンタイムコード交換（BFFサーバー間専用）
 app.post('/exchange', async (c) => {
-  let body: { code?: string };
+  let body: { code?: string; redirect_to?: string };
   try {
-    body = await c.req.json<{ code?: string }>();
+    body = await c.req.json<{ code?: string; redirect_to?: string }>();
   } catch {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
   }
 
-  if (!body.code) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Missing code' } }, 400);
+  if (!body.code || !body.redirect_to) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Missing code or redirect_to' } }, 400);
   }
 
   const codeHash = await sha256(body.code);
@@ -218,6 +218,11 @@ app.post('/exchange', async (c) => {
 
   if (!authCode) {
     return c.json({ error: { code: 'INVALID_CODE', message: 'Invalid or expired code' } }, 400);
+  }
+
+  // redirect_to の一致検証（認可コード横取り攻撃対策）
+  if (authCode.redirect_to !== body.redirect_to) {
+    return c.json({ error: { code: 'INVALID_CODE', message: 'redirect_to mismatch' } }, 400);
   }
 
   // ユーザー情報取得

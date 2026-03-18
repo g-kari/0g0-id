@@ -51,11 +51,12 @@ app.get('/callback', async (c) => {
   // Cookie削除（__Host- prefix には secure: true が必須）
   deleteCookie(c, STATE_COOKIE, { path: '/', secure: true });
 
+  const callbackUrl = `${new URL(c.req.url).origin}/auth/callback`;
   const exchangeRes = await c.env.IDP.fetch(
     new Request(`${c.env.IDP_ORIGIN}/auth/exchange`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, redirect_to: callbackUrl }),
     })
   );
 

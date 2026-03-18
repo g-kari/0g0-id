@@ -52,11 +52,12 @@ app.get('/callback', async (c) => {
   deleteCookie(c, STATE_COOKIE, { path: '/', secure: true });
 
   // id worker にコード交換リクエスト（Service Bindings使用）
+  const callbackUrl = `${new URL(c.req.url).origin}/auth/callback`;
   const exchangeRes = await c.env.IDP.fetch(
     new Request(`${c.env.IDP_ORIGIN}/auth/exchange`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, redirect_to: callbackUrl }),
     })
   );
 

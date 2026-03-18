@@ -53,6 +53,10 @@ app.post('/introspect', async (c) => {
   const refreshToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
 
   if (refreshToken && refreshToken.revoked_at === null) {
+    // サービス所有権確認: 自サービス向けに発行されたトークンのみ照会可能
+    if (refreshToken.service_id !== service.id) {
+      return c.json({ active: false });
+    }
     const isExpired = new Date(refreshToken.expires_at) < new Date();
     return c.json({
       active: !isExpired,
