@@ -1,0 +1,112 @@
+import { describe, it, expect, vi } from 'vitest';
+import { Hono } from 'hono';
+
+import metricsRoutes from './metrics';
+
+const SESSION_COOKIE = '__Host-admin-session';
+const baseUrl = 'https://admin.0g0.xyz';
+
+function makeSessionCookie(role: 'admin' | 'user' = 'admin'): string {
+  const session = {
+    access_token: 'mock-access-token',
+    refresh_token: 'mock-refresh-token',
+    user: { id: 'admin-user-id', email: 'admin@example.com', name: 'Admin', role },
+  };
+  return btoa(encodeURIComponent(JSON.stringify(session)));
+}
+
+function buildApp(idpFetch: (req: Request) => Promise<Response>) {
+  const app = new Hono<{
+    Bindings: { IDP: { fetch: typeof idpFetch }; IDP_ORIGIN: string };
+  }>();
+  app.route('/api/metrics', metricsRoutes);
+  return {
+    request: (path: string, init?: RequestInit) => {
+      const req = new Request(`${baseUrl}${path}`, init);
+      return app.request(req, undefined, {
+        IDP: { fetch: idpFetch },
+        IDP_ORIGIN: 'https://id.0g0.xyz',
+      });
+    },
+  };
+}
+
+function mockIdp(status: number, body: unknown): (req: Request) => Promise<Response> {
+  return vi.fn().mockResolvedValue(
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  );
+}
+
+const mockMetrics = {
+  total_users: 100,
+  admin_users: 5,
+  total_services: 10,
+  active_sessions: 42,
+};
+
+describe('admin BFF — /api/metrics', () => {
+  describe('GET / — メトリクス取得', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/metrics');
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('管理者セッションでIdPへプロキシしてメトリクスを返す', async () => {
+      const idpFetch = mockIdp(200, { data: mockMetrics });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/metrics', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof mockMetrics }>();
+      expect(body.data.total_users).toBe(100);
+      expect(body.data.admin_users).toBe(5);
+      expect(body.data.total_services).toBe(10);
+      expect(body.data.active_sessions).toBe(42);
+      expect(idpFetch).toHaveBeenCalledOnce();
+    });
+
+    it('IdP への呼び出しURLに /api/metrics が含まれる', async () => {
+      const idpFetch = mockIdp(200, { data: mockMetrics });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/metrics', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const calledUrl = vi.mocked(idpFetch).mock.calls[0][0].url;
+      expect(calledUrl).toContain('/api/metrics');
+    });
+
+    it('IdP が403を返した場合は403をプロキシする', async () => {
+      const idpFetch = mockIdp(403, { error: { code: 'FORBIDDEN', message: 'Forbidden' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/metrics', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('IdP が500を返した場合は500をプロキシする', async () => {
+      const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR', message: 'Server error' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/metrics', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(500);
+    });
+  });
+});
