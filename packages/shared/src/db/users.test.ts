@@ -1,5 +1,18 @@
 import { describe, it, expect, vi } from 'vitest';
-import { updateUserRole, deleteUser, updateUserProfile } from './users';
+import {
+  updateUserRole,
+  deleteUser,
+  updateUserProfile,
+  getUserProviders,
+  unlinkProvider,
+  linkProvider,
+  upsertUser,
+  upsertLineUser,
+  upsertXUser,
+  listUsers,
+  countUsers,
+  countAdminUsers,
+} from './users';
 import type { User } from '../types';
 
 // D1Database のモック
@@ -128,5 +141,318 @@ describe('deleteUser', () => {
     const db = makeD1Mock(null, 1);
     await deleteUser(db, 'user-1');
     expect(db.prepare).toHaveBeenCalledWith('DELETE FROM users WHERE id = ?');
+  });
+});
+
+// 複数のprepare呼び出しを順番に異なる結果で返すモック
+function makeMultiD1Mock(
+  ...results: Array<{ first?: unknown; changes?: number; allResults?: unknown[] }>
+): D1Database {
+  let callIdx = 0;
+  return {
+    prepare: vi.fn().mockImplementation(() => {
+      const r = results[callIdx++] ?? {};
+      return {
+        bind: vi.fn().mockReturnThis(),
+        first: vi.fn().mockResolvedValue(r.first ?? null),
+        run: vi.fn().mockResolvedValue({ meta: { changes: r.changes ?? 1 } }),
+        all: vi.fn().mockResolvedValue({ results: r.allResults ?? [] }),
+      };
+    }),
+  } as unknown as D1Database;
+}
+
+describe('getUserProviders', () => {
+  const userWithGoogle: typeof baseUser = {
+    ...baseUser,
+    google_sub: 'google-sub-1',
+    line_sub: null,
+    twitch_sub: null,
+    github_sub: null,
+    x_sub: null,
+  };
+
+  it('全プロバイダーのステータスを返す', async () => {
+    const db = makeD1Mock(userWithGoogle);
+    const providers = await getUserProviders(db, 'user-1');
+    expect(providers).toHaveLength(5);
+    const names = providers.map((p) => p.provider);
+    expect(names).toContain('google');
+    expect(names).toContain('line');
+    expect(names).toContain('twitch');
+    expect(names).toContain('github');
+    expect(names).toContain('x');
+  });
+
+  it('google_subが設定済みならconnected=trueを返す', async () => {
+    const db = makeD1Mock(userWithGoogle);
+    const providers = await getUserProviders(db, 'user-1');
+    const google = providers.find((p) => p.provider === 'google');
+    expect(google?.connected).toBe(true);
+    const line = providers.find((p) => p.provider === 'line');
+    expect(line?.connected).toBe(false);
+  });
+
+  it('ユーザーが存在しない場合はエラーを投げる', async () => {
+    const db = makeD1Mock(null);
+    await expect(getUserProviders(db, 'not-exist')).rejects.toThrow('User not found');
+  });
+});
+
+describe('unlinkProvider', () => {
+  it('正常にプロバイダーの連携を解除できる', async () => {
+    const db = makeD1Mock(null, 1);
+    await expect(unlinkProvider(db, 'user-1', 'google')).resolves.toBeUndefined();
+  });
+
+  it('ユーザーが存在しない場合（0 changes）はエラーを投げる', async () => {
+    const db = makeD1Mock(null, 0);
+    await expect(unlinkProvider(db, 'not-exist', 'google')).rejects.toThrow('User not found');
+  });
+
+  it('対象プロバイダーのカラムをNULLに更新するSQLを実行する', async () => {
+    const db = makeD1Mock(null, 1);
+    await unlinkProvider(db, 'user-1', 'line');
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('line_sub = NULL');
+  });
+});
+
+describe('linkProvider', () => {
+  const linkedUser = { ...baseUser, github_sub: 'github-sub-1' };
+
+  it('新規リンクに成功する（既存サブIDなし）', async () => {
+    // findByGithubSub → null, UPDATE → linkedUser
+    const db = makeMultiD1Mock({ first: null }, { first: linkedUser });
+    const user = await linkProvider(db, 'user-1', 'github', 'github-sub-1');
+    expect(user.github_sub).toBe('github-sub-1');
+  });
+
+  it('同一ユーザーが再リンクする場合は成功する', async () => {
+    // findBySub → same user (same id)
+    const db = makeMultiD1Mock(
+      { first: { ...baseUser, github_sub: 'github-sub-1' } },
+      { first: linkedUser }
+    );
+    const user = await linkProvider(db, 'user-1', 'github', 'github-sub-1');
+    expect(user).toBeDefined();
+  });
+
+  it('別ユーザーが同サブIDを使用している場合はPROVIDER_ALREADY_LINKEDをスロー', async () => {
+    // findBySub → different user (different id)
+    const otherUser = { ...baseUser, id: 'user-999', github_sub: 'github-sub-1' };
+    const db = makeMultiD1Mock({ first: otherUser });
+    await expect(linkProvider(db, 'user-1', 'github', 'github-sub-1')).rejects.toThrow(
+      'PROVIDER_ALREADY_LINKED'
+    );
+  });
+
+  it('ユーザーが見つからない場合（UPDATE返却null）はエラーを投げる', async () => {
+    const db = makeMultiD1Mock({ first: null }, { first: null });
+    await expect(linkProvider(db, 'user-1', 'google', 'google-sub-1')).rejects.toThrow(
+      'User not found'
+    );
+  });
+});
+
+describe('upsertUser', () => {
+  it('新規Googleユーザーを作成/更新してUserを返す', async () => {
+    const db = makeD1Mock({ ...baseUser, google_sub: 'google-sub-1' });
+    const user = await upsertUser(db, {
+      id: 'user-1',
+      googleSub: 'google-sub-1',
+      email: 'test@example.com',
+      emailVerified: true,
+      name: 'Test User',
+      picture: null,
+    });
+    expect(user.google_sub).toBe('google-sub-1');
+    expect(user.email_verified).toBe(1);
+  });
+
+  it('DBがnullを返した場合はエラーを投げる', async () => {
+    const db = makeD1Mock(null);
+    await expect(
+      upsertUser(db, {
+        id: 'user-1',
+        googleSub: 'google-sub-1',
+        email: 'test@example.com',
+        emailVerified: true,
+        name: 'Test User',
+        picture: null,
+      })
+    ).rejects.toThrow('Failed to upsert user');
+  });
+
+  it('INSERT INTO users ON CONFLICT のSQLを実行する', async () => {
+    const db = makeD1Mock(baseUser);
+    await upsertUser(db, {
+      id: 'user-1',
+      googleSub: 'g-sub',
+      email: 'x@example.com',
+      emailVerified: false,
+      name: 'Name',
+      picture: null,
+    });
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('INSERT INTO users');
+    expect(sql).toContain('ON CONFLICT');
+  });
+});
+
+describe('upsertLineUser', () => {
+  const lineUser = { ...baseUser, line_sub: 'line-sub-1', google_sub: null };
+
+  it('既存LINEユーザーが見つかった場合はプロフィールを更新する', async () => {
+    // findUserByLineSub → existing, UPDATE → updated
+    const db = makeMultiD1Mock({ first: lineUser }, { first: lineUser });
+    const user = await upsertLineUser(db, {
+      id: 'user-new',
+      lineSub: 'line-sub-1',
+      email: 'line@example.com',
+      isPlaceholderEmail: false,
+      name: '更新名',
+      picture: null,
+    });
+    expect(user.line_sub).toBe('line-sub-1');
+  });
+
+  it('仮メールでないユーザーのメール一致で既存アカウントにLINEを連携する', async () => {
+    // findUserByLineSub → null, findUserByEmail → existing email user, UPDATE → linked
+    const emailUser = { ...baseUser, line_sub: null };
+    const db = makeMultiD1Mock(
+      { first: null },
+      { first: emailUser },
+      { first: { ...emailUser, line_sub: 'line-sub-1' } }
+    );
+    const user = await upsertLineUser(db, {
+      id: 'user-new',
+      lineSub: 'line-sub-1',
+      email: 'test@example.com',
+      isPlaceholderEmail: false,
+      name: 'Test User',
+      picture: null,
+    });
+    expect(user.line_sub).toBe('line-sub-1');
+  });
+
+  it('仮メールの新規ユーザーを作成する', async () => {
+    // findUserByLineSub → null, INSERT → newUser
+    const newUser = { ...baseUser, line_sub: 'line-sub-new', google_sub: null };
+    const db = makeMultiD1Mock({ first: null }, { first: newUser });
+    const user = await upsertLineUser(db, {
+      id: 'user-new',
+      lineSub: 'line-sub-new',
+      email: 'line_placeholder@line.placeholder',
+      isPlaceholderEmail: true,
+      name: 'LINE User',
+      picture: null,
+    });
+    expect(user.line_sub).toBe('line-sub-new');
+  });
+
+  it('DBがnullを返した場合はエラーを投げる（既存ユーザー更新時）', async () => {
+    const db = makeMultiD1Mock({ first: lineUser }, { first: null });
+    await expect(
+      upsertLineUser(db, {
+        id: 'user-new',
+        lineSub: 'line-sub-1',
+        email: 'line@example.com',
+        isPlaceholderEmail: false,
+        name: 'Name',
+        picture: null,
+      })
+    ).rejects.toThrow('Failed to update LINE user');
+  });
+});
+
+describe('upsertXUser', () => {
+  const xUser = { ...baseUser, x_sub: 'x-sub-1', google_sub: null };
+
+  it('既存Xユーザーが見つかった場合はプロフィールを更新する', async () => {
+    // findUserByXSub → existing, UPDATE → updated
+    const db = makeMultiD1Mock({ first: xUser }, { first: xUser });
+    const user = await upsertXUser(db, {
+      id: 'user-new',
+      xSub: 'x-sub-1',
+      email: 'x_1@x.placeholder',
+      name: 'X User',
+      picture: null,
+    });
+    expect(user.x_sub).toBe('x-sub-1');
+  });
+
+  it('新規Xユーザーを作成する', async () => {
+    // findUserByXSub → null, INSERT → newUser
+    const db = makeMultiD1Mock({ first: null }, { first: xUser });
+    const user = await upsertXUser(db, {
+      id: 'user-new',
+      xSub: 'x-sub-1',
+      email: 'x_1@x.placeholder',
+      name: 'New X User',
+      picture: 'https://example.com/avatar.jpg',
+    });
+    expect(user.x_sub).toBe('x-sub-1');
+  });
+
+  it('DBがnullを返した場合はエラーを投げる（新規作成時）', async () => {
+    const db = makeMultiD1Mock({ first: null }, { first: null });
+    await expect(
+      upsertXUser(db, {
+        id: 'user-new',
+        xSub: 'x-sub-new',
+        email: 'x_new@x.placeholder',
+        name: 'Name',
+        picture: null,
+      })
+    ).rejects.toThrow('Failed to create X user');
+  });
+});
+
+describe('listUsers', () => {
+  it('ユーザー一覧を返す', async () => {
+    const db = makeD1Mock(null);
+    // all()の結果をモックに含める
+    const stmt = { bind: vi.fn().mockReturnThis(), all: vi.fn().mockResolvedValue({ results: [baseUser] }) };
+    const db2 = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+    const users = await listUsers(db2, 10, 0);
+    expect(users).toHaveLength(1);
+    expect(users[0].id).toBe('user-1');
+  });
+
+  it('デフォルトのlimit/offsetで呼び出せる', async () => {
+    const stmt = { bind: vi.fn().mockReturnThis(), all: vi.fn().mockResolvedValue({ results: [] }) };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+    const users = await listUsers(db);
+    expect(users).toEqual([]);
+    expect(stmt.bind).toHaveBeenCalledWith(50, 0);
+  });
+});
+
+describe('countUsers', () => {
+  it('ユーザー総数を返す', async () => {
+    const db = makeD1Mock({ count: 42 });
+    const count = await countUsers(db);
+    expect(count).toBe(42);
+  });
+
+  it('DBがnullを返した場合は0を返す', async () => {
+    const db = makeD1Mock(null);
+    const count = await countUsers(db);
+    expect(count).toBe(0);
+  });
+});
+
+describe('countAdminUsers', () => {
+  it('管理者数を返す', async () => {
+    const db = makeD1Mock({ count: 2 });
+    const count = await countAdminUsers(db);
+    expect(count).toBe(2);
+  });
+
+  it('DBがnullを返した場合は0を返す', async () => {
+    const db = makeD1Mock(null);
+    const count = await countAdminUsers(db);
+    expect(count).toBe(0);
   });
 });
