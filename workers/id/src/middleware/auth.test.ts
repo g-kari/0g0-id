@@ -6,6 +6,7 @@ vi.mock('@0g0-id/shared', () => ({
 }));
 
 import { verifyAccessToken } from '@0g0-id/shared';
+import type { TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from './auth';
 
 const baseUrl = 'https://id.0g0.xyz';
@@ -32,7 +33,7 @@ const mockPayload = {
 };
 
 function buildApp() {
-  const app = new Hono<{ Bindings: typeof mockEnv }>();
+  const app = new Hono<{ Bindings: typeof mockEnv; Variables: { user: TokenPayload } }>();
   app.use('/protected/*', authMiddleware);
   app.get('/protected/resource', (c) => {
     const user = c.get('user');

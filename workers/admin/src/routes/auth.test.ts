@@ -166,7 +166,9 @@ describe('admin BFF — /auth', () => {
       });
 
       // set-cookie に state cookie の削除（max-age=0 または expires=past）が含まれる
-      const setCookieHeaders = res.headers.getSetCookie?.() ?? [res.headers.get('set-cookie') ?? ''];
+      const setCookieHeaders: string[] =
+        (res.headers as unknown as { getSetCookie(): string[] }).getSetCookie?.() ??
+        [res.headers.get('set-cookie') ?? ''];
       const stateDeleteCookie = setCookieHeaders.find((c) => c.startsWith(STATE_COOKIE));
       expect(stateDeleteCookie).toBeDefined();
     });
