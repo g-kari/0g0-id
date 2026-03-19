@@ -46,7 +46,22 @@ import {
   exchangeGoogleCode,
   fetchGoogleUserInfo,
   buildLineAuthUrl,
+  exchangeLineCode,
+  fetchLineUserInfo,
+  upsertLineUser,
   buildGithubAuthUrl,
+  exchangeGithubCode,
+  fetchGithubUserInfo,
+  fetchGithubPrimaryEmail,
+  upsertGithubUser,
+  exchangeXCode,
+  fetchXUserInfo,
+  upsertXUser,
+  exchangeTwitchCode,
+  fetchTwitchUserInfo,
+  upsertTwitchUser,
+  linkProvider,
+  updateUserRole,
   generateCodeVerifier,
   generateCodeChallenge,
   generateToken,
@@ -674,5 +689,598 @@ describe('POST /auth/logout', () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ data: { success: boolean } }>();
     expect(body.data.success).toBe(true);
+  });
+});
+
+// ===== GET /auth/callback - LINEプロバイダー =====
+describe('GET /auth/callback - LINEプロバイダー', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(sha256).mockResolvedValue('hashed-value');
+    vi.mocked(generateToken).mockReturnValue('mock-auth-code');
+    vi.mocked(upsertLineUser).mockResolvedValue(mockUser);
+    vi.mocked(countAdminUsers).mockResolvedValue(1);
+    vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
+    vi.mocked(exchangeLineCode).mockResolvedValue({ access_token: 'line-at' } as never);
+    vi.mocked(fetchLineUserInfo).mockResolvedValue({
+      sub: 'line-sub-1',
+      name: 'LINE User',
+      picture: 'https://example.com/line-pic.jpg',
+      email: 'line@example.com',
+    } as never);
+  });
+
+  it('LINE: 正常なコールバック → BFFコールバックへリダイレクト', async () => {
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'line',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(302);
+    const location = res.headers.get('location') ?? '';
+    expect(location).toContain('https://user.0g0.xyz/callback');
+    expect(location).toContain('state=bff-state');
+  });
+
+  it('LINE: tokenExchange失敗 → 400を返す', async () => {
+    vi.mocked(exchangeLineCode).mockRejectedValue(new Error('Exchange failed'));
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'line',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('OAUTH_ERROR');
+  });
+
+  it('LINE: メールなし → 仮メールでupsertLineUserを呼び出す', async () => {
+    vi.mocked(fetchLineUserInfo).mockResolvedValue({
+      sub: 'line-sub-1',
+      name: 'LINE User',
+      picture: null,
+      email: null,
+    } as never);
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'line',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(302);
+    expect(vi.mocked(upsertLineUser)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        isPlaceholderEmail: true,
+        email: 'line_line-sub-1@line.placeholder',
+      })
+    );
+  });
+});
+
+// ===== GET /auth/callback - GitHubプロバイダー =====
+describe('GET /auth/callback - GitHubプロバイダー', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(sha256).mockResolvedValue('hashed-value');
+    vi.mocked(generateToken).mockReturnValue('mock-auth-code');
+    vi.mocked(upsertGithubUser).mockResolvedValue(mockUser);
+    vi.mocked(countAdminUsers).mockResolvedValue(1);
+    vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
+    vi.mocked(exchangeGithubCode).mockResolvedValue({ access_token: 'github-at' } as never);
+    vi.mocked(fetchGithubUserInfo).mockResolvedValue({
+      id: 12345,
+      login: 'testuser',
+      name: 'GitHub User',
+      email: 'github@example.com',
+      avatar_url: 'https://example.com/avatar.jpg',
+    } as never);
+  });
+
+  it('GitHub: 正常なコールバック（公開メールあり）→ BFFコールバックへリダイレクト', async () => {
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'github',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(302);
+    expect(vi.mocked(upsertGithubUser)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        githubSub: '12345',
+        email: 'github@example.com',
+        isPlaceholderEmail: false,
+      })
+    );
+  });
+
+  it('GitHub: 公開メールなし → fetchGithubPrimaryEmailを呼び出す', async () => {
+    vi.mocked(fetchGithubUserInfo).mockResolvedValue({
+      id: 12345,
+      login: 'testuser',
+      name: null,
+      email: null,
+      avatar_url: 'https://example.com/avatar.jpg',
+    } as never);
+    vi.mocked(fetchGithubPrimaryEmail).mockResolvedValue('primary@example.com');
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'github',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(302);
+    expect(vi.mocked(fetchGithubPrimaryEmail)).toHaveBeenCalledWith('github-at');
+    expect(vi.mocked(upsertGithubUser)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        email: 'primary@example.com',
+        isPlaceholderEmail: false,
+        name: 'testuser',
+      })
+    );
+  });
+
+  it('GitHub: プライマリメールも取得できない → 仮メールで登録される', async () => {
+    vi.mocked(fetchGithubUserInfo).mockResolvedValue({
+      id: 12345,
+      login: 'testuser',
+      name: 'GitHub User',
+      email: null,
+      avatar_url: 'https://example.com/avatar.jpg',
+    } as never);
+    vi.mocked(fetchGithubPrimaryEmail).mockResolvedValue(null);
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'github',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(302);
+    expect(vi.mocked(upsertGithubUser)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        email: 'github_12345@github.placeholder',
+        isPlaceholderEmail: true,
+      })
+    );
+  });
+});
+
+// ===== GET /auth/callback - Twitchプロバイダー =====
+describe('GET /auth/callback - Twitchプロバイダー', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(sha256).mockResolvedValue('hashed-value');
+    vi.mocked(generateToken).mockReturnValue('mock-auth-code');
+    vi.mocked(upsertTwitchUser).mockResolvedValue(mockUser);
+    vi.mocked(countAdminUsers).mockResolvedValue(1);
+    vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
+    vi.mocked(exchangeTwitchCode).mockResolvedValue({ access_token: 'twitch-at' } as never);
+    vi.mocked(fetchTwitchUserInfo).mockResolvedValue({
+      sub: 'twitch-sub-1',
+      preferred_username: 'twitchuser',
+      email: 'twitch@example.com',
+      email_verified: true,
+      picture: 'https://example.com/twitch-pic.jpg',
+    } as never);
+  });
+
+  it('Twitch: 正常なコールバック → BFFコールバックへリダイレクト', async () => {
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'twitch',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(302);
+    expect(vi.mocked(upsertTwitchUser)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        twitchSub: 'twitch-sub-1',
+        name: 'twitchuser',
+        isPlaceholderEmail: false,
+      })
+    );
+  });
+
+  it('Twitch: メールなし → 仮メールで登録される', async () => {
+    vi.mocked(fetchTwitchUserInfo).mockResolvedValue({
+      sub: 'twitch-sub-1',
+      preferred_username: 'twitchuser',
+      email: null,
+      email_verified: false,
+      picture: null,
+    } as never);
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'twitch',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(302);
+    expect(vi.mocked(upsertTwitchUser)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        isPlaceholderEmail: true,
+        email: 'twitch_twitch-sub-1@twitch.placeholder',
+      })
+    );
+  });
+});
+
+// ===== GET /auth/callback - Xプロバイダー =====
+describe('GET /auth/callback - Xプロバイダー', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(sha256).mockResolvedValue('hashed-value');
+    vi.mocked(generateToken).mockReturnValue('mock-auth-code');
+    vi.mocked(upsertXUser).mockResolvedValue(mockUser);
+    vi.mocked(countAdminUsers).mockResolvedValue(1);
+    vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
+    vi.mocked(exchangeXCode).mockResolvedValue({ access_token: 'x-at' } as never);
+    vi.mocked(fetchXUserInfo).mockResolvedValue({
+      id: 'x-user-id',
+      name: 'X User',
+      username: 'xuser',
+      profile_image_url: 'https://example.com/x-pic.jpg',
+    } as never);
+  });
+
+  it('X: 正常なコールバック → 仮メールで登録・BFFコールバックへリダイレクト', async () => {
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'x',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(302);
+    expect(vi.mocked(upsertXUser)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        xSub: 'x-user-id',
+        email: 'x_x-user-id@x.placeholder',
+        name: 'X User',
+      })
+    );
+  });
+
+  it('X: nameがnullの場合 → usernameをfallbackとして使用', async () => {
+    vi.mocked(fetchXUserInfo).mockResolvedValue({
+      id: 'x-user-id',
+      name: null,
+      username: 'xuser',
+      profile_image_url: null,
+    } as never);
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'x',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(302);
+    expect(vi.mocked(upsertXUser)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ name: 'xuser' })
+    );
+  });
+});
+
+// ===== GET /auth/callback - プロバイダー連携 (linkUserId) =====
+describe('GET /auth/callback - プロバイダー連携 (linkUserId)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(sha256).mockResolvedValue('hashed-value');
+    vi.mocked(generateToken).mockReturnValue('mock-auth-code');
+    vi.mocked(linkProvider).mockResolvedValue(mockUser);
+    vi.mocked(countAdminUsers).mockResolvedValue(1);
+    vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
+    vi.mocked(exchangeGoogleCode).mockResolvedValue({ access_token: 'google-at' } as never);
+    vi.mocked(fetchGoogleUserInfo).mockResolvedValue({
+      sub: 'google-sub-1',
+      email: 'test@example.com',
+      email_verified: true,
+      name: 'Test User',
+      picture: 'https://example.com/pic.jpg',
+    } as never);
+  });
+
+  it('Google: linkUserId指定 → linkProviderを呼び出す（upsertUserは呼ばない）', async () => {
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'google',
+      linkUserId: 'existing-user-id',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(302);
+    expect(vi.mocked(linkProvider)).toHaveBeenCalledWith(
+      expect.anything(),
+      'existing-user-id',
+      'google',
+      'google-sub-1'
+    );
+    expect(vi.mocked(upsertUser)).not.toHaveBeenCalled();
+  });
+
+  it('Google: PROVIDER_ALREADY_LINKED → 409を返す', async () => {
+    vi.mocked(linkProvider).mockRejectedValue(new Error('PROVIDER_ALREADY_LINKED'));
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'google',
+      linkUserId: 'existing-user-id',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(409);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('PROVIDER_ALREADY_LINKED');
+  });
+
+  it('LINE: linkUserId指定 → linkProviderを呼び出す', async () => {
+    vi.mocked(exchangeLineCode).mockResolvedValue({ access_token: 'line-at' } as never);
+    vi.mocked(fetchLineUserInfo).mockResolvedValue({
+      sub: 'line-sub-new',
+      name: 'LINE User',
+      picture: null,
+      email: 'line@example.com',
+    } as never);
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'line',
+      linkUserId: 'existing-user-id',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(302);
+    expect(vi.mocked(linkProvider)).toHaveBeenCalledWith(
+      expect.anything(),
+      'existing-user-id',
+      'line',
+      'line-sub-new'
+    );
+  });
+
+  it('LINE: PROVIDER_ALREADY_LINKED → 409を返す', async () => {
+    vi.mocked(linkProvider).mockRejectedValue(new Error('PROVIDER_ALREADY_LINKED'));
+    vi.mocked(exchangeLineCode).mockResolvedValue({ access_token: 'line-at' } as never);
+    vi.mocked(fetchLineUserInfo).mockResolvedValue({
+      sub: 'line-sub-new',
+      name: 'LINE User',
+      picture: null,
+      email: 'line@example.com',
+    } as never);
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'line',
+      linkUserId: 'existing-user-id',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(409);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('PROVIDER_ALREADY_LINKED');
+  });
+});
+
+// ===== GET /auth/callback - ブートストラップ管理者 =====
+describe('GET /auth/callback - ブートストラップ管理者', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(sha256).mockResolvedValue('hashed-value');
+    vi.mocked(generateToken).mockReturnValue('mock-auth-code');
+    vi.mocked(countAdminUsers).mockResolvedValue(0);
+    vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
+    vi.mocked(exchangeGoogleCode).mockResolvedValue({ access_token: 'google-at' } as never);
+    vi.mocked(fetchGoogleUserInfo).mockResolvedValue({
+      sub: 'google-sub-1',
+      email: 'admin@example.com',
+      email_verified: true,
+      name: 'Admin User',
+      picture: null,
+    } as never);
+    vi.mocked(upsertUser).mockResolvedValue({
+      ...mockUser,
+      email: 'admin@example.com',
+      role: 'user',
+    });
+    vi.mocked(updateUserRole).mockResolvedValue({
+      ...mockUser,
+      email: 'admin@example.com',
+      role: 'admin',
+    });
+  });
+
+  it('BOOTSTRAP_ADMIN_EMAIL一致・管理者0人 → updateUserRoleを呼び出してadminに昇格', async () => {
+    const envWithBootstrap = { ...mockEnv, BOOTSTRAP_ADMIN_EMAIL: 'admin@example.com' };
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'google',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      envWithBootstrap as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(302);
+    expect(vi.mocked(updateUserRole)).toHaveBeenCalledWith(expect.anything(), 'user-1', 'admin');
+  });
+
+  it('BOOTSTRAP_ADMIN_EMAIL一致・既に管理者あり → 昇格しない', async () => {
+    vi.mocked(countAdminUsers).mockResolvedValue(1);
+    const envWithBootstrap = { ...mockEnv, BOOTSTRAP_ADMIN_EMAIL: 'admin@example.com' };
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'google',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      envWithBootstrap as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(302);
+    expect(vi.mocked(updateUserRole)).not.toHaveBeenCalled();
+  });
+
+  it('BOOTSTRAP_ADMIN_EMAILと不一致 → 昇格しない', async () => {
+    const envWithBootstrap = { ...mockEnv, BOOTSTRAP_ADMIN_EMAIL: 'other@example.com' };
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'google',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      envWithBootstrap as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(302);
+    expect(vi.mocked(updateUserRole)).not.toHaveBeenCalled();
   });
 });
