@@ -1,0 +1,297 @@
+import { describe, it, expect, vi } from 'vitest';
+import { Hono } from 'hono';
+
+import usersRoutes from './users';
+
+const SESSION_COOKIE = '__Host-admin-session';
+const baseUrl = 'https://admin.0g0.xyz';
+
+// 管理者セッションCookieを生成するヘルパー
+function makeSessionCookie(role: 'admin' | 'user' = 'admin'): string {
+  const session = {
+    access_token: 'mock-access-token',
+    refresh_token: 'mock-refresh-token',
+    user: { id: 'admin-user-id', email: 'admin@example.com', name: 'Admin', role },
+  };
+  return btoa(encodeURIComponent(JSON.stringify(session)));
+}
+
+function buildApp(idpFetch: (req: Request) => Promise<Response>) {
+  const app = new Hono<{
+    Bindings: { IDP: { fetch: typeof idpFetch }; IDP_ORIGIN: string };
+  }>();
+  app.route('/api/users', usersRoutes);
+  return {
+    request: (path: string, init?: RequestInit) => {
+      const req = new Request(`${baseUrl}${path}`, init);
+      return app.request(req, undefined, {
+        IDP: { fetch: idpFetch },
+        IDP_ORIGIN: 'https://id.0g0.xyz',
+      });
+    },
+  };
+}
+
+function mockIdp(status: number, body: unknown): (req: Request) => Promise<Response> {
+  return vi.fn().mockResolvedValue(
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  );
+}
+
+const mockUserList = [
+  {
+    id: 'user-1',
+    email: 'user1@example.com',
+    name: 'User One',
+    role: 'user',
+    created_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'user-2',
+    email: 'user2@example.com',
+    name: 'User Two',
+    role: 'admin',
+    created_at: '2024-01-02T00:00:00Z',
+  },
+];
+
+describe('admin BFF — /api/users', () => {
+  describe('GET / — ユーザー一覧', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users');
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('管理者セッションでIdPへプロキシしてユーザー一覧を返す', async () => {
+      const idpFetch = mockIdp(200, { data: mockUserList, total: 2 });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof mockUserList; total: number }>();
+      expect(body.data).toHaveLength(2);
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.pathname).toBe('/api/users');
+      expect(url.searchParams.get('limit')).toBe('50');
+      expect(url.searchParams.get('offset')).toBe('0');
+    });
+
+    it('limit/offsetのクエリパラメータをIdPに転送する', async () => {
+      const idpFetch = mockIdp(200, { data: [], total: 0 });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users?limit=10&offset=20', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.get('limit')).toBe('10');
+      expect(url.searchParams.get('offset')).toBe('20');
+    });
+
+    it('デフォルトのlimit=50/offset=0を使用する', async () => {
+      const idpFetch = mockIdp(200, { data: [] });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.get('limit')).toBe('50');
+      expect(url.searchParams.get('offset')).toBe('0');
+    });
+
+    it('Authorizationヘッダーにセッションのアクセストークンを付与する', async () => {
+      const idpFetch = mockIdp(200, { data: [] });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.headers.get('Authorization')).toBe('Bearer mock-access-token');
+    });
+
+    it('IdPが500を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(500);
+    });
+  });
+
+  describe('PATCH /:id/role — ユーザーロール変更', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1/role', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'admin' }),
+      });
+
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('不正なJSONで400を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1/role', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}`,
+        },
+        body: 'not-valid-json',
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('BAD_REQUEST');
+    });
+
+    it('管理者セッションでIdPにPATCHしてロールを変更する', async () => {
+      const idpFetch = mockIdp(200, { data: { id: 'user-1', role: 'admin' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1/role', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}`,
+        },
+        body: JSON.stringify({ role: 'admin' }),
+      });
+
+      expect(res.status).toBe(200);
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.method).toBe('PATCH');
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/users/user-1/role');
+      expect(calledReq.headers.get('Authorization')).toBe('Bearer mock-access-token');
+    });
+
+    it('IDパラメータをIdPのURLに正しく含める', async () => {
+      const idpFetch = mockIdp(200, { data: {} });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users/target-user-xyz/role', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}`,
+        },
+        body: JSON.stringify({ role: 'user' }),
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/users/target-user-xyz/role');
+    });
+
+    it('IdPが403（自己変更禁止）を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(403, { error: { code: 'SELF_ROLE_CHANGE_FORBIDDEN' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/admin-user-id/role', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}`,
+        },
+        body: JSON.stringify({ role: 'user' }),
+      });
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('DELETE /:id — ユーザー削除', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1', { method: 'DELETE' });
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('管理者セッションでIdPにDELETEしてユーザーを削除する', async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(204);
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.method).toBe('DELETE');
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/users/user-1');
+    });
+
+    it('IDパラメータをIdPのURLに正しく含める', async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users/specific-user-abc', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/users/specific-user-abc');
+    });
+
+    it('IdPが409（サービス所有者削除不可）を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(409, { error: { code: 'USER_OWNS_SERVICES' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/service-owner-id', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(409);
+    });
+
+    it('Originヘッダーを付与してIdPに送信する', async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users/user-1', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.headers.get('Origin')).toBe('https://id.0g0.xyz');
+    });
+  });
+});
