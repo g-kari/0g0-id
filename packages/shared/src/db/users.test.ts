@@ -18,6 +18,8 @@ const baseUser: User = {
   google_sub: 'google-sub-1',
   line_sub: null,
   twitch_sub: null,
+  github_sub: null,
+  x_sub: null,
   email: 'test@example.com',
   email_verified: 1,
   name: 'Test User',

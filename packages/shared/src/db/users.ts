@@ -16,6 +16,17 @@ export async function findUserByTwitchSub(db: D1Database, twitchSub: string): Pr
   return db.prepare('SELECT * FROM users WHERE twitch_sub = ?').bind(twitchSub).first<User>();
 }
 
+export async function findUserByGithubSub(
+  db: D1Database,
+  githubSub: string
+): Promise<User | null> {
+  return db.prepare('SELECT * FROM users WHERE github_sub = ?').bind(githubSub).first<User>();
+}
+
+export async function findUserByXSub(db: D1Database, xSub: string): Promise<User | null> {
+  return db.prepare('SELECT * FROM users WHERE x_sub = ?').bind(xSub).first<User>();
+}
+
 export async function findUserByEmail(db: D1Database, email: string): Promise<User | null> {
   return db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first<User>();
 }
@@ -172,6 +183,124 @@ export async function upsertTwitchUser(
     )
     .first<User>();
   if (!user) throw new Error('Failed to create Twitch user');
+  return user;
+}
+
+export async function upsertGithubUser(
+  db: D1Database,
+  params: {
+    id: string;
+    githubSub: string;
+    email: string;
+    isPlaceholderEmail: boolean;
+    name: string;
+    picture: string | null;
+  }
+): Promise<User> {
+  // 既存のGitHubユーザーがいればプロフィールを更新
+  const existing = await findUserByGithubSub(db, params.githubSub);
+  if (existing) {
+    const user = await db
+      .prepare(
+        `UPDATE users SET name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
+      )
+      .bind(params.name, params.picture, existing.id)
+      .first<User>();
+    if (!user) throw new Error('Failed to update GitHub user');
+    return user;
+  }
+
+  // 仮メール以外であれば既存ユーザーにGitHubアカウントを連携
+  if (!params.isPlaceholderEmail) {
+    const existingByEmail = await findUserByEmail(db, params.email);
+    if (existingByEmail) {
+      const user = await db
+        .prepare(
+          `UPDATE users SET github_sub = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
+        )
+        .bind(params.githubSub, params.name, params.picture, existingByEmail.id)
+        .first<User>();
+      if (!user) throw new Error('Failed to link GitHub account');
+      return user;
+    }
+  }
+
+  // 新規ユーザー作成
+  const user = await db
+    .prepare(
+      `INSERT INTO users (id, github_sub, email, email_verified, name, picture)
+       VALUES (?, ?, ?, ?, ?, ?)
+       RETURNING *`
+    )
+    .bind(
+      params.id,
+      params.githubSub,
+      params.email,
+      params.isPlaceholderEmail ? 0 : 1,
+      params.name,
+      params.picture
+    )
+    .first<User>();
+  if (!user) throw new Error('Failed to create GitHub user');
+  return user;
+}
+
+export async function upsertXUser(
+  db: D1Database,
+  params: {
+    id: string;
+    xSub: string;
+    email: string;
+    isPlaceholderEmail: boolean;
+    name: string;
+    picture: string | null;
+  }
+): Promise<User> {
+  // 既存のXユーザーがいればプロフィールを更新
+  const existing = await findUserByXSub(db, params.xSub);
+  if (existing) {
+    const user = await db
+      .prepare(
+        `UPDATE users SET name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
+      )
+      .bind(params.name, params.picture, existing.id)
+      .first<User>();
+    if (!user) throw new Error('Failed to update X user');
+    return user;
+  }
+
+  // 仮メール以外であれば既存ユーザーにXアカウントを連携
+  if (!params.isPlaceholderEmail) {
+    const existingByEmail = await findUserByEmail(db, params.email);
+    if (existingByEmail) {
+      const user = await db
+        .prepare(
+          `UPDATE users SET x_sub = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
+        )
+        .bind(params.xSub, params.name, params.picture, existingByEmail.id)
+        .first<User>();
+      if (!user) throw new Error('Failed to link X account');
+      return user;
+    }
+  }
+
+  // 新規ユーザー作成（Xはメールアドレスを公開しないため仮メールを使用）
+  const user = await db
+    .prepare(
+      `INSERT INTO users (id, x_sub, email, email_verified, name, picture)
+       VALUES (?, ?, ?, ?, ?, ?)
+       RETURNING *`
+    )
+    .bind(
+      params.id,
+      params.xSub,
+      params.email,
+      params.isPlaceholderEmail ? 0 : 1,
+      params.name,
+      params.picture
+    )
+    .first<User>();
+  if (!user) throw new Error('Failed to create X user');
   return user;
 }
 

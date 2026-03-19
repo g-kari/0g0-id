@@ -86,6 +86,8 @@ h1 {
 .btn-google:hover { background: #f8f9fa; opacity: 1; }
 .btn-line { background: #06C755; color: var(--white); }
 .btn-twitch { background: #9147FF; color: var(--white); }
+.btn-github { background: #24292e; color: var(--white); }
+.btn-x { background: #000000; color: var(--white); }
 
 .login-buttons {
   display: flex;

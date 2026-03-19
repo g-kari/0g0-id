@@ -11,6 +11,13 @@ import {
   buildTwitchAuthUrl,
   exchangeTwitchCode,
   fetchTwitchUserInfo,
+  buildGithubAuthUrl,
+  exchangeGithubCode,
+  fetchGithubUserInfo,
+  fetchGithubPrimaryEmail,
+  buildXAuthUrl,
+  exchangeXCode,
+  fetchXUserInfo,
   generateCodeVerifier,
   generateCodeChallenge,
   generateToken,
@@ -24,6 +31,8 @@ import {
   upsertUser,
   upsertLineUser,
   upsertTwitchUser,
+  upsertGithubUser,
+  upsertXUser,
   updateUserRole,
   countAdminUsers,
   createAuthCode,
@@ -39,7 +48,7 @@ const CALLBACK_PATH = '/auth/callback';
 const STATE_COOKIE = '__Host-oauth-state';
 const PKCE_COOKIE = '__Host-oauth-pkce';
 
-type OAuthProvider = 'google' | 'line' | 'twitch';
+type OAuthProvider = 'google' | 'line' | 'twitch' | 'github' | 'x';
 
 function setSecureCookie(
   c: Context<{ Bindings: IdpEnv }>,
@@ -67,7 +76,7 @@ app.get('/login', async (c) => {
   }
 
   // providerの検証
-  const validProviders: OAuthProvider[] = ['google', 'line', 'twitch'];
+  const validProviders: OAuthProvider[] = ['google', 'line', 'twitch', 'github', 'x'];
   if (!validProviders.includes(providerParam as OAuthProvider)) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid provider' } }, 400);
   }
@@ -85,6 +94,20 @@ app.get('/login', async (c) => {
       {
         error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Twitch provider is not configured' },
       },
+      400
+    );
+  }
+  if (provider === 'github' && (!c.env.GITHUB_CLIENT_ID || !c.env.GITHUB_CLIENT_SECRET)) {
+    return c.json(
+      {
+        error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'GitHub provider is not configured' },
+      },
+      400
+    );
+  }
+  if (provider === 'x' && (!c.env.X_CLIENT_ID || !c.env.X_CLIENT_SECRET)) {
+    return c.json(
+      { error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'X provider is not configured' } },
       400
     );
   }
@@ -131,6 +154,26 @@ app.get('/login', async (c) => {
       codeChallenge: idCodeChallenge,
     });
     return c.redirect(twitchUrl);
+  }
+
+  if (provider === 'github') {
+    const githubUrl = buildGithubAuthUrl({
+      clientId: c.env.GITHUB_CLIENT_ID!,
+      redirectUri: callbackUri,
+      state: idState,
+      codeChallenge: idCodeChallenge,
+    });
+    return c.redirect(githubUrl);
+  }
+
+  if (provider === 'x') {
+    const xUrl = buildXAuthUrl({
+      clientId: c.env.X_CLIENT_ID!,
+      redirectUri: callbackUri,
+      state: idState,
+      codeChallenge: idCodeChallenge,
+    });
+    return c.redirect(xUrl);
   }
 
   // デフォルト: Google
@@ -324,6 +367,109 @@ app.get('/callback', async (c) => {
       emailVerified: userInfo.email_verified ?? false,
       name: userInfo.preferred_username,
       picture: userInfo.picture ?? null,
+    });
+  } else if (provider === 'github') {
+    if (!c.env.GITHUB_CLIENT_ID || !c.env.GITHUB_CLIENT_SECRET) {
+      return c.json(
+        {
+          error: {
+            code: 'PROVIDER_NOT_CONFIGURED',
+            message: 'GitHub provider is not configured',
+          },
+        },
+        400
+      );
+    }
+
+    let githubTokens;
+    try {
+      githubTokens = await exchangeGithubCode({
+        code,
+        clientId: c.env.GITHUB_CLIENT_ID,
+        clientSecret: c.env.GITHUB_CLIENT_SECRET,
+        redirectUri: callbackUri,
+        codeVerifier: pkceVerifier,
+      });
+    } catch {
+      return c.json(
+        { error: { code: 'OAUTH_ERROR', message: 'Failed to exchange GitHub code' } },
+        400
+      );
+    }
+
+    let githubUser;
+    try {
+      githubUser = await fetchGithubUserInfo(githubTokens.access_token);
+    } catch {
+      return c.json(
+        { error: { code: 'OAUTH_ERROR', message: 'Failed to fetch GitHub user info' } },
+        400
+      );
+    }
+
+    // GitHubのユーザーIDを文字列に変換（サブジェクト識別子として使用）
+    const githubSub = String(githubUser.id);
+
+    // プライマリメールを取得（公開メールがない場合）
+    let email = githubUser.email;
+    if (!email) {
+      email = await fetchGithubPrimaryEmail(githubTokens.access_token);
+    }
+    const isPlaceholderEmail = !email;
+    const finalEmail = email ?? `github_${githubSub}@github.placeholder`;
+
+    user = await upsertGithubUser(c.env.DB, {
+      id: userId,
+      githubSub,
+      email: finalEmail,
+      isPlaceholderEmail,
+      name: githubUser.name ?? githubUser.login,
+      picture: githubUser.avatar_url,
+    });
+  } else if (provider === 'x') {
+    if (!c.env.X_CLIENT_ID || !c.env.X_CLIENT_SECRET) {
+      return c.json(
+        { error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'X provider is not configured' } },
+        400
+      );
+    }
+
+    let xTokens;
+    try {
+      xTokens = await exchangeXCode({
+        code,
+        clientId: c.env.X_CLIENT_ID,
+        clientSecret: c.env.X_CLIENT_SECRET,
+        redirectUri: callbackUri,
+        codeVerifier: pkceVerifier,
+      });
+    } catch {
+      return c.json(
+        { error: { code: 'OAUTH_ERROR', message: 'Failed to exchange X code' } },
+        400
+      );
+    }
+
+    let xUser;
+    try {
+      xUser = await fetchXUserInfo(xTokens.access_token);
+    } catch {
+      return c.json(
+        { error: { code: 'OAUTH_ERROR', message: 'Failed to fetch X user info' } },
+        400
+      );
+    }
+
+    // XはメールアドレスAPIが有料プランのため仮メールを使用
+    const xEmail = `x_${xUser.id}@x.placeholder`;
+
+    user = await upsertXUser(c.env.DB, {
+      id: userId,
+      xSub: xUser.id,
+      email: xEmail,
+      isPlaceholderEmail: true,
+      name: xUser.name,
+      picture: xUser.profile_image_url ?? null,
     });
   } else {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Unknown provider' } }, 400);

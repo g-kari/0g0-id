@@ -3,6 +3,8 @@ export interface User {
   google_sub: string | null;
   line_sub: string | null;
   twitch_sub: string | null;
+  github_sub: string | null;
+  x_sub: string | null;
   email: string;
   email_verified: number;
   name: string;
@@ -73,6 +75,10 @@ export interface IdpEnv {
   LINE_CLIENT_SECRET?: string;
   TWITCH_CLIENT_ID?: string;
   TWITCH_CLIENT_SECRET?: string;
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
+  X_CLIENT_ID?: string;
+  X_CLIENT_SECRET?: string;
   JWT_PRIVATE_KEY: string;
   JWT_PUBLIC_KEY: string;
   BOOTSTRAP_ADMIN_EMAIL?: string;

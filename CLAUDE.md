@@ -45,6 +45,24 @@ BOOTSTRAP_ADMIN_EMAIL=...（初回のみ）
 BFF（user/admin）はブラウザと直接通信。idへはService Bindingsでサーバー間呼び出し。
 ワンタイム認可コード方式でトークンを受け渡す。
 
+## 開発ツール
+
+### Serena（セマンティックコーディングMCP）
+**このプロジェクトではコード編集にSerenaを必ず利用すること。**
+
+SerenaはLanguage Serverを活用したセマンティックコーディングツールです。
+以下の場面でSerenaのツールを積極的に使用してください：
+
+- シンボルの検索・参照 → `find_symbol`, `find_referencing_symbols`
+- ファイル・ディレクトリ一覧 → `list_dir`, `find_file`
+- コード読み取り → `read_file`, `get_symbols_overview`
+- シンボル単位の編集 → `replace_symbol_body`, `insert_after_symbol`, `insert_before_symbol`
+- パターン検索 → `search_for_pattern`
+- ファイル全体の作成・上書き → `create_text_file`
+
+直接ファイル操作（cat, sed, awk等）よりSerenaのツールを優先すること。
+シンボル単位の精密な編集が可能なため、大きなファイルでも効率的に作業できます。
+
 ## コード規約
 
 ### ライブラリ利用方針

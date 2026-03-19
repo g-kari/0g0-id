@@ -106,6 +106,8 @@ const mockUser = {
   google_sub: 'google-sub-1',
   line_sub: null,
   twitch_sub: null,
+  github_sub: null,
+  x_sub: null,
   email: 'test@example.com',
   email_verified: 1,
   name: 'Test User',
@@ -282,6 +284,8 @@ describe('GET /api/external/users/:id', () => {
       expect(body.data).not.toHaveProperty('google_sub');
       expect(body.data).not.toHaveProperty('line_sub');
       expect(body.data).not.toHaveProperty('twitch_sub');
+      expect(body.data).not.toHaveProperty('github_sub');
+      expect(body.data).not.toHaveProperty('x_sub');
     });
 
     it('roleを返さない', async () => {
@@ -426,6 +430,8 @@ describe('GET /api/external/users', () => {
       const body = await res.json<{ data: Record<string, unknown>[] }>();
       expect(body.data[0]).not.toHaveProperty('id');
       expect(body.data[0]).not.toHaveProperty('google_sub');
+      expect(body.data[0]).not.toHaveProperty('github_sub');
+      expect(body.data[0]).not.toHaveProperty('x_sub');
       expect(body.data[0]).not.toHaveProperty('role');
     });
 
