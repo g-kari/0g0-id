@@ -44,15 +44,19 @@ app.get('/me', authMiddleware, async (c) => {
 app.patch('/me', authMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
 
-  let body: { name?: string; phone?: string | null; address?: string | null };
+  let body: { name?: string; picture?: string | null; phone?: string | null; address?: string | null };
   try {
-    body = await c.req.json<{ name?: string; phone?: string | null; address?: string | null }>();
+    body = await c.req.json<{ name?: string; picture?: string | null; phone?: string | null; address?: string | null }>();
   } catch {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
   }
 
   if (!body.name || typeof body.name !== 'string' || body.name.trim().length === 0) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'name is required' } }, 400);
+  }
+
+  if (body.picture !== undefined && body.picture !== null && typeof body.picture !== 'string') {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'picture must be a string or null' } }, 400);
   }
 
   if (body.phone !== undefined && body.phone !== null && typeof body.phone !== 'string') {
@@ -63,9 +67,10 @@ app.patch('/me', authMiddleware, csrfMiddleware, async (c) => {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'address must be a string or null' } }, 400);
   }
 
-  const profileUpdate: { name: string; phone?: string | null; address?: string | null } = {
+  const profileUpdate: { name: string; picture?: string | null; phone?: string | null; address?: string | null } = {
     name: body.name.trim(),
   };
+  if ('picture' in body) profileUpdate.picture = body.picture ? body.picture.trim() || null : null;
   if ('phone' in body) profileUpdate.phone = body.phone ? body.phone.trim() || null : null;
   if ('address' in body) profileUpdate.address = body.address ? body.address.trim() || null : null;
 

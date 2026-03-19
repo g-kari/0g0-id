@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { updateUserRole, deleteUser } from './users';
+import { updateUserRole, deleteUser, updateUserProfile } from './users';
 import type { User } from '../types';
 
 // D1Database のモック
@@ -47,6 +47,64 @@ describe('updateUserRole', () => {
     await updateUserRole(db, 'user-1', 'admin');
     expect(db.prepare).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE users SET role')
+    );
+  });
+});
+
+describe('updateUserProfile', () => {
+  it('名前のみ更新できる', async () => {
+    const updated = { ...baseUser, name: '新しい名前' };
+    const db = makeD1Mock(updated);
+    const user = await updateUserProfile(db, 'user-1', { name: '新しい名前' });
+    expect(user.name).toBe('新しい名前');
+  });
+
+  it('picture を更新できる', async () => {
+    const updated = { ...baseUser, picture: 'https://example.com/avatar.jpg' };
+    const db = makeD1Mock(updated);
+    const user = await updateUserProfile(db, 'user-1', {
+      name: 'Test User',
+      picture: 'https://example.com/avatar.jpg',
+    });
+    expect(user.picture).toBe('https://example.com/avatar.jpg');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('picture = ?');
+    expect(stmt.bind).toHaveBeenCalledWith('Test User', 'https://example.com/avatar.jpg', 'user-1');
+  });
+
+  it('picture を null にクリアできる', async () => {
+    const updated = { ...baseUser, picture: null };
+    const db = makeD1Mock(updated);
+    const user = await updateUserProfile(db, 'user-1', { name: 'Test User', picture: null });
+    expect(user.picture).toBeNull();
+  });
+
+  it('名前・picture・phone・address を同時に更新できる', async () => {
+    const updated = {
+      ...baseUser,
+      name: '更新名',
+      picture: 'https://img.example.com/a.png',
+      phone: '090-0000-0000',
+      address: '東京都',
+    };
+    const db = makeD1Mock(updated);
+    const user = await updateUserProfile(db, 'user-1', {
+      name: '更新名',
+      picture: 'https://img.example.com/a.png',
+      phone: '090-0000-0000',
+      address: '東京都',
+    });
+    expect(user.name).toBe('更新名');
+    expect(user.picture).toBe('https://img.example.com/a.png');
+    expect(user.phone).toBe('090-0000-0000');
+    expect(user.address).toBe('東京都');
+  });
+
+  it('ユーザーが見つからない場合はエラーを投げる', async () => {
+    const db = makeD1Mock(null);
+    await expect(updateUserProfile(db, 'not-exist', { name: 'Name' })).rejects.toThrow(
+      'User not found'
     );
   });
 });

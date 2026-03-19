@@ -91,6 +91,7 @@
     var nameEl = document.getElementById('profile-name');
     var emailEl = document.getElementById('profile-email');
     var nameInput = document.getElementById('name-input');
+    var pictureInput = document.getElementById('picture-input');
     var phoneInput = document.getElementById('phone-input');
     var addressInput = document.getElementById('address-input');
     var editForm = document.getElementById('edit-form');
@@ -136,6 +137,7 @@
         if (nameEl) nameEl.textContent = user.name;
         if (emailEl) emailEl.textContent = user.email;
         if (nameInput) nameInput.value = user.name;
+        if (pictureInput) pictureInput.value = user.picture || '';
         if (phoneInput) phoneInput.value = user.phone || '';
         if (addressInput) addressInput.value = user.address || '';
         if (loading) loading.style.display = 'none';
@@ -158,6 +160,7 @@
           saveBtn.textContent = '保存中...';
         }
 
+        var picture = pictureInput ? pictureInput.value.trim() || null : null;
         var phone = phoneInput ? phoneInput.value.trim() || null : null;
         var address = addressInput ? addressInput.value.trim() || null : null;
 
@@ -166,7 +169,7 @@
           method: 'PATCH',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name, phone: phone, address: address }),
+          body: JSON.stringify({ name: name, picture: picture, phone: phone, address: address }),
         })
           .then(function (res) { return res.json(); })
           .then(function (data) {
@@ -174,8 +177,13 @@
             if (data.error) {
               showToast('更新に失敗しました', 'error');
             } else {
+              if (avatar) {
+                avatar.src = data.data.picture || '';
+                avatar.style.display = data.data.picture ? 'block' : 'none';
+              }
               if (nameEl) nameEl.textContent = data.data.name;
               if (nameInput) nameInput.value = data.data.name;
+              if (pictureInput) pictureInput.value = data.data.picture || '';
               if (phoneInput) phoneInput.value = data.data.phone || '';
               if (addressInput) addressInput.value = data.data.address || '';
               showToast('プロフィールを更新しました', 'success');

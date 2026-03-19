@@ -366,42 +366,121 @@
     const tbody = document.getElementById('users-body');
 
     function showUsersError(msg) {
-      if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--error);">' + escHtml(msg) + '</td></tr>';
+      if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--error);">' + escHtml(msg) + '</td></tr>';
       showToast(msg, 'error');
     }
 
-    if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="padding:0;border:none;">' +
-      '<div class="loading-center">' + SPINNER_HTML + '<span>読み込み中...</span></div></td></tr>';
+    function loadUsers() {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="padding:0;border:none;">' +
+        '<div class="loading-center">' + SPINNER_HTML + '<span>読み込み中...</span></div></td></tr>';
 
-    showProgress();
-    fetch('/api/users', { credentials: 'same-origin' })
-      .then(function (r) {
-        if (r.status === 401) {
+      showProgress();
+      fetch('/api/users', { credentials: 'same-origin' })
+        .then(function (r) {
+          if (r.status === 401) {
+            hideProgress();
+            showUsersError('セッションが無効です。再度ログインしてください。');
+            setTimeout(function () { window.location.href = '/'; }, 1500);
+            return null;
+          }
+          return r.json();
+        })
+        .then(function (data) {
           hideProgress();
-          showUsersError('セッションが無効です。再度ログインしてください。');
-          setTimeout(function () { window.location.href = '/'; }, 1500);
-          return null;
-        }
-        return r.json();
-      })
-      .then(function (data) {
-        hideProgress();
-        if (!data) return;
-        if (data.error) { showUsersError('ユーザーの取得に失敗しました'); return; }
-        if (!data.data) { showUsersError('データの形式が不正です'); return; }
-        const rows = data.data.map(function (u) {
-          const badge = u.role === 'admin'
-            ? '<span class="badge badge-admin">admin</span>'
-            : '<span class="badge badge-user">user</span>';
-          return '<tr>' +
-            '<td>' + escHtml(u.name) + '</td>' +
-            '<td>' + escHtml(u.email) + '</td>' +
-            '<td>' + badge + '</td>' +
-            '<td>' + formatDate(u.created_at) + '</td>' +
-            '</tr>';
-        }).join('');
-        if (tbody) tbody.innerHTML = rows || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">ユーザーなし</td></tr>';
-      })
-      .catch(function () { hideProgress(); showUsersError('通信エラーが発生しました'); });
+          if (!data) return;
+          if (data.error) { showUsersError('ユーザーの取得に失敗しました'); return; }
+          if (!data.data) { showUsersError('データの形式が不正です'); return; }
+          const rows = data.data.map(function (u) {
+            const badge = u.role === 'admin'
+              ? '<span class="badge badge-admin">admin</span>'
+              : '<span class="badge badge-user">user</span>';
+            const roleLabel = u.role === 'admin' ? 'userへ変更' : 'adminへ変更';
+            const newRole = u.role === 'admin' ? 'user' : 'admin';
+            return '<tr>' +
+              '<td>' + escHtml(u.name) + '</td>' +
+              '<td>' + escHtml(u.email) + '</td>' +
+              '<td>' + badge + '</td>' +
+              '<td>' + formatDate(u.created_at) + '</td>' +
+              '<td style="white-space:nowrap;">' +
+                '<button class="btn btn-sm" style="background:var(--accent);color:#fff;margin-right:0.25rem;" ' +
+                  'data-role-id="' + escHtml(u.id) + '" data-role-new="' + newRole + '" data-role-name="' + escHtml(u.name) + '">' +
+                  roleLabel +
+                '</button>' +
+                '<button class="btn btn-danger btn-sm" data-del-id="' + escHtml(u.id) + '" data-del-name="' + escHtml(u.name) + '">削除</button>' +
+              '</td>' +
+              '</tr>';
+          }).join('');
+          if (tbody) tbody.innerHTML = rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">ユーザーなし</td></tr>';
+
+          // ロール変更ボタン
+          if (tbody) {
+            tbody.querySelectorAll('[data-role-id]').forEach(function (btn) {
+              btn.addEventListener('click', function () {
+                var newRole = btn.dataset.roleNew;
+                var name = btn.dataset.roleName;
+                if (!confirm('「' + name + '」のロールを ' + newRole + ' に変更しますか？')) return;
+                btn.disabled = true;
+                showProgress();
+                fetch('/api/users/' + btn.dataset.roleId + '/role', {
+                  method: 'PATCH',
+                  credentials: 'same-origin',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ role: newRole }),
+                })
+                  .then(function (r) { return r.json(); })
+                  .then(function (data) {
+                    hideProgress();
+                    if (data.error) {
+                      showToast('ロール変更に失敗しました: ' + (data.error.message || ''), 'error');
+                      btn.disabled = false;
+                    } else {
+                      showToast('ロールを ' + newRole + ' に変更しました', 'success');
+                      loadUsers();
+                    }
+                  })
+                  .catch(function () {
+                    hideProgress();
+                    showToast('通信エラーが発生しました', 'error');
+                    btn.disabled = false;
+                  });
+              });
+            });
+
+            // 削除ボタン
+            tbody.querySelectorAll('[data-del-id]').forEach(function (btn) {
+              btn.addEventListener('click', function () {
+                var name = btn.dataset.delName;
+                if (!confirm('「' + name + '」を削除しますか？この操作は取り消せません。')) return;
+                btn.disabled = true;
+                showProgress();
+                fetch('/api/users/' + btn.dataset.delId, {
+                  method: 'DELETE',
+                  credentials: 'same-origin',
+                })
+                  .then(function (r) {
+                    hideProgress();
+                    if (r.ok || r.status === 204) {
+                      showToast('ユーザーを削除しました', 'success');
+                      loadUsers();
+                    } else {
+                      return r.json().then(function (data) {
+                        showToast('削除に失敗しました: ' + (data.error?.message || ''), 'error');
+                        btn.disabled = false;
+                      });
+                    }
+                  })
+                  .catch(function () {
+                    hideProgress();
+                    showToast('通信エラーが発生しました', 'error');
+                    btn.disabled = false;
+                  });
+              });
+            });
+          }
+        })
+        .catch(function () { hideProgress(); showUsersError('通信エラーが発生しました'); });
+    }
+
+    loadUsers();
   }
 })();

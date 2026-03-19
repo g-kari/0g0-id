@@ -205,17 +205,25 @@ export async function updateUserName(db: D1Database, userId: string, name: strin
 export async function updateUserProfile(
   db: D1Database,
   userId: string,
-  params: { name: string; phone?: string | null; address?: string | null }
+  params: { name: string; picture?: string | null; phone?: string | null; address?: string | null }
 ): Promise<User> {
   const setClauses: string[] = ['name = ?', "updated_at = datetime('now')"];
   const values: unknown[] = [params.name];
 
+  if ('picture' in params) {
+    setClauses.splice(1, 0, 'picture = ?');
+    values.push(params.picture ?? null);
+  }
   if ('phone' in params) {
-    setClauses.splice(1, 0, 'phone = ?');
+    const idx = 'picture' in params ? 2 : 1;
+    setClauses.splice(idx, 0, 'phone = ?');
     values.push(params.phone ?? null);
   }
   if ('address' in params) {
-    setClauses.splice('phone' in params ? 2 : 1, 0, 'address = ?');
+    let idx = 1;
+    if ('picture' in params) idx++;
+    if ('phone' in params) idx++;
+    setClauses.splice(idx, 0, 'address = ?');
     values.push(params.address ?? null);
   }
   values.push(userId);
