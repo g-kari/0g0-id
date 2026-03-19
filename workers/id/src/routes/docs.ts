@@ -339,6 +339,115 @@ const INTERNAL_OPENAPI = {
         },
       },
     },
+    '/api/users/me/providers': {
+      get: {
+        tags: ['ユーザー API'],
+        summary: '連携済みSNSプロバイダー一覧取得',
+        description: 'ユーザーに連携済み・未連携のSNSプロバイダー一覧を返す。',
+        security: [{ BearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'プロバイダー一覧',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          provider: { type: 'string', enum: ['google', 'line', 'twitch', 'github', 'x'] },
+                          connected: { type: 'boolean' },
+                        },
+                        required: ['provider', 'connected'],
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'UNAUTHORIZED' },
+        },
+      },
+    },
+    '/api/users/me/providers/{provider}': {
+      delete: {
+        tags: ['ユーザー API'],
+        summary: 'SNSプロバイダー連携解除',
+        description: '指定SNSプロバイダーの連携を解除する。最後の連携プロバイダーは解除不可。Origin/RefererヘッダーによるCSRF検証あり。',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'provider',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', enum: ['google', 'line', 'twitch', 'github', 'x'] },
+            description: 'SNSプロバイダー名',
+          },
+        ],
+        responses: {
+          '204': { description: '連携解除成功' },
+          '400': { description: 'BAD_REQUEST — 不正なプロバイダー名' },
+          '401': { description: 'UNAUTHORIZED' },
+          '403': { description: 'FORBIDDEN — オリジン不正' },
+          '404': { description: 'NOT_FOUND — プロバイダー未連携' },
+          '409': { description: 'CONFLICT — 最後のプロバイダーは解除不可' },
+        },
+      },
+    },
+    '/api/users/{id}/role': {
+      patch: {
+        tags: ['ユーザー API (管理者)'],
+        summary: 'ユーザーロール変更',
+        description: '指定ユーザーのロールを変更する（管理者専用）。変更後は既存トークンを即時失効。自分自身のロール変更は不可。',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  role: { type: 'string', enum: ['user', 'admin'], description: '新しいロール' },
+                },
+                required: ['role'],
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'ロール変更成功' },
+          '400': { description: 'BAD_REQUEST — 不正なロール値' },
+          '401': { description: 'UNAUTHORIZED' },
+          '403': { description: 'FORBIDDEN — 管理者権限なし、または自分自身のロール変更' },
+          '404': { description: 'NOT_FOUND — ユーザー未存在' },
+        },
+      },
+    },
+    '/api/users/{id}': {
+      delete: {
+        tags: ['ユーザー API (管理者)'],
+        summary: 'ユーザー削除',
+        description: '指定ユーザーを削除する（管理者専用）。自分自身の削除は不可。サービス所有者は所有権移譲後でないと削除不可。',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '204': { description: '削除成功' },
+          '401': { description: 'UNAUTHORIZED' },
+          '403': { description: 'FORBIDDEN — 管理者権限なし、または自分自身の削除' },
+          '404': { description: 'NOT_FOUND — ユーザー未存在' },
+          '409': { description: 'CONFLICT — サービス所有者は削除不可' },
+        },
+      },
+    },
     '/api/services': {
       get: {
         tags: ['サービス管理 API (管理者)'],
