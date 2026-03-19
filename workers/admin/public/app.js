@@ -267,7 +267,7 @@
               '<td class="mono">' + escHtml(s.client_id) + '</td>' +
               '<td>' + formatDate(s.created_at) + '</td>' +
               '<td style="white-space:nowrap;">' +
-                '<button class="btn btn-sm" style="background:var(--accent);color:#fff;margin-right:0.25rem;" data-uri-service-id="' + escHtml(s.id) + '" data-uri-service-name="' + escHtml(s.name) + '">URI管理</button>' +
+                '<button class="btn btn-accent btn-sm mr-1" data-uri-service-id="' + escHtml(s.id) + '" data-uri-service-name="' + escHtml(s.name) + '">URI管理</button>' +
                 '<button class="btn btn-danger btn-sm" data-id="' + escHtml(s.id) + '">削除</button>' +
               '</td>' +
               '</tr>';
@@ -402,7 +402,7 @@
               '<td>' + badge + '</td>' +
               '<td>' + formatDate(u.created_at) + '</td>' +
               '<td style="white-space:nowrap;">' +
-                '<button class="btn btn-sm" style="background:var(--accent);color:#fff;margin-right:0.25rem;" ' +
+                '<button class="btn btn-accent btn-sm mr-1" ' +
                   'data-role-id="' + escHtml(u.id) + '" data-role-new="' + newRole + '" data-role-name="' + escHtml(u.name) + '">' +
                   roleLabel +
                 '</button>' +

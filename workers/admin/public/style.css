@@ -109,6 +109,11 @@ h2 { font-size: 1.125rem; margin-bottom: 1rem; }
   margin-bottom: 1.5rem;
 }
 
+/* Nav icons */
+.nav-icon { flex-shrink: 0; opacity: 0.7; transition: opacity 0.15s; }
+.sidebar-nav a:hover .nav-icon,
+.sidebar-nav a.active .nav-icon { opacity: 1; }
+
 /* Buttons */
 .btn {
   display: inline-flex;
@@ -128,6 +133,8 @@ h2 { font-size: 1.125rem; margin-bottom: 1rem; }
 .btn:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn-primary { background: var(--primary); color: var(--white); }
 .btn-danger { background: var(--error); color: var(--white); }
+.btn-accent { background: var(--accent); color: #fff; }
+.mr-1 { margin-right: 0.25rem; }
 .btn-sm { padding: 0.25rem 0.625rem; font-size: 0.8125rem; }
 .btn-block { display: flex; width: 100%; justify-content: center; }
 
@@ -202,6 +209,13 @@ tr:hover td { background: var(--bg); }
   word-break: break-all;
   margin: 0.5rem 0;
   color: var(--error);
+}
+
+/* Metric icons */
+.metric-icon {
+  color: var(--accent);
+  margin-bottom: 0.625rem;
+  opacity: 0.85;
 }
 
 /* Metrics */

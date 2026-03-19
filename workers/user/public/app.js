@@ -89,6 +89,7 @@
     var card = document.getElementById('profile-card');
     var loading = document.getElementById('loading');
     var avatar = document.getElementById('avatar');
+    var avatarPlaceholder = document.getElementById('avatar-placeholder');
     var nameEl = document.getElementById('profile-name');
     var emailEl = document.getElementById('profile-email');
     var nameInput = document.getElementById('name-input');
@@ -132,8 +133,18 @@
           return;
         }
         if (avatar) {
-          avatar.src = user.picture || '';
-          avatar.style.display = user.picture ? 'block' : 'none';
+          if (user.picture) {
+            avatar.src = user.picture;
+            avatar.style.display = 'block';
+            if (avatarPlaceholder) avatarPlaceholder.style.display = 'none';
+          } else {
+            avatar.style.display = 'none';
+            if (avatarPlaceholder) {
+              var initials = (user.name || '?').charAt(0).toUpperCase();
+              avatarPlaceholder.textContent = initials;
+              avatarPlaceholder.style.display = 'flex';
+            }
+          }
         }
         if (nameEl) nameEl.textContent = user.name;
         if (emailEl) emailEl.textContent = user.email;
@@ -179,8 +190,18 @@
               showToast('更新に失敗しました', 'error');
             } else {
               if (avatar) {
-                avatar.src = data.data.picture || '';
-                avatar.style.display = data.data.picture ? 'block' : 'none';
+                if (data.data.picture) {
+                  avatar.src = data.data.picture;
+                  avatar.style.display = 'block';
+                  if (avatarPlaceholder) avatarPlaceholder.style.display = 'none';
+                } else {
+                  avatar.style.display = 'none';
+                  if (avatarPlaceholder) {
+                    var initials = (data.data.name || '?').charAt(0).toUpperCase();
+                    avatarPlaceholder.textContent = initials;
+                    avatarPlaceholder.style.display = 'flex';
+                  }
+                }
               }
               if (nameEl) nameEl.textContent = data.data.name;
               if (nameInput) nameInput.value = data.data.name;

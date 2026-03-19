@@ -11,9 +11,14 @@
 <body>
   <div class="container">
     <div class="card" id="profile-card" style="display:none;">
-      <img id="avatar" class="avatar" src="" alt="プロフィール画像" width="64" height="64">
-      <p class="profile-name" id="profile-name"></p>
-      <p class="profile-email" id="profile-email"></p>
+      <div class="profile-header">
+        <img id="avatar" class="avatar" src="" alt="プロフィール画像" width="64" height="64" style="display:none;">
+        <div id="avatar-placeholder" class="avatar-placeholder" aria-hidden="true"></div>
+        <div class="profile-info">
+          <p class="profile-name" id="profile-name"></p>
+          <p class="profile-email" id="profile-email"></p>
+        </div>
+      </div>
 
       <hr class="divider">
 
