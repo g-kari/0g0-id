@@ -368,3 +368,76 @@ export async function countUsers(db: D1Database): Promise<number> {
     .first<{ count: number }>();
   return result?.count ?? 0;
 }
+
+// SNSプロバイダー管理
+
+type OAuthProviderKey = 'google' | 'line' | 'twitch' | 'github' | 'x';
+
+const PROVIDER_COLUMN: Record<OAuthProviderKey, string> = {
+  google: 'google_sub',
+  line: 'line_sub',
+  twitch: 'twitch_sub',
+  github: 'github_sub',
+  x: 'x_sub',
+};
+
+export interface ProviderStatus {
+  provider: OAuthProviderKey;
+  connected: boolean;
+}
+
+export async function getUserProviders(db: D1Database, userId: string): Promise<ProviderStatus[]> {
+  const user = await findUserById(db, userId);
+  if (!user) throw new Error('User not found');
+  const providers: OAuthProviderKey[] = ['google', 'line', 'twitch', 'github', 'x'];
+  return providers.map((p) => ({
+    provider: p,
+    connected: user[PROVIDER_COLUMN[p] as keyof User] !== null,
+  }));
+}
+
+export async function unlinkProvider(
+  db: D1Database,
+  userId: string,
+  provider: OAuthProviderKey
+): Promise<void> {
+  const col = PROVIDER_COLUMN[provider];
+  const result = await db
+    .prepare(`UPDATE users SET ${col} = NULL, updated_at = datetime('now') WHERE id = ?`)
+    .bind(userId)
+    .run();
+  if ((result.meta.changes ?? 0) === 0) throw new Error('User not found');
+}
+
+export async function linkProvider(
+  db: D1Database,
+  userId: string,
+  provider: OAuthProviderKey,
+  sub: string
+): Promise<User> {
+  // 他ユーザーが同サブIDを使用中か確認
+  const findBySubFns: Record<
+    OAuthProviderKey,
+    (db: D1Database, sub: string) => Promise<User | null>
+  > = {
+    google: findUserByGoogleSub,
+    line: findUserByLineSub,
+    twitch: findUserByTwitchSub,
+    github: findUserByGithubSub,
+    x: findUserByXSub,
+  };
+  const existing = await findBySubFns[provider](db, sub);
+  if (existing && existing.id !== userId) {
+    throw new Error('PROVIDER_ALREADY_LINKED');
+  }
+
+  const col = PROVIDER_COLUMN[provider];
+  const user = await db
+    .prepare(
+      `UPDATE users SET ${col} = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
+    )
+    .bind(sub, userId)
+    .first<User>();
+  if (!user) throw new Error('User not found');
+  return user;
+}

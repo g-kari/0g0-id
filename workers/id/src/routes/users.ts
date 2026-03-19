@@ -10,6 +10,8 @@ import {
   revokeUserServiceTokens,
   revokeUserTokens,
   countServicesByOwner,
+  getUserProviders,
+  unlinkProvider,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
@@ -99,6 +101,42 @@ app.get('/me/connections', authMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const connections = await listUserConnections(c.env.DB, tokenUser.sub);
   return c.json({ data: connections });
+});
+
+// GET /api/users/me/providers — 連携済みSNSプロバイダー一覧
+app.get('/me/providers', authMiddleware, async (c) => {
+  const tokenUser = c.get('user');
+  const providers = await getUserProviders(c.env.DB, tokenUser.sub);
+  return c.json({ data: providers });
+});
+
+// DELETE /api/users/me/providers/:provider — SNSプロバイダー連携解除
+app.delete('/me/providers/:provider', authMiddleware, csrfMiddleware, async (c) => {
+  const tokenUser = c.get('user');
+  const providerParam = c.req.param('provider');
+  const validProviders = ['google', 'line', 'twitch', 'github', 'x'] as const;
+  if (!validProviders.includes(providerParam as (typeof validProviders)[number])) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid provider' } }, 400);
+  }
+  const provider = providerParam as (typeof validProviders)[number];
+
+  // 最後のプロバイダーは解除不可（ログインできなくなる）、また未連携プロバイダーのチェックも実施
+  const providers = await getUserProviders(c.env.DB, tokenUser.sub);
+  const targetProvider = providers.find((p) => p.provider === provider);
+  if (!targetProvider?.connected) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Provider not connected' } }, 404);
+  }
+  const connectedCount = providers.filter((p) => p.connected).length;
+  if (connectedCount <= 1) {
+    return c.json(
+      { error: { code: 'LAST_PROVIDER', message: 'Cannot unlink the last provider' } },
+      409
+    );
+  }
+
+  await unlinkProvider(c.env.DB, tokenUser.sub, provider);
+
+  return c.body(null, 204);
 });
 
 // DELETE /api/users/me/connections/:serviceId

@@ -4,6 +4,7 @@ import { logger } from '@0g0-id/shared';
 import authRoutes from './routes/auth';
 import profileRoutes from './routes/profile';
 import connectionsRoutes from './routes/connections';
+import providersRoutes from './routes/providers';
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
@@ -12,6 +13,7 @@ app.use('*', logger());
 app.route('/auth', authRoutes);
 app.route('/api/me', profileRoutes);
 app.route('/api/connections', connectionsRoutes);
+app.route('/api/providers', providersRoutes);
 
 app.get('/api/health', (c) => {
   return c.json({ status: 'ok', worker: 'user', timestamp: new Date().toISOString() });

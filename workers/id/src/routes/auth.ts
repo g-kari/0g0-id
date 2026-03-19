@@ -37,6 +37,7 @@ import {
   countAdminUsers,
   createAuthCode,
   findAndConsumeAuthCode,
+  linkProvider,
 } from '@0g0-id/shared';
 import type { IdpEnv } from '@0g0-id/shared';
 
@@ -70,6 +71,7 @@ app.get('/login', async (c) => {
   const redirectTo = c.req.query('redirect_to');
   const bffState = c.req.query('state');
   const providerParam = c.req.query('provider') ?? 'google';
+  const linkUserId = c.req.query('link_user_id');
 
   if (!redirectTo || !bffState) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Missing required parameters' } }, 400);
@@ -130,6 +132,7 @@ app.get('/login', async (c) => {
     bffState,
     redirectTo,
     provider,
+    ...(linkUserId ? { linkUserId } : {}),
   });
   setSecureCookie(c, STATE_COOKIE, btoa(encodeURIComponent(stateData)), 600); // 10分
   setSecureCookie(c, PKCE_COOKIE, idCodeVerifier, 600);
@@ -213,6 +216,7 @@ app.get('/callback', async (c) => {
     bffState: string;
     redirectTo: string;
     provider: OAuthProvider;
+    linkUserId?: string;
   };
   try {
     stateData = JSON.parse(decodeURIComponent(atob(stateCookieRaw)));
@@ -261,14 +265,28 @@ app.get('/callback', async (c) => {
       return c.json({ error: { code: 'UNVERIFIED_EMAIL', message: 'Email not verified' } }, 400);
     }
 
-    user = await upsertUser(c.env.DB, {
-      id: userId,
-      googleSub: userInfo.sub,
-      email: userInfo.email,
-      emailVerified: userInfo.email_verified,
-      name: userInfo.name,
-      picture: userInfo.picture ?? null,
-    });
+    if (stateData.linkUserId) {
+      try {
+        user = await linkProvider(c.env.DB, stateData.linkUserId, 'google', userInfo.sub);
+      } catch (err) {
+        if (err instanceof Error && err.message === 'PROVIDER_ALREADY_LINKED') {
+          return c.json(
+            { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This Google account is already linked to another user' } },
+            409
+          );
+        }
+        throw err;
+      }
+    } else {
+      user = await upsertUser(c.env.DB, {
+        id: userId,
+        googleSub: userInfo.sub,
+        email: userInfo.email,
+        emailVerified: userInfo.email_verified,
+        name: userInfo.name,
+        picture: userInfo.picture ?? null,
+      });
+    }
   } else if (provider === 'line') {
     if (!c.env.LINE_CLIENT_ID || !c.env.LINE_CLIENT_SECRET) {
       return c.json(
@@ -309,14 +327,28 @@ app.get('/callback', async (c) => {
     const isPlaceholderEmail = !userInfo.email;
     const email = userInfo.email ?? `line_${userInfo.sub}@line.placeholder`;
 
-    user = await upsertLineUser(c.env.DB, {
-      id: userId,
-      lineSub: userInfo.sub,
-      email,
-      isPlaceholderEmail,
-      name: userInfo.name,
-      picture: userInfo.picture ?? null,
-    });
+    if (stateData.linkUserId) {
+      try {
+        user = await linkProvider(c.env.DB, stateData.linkUserId, 'line', userInfo.sub);
+      } catch (err) {
+        if (err instanceof Error && err.message === 'PROVIDER_ALREADY_LINKED') {
+          return c.json(
+            { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This LINE account is already linked to another user' } },
+            409
+          );
+        }
+        throw err;
+      }
+    } else {
+      user = await upsertLineUser(c.env.DB, {
+        id: userId,
+        lineSub: userInfo.sub,
+        email,
+        isPlaceholderEmail,
+        name: userInfo.name,
+        picture: userInfo.picture ?? null,
+      });
+    }
   } else if (provider === 'twitch') {
     if (!c.env.TWITCH_CLIENT_ID || !c.env.TWITCH_CLIENT_SECRET) {
       return c.json(
@@ -359,15 +391,29 @@ app.get('/callback', async (c) => {
     const isPlaceholderEmail = !userInfo.email;
     const email = userInfo.email ?? `twitch_${userInfo.sub}@twitch.placeholder`;
 
-    user = await upsertTwitchUser(c.env.DB, {
-      id: userId,
-      twitchSub: userInfo.sub,
-      email,
-      isPlaceholderEmail,
-      emailVerified: userInfo.email_verified ?? false,
-      name: userInfo.preferred_username,
-      picture: userInfo.picture ?? null,
-    });
+    if (stateData.linkUserId) {
+      try {
+        user = await linkProvider(c.env.DB, stateData.linkUserId, 'twitch', userInfo.sub);
+      } catch (err) {
+        if (err instanceof Error && err.message === 'PROVIDER_ALREADY_LINKED') {
+          return c.json(
+            { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This Twitch account is already linked to another user' } },
+            409
+          );
+        }
+        throw err;
+      }
+    } else {
+      user = await upsertTwitchUser(c.env.DB, {
+        id: userId,
+        twitchSub: userInfo.sub,
+        email,
+        isPlaceholderEmail,
+        emailVerified: userInfo.email_verified ?? false,
+        name: userInfo.preferred_username,
+        picture: userInfo.picture ?? null,
+      });
+    }
   } else if (provider === 'github') {
     if (!c.env.GITHUB_CLIENT_ID || !c.env.GITHUB_CLIENT_SECRET) {
       return c.json(
@@ -418,14 +464,28 @@ app.get('/callback', async (c) => {
     const isPlaceholderEmail = !email;
     const finalEmail = email ?? `github_${githubSub}@github.placeholder`;
 
-    user = await upsertGithubUser(c.env.DB, {
-      id: userId,
-      githubSub,
-      email: finalEmail,
-      isPlaceholderEmail,
-      name: githubUser.name ?? githubUser.login,
-      picture: githubUser.avatar_url,
-    });
+    if (stateData.linkUserId) {
+      try {
+        user = await linkProvider(c.env.DB, stateData.linkUserId, 'github', githubSub);
+      } catch (err) {
+        if (err instanceof Error && err.message === 'PROVIDER_ALREADY_LINKED') {
+          return c.json(
+            { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This GitHub account is already linked to another user' } },
+            409
+          );
+        }
+        throw err;
+      }
+    } else {
+      user = await upsertGithubUser(c.env.DB, {
+        id: userId,
+        githubSub,
+        email: finalEmail,
+        isPlaceholderEmail,
+        name: githubUser.name ?? githubUser.login,
+        picture: githubUser.avatar_url,
+      });
+    }
   } else if (provider === 'x') {
     if (!c.env.X_CLIENT_ID || !c.env.X_CLIENT_SECRET) {
       return c.json(
@@ -463,13 +523,27 @@ app.get('/callback', async (c) => {
     // XはメールアドレスAPIが有料プランのため仮メールを使用
     const xEmail = `x_${xUser.id}@x.placeholder`;
 
-    user = await upsertXUser(c.env.DB, {
-      id: userId,
-      xSub: xUser.id,
-      email: xEmail,
-      name: xUser.name ?? xUser.username,
-      picture: xUser.profile_image_url ?? null,
-    });
+    if (stateData.linkUserId) {
+      try {
+        user = await linkProvider(c.env.DB, stateData.linkUserId, 'x', xUser.id);
+      } catch (err) {
+        if (err instanceof Error && err.message === 'PROVIDER_ALREADY_LINKED') {
+          return c.json(
+            { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This X account is already linked to another user' } },
+            409
+          );
+        }
+        throw err;
+      }
+    } else {
+      user = await upsertXUser(c.env.DB, {
+        id: userId,
+        xSub: xUser.id,
+        email: xEmail,
+        name: xUser.name ?? xUser.username,
+        picture: xUser.profile_image_url ?? null,
+      });
+    }
   } else {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Unknown provider' } }, 400);
   }

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import { generateToken } from '@0g0-id/shared';
+import { generateToken, parseSession } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 
 const app = new Hono<{ Bindings: BffEnv }>();
@@ -11,7 +11,7 @@ const STATE_COOKIE = '__Host-user-oauth-state';
 // GET /auth/login
 app.get('/login', async (c) => {
   const provider = c.req.query('provider') ?? 'google';
-  const validProviders = ['google', 'line', 'twitch'];
+  const validProviders = ['google', 'line', 'twitch', 'github', 'x'];
   if (!validProviders.includes(provider)) {
     return c.redirect('/?error=invalid_provider');
   }
@@ -123,6 +123,40 @@ app.post('/logout', async (c) => {
 
   deleteCookie(c, SESSION_COOKIE, { path: '/', secure: true });
   return c.redirect('/');
+});
+
+// GET /auth/link?provider=xxx — ログイン済みユーザーがSNSプロバイダー連携を開始
+app.get('/link', async (c) => {
+  const provider = c.req.query('provider') ?? 'google';
+  const validProviders = ['google', 'line', 'twitch', 'github', 'x'];
+  if (!validProviders.includes(provider)) {
+    return c.redirect('/profile.html?error=invalid_provider');
+  }
+
+  // ログイン済みセッションからユーザーIDを取得
+  const session = parseSession(getCookie(c, SESSION_COOKIE));
+  if (!session) {
+    return c.redirect('/?error=not_authenticated');
+  }
+
+  const state = generateToken(16);
+  const callbackUrl = `${new URL(c.req.url).origin}/auth/callback`;
+
+  setCookie(c, STATE_COOKIE, state, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: 600,
+  });
+
+  const loginUrl = new URL(`${c.env.IDP_ORIGIN}/auth/login`);
+  loginUrl.searchParams.set('redirect_to', callbackUrl);
+  loginUrl.searchParams.set('state', state);
+  loginUrl.searchParams.set('provider', provider);
+  loginUrl.searchParams.set('link_user_id', session.user.id);
+
+  return c.redirect(loginUrl.toString());
 });
 
 export default app;

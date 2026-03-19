@@ -13,6 +13,8 @@ vi.mock('@0g0-id/shared', () => ({
   revokeUserServiceTokens: vi.fn(),
   revokeUserTokens: vi.fn(),
   countServicesByOwner: vi.fn(),
+  getUserProviders: vi.fn(),
+  unlinkProvider: vi.fn(),
   verifyAccessToken: vi.fn(),
 }));
 
@@ -27,8 +29,11 @@ import {
   revokeUserServiceTokens,
   revokeUserTokens,
   countServicesByOwner,
+  getUserProviders,
+  unlinkProvider,
   verifyAccessToken,
 } from '@0g0-id/shared';
+import type { ProviderStatus } from '@0g0-id/shared';
 
 import usersRoutes from './users';
 
@@ -341,6 +346,119 @@ describe('DELETE /api/users/me/connections/:serviceId', () => {
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('NOT_FOUND');
+  });
+});
+
+// ===== GET /api/users/me/providers =====
+describe('GET /api/users/me/providers', () => {
+  const app = buildApp();
+  const mockProviders: ProviderStatus[] = [
+    { provider: 'google', connected: true },
+    { provider: 'line', connected: false },
+    { provider: 'twitch', connected: false },
+    { provider: 'github', connected: true },
+    { provider: 'x', connected: false },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(getUserProviders).mockResolvedValue(mockProviders);
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/providers', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('連携済みプロバイダー一覧を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/providers');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: typeof mockProviders }>();
+    expect(body.data).toHaveLength(5);
+    expect(body.data.find((p) => p.provider === 'google')?.connected).toBe(true);
+    expect(body.data.find((p) => p.provider === 'line')?.connected).toBe(false);
+  });
+});
+
+// ===== DELETE /api/users/me/providers/:provider =====
+describe('DELETE /api/users/me/providers/:provider', () => {
+  const app = buildApp();
+  const twoProviders: ProviderStatus[] = [
+    { provider: 'google', connected: true },
+    { provider: 'line', connected: false },
+    { provider: 'twitch', connected: false },
+    { provider: 'github', connected: true },
+    { provider: 'x', connected: false },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(getUserProviders).mockResolvedValue(twoProviders);
+    vi.mocked(unlinkProvider).mockResolvedValue();
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/providers/github', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+      withAuth: false,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('Originヘッダーなし（CSRF）→ 403を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/providers/github', {
+      method: 'DELETE',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('無効なプロバイダー → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/providers/invalid', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('最後のプロバイダーの解除 → 409を返す', async () => {
+    vi.mocked(getUserProviders).mockResolvedValue([
+      { provider: 'google' as ProviderStatus['provider'], connected: true },
+      { provider: 'line' as ProviderStatus['provider'], connected: false },
+      { provider: 'twitch' as ProviderStatus['provider'], connected: false },
+      { provider: 'github' as ProviderStatus['provider'], connected: false },
+      { provider: 'x' as ProviderStatus['provider'], connected: false },
+    ]);
+    const res = await sendRequest(app, '/api/users/me/providers/google', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('LAST_PROVIDER');
+  });
+
+  it('未連携のプロバイダーを解除しようとした場合 → 404を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/providers/line', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('プロバイダー連携を解除して204を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/providers/github', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(204);
+    expect(unlinkProvider).toHaveBeenCalledWith(mockEnv.DB, mockUserPayload.sub, 'github');
   });
 });
 
