@@ -62,7 +62,7 @@ app.delete('/:id', async (c) => {
     c,
     SESSION_COOKIE,
     `${c.env.IDP_ORIGIN}/api/services/${c.req.param('id')}`,
-    { method: 'DELETE' }
+    { method: 'DELETE', headers: { Origin: c.env.IDP_ORIGIN } }
   );
   return proxyResponse(res);
 });
@@ -108,7 +108,7 @@ app.delete('/:id/redirect-uris/:uriId', async (c) => {
     c,
     SESSION_COOKIE,
     `${c.env.IDP_ORIGIN}/api/services/${c.req.param('id')}/redirect-uris/${c.req.param('uriId')}`,
-    { method: 'DELETE' }
+    { method: 'DELETE', headers: { Origin: c.env.IDP_ORIGIN } }
   );
   return proxyResponse(res);
 });

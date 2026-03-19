@@ -16,6 +16,7 @@ import {
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
 import { adminMiddleware } from '../middleware/admin';
+import { csrfMiddleware } from '../middleware/csrf';
 
 type Variables = { user: TokenPayload };
 
@@ -41,7 +42,7 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
 });
 
 // POST /api/services
-app.post('/', authMiddleware, adminMiddleware, async (c) => {
+app.post('/', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   let body: { name?: string; allowed_scopes?: string[] };
   try {
     body = await c.req.json<{ name?: string; allowed_scopes?: string[] }>();
@@ -85,7 +86,7 @@ app.post('/', authMiddleware, adminMiddleware, async (c) => {
 });
 
 // PATCH /api/services/:id — allowed_scopesの更新
-app.patch('/:id', authMiddleware, adminMiddleware, async (c) => {
+app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const serviceId = c.req.param('id');
 
   let body: { allowed_scopes?: string[] };
@@ -141,7 +142,7 @@ app.patch('/:id', authMiddleware, adminMiddleware, async (c) => {
 });
 
 // DELETE /api/services/:id
-app.delete('/:id', authMiddleware, adminMiddleware, async (c) => {
+app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const serviceId = c.req.param('id');
   const service = await findServiceById(c.env.DB, serviceId);
   if (!service) {
@@ -165,7 +166,7 @@ app.get('/:id/redirect-uris', authMiddleware, adminMiddleware, async (c) => {
 });
 
 // POST /api/services/:id/redirect-uris
-app.post('/:id/redirect-uris', authMiddleware, adminMiddleware, async (c) => {
+app.post('/:id/redirect-uris', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const serviceId = c.req.param('id');
   const service = await findServiceById(c.env.DB, serviceId);
   if (!service) {
@@ -201,7 +202,7 @@ app.post('/:id/redirect-uris', authMiddleware, adminMiddleware, async (c) => {
 });
 
 // DELETE /api/services/:id/redirect-uris/:uriId
-app.delete('/:id/redirect-uris/:uriId', authMiddleware, adminMiddleware, async (c) => {
+app.delete('/:id/redirect-uris/:uriId', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const serviceId = c.req.param('id');
   const uriId = c.req.param('uriId');
 

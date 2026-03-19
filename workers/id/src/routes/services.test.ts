@@ -195,10 +195,19 @@ describe('POST /api/services', () => {
     expect(res.status).toBe(403);
   });
 
+  it('Originヘッダーなし → 403を返す', async () => {
+    const res = await sendRequest(app, '/api/services', {
+      method: 'POST',
+      body: { name: 'New Service' },
+    });
+    expect(res.status).toBe(403);
+  });
+
   it('サービスを作成して201とclient_secretを返す', async () => {
     const res = await sendRequest(app, '/api/services', {
       method: 'POST',
       body: { name: 'New Service' },
+      origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(201);
     const body = await res.json<{ data: Record<string, unknown> }>();
@@ -210,6 +219,7 @@ describe('POST /api/services', () => {
     const res = await sendRequest(app, '/api/services', {
       method: 'POST',
       body: { name: 'New Service' },
+      origin: 'https://admin.0g0.xyz',
     });
     const body = await res.json<{ data: Record<string, unknown> }>();
     expect(body.data).toHaveProperty('client_secret');
@@ -221,6 +231,7 @@ describe('POST /api/services', () => {
     const res = await sendRequest(app, '/api/services', {
       method: 'POST',
       body: {},
+      origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -231,6 +242,7 @@ describe('POST /api/services', () => {
     const res = await sendRequest(app, '/api/services', {
       method: 'POST',
       body: { name: '' },
+      origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(400);
   });
@@ -242,6 +254,7 @@ describe('POST /api/services', () => {
         headers: {
           Authorization: 'Bearer mock-token',
           'Content-Type': 'application/json',
+          Origin: 'https://admin.0g0.xyz',
         },
         body: 'invalid-json',
       }),
@@ -255,6 +268,7 @@ describe('POST /api/services', () => {
     const res = await sendRequest(app, '/api/services', {
       method: 'POST',
       body: { name: 'New Service', allowed_scopes: ['profile', 'email', 'phone'] },
+      origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(201);
     expect(vi.mocked(createService)).toHaveBeenCalledWith(
@@ -269,6 +283,7 @@ describe('POST /api/services', () => {
     const res = await sendRequest(app, '/api/services', {
       method: 'POST',
       body: { name: 'New Service' },
+      origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(201);
     expect(vi.mocked(createService)).toHaveBeenCalledWith(
@@ -306,6 +321,7 @@ describe('PATCH /api/services/:id', () => {
     const res = await sendRequest(app, '/api/services/service-1', {
       method: 'PATCH',
       body: { allowed_scopes: ['profile', 'email', 'phone'] },
+      origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(200);
     const body = await res.json<{ data: Record<string, unknown> }>();
@@ -316,6 +332,7 @@ describe('PATCH /api/services/:id', () => {
     const res = await sendRequest(app, '/api/services/service-1', {
       method: 'PATCH',
       body: { allowed_scopes: 'profile' },
+      origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -326,6 +343,7 @@ describe('PATCH /api/services/:id', () => {
     const res = await sendRequest(app, '/api/services/service-1', {
       method: 'PATCH',
       body: { allowed_scopes: ['profile', 'invalid_scope'] },
+      origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string; message: string } }>();
@@ -337,6 +355,7 @@ describe('PATCH /api/services/:id', () => {
     const res = await sendRequest(app, '/api/services/service-1', {
       method: 'PATCH',
       body: { allowed_scopes: [] },
+      origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(400);
   });
@@ -346,6 +365,7 @@ describe('PATCH /api/services/:id', () => {
     const res = await sendRequest(app, '/api/services/no-such-service', {
       method: 'PATCH',
       body: { allowed_scopes: ['profile'] },
+      origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
@@ -371,14 +391,20 @@ describe('DELETE /api/services/:id', () => {
   });
 
   it('サービスを削除して204を返す', async () => {
-    const res = await sendRequest(app, '/api/services/service-1', { method: 'DELETE' });
+    const res = await sendRequest(app, '/api/services/service-1', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
     expect(res.status).toBe(204);
     expect(vi.mocked(deleteService)).toHaveBeenCalledWith(expect.anything(), 'service-1');
   });
 
   it('サービスが存在しない場合 → 404を返す', async () => {
     vi.mocked(findServiceById).mockResolvedValue(null);
-    const res = await sendRequest(app, '/api/services/no-such', { method: 'DELETE' });
+    const res = await sendRequest(app, '/api/services/no-such', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('NOT_FOUND');
@@ -444,6 +470,7 @@ describe('POST /api/services/:id/redirect-uris', () => {
     const res = await sendRequest(app, '/api/services/service-1/redirect-uris', {
       method: 'POST',
       body: { uri: 'https://app.example.com/callback' },
+      origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(201);
     const body = await res.json<{ data: Record<string, unknown> }>();
@@ -455,6 +482,7 @@ describe('POST /api/services/:id/redirect-uris', () => {
     const res = await sendRequest(app, '/api/services/no-such/redirect-uris', {
       method: 'POST',
       body: { uri: 'https://app.example.com/callback' },
+      origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(404);
   });
@@ -463,6 +491,7 @@ describe('POST /api/services/:id/redirect-uris', () => {
     const res = await sendRequest(app, '/api/services/service-1/redirect-uris', {
       method: 'POST',
       body: {},
+      origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -474,6 +503,7 @@ describe('POST /api/services/:id/redirect-uris', () => {
     const res = await sendRequest(app, '/api/services/service-1/redirect-uris', {
       method: 'POST',
       body: { uri: 'not-a-valid-uri' },
+      origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -485,6 +515,7 @@ describe('POST /api/services/:id/redirect-uris', () => {
     const res = await sendRequest(app, '/api/services/service-1/redirect-uris', {
       method: 'POST',
       body: { uri: 'https://app.example.com/callback' },
+      origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(409);
     const body = await res.json<{ error: { code: string } }>();
@@ -514,6 +545,7 @@ describe('DELETE /api/services/:id/redirect-uris/:uriId', () => {
   it('リダイレクトURIを削除して204を返す', async () => {
     const res = await sendRequest(app, '/api/services/service-1/redirect-uris/uri-1', {
       method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(204);
     expect(vi.mocked(deleteRedirectUri)).toHaveBeenCalledWith(
@@ -527,6 +559,7 @@ describe('DELETE /api/services/:id/redirect-uris/:uriId', () => {
     vi.mocked(findServiceById).mockResolvedValue(null);
     const res = await sendRequest(app, '/api/services/no-such/redirect-uris/uri-1', {
       method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
