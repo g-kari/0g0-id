@@ -250,8 +250,7 @@ export async function upsertXUser(
   params: {
     id: string;
     xSub: string;
-    email: string;
-    isPlaceholderEmail: boolean;
+    email: string; // X APIは有料プランでないとメール取得不可のため常に仮メール
     name: string;
     picture: string | null;
   }
@@ -269,36 +268,14 @@ export async function upsertXUser(
     return user;
   }
 
-  // 仮メール以外であれば既存ユーザーにXアカウントを連携
-  if (!params.isPlaceholderEmail) {
-    const existingByEmail = await findUserByEmail(db, params.email);
-    if (existingByEmail) {
-      const user = await db
-        .prepare(
-          `UPDATE users SET x_sub = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
-        )
-        .bind(params.xSub, params.name, params.picture, existingByEmail.id)
-        .first<User>();
-      if (!user) throw new Error('Failed to link X account');
-      return user;
-    }
-  }
-
-  // 新規ユーザー作成（Xはメールアドレスを公開しないため仮メールを使用）
+  // 新規ユーザー作成（常に仮メール・email_verified=0）
   const user = await db
     .prepare(
       `INSERT INTO users (id, x_sub, email, email_verified, name, picture)
-       VALUES (?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, 0, ?, ?)
        RETURNING *`
     )
-    .bind(
-      params.id,
-      params.xSub,
-      params.email,
-      params.isPlaceholderEmail ? 0 : 1,
-      params.name,
-      params.picture
-    )
+    .bind(params.id, params.xSub, params.email, params.name, params.picture)
     .first<User>();
   if (!user) throw new Error('Failed to create X user');
   return user;

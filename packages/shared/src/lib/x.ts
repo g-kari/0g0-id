@@ -6,7 +6,7 @@ const X_USER_URL = 'https://api.twitter.com/2/users/me';
 
 export interface XUserInfo {
   id: string;
-  name: string;
+  name: string | null;
   username: string;
   profile_image_url?: string;
 }

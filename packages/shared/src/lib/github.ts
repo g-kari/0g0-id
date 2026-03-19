@@ -35,6 +35,7 @@ export function buildGithubAuthUrl(params: {
   codeChallenge: string;
 }): string {
   const url = new URL(GITHUB_AUTH_URL);
+  url.searchParams.set('response_type', 'code');
   url.searchParams.set('client_id', params.clientId);
   url.searchParams.set('redirect_uri', params.redirectUri);
   url.searchParams.set('scope', 'read:user user:email');

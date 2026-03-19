@@ -467,8 +467,7 @@ app.get('/callback', async (c) => {
       id: userId,
       xSub: xUser.id,
       email: xEmail,
-      isPlaceholderEmail: true,
-      name: xUser.name,
+      name: xUser.name ?? xUser.username,
       picture: xUser.profile_image_url ?? null,
     });
   } else {
