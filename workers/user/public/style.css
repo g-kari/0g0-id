@@ -242,3 +242,35 @@ h1 {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ダークモード */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0c0c14;
+    --text: #f3f4f6;
+    --text-muted: #9ca3af;
+    --border: #374151;
+    --white: #1f2937;
+    --error: #f87171;
+    --success: #4ade80;
+  }
+
+  .btn-google {
+    background: #2d2d3a;
+    color: #e8eaed;
+    border-color: #4a4a5a;
+  }
+  .btn-google:hover { background: #383845; }
+
+  .alert-error { background: #450a0a; border-color: #7f1d1d; color: #f87171; }
+  .alert-success { background: #052e16; border-color: #14532d; color: #4ade80; }
+
+  .form-group input {
+    background: #0c0c14;
+    color: var(--text);
+  }
+
+  .toast-success { background: #14532d; }
+  .toast-error { background: #7f1d1d; }
+}
+}
