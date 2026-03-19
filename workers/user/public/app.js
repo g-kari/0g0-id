@@ -76,6 +76,7 @@
         missing_session: 'セッションが見つかりません',
         state_mismatch: 'セキュリティエラーが発生しました',
         exchange_failed: '認証に失敗しました',
+        invalid_provider: '無効なログインプロバイダーです',
       };
       errorEl.textContent = messages[params.get('error')] || '認証エラーが発生しました';
       errorEl.style.display = 'block';

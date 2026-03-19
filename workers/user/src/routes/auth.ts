@@ -10,6 +10,12 @@ const STATE_COOKIE = '__Host-user-oauth-state';
 
 // GET /auth/login
 app.get('/login', async (c) => {
+  const provider = c.req.query('provider') ?? 'google';
+  const validProviders = ['google', 'line', 'twitch'];
+  if (!validProviders.includes(provider)) {
+    return c.redirect('/?error=invalid_provider');
+  }
+
   const state = generateToken(16);
 
   const callbackUrl = `${new URL(c.req.url).origin}/auth/callback`;
@@ -25,6 +31,7 @@ app.get('/login', async (c) => {
   const loginUrl = new URL(`${c.env.IDP_ORIGIN}/auth/login`);
   loginUrl.searchParams.set('redirect_to', callbackUrl);
   loginUrl.searchParams.set('state', state);
+  loginUrl.searchParams.set('provider', provider);
 
   return c.redirect(loginUrl.toString());
 });
