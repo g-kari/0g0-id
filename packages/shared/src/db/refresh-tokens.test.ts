@@ -1,0 +1,275 @@
+import { describe, it, expect, vi } from 'vitest';
+import {
+  findRefreshTokenByHash,
+  createRefreshToken,
+  revokeRefreshToken,
+  revokeTokenFamily,
+  revokeUserTokens,
+  listUserConnections,
+  countActiveRefreshTokens,
+  hasUserAuthorizedService,
+  listUsersAuthorizedForService,
+  countUsersAuthorizedForService,
+  revokeUserServiceTokens,
+} from './refresh-tokens';
+import type { RefreshToken, User } from '../types';
+
+function makeD1Mock(
+  firstResult: unknown = null,
+  allResults: unknown[] = [],
+  changes = 1
+): D1Database {
+  const stmt = {
+    bind: vi.fn().mockReturnThis(),
+    first: vi.fn().mockResolvedValue(firstResult),
+    run: vi.fn().mockResolvedValue({ meta: { changes } }),
+    all: vi.fn().mockResolvedValue({ results: allResults }),
+  };
+  return { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+}
+
+const baseToken: RefreshToken = {
+  id: 'token-id-1',
+  user_id: 'user-1',
+  service_id: 'service-1',
+  token_hash: 'hash-abc',
+  family_id: 'family-1',
+  revoked_at: null,
+  expires_at: '2025-12-31T23:59:59Z',
+  created_at: '2024-01-01T00:00:00Z',
+};
+
+const baseUser: User = {
+  id: 'user-1',
+  google_sub: 'g-sub',
+  line_sub: null,
+  twitch_sub: null,
+  github_sub: null,
+  x_sub: null,
+  email: 'user@example.com',
+  email_verified: 1,
+  name: 'Test User',
+  picture: null,
+  phone: null,
+  address: null,
+  role: 'user',
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+};
+
+describe('findRefreshTokenByHash', () => {
+  it('存在するhashに対してRefreshTokenを返す', async () => {
+    const db = makeD1Mock(baseToken);
+    const result = await findRefreshTokenByHash(db, 'hash-abc');
+    expect(result).not.toBeNull();
+    expect(result?.id).toBe('token-id-1');
+    expect(result?.user_id).toBe('user-1');
+    expect(result?.family_id).toBe('family-1');
+  });
+
+  it('存在しないhashにはnullを返す', async () => {
+    const db = makeD1Mock(null);
+    const result = await findRefreshTokenByHash(db, 'no-such-hash');
+    expect(result).toBeNull();
+  });
+
+  it('token_hashでbindを呼ぶ', async () => {
+    const db = makeD1Mock(baseToken);
+    await findRefreshTokenByHash(db, 'hash-abc');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('hash-abc');
+  });
+});
+
+describe('createRefreshToken', () => {
+  it('正しいパラメーターでINSERT文を実行する', async () => {
+    const db = makeD1Mock();
+    await createRefreshToken(db, {
+      id: 'token-id-1',
+      userId: 'user-1',
+      serviceId: 'service-1',
+      tokenHash: 'hash-abc',
+      familyId: 'family-1',
+      expiresAt: '2025-12-31T23:59:59Z',
+    });
+
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO refresh_tokens'));
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith(
+      'token-id-1', 'user-1', 'service-1', 'hash-abc', 'family-1', '2025-12-31T23:59:59Z'
+    );
+    expect(stmt.run).toHaveBeenCalled();
+  });
+
+  it('serviceId が null でも正常に動作する', async () => {
+    const db = makeD1Mock();
+    await createRefreshToken(db, {
+      id: 'token-id-2',
+      userId: 'user-1',
+      serviceId: null,
+      tokenHash: 'hash-xyz',
+      familyId: 'family-2',
+      expiresAt: '2025-12-31T23:59:59Z',
+    });
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith(
+      'token-id-2', 'user-1', null, 'hash-xyz', 'family-2', '2025-12-31T23:59:59Z'
+    );
+  });
+});
+
+describe('revokeRefreshToken', () => {
+  it('指定したidでrevoked_atを更新する', async () => {
+    const db = makeD1Mock();
+    await revokeRefreshToken(db, 'token-id-1');
+
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('revoked_at');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('token-id-1');
+  });
+});
+
+describe('revokeTokenFamily', () => {
+  it('指定したfamilyIdのトークンを全て失効させる', async () => {
+    const db = makeD1Mock();
+    await revokeTokenFamily(db, 'family-1');
+
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('family_id');
+    expect(sql).toContain('revoked_at');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('family-1');
+  });
+
+  it('既に失効済みのトークンは対象外（revoked_at IS NULL条件）', async () => {
+    const db = makeD1Mock();
+    await revokeTokenFamily(db, 'family-1');
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('revoked_at IS NULL');
+  });
+});
+
+describe('revokeUserTokens', () => {
+  it('指定したuserIdのトークンを全て失効させる', async () => {
+    const db = makeD1Mock();
+    await revokeUserTokens(db, 'user-1');
+
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('user_id');
+    expect(sql).toContain('revoked_at');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('user-1');
+  });
+});
+
+describe('listUserConnections', () => {
+  it('ユーザーのアクティブ接続一覧を返す', async () => {
+    const mockConnections = [
+      {
+        service_id: 'service-1',
+        service_name: 'My App',
+        client_id: 'client-abc',
+        first_authorized_at: '2024-01-01T00:00:00Z',
+        last_authorized_at: '2024-06-01T00:00:00Z',
+      },
+    ];
+    const db = makeD1Mock(null, mockConnections);
+    const result = await listUserConnections(db, 'user-1');
+    expect(result).toHaveLength(1);
+    expect(result[0].service_name).toBe('My App');
+    expect(result[0].client_id).toBe('client-abc');
+  });
+
+  it('接続がない場合は空配列を返す', async () => {
+    const db = makeD1Mock(null, []);
+    const result = await listUserConnections(db, 'user-1');
+    expect(result).toEqual([]);
+  });
+});
+
+describe('countActiveRefreshTokens', () => {
+  it('アクティブなリフレッシュトークン数を返す', async () => {
+    const db = makeD1Mock({ count: 42 });
+    const result = await countActiveRefreshTokens(db);
+    expect(result).toBe(42);
+  });
+
+  it('トークンがない場合は0を返す', async () => {
+    const db = makeD1Mock(null);
+    const result = await countActiveRefreshTokens(db);
+    expect(result).toBe(0);
+  });
+});
+
+describe('hasUserAuthorizedService', () => {
+  it('認可済みの場合はtrueを返す', async () => {
+    const db = makeD1Mock({ 1: 1 });
+    const result = await hasUserAuthorizedService(db, 'user-1', 'service-1');
+    expect(result).toBe(true);
+  });
+
+  it('未認可の場合はfalseを返す', async () => {
+    const db = makeD1Mock(null);
+    const result = await hasUserAuthorizedService(db, 'user-1', 'service-1');
+    expect(result).toBe(false);
+  });
+});
+
+describe('listUsersAuthorizedForService', () => {
+  it('サービスに認可済みのユーザー一覧を返す', async () => {
+    const db = makeD1Mock(null, [baseUser]);
+    const result = await listUsersAuthorizedForService(db, 'service-1');
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('user-1');
+  });
+
+  it('デフォルトlimit=50・offset=0でbindする', async () => {
+    const db = makeD1Mock(null, []);
+    await listUsersAuthorizedForService(db, 'service-1');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('service-1', 50, 0);
+  });
+
+  it('limit・offsetを指定できる', async () => {
+    const db = makeD1Mock(null, []);
+    await listUsersAuthorizedForService(db, 'service-1', 10, 20);
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('service-1', 10, 20);
+  });
+});
+
+describe('countUsersAuthorizedForService', () => {
+  it('サービスに認可済みのユーザー数を返す', async () => {
+    const db = makeD1Mock({ count: 5 });
+    const result = await countUsersAuthorizedForService(db, 'service-1');
+    expect(result).toBe(5);
+  });
+
+  it('ユーザーがいない場合は0を返す', async () => {
+    const db = makeD1Mock(null);
+    const result = await countUsersAuthorizedForService(db, 'service-1');
+    expect(result).toBe(0);
+  });
+});
+
+describe('revokeUserServiceTokens', () => {
+  it('失効したトークン数を返す', async () => {
+    const db = makeD1Mock(null, [], 3);
+    const result = await revokeUserServiceTokens(db, 'user-1', 'service-1');
+    expect(result).toBe(3);
+  });
+
+  it('対象がない場合は0を返す', async () => {
+    const db = makeD1Mock(null, [], 0);
+    const result = await revokeUserServiceTokens(db, 'user-1', 'service-1');
+    expect(result).toBe(0);
+  });
+
+  it('userId・serviceIdでbindを呼ぶ', async () => {
+    const db = makeD1Mock(null, [], 1);
+    await revokeUserServiceTokens(db, 'user-1', 'service-1');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('user-1', 'service-1');
+  });
+});
