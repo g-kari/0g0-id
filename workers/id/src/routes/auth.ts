@@ -57,7 +57,7 @@ const OPTIONAL_PROVIDER_CREDENTIALS = {
   twitch: { id: 'TWITCH_CLIENT_ID' as const, secret: 'TWITCH_CLIENT_SECRET' as const, name: 'Twitch' },
   github: { id: 'GITHUB_CLIENT_ID' as const, secret: 'GITHUB_CLIENT_SECRET' as const, name: 'GitHub' },
   x: { id: 'X_CLIENT_ID' as const, secret: 'X_CLIENT_SECRET' as const, name: 'X' },
-} satisfies Record<string, { id: keyof IdpEnv; secret: keyof IdpEnv; name: string }>;
+} satisfies Record<Exclude<OAuthProvider, 'google'>, { id: keyof IdpEnv; secret: keyof IdpEnv; name: string }>;
 
 function setSecureCookie(
   c: Context<{ Bindings: IdpEnv }>,
@@ -159,7 +159,7 @@ app.get('/login', async (c) => {
       return c.redirect(buildGithubAuthUrl({ ...commonParams, clientId: c.env.GITHUB_CLIENT_ID! }));
     case 'x':
       return c.redirect(buildXAuthUrl({ ...commonParams, clientId: c.env.X_CLIENT_ID! }));
-    default:
+    case 'google':
       return c.redirect(buildGoogleAuthUrl({ ...commonParams, clientId: c.env.GOOGLE_CLIENT_ID }));
   }
 });
