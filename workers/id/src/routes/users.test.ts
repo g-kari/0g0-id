@@ -1,0 +1,579 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Hono } from 'hono';
+
+// @0g0-id/sharedの全関数をモック
+vi.mock('@0g0-id/shared', () => ({
+  findUserById: vi.fn(),
+  listUsers: vi.fn(),
+  countUsers: vi.fn(),
+  updateUserProfile: vi.fn(),
+  updateUserRole: vi.fn(),
+  deleteUser: vi.fn(),
+  listUserConnections: vi.fn(),
+  revokeUserServiceTokens: vi.fn(),
+  revokeUserTokens: vi.fn(),
+  countServicesByOwner: vi.fn(),
+  verifyAccessToken: vi.fn(),
+}));
+
+import {
+  findUserById,
+  listUsers,
+  countUsers,
+  updateUserProfile,
+  updateUserRole,
+  deleteUser,
+  listUserConnections,
+  revokeUserServiceTokens,
+  revokeUserTokens,
+  countServicesByOwner,
+  verifyAccessToken,
+} from '@0g0-id/shared';
+
+import usersRoutes from './users';
+
+const baseUrl = 'https://id.0g0.xyz';
+
+const mockEnv = {
+  DB: {} as D1Database,
+  JWT_PUBLIC_KEY: 'mock-public-key',
+  IDP_ORIGIN: 'https://id.0g0.xyz',
+  USER_ORIGIN: 'https://user.0g0.xyz',
+  ADMIN_ORIGIN: 'https://admin.0g0.xyz',
+};
+
+// 管理者トークンペイロード
+const mockAdminPayload = {
+  iss: 'https://id.0g0.xyz',
+  sub: 'admin-user-id',
+  aud: 'https://id.0g0.xyz',
+  exp: Math.floor(Date.now() / 1000) + 3600,
+  iat: Math.floor(Date.now() / 1000),
+  jti: 'jti-admin',
+  kid: 'key-1',
+  email: 'admin@example.com',
+  role: 'admin' as const,
+};
+
+// 一般ユーザートークンペイロード
+const mockUserPayload = {
+  ...mockAdminPayload,
+  sub: 'regular-user-id',
+  email: 'user@example.com',
+  role: 'user' as const,
+};
+
+const mockUser = {
+  id: 'user-1',
+  google_sub: 'google-sub-1',
+  line_sub: null,
+  twitch_sub: null,
+  github_sub: null,
+  x_sub: null,
+  email: 'test@example.com',
+  email_verified: 1,
+  name: 'Test User',
+  picture: 'https://example.com/pic.jpg',
+  phone: '090-0000-0000',
+  address: 'Tokyo',
+  role: 'user' as const,
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+};
+
+function buildApp() {
+  const app = new Hono<{ Bindings: typeof mockEnv }>();
+  app.route('/api/users', usersRoutes);
+  return app;
+}
+
+// リクエストヘルパー
+function makeRequest(
+  path: string,
+  options: {
+    method?: string;
+    body?: unknown;
+    origin?: string;
+    withAuth?: boolean;
+  } = {}
+) {
+  const { method = 'GET', body, origin, withAuth = true } = options;
+  const headers: Record<string, string> = {};
+  if (withAuth) headers['Authorization'] = 'Bearer mock-token';
+  if (origin) headers['Origin'] = origin;
+  if (body) headers['Content-Type'] = 'application/json';
+
+  return new Request(`${baseUrl}${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+async function sendRequest(
+  app: ReturnType<typeof buildApp>,
+  path: string,
+  options: Parameters<typeof makeRequest>[1] = {}
+) {
+  return app.request(
+    makeRequest(path, options),
+    undefined,
+    mockEnv as unknown as Record<string, string>
+  );
+}
+
+// ===== GET /api/users/me =====
+describe('GET /api/users/me', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+  });
+
+  it('Authorizationヘッダーなし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', { withAuth: false });
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('認証済みユーザー情報を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.id).toBe('user-1');
+    expect(body.data.email).toBe('test@example.com');
+    expect(body.data.name).toBe('Test User');
+    expect(body.data.picture).toBe('https://example.com/pic.jpg');
+    expect(body.data.role).toBe('user');
+  });
+
+  it('ユーザーが存在しない場合 → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/me');
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('verifyAccessTokenが失敗した場合 → 401を返す', async () => {
+    vi.mocked(verifyAccessToken).mockRejectedValue(new Error('invalid token'));
+    const res = await sendRequest(app, '/api/users/me');
+    expect(res.status).toBe(401);
+  });
+});
+
+// ===== PATCH /api/users/me =====
+describe('PATCH /api/users/me', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(updateUserProfile).mockResolvedValue({
+      ...mockUser,
+      name: 'Updated Name',
+    });
+  });
+
+  it('Originヘッダーなし（CSRF）→ 403を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'New Name' },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('プロフィールを更新して返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'Updated Name' },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.name).toBe('Updated Name');
+  });
+
+  it('nameが空文字の場合 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: '' },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('nameがない場合 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: {},
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('不正なJSONボディ → 400を返す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users/me`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: 'Bearer mock-token',
+          Origin: 'https://user.0g0.xyz',
+          'Content-Type': 'application/json',
+        },
+        body: 'invalid-json',
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('pictureをnullに更新できる', async () => {
+    vi.mocked(updateUserProfile).mockResolvedValue({ ...mockUser, picture: null });
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'Test User', picture: null },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.picture).toBeNull();
+  });
+
+  it('phoneとaddressも更新できる', async () => {
+    vi.mocked(updateUserProfile).mockResolvedValue({
+      ...mockUser,
+      phone: '080-1111-2222',
+      address: 'Osaka',
+    });
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'Test User', phone: '080-1111-2222', address: 'Osaka' },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.phone).toBe('080-1111-2222');
+    expect(body.data.address).toBe('Osaka');
+  });
+});
+
+// ===== GET /api/users/me/connections =====
+describe('GET /api/users/me/connections', () => {
+  const app = buildApp();
+  const mockConnections = [
+    {
+      service_id: 'service-1',
+      service_name: 'Test Service',
+            client_id: 'client-abc',
+      first_authorized_at: '2024-01-01T00:00:00Z',
+      last_authorized_at: '2024-01-02T00:00:00Z',
+    },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(listUserConnections).mockResolvedValue(mockConnections);
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/connections', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('ユーザーの連携サービス一覧を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/connections');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[] }>();
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]).toMatchObject({ service_id: 'service-1' });
+  });
+
+  it('連携なしの場合は空配列を返す', async () => {
+    vi.mocked(listUserConnections).mockResolvedValue([]);
+    const res = await sendRequest(app, '/api/users/me/connections');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[] }>();
+    expect(body.data).toHaveLength(0);
+  });
+});
+
+// ===== DELETE /api/users/me/connections/:serviceId =====
+describe('DELETE /api/users/me/connections/:serviceId', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(revokeUserServiceTokens).mockResolvedValue(1);
+  });
+
+  it('Originヘッダーなし（CSRF）→ 403を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/connections/service-1', {
+      method: 'DELETE',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('連携を解除して204を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/connections/service-1', {
+      method: 'DELETE',
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(204);
+  });
+
+  it('連携が存在しない場合 → 404を返す', async () => {
+    vi.mocked(revokeUserServiceTokens).mockResolvedValue(0);
+    const res = await sendRequest(app, '/api/users/me/connections/no-such-service', {
+      method: 'DELETE',
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+});
+
+// ===== PATCH /api/users/:id/role（管理者のみ）=====
+describe('PATCH /api/users/:id/role', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(updateUserRole).mockResolvedValue({ ...mockUser, role: 'admin' });
+    vi.mocked(revokeUserTokens).mockResolvedValue();
+  });
+
+  it('管理者でない場合 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/users/user-1/role', {
+      method: 'PATCH',
+      body: { role: 'admin' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('Originヘッダーなし（CSRF）→ 403を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/role', {
+      method: 'PATCH',
+      body: { role: 'admin' },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('ロールを変更して返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/role', {
+      method: 'PATCH',
+      body: { role: 'admin' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.role).toBe('admin');
+  });
+
+  it('自分自身のロール変更 → 403を返す', async () => {
+    // admin-user-id が自分自身のロールを変更しようとする
+    const res = await sendRequest(app, '/api/users/admin-user-id/role', {
+      method: 'PATCH',
+      body: { role: 'user' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('存在しないユーザーID → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/no-such-user/role', {
+      method: 'PATCH',
+      body: { role: 'admin' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('不正なrole値 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/role', {
+      method: 'PATCH',
+      body: { role: 'superuser' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('ロール変更後に既存トークンを失効させる', async () => {
+    await sendRequest(app, '/api/users/user-1/role', {
+      method: 'PATCH',
+      body: { role: 'admin' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), 'user-1');
+  });
+});
+
+// ===== DELETE /api/users/:id（管理者のみ）=====
+describe('DELETE /api/users/:id', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(countServicesByOwner).mockResolvedValue(0);
+    vi.mocked(revokeUserTokens).mockResolvedValue();
+    vi.mocked(deleteUser).mockResolvedValue(true);
+  });
+
+  it('管理者でない場合 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/users/user-1', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('Originヘッダーなし（CSRF）→ 403を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1', { method: 'DELETE' });
+    expect(res.status).toBe(403);
+  });
+
+  it('ユーザーを削除して204を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(204);
+  });
+
+  it('自分自身の削除 → 403を返す', async () => {
+    // admin-user-id が自分自身を削除しようとする
+    const res = await sendRequest(app, '/api/users/admin-user-id', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('存在しないユーザーID → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/no-such-user', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('サービスを所有している場合 → 409を返す', async () => {
+    vi.mocked(countServicesByOwner).mockResolvedValue(2);
+    const res = await sendRequest(app, '/api/users/user-1', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe('CONFLICT');
+    expect(body.error.message).toContain('2');
+  });
+
+  it('削除前にトークンを失効させる', async () => {
+    await sendRequest(app, '/api/users/user-1', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), 'user-1');
+    expect(vi.mocked(deleteUser)).toHaveBeenCalledWith(expect.anything(), 'user-1');
+  });
+});
+
+// ===== GET /api/users（管理者のみ）=====
+describe('GET /api/users', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(listUsers).mockResolvedValue([mockUser]);
+    vi.mocked(countUsers).mockResolvedValue(1);
+  });
+
+  it('管理者でない場合 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/users');
+    expect(res.status).toBe(403);
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('ユーザー一覧とtotalを返す', async () => {
+    const res = await sendRequest(app, '/api/users');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[]; total: number }>();
+    expect(body.data).toHaveLength(1);
+    expect(body.total).toBe(1);
+  });
+
+  it('limitとoffsetを反映する', async () => {
+    vi.mocked(listUsers).mockResolvedValue([]);
+    vi.mocked(countUsers).mockResolvedValue(100);
+
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users?limit=10&offset=20`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(expect.anything(), 10, 20);
+  });
+
+  it('limitが100を超える場合は100に制限する', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users?limit=200`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(expect.anything(), 100, 0);
+  });
+
+  it('レスポンスに内部フィールド（google_sub等）を含まない', async () => {
+    const res = await sendRequest(app, '/api/users');
+    const body = await res.json<{ data: Record<string, unknown>[] }>();
+    expect(body.data[0]).not.toHaveProperty('google_sub');
+    expect(body.data[0]).not.toHaveProperty('line_sub');
+    expect(body.data[0]).not.toHaveProperty('github_sub');
+    expect(body.data[0]).not.toHaveProperty('x_sub');
+  });
+});
