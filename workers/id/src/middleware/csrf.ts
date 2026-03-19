@@ -16,8 +16,13 @@ export const csrfMiddleware = createMiddleware<{ Bindings: IdpEnv }>(async (c, n
     ALLOWED_ORIGINS.add(c.env.ADMIN_ORIGIN);
   }
 
-  const originUrl = new URL(origin);
-  const originBase = `${originUrl.protocol}//${originUrl.host}`;
+  let originBase: string;
+  try {
+    const originUrl = new URL(origin);
+    originBase = `${originUrl.protocol}//${originUrl.host}`;
+  } catch {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Invalid origin' } }, 403);
+  }
 
   if (!ALLOWED_ORIGINS.has(originBase)) {
     return c.json({ error: { code: 'FORBIDDEN', message: 'Invalid origin' } }, 403);

@@ -1,6 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parseSession, fetchWithAuth, proxyResponse } from './bff';
+import { parseSession, proxyResponse } from './bff';
 import type { BffSession } from './bff';
+
+// hono/cookie をトップレベルでモック（vi.mock はホイスティングが必要）
+vi.mock('hono/cookie', () => ({
+  getCookie: vi.fn(),
+  setCookie: vi.fn(),
+  deleteCookie: vi.fn(),
+}));
+
+import { getCookie } from 'hono/cookie';
 
 // BffSessionをbase64エンコードするヘルパー
 function encodeSession(session: BffSession): string {
@@ -42,27 +51,6 @@ describe('parseSession', () => {
   });
 });
 
-// Honoのコンテキストを模倣するモックビルダー
-function makeMockContext(cookieValue: string | undefined, idpFetch: ReturnType<typeof vi.fn>) {
-  const cookies: Record<string, string> = {};
-  if (cookieValue !== undefined) {
-    cookies['__session'] = cookieValue;
-  }
-
-  return {
-    req: { header: vi.fn() },
-    env: {
-      IDP: { fetch: idpFetch } as unknown as Fetcher,
-      IDP_ORIGIN: 'https://id.0g0.xyz',
-    },
-    get: vi.fn(),
-    set: vi.fn(),
-    // hono/cookie の getCookie/setCookie/deleteCookie はコンテキストから読む
-    // テスト用にCookieヘッダーを直接シミュレート
-    _cookies: cookies,
-  };
-}
-
 describe('proxyResponse', () => {
   it('通常のレスポンスをそのまま返す', async () => {
     const original = new Response('{"data":"test"}', {
@@ -95,25 +83,54 @@ describe('proxyResponse', () => {
   });
 });
 
-describe('fetchWithAuth - セッションなし', () => {
+describe('fetchWithAuth', () => {
   it('セッションCookieがない場合は401を返す', async () => {
-    // Honoのcookieユーティリティをモック
-    vi.mock('hono/cookie', () => ({
-      getCookie: vi.fn().mockReturnValue(undefined),
-      setCookie: vi.fn(),
-      deleteCookie: vi.fn(),
-    }));
+    vi.mocked(getCookie).mockReturnValue(undefined);
 
-    const { fetchWithAuth: fetchWithAuthFn } = await import('./bff');
+    const { fetchWithAuth } = await import('./bff');
     const idpFetch = vi.fn();
     const ctx = {
       req: {},
       env: { IDP: { fetch: idpFetch }, IDP_ORIGIN: 'https://id.0g0.xyz' },
-    } as unknown as Parameters<typeof fetchWithAuthFn>[0];
+    } as unknown as Parameters<typeof fetchWithAuth>[0];
 
-    const result = await fetchWithAuthFn(ctx, '__session', 'https://id.0g0.xyz/api/test');
+    const result = await fetchWithAuth(ctx, '__session', 'https://id.0g0.xyz/api/test');
     expect(result.status).toBe(401);
     const body = await result.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('セッションが有効な場合はIdPにリクエストを転送する', async () => {
+    vi.mocked(getCookie).mockReturnValue(encodeSession(mockSession));
+
+    const { fetchWithAuth } = await import('./bff');
+    const idpFetch = vi.fn().mockResolvedValue(new Response('{"data":"ok"}', { status: 200 }));
+    const ctx = {
+      req: {},
+      env: { IDP: { fetch: idpFetch }, IDP_ORIGIN: 'https://id.0g0.xyz' },
+    } as unknown as Parameters<typeof fetchWithAuth>[0];
+
+    const result = await fetchWithAuth(ctx, '__session', 'https://id.0g0.xyz/api/me');
+    expect(result.status).toBe(200);
+    expect(idpFetch).toHaveBeenCalledOnce();
+    // Authorizationヘッダーにアクセストークンが設定されていること
+    const reqArg: Request = idpFetch.mock.calls[0][0];
+    expect(reqArg.headers.get('Authorization')).toBe('Bearer access-token-123');
+  });
+
+  it('IdPへのリクエストが失敗した場合は502を返す', async () => {
+    vi.mocked(getCookie).mockReturnValue(encodeSession(mockSession));
+
+    const { fetchWithAuth } = await import('./bff');
+    const idpFetch = vi.fn().mockRejectedValue(new Error('network error'));
+    const ctx = {
+      req: {},
+      env: { IDP: { fetch: idpFetch }, IDP_ORIGIN: 'https://id.0g0.xyz' },
+    } as unknown as Parameters<typeof fetchWithAuth>[0];
+
+    const result = await fetchWithAuth(ctx, '__session', 'https://id.0g0.xyz/api/me');
+    expect(result.status).toBe(502);
+    const body = await result.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('UPSTREAM_ERROR');
   });
 });
