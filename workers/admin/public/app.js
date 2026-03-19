@@ -412,73 +412,74 @@
           }).join('');
           if (tbody) tbody.innerHTML = rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">ユーザーなし</td></tr>';
 
-          // ロール変更ボタン
-          if (tbody) {
-            tbody.querySelectorAll('[data-role-id]').forEach(function (btn) {
-              btn.addEventListener('click', function () {
-                var newRole = btn.dataset.roleNew;
-                var name = btn.dataset.roleName;
-                if (!confirm('「' + name + '」のロールを ' + newRole + ' に変更しますか？')) return;
-                btn.disabled = true;
-                showProgress();
-                fetch('/api/users/' + btn.dataset.roleId + '/role', {
-                  method: 'PATCH',
-                  credentials: 'same-origin',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ role: newRole }),
-                })
-                  .then(function (r) { return r.json(); })
-                  .then(function (data) {
-                    hideProgress();
-                    if (data.error) {
-                      showToast('ロール変更に失敗しました: ' + (data.error.message || ''), 'error');
-                      btn.disabled = false;
-                    } else {
-                      showToast('ロールを ' + newRole + ' に変更しました', 'success');
-                      loadUsers();
-                    }
-                  })
-                  .catch(function () {
-                    hideProgress();
-                    showToast('通信エラーが発生しました', 'error');
-                    btn.disabled = false;
-                  });
-              });
-            });
-
-            // 削除ボタン
-            tbody.querySelectorAll('[data-del-id]').forEach(function (btn) {
-              btn.addEventListener('click', function () {
-                var name = btn.dataset.delName;
-                if (!confirm('「' + name + '」を削除しますか？この操作は取り消せません。')) return;
-                btn.disabled = true;
-                showProgress();
-                fetch('/api/users/' + btn.dataset.delId, {
-                  method: 'DELETE',
-                  credentials: 'same-origin',
-                })
-                  .then(function (r) {
-                    hideProgress();
-                    if (r.ok || r.status === 204) {
-                      showToast('ユーザーを削除しました', 'success');
-                      loadUsers();
-                    } else {
-                      return r.json().then(function (data) {
-                        showToast('削除に失敗しました: ' + (data.error?.message || ''), 'error');
-                        btn.disabled = false;
-                      });
-                    }
-                  })
-                  .catch(function () {
-                    hideProgress();
-                    showToast('通信エラーが発生しました', 'error');
-                    btn.disabled = false;
-                  });
-              });
-            });
-          }
         })
         .catch(function () { hideProgress(); showUsersError('通信エラーが発生しました'); });
+    }
+
+    // イベント委譲: tbody への click 1件で全ボタンを処理
+    if (tbody) {
+      tbody.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-role-id]');
+        if (btn) {
+          var newRole = btn.dataset.roleNew;
+          var name = btn.dataset.roleName;
+          if (!confirm('「' + name + '」のロールを ' + newRole + ' に変更しますか？')) return;
+          btn.disabled = true;
+          showProgress();
+          fetch('/api/users/' + btn.dataset.roleId + '/role', {
+            method: 'PATCH',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: newRole }),
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              hideProgress();
+              if (data.error) {
+                showToast('ロール変更に失敗しました: ' + (data.error.message || ''), 'error');
+                btn.disabled = false;
+              } else {
+                showToast('ロールを ' + newRole + ' に変更しました', 'success');
+                loadUsers();
+              }
+            })
+            .catch(function () {
+              hideProgress();
+              showToast('通信エラーが発生しました', 'error');
+              btn.disabled = false;
+            });
+          return;
+        }
+
+        btn = e.target.closest('[data-del-id]');
+        if (btn) {
+          var delName = btn.dataset.delName;
+          if (!confirm('「' + delName + '」を削除しますか？この操作は取り消せません。')) return;
+          btn.disabled = true;
+          showProgress();
+          fetch('/api/users/' + btn.dataset.delId, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+          })
+            .then(function (r) {
+              hideProgress();
+              if (r.ok || r.status === 204) {
+                showToast('ユーザーを削除しました', 'success');
+                loadUsers();
+              } else {
+                return r.json().then(function (data) {
+                  showToast('削除に失敗しました: ' + (data.error?.message || ''), 'error');
+                  btn.disabled = false;
+                });
+              }
+            })
+            .catch(function () {
+              hideProgress();
+              showToast('通信エラーが発生しました', 'error');
+              btn.disabled = false;
+            });
+        }
+      });
     }
 
     loadUsers();
