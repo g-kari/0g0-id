@@ -39,7 +39,7 @@ import {
   findAndConsumeAuthCode,
   linkProvider,
 } from '@0g0-id/shared';
-import type { IdpEnv } from '@0g0-id/shared';
+import type { IdpEnv, User } from '@0g0-id/shared';
 
 const app = new Hono<{ Bindings: IdpEnv }>();
 
@@ -50,6 +50,14 @@ const STATE_COOKIE = '__Host-oauth-state';
 const PKCE_COOKIE = '__Host-oauth-pkce';
 
 type OAuthProvider = 'google' | 'line' | 'twitch' | 'github' | 'x';
+
+// Google以外のプロバイダーの資格情報キー（オプション設定）
+const OPTIONAL_PROVIDER_CREDENTIALS = {
+  line: { id: 'LINE_CLIENT_ID' as const, secret: 'LINE_CLIENT_SECRET' as const, name: 'LINE' },
+  twitch: { id: 'TWITCH_CLIENT_ID' as const, secret: 'TWITCH_CLIENT_SECRET' as const, name: 'Twitch' },
+  github: { id: 'GITHUB_CLIENT_ID' as const, secret: 'GITHUB_CLIENT_SECRET' as const, name: 'GitHub' },
+  x: { id: 'X_CLIENT_ID' as const, secret: 'X_CLIENT_SECRET' as const, name: 'X' },
+} satisfies Record<string, { id: keyof IdpEnv; secret: keyof IdpEnv; name: string }>;
 
 function setSecureCookie(
   c: Context<{ Bindings: IdpEnv }>,
@@ -64,6 +72,27 @@ function setSecureCookie(
     path: '/',
     maxAge,
   });
+}
+
+/**
+ * SNSプロバイダー連携のラッパー。
+ * PROVIDER_ALREADY_LINKEDエラーを捕捉し、判別可能な戻り値として返す。
+ */
+async function handleProviderLink(
+  db: D1Database,
+  linkUserId: string,
+  provider: OAuthProvider,
+  providerSub: string
+): Promise<{ ok: true; user: User } | { ok: false }> {
+  try {
+    const user = await linkProvider(db, linkUserId, provider, providerSub);
+    return { ok: true, user };
+  } catch (err) {
+    if (err instanceof Error && err.message === 'PROVIDER_ALREADY_LINKED') {
+      return { ok: false };
+    }
+    throw err;
+  }
 }
 
 // GET /auth/login — BFFからのリダイレクト受け取り + プロバイダー認可へリダイレクト
@@ -84,34 +113,15 @@ app.get('/login', async (c) => {
   }
   const provider = providerParam as OAuthProvider;
 
-  // プロバイダー資格情報の確認
-  if (provider === 'line' && (!c.env.LINE_CLIENT_ID || !c.env.LINE_CLIENT_SECRET)) {
-    return c.json(
-      { error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'LINE provider is not configured' } },
-      400
-    );
-  }
-  if (provider === 'twitch' && (!c.env.TWITCH_CLIENT_ID || !c.env.TWITCH_CLIENT_SECRET)) {
-    return c.json(
-      {
-        error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Twitch provider is not configured' },
-      },
-      400
-    );
-  }
-  if (provider === 'github' && (!c.env.GITHUB_CLIENT_ID || !c.env.GITHUB_CLIENT_SECRET)) {
-    return c.json(
-      {
-        error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'GitHub provider is not configured' },
-      },
-      400
-    );
-  }
-  if (provider === 'x' && (!c.env.X_CLIENT_ID || !c.env.X_CLIENT_SECRET)) {
-    return c.json(
-      { error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'X provider is not configured' } },
-      400
-    );
+  // プロバイダー資格情報の確認（Google以外はオプション設定）
+  if (provider !== 'google') {
+    const creds = OPTIONAL_PROVIDER_CREDENTIALS[provider];
+    if (!c.env[creds.id] || !c.env[creds.secret]) {
+      return c.json(
+        { error: { code: 'PROVIDER_NOT_CONFIGURED', message: `${creds.name} provider is not configured` } },
+        400
+      );
+    }
   }
 
   // redirect_toの検証（user/adminオリジンのみ許可）
@@ -138,55 +148,20 @@ app.get('/login', async (c) => {
   setSecureCookie(c, PKCE_COOKIE, idCodeVerifier, 600);
 
   const callbackUri = `${c.env.IDP_ORIGIN}${CALLBACK_PATH}`;
+  const commonParams = { redirectUri: callbackUri, state: idState, codeChallenge: idCodeChallenge };
 
-  if (provider === 'line') {
-    const lineUrl = buildLineAuthUrl({
-      clientId: c.env.LINE_CLIENT_ID!,
-      redirectUri: callbackUri,
-      state: idState,
-      codeChallenge: idCodeChallenge,
-    });
-    return c.redirect(lineUrl);
+  switch (provider) {
+    case 'line':
+      return c.redirect(buildLineAuthUrl({ ...commonParams, clientId: c.env.LINE_CLIENT_ID! }));
+    case 'twitch':
+      return c.redirect(buildTwitchAuthUrl({ ...commonParams, clientId: c.env.TWITCH_CLIENT_ID! }));
+    case 'github':
+      return c.redirect(buildGithubAuthUrl({ ...commonParams, clientId: c.env.GITHUB_CLIENT_ID! }));
+    case 'x':
+      return c.redirect(buildXAuthUrl({ ...commonParams, clientId: c.env.X_CLIENT_ID! }));
+    default:
+      return c.redirect(buildGoogleAuthUrl({ ...commonParams, clientId: c.env.GOOGLE_CLIENT_ID }));
   }
-
-  if (provider === 'twitch') {
-    const twitchUrl = buildTwitchAuthUrl({
-      clientId: c.env.TWITCH_CLIENT_ID!,
-      redirectUri: callbackUri,
-      state: idState,
-      codeChallenge: idCodeChallenge,
-    });
-    return c.redirect(twitchUrl);
-  }
-
-  if (provider === 'github') {
-    const githubUrl = buildGithubAuthUrl({
-      clientId: c.env.GITHUB_CLIENT_ID!,
-      redirectUri: callbackUri,
-      state: idState,
-      codeChallenge: idCodeChallenge,
-    });
-    return c.redirect(githubUrl);
-  }
-
-  if (provider === 'x') {
-    const xUrl = buildXAuthUrl({
-      clientId: c.env.X_CLIENT_ID!,
-      redirectUri: callbackUri,
-      state: idState,
-      codeChallenge: idCodeChallenge,
-    });
-    return c.redirect(xUrl);
-  }
-
-  // デフォルト: Google
-  const googleUrl = buildGoogleAuthUrl({
-    clientId: c.env.GOOGLE_CLIENT_ID,
-    redirectUri: callbackUri,
-    state: idState,
-    codeChallenge: idCodeChallenge,
-  });
-  return c.redirect(googleUrl);
 });
 
 // GET /auth/callback — OAuthコールバック（全プロバイダー共通）
@@ -236,11 +211,21 @@ app.get('/callback', async (c) => {
   const callbackUri = `${c.env.IDP_ORIGIN}${CALLBACK_PATH}`;
   const provider = stateData.provider ?? 'google';
 
+  // Google以外はオプション設定のため資格情報の存在を確認
+  if (provider !== 'google') {
+    const creds = OPTIONAL_PROVIDER_CREDENTIALS[provider];
+    if (!c.env[creds.id] || !c.env[creds.secret]) {
+      return c.json(
+        { error: { code: 'PROVIDER_NOT_CONFIGURED', message: `${creds.name} provider is not configured` } },
+        400
+      );
+    }
+  }
+
   const userId = crypto.randomUUID();
-  let user;
+  let user: User;
 
   if (provider === 'google') {
-    // Googleトークン交換
     let googleTokens;
     try {
       googleTokens = await exchangeGoogleCode({
@@ -266,17 +251,14 @@ app.get('/callback', async (c) => {
     }
 
     if (stateData.linkUserId) {
-      try {
-        user = await linkProvider(c.env.DB, stateData.linkUserId, 'google', userInfo.sub);
-      } catch (err) {
-        if (err instanceof Error && err.message === 'PROVIDER_ALREADY_LINKED') {
-          return c.json(
-            { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This Google account is already linked to another user' } },
-            409
-          );
-        }
-        throw err;
+      const result = await handleProviderLink(c.env.DB, stateData.linkUserId, 'google', userInfo.sub);
+      if (!result.ok) {
+        return c.json(
+          { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This Google account is already linked to another user' } },
+          409
+        );
       }
+      user = result.user;
     } else {
       user = await upsertUser(c.env.DB, {
         id: userId,
@@ -288,21 +270,12 @@ app.get('/callback', async (c) => {
       });
     }
   } else if (provider === 'line') {
-    if (!c.env.LINE_CLIENT_ID || !c.env.LINE_CLIENT_SECRET) {
-      return c.json(
-        {
-          error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'LINE provider is not configured' },
-        },
-        400
-      );
-    }
-
     let lineTokens;
     try {
       lineTokens = await exchangeLineCode({
         code,
-        clientId: c.env.LINE_CLIENT_ID,
-        clientSecret: c.env.LINE_CLIENT_SECRET,
+        clientId: c.env.LINE_CLIENT_ID!,
+        clientSecret: c.env.LINE_CLIENT_SECRET!,
         redirectUri: callbackUri,
         codeVerifier: pkceVerifier,
       });
@@ -328,17 +301,14 @@ app.get('/callback', async (c) => {
     const email = userInfo.email ?? `line_${userInfo.sub}@line.placeholder`;
 
     if (stateData.linkUserId) {
-      try {
-        user = await linkProvider(c.env.DB, stateData.linkUserId, 'line', userInfo.sub);
-      } catch (err) {
-        if (err instanceof Error && err.message === 'PROVIDER_ALREADY_LINKED') {
-          return c.json(
-            { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This LINE account is already linked to another user' } },
-            409
-          );
-        }
-        throw err;
+      const result = await handleProviderLink(c.env.DB, stateData.linkUserId, 'line', userInfo.sub);
+      if (!result.ok) {
+        return c.json(
+          { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This LINE account is already linked to another user' } },
+          409
+        );
       }
+      user = result.user;
     } else {
       user = await upsertLineUser(c.env.DB, {
         id: userId,
@@ -350,24 +320,12 @@ app.get('/callback', async (c) => {
       });
     }
   } else if (provider === 'twitch') {
-    if (!c.env.TWITCH_CLIENT_ID || !c.env.TWITCH_CLIENT_SECRET) {
-      return c.json(
-        {
-          error: {
-            code: 'PROVIDER_NOT_CONFIGURED',
-            message: 'Twitch provider is not configured',
-          },
-        },
-        400
-      );
-    }
-
     let twitchTokens;
     try {
       twitchTokens = await exchangeTwitchCode({
         code,
-        clientId: c.env.TWITCH_CLIENT_ID,
-        clientSecret: c.env.TWITCH_CLIENT_SECRET,
+        clientId: c.env.TWITCH_CLIENT_ID!,
+        clientSecret: c.env.TWITCH_CLIENT_SECRET!,
         redirectUri: callbackUri,
         codeVerifier: pkceVerifier,
       });
@@ -392,17 +350,14 @@ app.get('/callback', async (c) => {
     const email = userInfo.email ?? `twitch_${userInfo.sub}@twitch.placeholder`;
 
     if (stateData.linkUserId) {
-      try {
-        user = await linkProvider(c.env.DB, stateData.linkUserId, 'twitch', userInfo.sub);
-      } catch (err) {
-        if (err instanceof Error && err.message === 'PROVIDER_ALREADY_LINKED') {
-          return c.json(
-            { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This Twitch account is already linked to another user' } },
-            409
-          );
-        }
-        throw err;
+      const result = await handleProviderLink(c.env.DB, stateData.linkUserId, 'twitch', userInfo.sub);
+      if (!result.ok) {
+        return c.json(
+          { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This Twitch account is already linked to another user' } },
+          409
+        );
       }
+      user = result.user;
     } else {
       user = await upsertTwitchUser(c.env.DB, {
         id: userId,
@@ -415,24 +370,12 @@ app.get('/callback', async (c) => {
       });
     }
   } else if (provider === 'github') {
-    if (!c.env.GITHUB_CLIENT_ID || !c.env.GITHUB_CLIENT_SECRET) {
-      return c.json(
-        {
-          error: {
-            code: 'PROVIDER_NOT_CONFIGURED',
-            message: 'GitHub provider is not configured',
-          },
-        },
-        400
-      );
-    }
-
     let githubTokens;
     try {
       githubTokens = await exchangeGithubCode({
         code,
-        clientId: c.env.GITHUB_CLIENT_ID,
-        clientSecret: c.env.GITHUB_CLIENT_SECRET,
+        clientId: c.env.GITHUB_CLIENT_ID!,
+        clientSecret: c.env.GITHUB_CLIENT_SECRET!,
         redirectUri: callbackUri,
         codeVerifier: pkceVerifier,
       });
@@ -465,17 +408,14 @@ app.get('/callback', async (c) => {
     const finalEmail = email ?? `github_${githubSub}@github.placeholder`;
 
     if (stateData.linkUserId) {
-      try {
-        user = await linkProvider(c.env.DB, stateData.linkUserId, 'github', githubSub);
-      } catch (err) {
-        if (err instanceof Error && err.message === 'PROVIDER_ALREADY_LINKED') {
-          return c.json(
-            { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This GitHub account is already linked to another user' } },
-            409
-          );
-        }
-        throw err;
+      const result = await handleProviderLink(c.env.DB, stateData.linkUserId, 'github', githubSub);
+      if (!result.ok) {
+        return c.json(
+          { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This GitHub account is already linked to another user' } },
+          409
+        );
       }
+      user = result.user;
     } else {
       user = await upsertGithubUser(c.env.DB, {
         id: userId,
@@ -487,19 +427,12 @@ app.get('/callback', async (c) => {
       });
     }
   } else if (provider === 'x') {
-    if (!c.env.X_CLIENT_ID || !c.env.X_CLIENT_SECRET) {
-      return c.json(
-        { error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'X provider is not configured' } },
-        400
-      );
-    }
-
     let xTokens;
     try {
       xTokens = await exchangeXCode({
         code,
-        clientId: c.env.X_CLIENT_ID,
-        clientSecret: c.env.X_CLIENT_SECRET,
+        clientId: c.env.X_CLIENT_ID!,
+        clientSecret: c.env.X_CLIENT_SECRET!,
         redirectUri: callbackUri,
         codeVerifier: pkceVerifier,
       });
@@ -524,17 +457,14 @@ app.get('/callback', async (c) => {
     const xEmail = `x_${xUser.id}@x.placeholder`;
 
     if (stateData.linkUserId) {
-      try {
-        user = await linkProvider(c.env.DB, stateData.linkUserId, 'x', xUser.id);
-      } catch (err) {
-        if (err instanceof Error && err.message === 'PROVIDER_ALREADY_LINKED') {
-          return c.json(
-            { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This X account is already linked to another user' } },
-            409
-          );
-        }
-        throw err;
+      const result = await handleProviderLink(c.env.DB, stateData.linkUserId, 'x', xUser.id);
+      if (!result.ok) {
+        return c.json(
+          { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This X account is already linked to another user' } },
+          409
+        );
       }
+      user = result.user;
     } else {
       user = await upsertXUser(c.env.DB, {
         id: userId,
