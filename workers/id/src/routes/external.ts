@@ -5,8 +5,10 @@ import {
   sha256,
   timingSafeEqual,
   hasUserAuthorizedService,
+  listUsersAuthorizedForService,
+  countUsersAuthorizedForService,
 } from '@0g0-id/shared';
-import type { IdpEnv, User } from '@0g0-id/shared';
+import type { IdpEnv, User, Service } from '@0g0-id/shared';
 
 const app = new Hono<{ Bindings: IdpEnv }>();
 
@@ -52,6 +54,82 @@ async function authenticateService(db: D1Database, authHeader: string | undefine
   }
 }
 
+/**
+ * サービス固有の不透明なユーザー識別子（ペアワイズsub）を生成する。
+ * 内部IDを直接公開しないために、sha256(client_id:user_id)を使用する。
+ */
+async function generatePairwiseSub(service: Service, userId: string): Promise<string> {
+  return sha256(service.client_id + ':' + userId);
+}
+
+/**
+ * スコープに基づいてユーザー情報をフィルタリングし、外部向けレスポンスを構築する。
+ * 内部IDの代わりにペアワイズsubを返す。
+ */
+async function buildUserData(
+  service: Service,
+  user: User,
+  allowedScopes: string[]
+): Promise<Record<string, unknown>> {
+  const sub = await generatePairwiseSub(service, user.id);
+  const data: Record<string, unknown> = { sub };
+  for (const scope of allowedScopes) {
+    if (scope in SCOPE_FIELDS) {
+      Object.assign(data, SCOPE_FIELDS[scope](user));
+    }
+  }
+  return data;
+}
+
+/**
+ * allowed_scopesをパースする。失敗時はfail-closed（空配列）。
+ */
+function parseAllowedScopes(service: Service): string[] {
+  try {
+    const scopes = JSON.parse(service.allowed_scopes) as string[];
+    return Array.isArray(scopes) ? scopes : [];
+  } catch {
+    return [];
+  }
+}
+
+// GET /api/external/users — 認可済みユーザー一覧（外部サービス向け）
+app.get('/users', async (c) => {
+  let service: Awaited<ReturnType<typeof authenticateService>>;
+  try {
+    service = await authenticateService(c.env.DB, c.req.header('Authorization'));
+  } catch {
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
+  if (!service) {
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid client credentials' } }, 401);
+  }
+
+  // ページネーションパラメータのパース（Number + isInteger で厳密検証）
+  const limitRaw = Number(c.req.query('limit') ?? '50');
+  const offsetRaw = Number(c.req.query('offset') ?? '0');
+  const limit =
+    Number.isInteger(limitRaw) && limitRaw >= 1 && limitRaw <= 100 ? limitRaw : 50;
+  const offset = Number.isInteger(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
+
+  let users: User[];
+  let total: number;
+  try {
+    [users, total] = await Promise.all([
+      listUsersAuthorizedForService(c.env.DB, service.id, limit, offset),
+      countUsersAuthorizedForService(c.env.DB, service.id),
+    ]);
+  } catch {
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
+
+  const allowedScopes = parseAllowedScopes(service);
+
+  const data = await Promise.all(users.map((user) => buildUserData(service!, user, allowedScopes)));
+
+  return c.json({ data, meta: { total, limit, offset } });
+});
+
 // GET /api/external/users/:id — IDによるユーザー完全一致検索（外部サービス向け）
 app.get('/users/:id', async (c) => {
   let service: Awaited<ReturnType<typeof authenticateService>>;
@@ -82,22 +160,8 @@ app.get('/users/:id', async (c) => {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  let allowedScopes: string[];
-  try {
-    allowedScopes = JSON.parse(service.allowed_scopes) as string[];
-    if (!Array.isArray(allowedScopes)) allowedScopes = [];
-  } catch {
-    // 解析失敗時はfail-closed（情報を一切返さない）
-    allowedScopes = [];
-  }
-
-  // allowed_scopesに基づいてユーザー情報をフィルタリング
-  const data: Record<string, unknown> = { id: user.id };
-  for (const scope of allowedScopes) {
-    if (scope in SCOPE_FIELDS) {
-      Object.assign(data, SCOPE_FIELDS[scope](user));
-    }
-  }
+  const allowedScopes = parseAllowedScopes(service);
+  const data = await buildUserData(service, user, allowedScopes);
 
   return c.json({ data });
 });

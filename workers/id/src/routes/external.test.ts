@@ -8,6 +8,8 @@ vi.mock('@0g0-id/shared', () => ({
   sha256: vi.fn(),
   timingSafeEqual: vi.fn(),
   hasUserAuthorizedService: vi.fn(),
+  listUsersAuthorizedForService: vi.fn(),
+  countUsersAuthorizedForService: vi.fn(),
 }));
 
 import {
@@ -16,6 +18,8 @@ import {
   sha256,
   timingSafeEqual,
   hasUserAuthorizedService,
+  listUsersAuthorizedForService,
+  countUsersAuthorizedForService,
 } from '@0g0-id/shared';
 
 import externalRoutes from './external';
@@ -25,6 +29,8 @@ const mockFindServiceByClientId = vi.mocked(findServiceByClientId);
 const mockSha256 = vi.mocked(sha256);
 const mockTimingSafeEqual = vi.mocked(timingSafeEqual);
 const mockHasUserAuthorizedService = vi.mocked(hasUserAuthorizedService);
+const mockListUsersAuthorizedForService = vi.mocked(listUsersAuthorizedForService);
+const mockCountUsersAuthorizedForService = vi.mocked(countUsersAuthorizedForService);
 
 // テスト用アプリケーション
 function buildApp() {
@@ -36,6 +42,11 @@ function buildApp() {
 const baseUrl = 'https://id.0g0.xyz';
 // Cloudflare Workers Bindingsのモック（DBはsharedモックが肩代わりするためnullで可）
 const mockEnv = { DB: {} as D1Database };
+
+// Basic認証ヘッダーを生成
+function basicAuth(clientId: string, clientSecret: string): string {
+  return `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
+}
 
 // テストヘルパー: /api/external/users/:id へのリクエストを生成
 function makeRequest(
@@ -57,6 +68,23 @@ async function requestExternalUser(
 ) {
   return app.request(
     makeRequest(userId, basicAuth(clientId, clientSecret)),
+    undefined,
+    mockEnv as unknown as Record<string, string>
+  );
+}
+
+// テストヘルパー: /api/external/users 一覧へのリクエストを送信
+async function requestExternalUserList(
+  app: ReturnType<typeof buildApp>,
+  query?: Record<string, string>,
+  clientId = 'client-abc',
+  clientSecret = 'secret'
+) {
+  const params = query ? '?' + new URLSearchParams(query).toString() : '';
+  return app.request(
+    new Request(`${baseUrl}/api/external/users${params}`, {
+      headers: { Authorization: basicAuth(clientId, clientSecret) },
+    }),
     undefined,
     mockEnv as unknown as Record<string, string>
   );
@@ -89,17 +117,17 @@ const mockUser = {
   updated_at: '2024-01-01T00:00:00Z',
 };
 
-// Basic認証ヘッダーを生成
-function basicAuth(clientId: string, clientSecret: string): string {
-  return `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
-}
+const PAIRWISE_SUB = 'pairwise-sub-hash';
 
 describe('GET /api/external/users/:id', () => {
   const app = buildApp();
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockSha256.mockResolvedValue('hash-abc');
+    vi.resetAllMocks();
+    // sha256はペアワイズsub（':'を含む）と認証用secretを区別する
+    mockSha256.mockImplementation(async (input: string) =>
+      input.includes(':') ? PAIRWISE_SUB : 'hash-abc'
+    );
     mockTimingSafeEqual.mockReturnValue(true);
     mockFindServiceByClientId.mockResolvedValue(mockService);
     mockHasUserAuthorizedService.mockResolvedValue(true);
@@ -170,7 +198,7 @@ describe('GET /api/external/users/:id', () => {
       const res = await requestExternalUser(app, 'user-1');
       expect(res.status).toBe(200);
       const body = await res.json<{ data: Record<string, unknown> }>();
-      expect(body.data.id).toBe('user-1');
+      expect(body.data.sub).toBe(PAIRWISE_SUB);
       expect(body.data.name).toBe('Test User');
       expect(body.data.email).toBe('test@example.com');
       expect(body.data.email_verified).toBe(true);
@@ -217,30 +245,37 @@ describe('GET /api/external/users/:id', () => {
       expect(body.data.email).toBe('test@example.com');
     });
 
-    it('常にidフィールドは返す', async () => {
+    it('常にsubフィールドは返す', async () => {
       mockFindServiceByClientId.mockResolvedValue({
         ...mockService,
         allowed_scopes: JSON.stringify(['email']),
       });
       const res = await requestExternalUser(app, 'user-1');
       const body = await res.json<{ data: Record<string, unknown> }>();
-      expect(body.data.id).toBe('user-1');
+      expect(body.data.sub).toBe(PAIRWISE_SUB);
     });
 
-    it('allowed_scopesが不正なJSONの場合 → fail-closedでidのみ返す', async () => {
+    it('allowed_scopesが不正なJSONの場合 → fail-closedでsubのみ返す', async () => {
       mockFindServiceByClientId.mockResolvedValue({
         ...mockService,
         allowed_scopes: 'invalid-json',
       });
       const res = await requestExternalUser(app, 'user-1');
       const body = await res.json<{ data: Record<string, unknown> }>();
-      expect(body.data.id).toBe('user-1');
+      expect(body.data.sub).toBe(PAIRWISE_SUB);
       expect(body.data).not.toHaveProperty('name');
       expect(body.data).not.toHaveProperty('email');
     });
   });
 
   describe('セキュリティ: 内部情報の非公開', () => {
+    it('内部IDを返さない（subのみ）', async () => {
+      const res = await requestExternalUser(app, 'user-1');
+      const body = await res.json<{ data: Record<string, unknown> }>();
+      expect(body.data).not.toHaveProperty('id');
+      expect(body.data.sub).toBe(PAIRWISE_SUB);
+    });
+
     it('google_sub等の内部IDを返さない', async () => {
       const res = await requestExternalUser(app, 'user-1');
       const body = await res.json<{ data: Record<string, unknown> }>();
@@ -253,6 +288,159 @@ describe('GET /api/external/users/:id', () => {
       const res = await requestExternalUser(app, 'user-1');
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data).not.toHaveProperty('role');
+    });
+  });
+});
+
+describe('GET /api/external/users', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    // sha256はペアワイズsub（':'を含む）と認証用secretを区別する
+    mockSha256.mockImplementation(async (input: string) =>
+      input.includes(':') ? PAIRWISE_SUB : 'hash-abc'
+    );
+    mockTimingSafeEqual.mockReturnValue(true);
+    mockFindServiceByClientId.mockResolvedValue(mockService);
+    mockListUsersAuthorizedForService.mockResolvedValue([mockUser]);
+    mockCountUsersAuthorizedForService.mockResolvedValue(1);
+  });
+
+  describe('認証', () => {
+    it('Authorizationヘッダーなし → 401を返す', async () => {
+      const res = await app.request(
+        new Request(`${baseUrl}/api/external/users`),
+        undefined,
+        mockEnv as unknown as Record<string, string>
+      );
+      expect(res.status).toBe(401);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('UNAUTHORIZED');
+    });
+
+    it('client_secretが不一致 → 401を返す', async () => {
+      mockTimingSafeEqual.mockReturnValue(false);
+      const res = await requestExternalUserList(app, {}, 'client-abc', 'wrong');
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe('一覧取得', () => {
+    it('認可済みユーザー一覧を返す', async () => {
+      const res = await requestExternalUserList(app);
+      expect(res.status).toBe(200);
+      const body = await res.json<{
+        data: Record<string, unknown>[];
+        meta: { total: number; limit: number; offset: number };
+      }>();
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].sub).toBe(PAIRWISE_SUB);
+      expect(body.data[0].name).toBe('Test User');
+      expect(body.data[0].email).toBe('test@example.com');
+    });
+
+    it('metaフィールドにtotal/limit/offsetを含む', async () => {
+      const res = await requestExternalUserList(app);
+      const body = await res.json<{
+        meta: { total: number; limit: number; offset: number };
+      }>();
+      expect(body.meta.total).toBe(1);
+      expect(body.meta.limit).toBe(50);
+      expect(body.meta.offset).toBe(0);
+    });
+
+    it('ユーザーが0件の場合は空配列を返す', async () => {
+      mockListUsersAuthorizedForService.mockResolvedValue([]);
+      mockCountUsersAuthorizedForService.mockResolvedValue(0);
+      const res = await requestExternalUserList(app);
+      const body = await res.json<{
+        data: unknown[];
+        meta: { total: number };
+      }>();
+      expect(body.data).toHaveLength(0);
+      expect(body.meta.total).toBe(0);
+    });
+  });
+
+  describe('ページネーション', () => {
+    it('limitとoffsetクエリパラメータを受け付ける', async () => {
+      const res = await requestExternalUserList(app, { limit: '10', offset: '5' });
+      expect(res.status).toBe(200);
+      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
+        expect.anything(),
+        'service-1',
+        10,
+        5
+      );
+    });
+
+    it('limitが範囲外（>100）の場合はデフォルト50を使用', async () => {
+      const res = await requestExternalUserList(app, { limit: '200' });
+      expect(res.status).toBe(200);
+      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
+        expect.anything(),
+        'service-1',
+        50,
+        0
+      );
+    });
+
+    it('limitが不正な文字列の場合はデフォルト50を使用', async () => {
+      const res = await requestExternalUserList(app, { limit: 'abc' });
+      expect(res.status).toBe(200);
+      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
+        expect.anything(),
+        'service-1',
+        50,
+        0
+      );
+    });
+
+    it('limitが整数でない場合（小数点）はデフォルト50を使用', async () => {
+      const res = await requestExternalUserList(app, { limit: '1.5' });
+      expect(res.status).toBe(200);
+      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
+        expect.anything(),
+        'service-1',
+        50,
+        0
+      );
+    });
+
+    it('offsetが負の場合はデフォルト0を使用', async () => {
+      const res = await requestExternalUserList(app, { offset: '-5' });
+      expect(res.status).toBe(200);
+      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
+        expect.anything(),
+        'service-1',
+        50,
+        0
+      );
+    });
+  });
+
+  describe('セキュリティ: 内部情報の非公開', () => {
+    it('一覧レスポンスにも内部IDを含まない', async () => {
+      const res = await requestExternalUserList(app);
+      const body = await res.json<{ data: Record<string, unknown>[] }>();
+      expect(body.data[0]).not.toHaveProperty('id');
+      expect(body.data[0]).not.toHaveProperty('google_sub');
+      expect(body.data[0]).not.toHaveProperty('role');
+    });
+
+    it('一覧レスポンスにはsubフィールドが含まれる', async () => {
+      const res = await requestExternalUserList(app);
+      const body = await res.json<{ data: Record<string, unknown>[] }>();
+      expect(body.data[0].sub).toBe(PAIRWISE_SUB);
+    });
+  });
+
+  describe('エラーハンドリング', () => {
+    it('DB障害時 → 500を返す', async () => {
+      mockListUsersAuthorizedForService.mockRejectedValue(new Error('DB error'));
+      const res = await requestExternalUserList(app);
+      expect(res.status).toBe(500);
     });
   });
 });

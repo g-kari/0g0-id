@@ -1,4 +1,4 @@
-import type { RefreshToken } from '../types';
+import type { RefreshToken, User } from '../types';
 
 export async function findRefreshTokenByHash(
   db: D1Database,
@@ -125,6 +125,59 @@ export async function hasUserAuthorizedService(
     .bind(userId, serviceId)
     .first<{ 1: number }>();
   return result !== null;
+}
+
+/**
+ * 特定サービスに認可済みのユーザー一覧を返す（アクティブなリフレッシュトークン保有者）
+ * EXISTS を使うことで重複行の生成を避け、ページング安定性のため副キー(u.id)を追加。
+ */
+export async function listUsersAuthorizedForService(
+  db: D1Database,
+  serviceId: string,
+  limit: number = 50,
+  offset: number = 0
+): Promise<User[]> {
+  const result = await db
+    .prepare(
+      `SELECT u.*
+       FROM users u
+       WHERE EXISTS (
+         SELECT 1 FROM refresh_tokens rt
+         WHERE rt.user_id = u.id
+           AND rt.service_id = ?
+           AND rt.revoked_at IS NULL
+           AND rt.expires_at > datetime('now')
+       )
+       ORDER BY u.created_at DESC, u.id DESC
+       LIMIT ? OFFSET ?`
+    )
+    .bind(serviceId, limit, offset)
+    .all<User>();
+  return result.results;
+}
+
+/**
+ * 特定サービスに認可済みのユーザー数を返す
+ */
+export async function countUsersAuthorizedForService(
+  db: D1Database,
+  serviceId: string
+): Promise<number> {
+  const result = await db
+    .prepare(
+      `SELECT COUNT(*) as count
+       FROM users u
+       WHERE EXISTS (
+         SELECT 1 FROM refresh_tokens rt
+         WHERE rt.user_id = u.id
+           AND rt.service_id = ?
+           AND rt.revoked_at IS NULL
+           AND rt.expires_at > datetime('now')
+       )`
+    )
+    .bind(serviceId)
+    .first<{ count: number }>();
+  return result?.count ?? 0;
 }
 
 /**
