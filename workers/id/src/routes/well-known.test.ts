@@ -110,6 +110,7 @@ describe('GET /.well-known/openid-configuration', () => {
     expect(body.authorization_endpoint).toBe('https://id.0g0.xyz/auth/login');
     expect(body.token_endpoint).toBe('https://id.0g0.xyz/auth/exchange');
     expect(body.jwks_uri).toBe('https://id.0g0.xyz/.well-known/jwks.json');
+    expect(body.userinfo_endpoint).toBe('https://id.0g0.xyz/api/userinfo');
     expect(body.introspection_endpoint).toBe('https://id.0g0.xyz/api/token/introspect');
     expect(body.revocation_endpoint).toBe('https://id.0g0.xyz/api/token/revoke');
   });

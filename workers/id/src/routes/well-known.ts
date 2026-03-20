@@ -21,6 +21,7 @@ app.get('/openid-configuration', (c) => {
       authorization_endpoint: `${issuer}/auth/login`,
       token_endpoint: `${issuer}/auth/exchange`,
       jwks_uri: `${issuer}/.well-known/jwks.json`,
+      userinfo_endpoint: `${issuer}/api/userinfo`,
       introspection_endpoint: `${issuer}/api/token/introspect`,
       revocation_endpoint: `${issuer}/api/token/revoke`,
       scopes_supported: ['openid', 'profile', 'email', 'phone', 'address'],
