@@ -142,6 +142,46 @@ describe('admin BFF — /api/users', () => {
     });
   });
 
+  describe('GET /:id — ユーザー詳細', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1');
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('管理者セッションでIdPへプロキシしてユーザー詳細を返す', async () => {
+      const mockUser = { id: 'user-1', email: 'user1@example.com', name: 'User One', role: 'user' };
+      const idpFetch = mockIdp(200, { data: mockUser });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof mockUser }>();
+      expect(body.data.id).toBe('user-1');
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/users/user-1');
+      expect(calledReq.headers.get('Authorization')).toBe('Bearer mock-access-token');
+    });
+
+    it('存在しないIDでIdPが404を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(404, { error: { code: 'NOT_FOUND' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/no-such-user', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(404);
+    });
+  });
+
   describe('PATCH /:id/role — ユーザーロール変更', () => {
     it('セッションなしで401を返す', async () => {
       const idpFetch = vi.fn();

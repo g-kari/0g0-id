@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
+import { z } from 'zod';
 
 import {
   buildGoogleAuthUrl,
@@ -41,6 +42,19 @@ import {
 } from '@0g0-id/shared';
 import type { IdpEnv, User } from '@0g0-id/shared';
 
+const ExchangeSchema = z.object({
+  code: z.string().min(1, 'code is required'),
+  redirect_to: z.string().min(1, 'redirect_to is required'),
+});
+
+const RefreshSchema = z.object({
+  refresh_token: z.string().min(1, 'refresh_token is required'),
+});
+
+const LogoutSchema = z.object({
+  refresh_token: z.string().optional(),
+});
+
 const app = new Hono<{ Bindings: IdpEnv }>();
 
 const CALLBACK_PATH = '/auth/callback';
@@ -57,7 +71,7 @@ const OPTIONAL_PROVIDER_CREDENTIALS = {
   twitch: { id: 'TWITCH_CLIENT_ID' as const, secret: 'TWITCH_CLIENT_SECRET' as const, name: 'Twitch' },
   github: { id: 'GITHUB_CLIENT_ID' as const, secret: 'GITHUB_CLIENT_SECRET' as const, name: 'GitHub' },
   x: { id: 'X_CLIENT_ID' as const, secret: 'X_CLIENT_SECRET' as const, name: 'X' },
-} satisfies Record<string, { id: keyof IdpEnv; secret: keyof IdpEnv; name: string }>;
+} satisfies Record<Exclude<OAuthProvider, 'google'>, { id: keyof IdpEnv; secret: keyof IdpEnv; name: string }>;
 
 function setSecureCookie(
   c: Context<{ Bindings: IdpEnv }>,
@@ -159,7 +173,7 @@ app.get('/login', async (c) => {
       return c.redirect(buildGithubAuthUrl({ ...commonParams, clientId: c.env.GITHUB_CLIENT_ID! }));
     case 'x':
       return c.redirect(buildXAuthUrl({ ...commonParams, clientId: c.env.X_CLIENT_ID! }));
-    default:
+    case 'google':
       return c.redirect(buildGoogleAuthUrl({ ...commonParams, clientId: c.env.GOOGLE_CLIENT_ID }));
   }
 });
@@ -516,16 +530,18 @@ app.get('/callback', async (c) => {
 
 // POST /auth/exchange — ワンタイムコード交換（BFFサーバー間専用）
 app.post('/exchange', async (c) => {
-  let body: { code?: string; redirect_to?: string };
+  let rawBody: unknown;
   try {
-    body = await c.req.json<{ code?: string; redirect_to?: string }>();
+    rawBody = await c.req.json();
   } catch {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
   }
 
-  if (!body.code || !body.redirect_to) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Missing code or redirect_to' } }, 400);
+  const parsed = ExchangeSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: parsed.error.issues[0]?.message ?? 'Invalid request' } }, 400);
   }
+  const body = parsed.data;
 
   const codeHash = await sha256(body.code);
   const authCode = await findAndConsumeAuthCode(c.env.DB, codeHash);
@@ -592,18 +608,19 @@ app.post('/exchange', async (c) => {
 
 // POST /auth/refresh — トークンリフレッシュ（BFFサーバー間専用）
 app.post('/refresh', async (c) => {
-  let body: { refresh_token?: string };
+  let rawBody: unknown;
   try {
-    body = await c.req.json<{ refresh_token?: string }>();
+    rawBody = await c.req.json();
   } catch {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
   }
 
-  if (!body.refresh_token) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Missing refresh_token' } }, 400);
+  const parsed = RefreshSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: parsed.error.issues[0]?.message ?? 'Invalid request' } }, 400);
   }
 
-  const tokenHash = await sha256(body.refresh_token);
+  const tokenHash = await sha256(parsed.data.refresh_token);
   const storedToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
 
   if (!storedToken) {
@@ -669,15 +686,18 @@ app.post('/refresh', async (c) => {
 
 // POST /auth/logout — ログアウト（BFFサーバー間専用）
 app.post('/logout', async (c) => {
-  let body: { refresh_token?: string };
+  let rawBody: unknown;
   try {
-    body = await c.req.json<{ refresh_token?: string }>();
+    rawBody = await c.req.json();
   } catch {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
   }
 
-  if (body.refresh_token) {
-    const tokenHash = await sha256(body.refresh_token);
+  const parsed = LogoutSchema.safeParse(rawBody);
+  const refreshToken = parsed.success ? parsed.data.refresh_token : undefined;
+
+  if (refreshToken) {
+    const tokenHash = await sha256(refreshToken);
     const storedToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
     if (storedToken) {
       await revokeTokenFamily(c.env.DB, storedToken.family_id);

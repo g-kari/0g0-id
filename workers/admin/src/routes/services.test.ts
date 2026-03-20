@@ -95,6 +95,44 @@ describe('admin BFF — /api/services', () => {
     });
   });
 
+  describe('GET /:id — サービス取得', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/services/service-1');
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('管理者セッションでIdPにGETしてサービスを返す', async () => {
+      const mockService = { id: 'service-1', name: 'Test Service', client_id: 'client-abc' };
+      const idpFetch = mockIdp(200, { data: mockService });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/services/service-1', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof mockService }>();
+      expect(body.data.id).toBe('service-1');
+
+      const fetchedReq = vi.mocked(idpFetch).mock.calls[0]?.[0] as Request;
+      expect(fetchedReq.url).toBe('https://id.0g0.xyz/api/services/service-1');
+      expect(fetchedReq.method).toBe('GET');
+    });
+
+    it('IdPが404を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(404, { error: { code: 'NOT_FOUND', message: 'Service not found' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/services/nonexistent', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(404);
+    });
+  });
+
   describe('POST / — サービス作成', () => {
     it('セッションなしで401を返す', async () => {
       const idpFetch = vi.fn();

@@ -462,6 +462,60 @@ describe('DELETE /api/users/me/providers/:provider', () => {
   });
 });
 
+// ===== GET /api/users/:id（管理者のみ）=====
+describe('GET /api/users/:id', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者でない場合 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/users/user-1');
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('ユーザー詳細を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.id).toBe('user-1');
+    expect(body.data.email).toBe('test@example.com');
+    expect(body.data.name).toBe('Test User');
+    expect(body.data.phone).toBe('090-0000-0000');
+    expect(body.data.address).toBe('Tokyo');
+    expect(body.data.role).toBe('user');
+    expect(vi.mocked(findUserById)).toHaveBeenCalledWith(expect.anything(), 'user-1');
+  });
+
+  it('内部フィールド（google_sub等）を含まない', async () => {
+    const res = await sendRequest(app, '/api/users/user-1');
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data).not.toHaveProperty('google_sub');
+    expect(body.data).not.toHaveProperty('line_sub');
+    expect(body.data).not.toHaveProperty('github_sub');
+    expect(body.data).not.toHaveProperty('x_sub');
+  });
+
+  it('存在しないユーザーID → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/no-such-user');
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+});
+
 // ===== PATCH /api/users/:id/role（管理者のみ）=====
 describe('PATCH /api/users/:id/role', () => {
   const app = buildApp();
