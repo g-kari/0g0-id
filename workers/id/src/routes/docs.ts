@@ -41,6 +41,18 @@ const INTERNAL_OPENAPI = {
           },
         },
       },
+      LoginEvent: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          user_id: { type: 'string' },
+          provider: { type: 'string', enum: ['google', 'line', 'twitch', 'github', 'x'] },
+          ip_address: { type: 'string', nullable: true },
+          user_agent: { type: 'string', nullable: true },
+          created_at: { type: 'string', format: 'date-time' },
+        },
+        required: ['id', 'user_id', 'provider', 'created_at'],
+      },
       User: {
         type: 'object',
         properties: {
@@ -234,7 +246,7 @@ const INTERNAL_OPENAPI = {
       patch: {
         tags: ['ユーザー API'],
         summary: 'プロフィール更新',
-        description: 'ユーザー名を更新する。Origin/RefererヘッダーによるCSRF検証あり。',
+        description: 'ユーザープロフィールを更新する（name必須、picture/phone/address任意）。Origin/RefererヘッダーによるCSRF検証あり。',
         security: [{ BearerAuth: [] }],
         requestBody: {
           required: true,
@@ -244,6 +256,9 @@ const INTERNAL_OPENAPI = {
                 type: 'object',
                 properties: {
                   name: { type: 'string', description: '新しい表示名（空白のみ不可）' },
+                  picture: { type: 'string', nullable: true, description: 'プロフィール画像URL（省略時は変更なし）' },
+                  phone: { type: 'string', nullable: true, description: '電話番号（省略時は変更なし、nullで削除）' },
+                  address: { type: 'string', nullable: true, description: '住所（省略時は変更なし、nullで削除）' },
                 },
                 required: ['name'],
               },
@@ -251,7 +266,17 @@ const INTERNAL_OPENAPI = {
           },
         },
         responses: {
-          '200': { description: '更新成功' },
+          '200': {
+            description: '更新成功',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { data: { $ref: '#/components/schemas/User' } },
+                },
+              },
+            },
+          },
           '400': { description: 'BAD_REQUEST — nameが空' },
           '401': { description: 'UNAUTHORIZED' },
           '403': { description: 'FORBIDDEN — オリジン不正' },
@@ -288,6 +313,35 @@ const INTERNAL_OPENAPI = {
           },
           '401': { description: 'UNAUTHORIZED' },
           '403': { description: 'FORBIDDEN — 管理者権限なし' },
+        },
+      },
+    },
+    '/api/users/me/login-history': {
+      get: {
+        tags: ['ユーザー API'],
+        summary: '自分のログイン履歴取得',
+        description: '認証済みユーザー自身のログイン履歴を返す（ページネーション対応）。',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 20, maximum: 100, minimum: 1 }, description: '1ページの件数（デフォルト20、最大100）' },
+          { name: 'offset', in: 'query', schema: { type: 'integer', default: 0, minimum: 0 }, description: '取得開始位置' },
+        ],
+        responses: {
+          '200': {
+            description: 'ログイン履歴',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: { type: 'array', items: { $ref: '#/components/schemas/LoginEvent' } },
+                    total: { type: 'integer', description: '総件数' },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'UNAUTHORIZED' },
         },
       },
     },
@@ -430,6 +484,38 @@ const INTERNAL_OPENAPI = {
           '400': { description: 'BAD_REQUEST — 不正なロール値' },
           '401': { description: 'UNAUTHORIZED' },
           '403': { description: 'FORBIDDEN — 管理者権限なし、または自分自身のロール変更' },
+          '404': { description: 'NOT_FOUND — ユーザー未存在' },
+        },
+      },
+    },
+    '/api/users/{id}/login-history': {
+      get: {
+        tags: ['ユーザー API (管理者)'],
+        summary: 'ユーザーのログイン履歴取得',
+        description: '指定ユーザーのログイン履歴を返す（管理者専用、ページネーション対応）。',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'ユーザーID' },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 20, maximum: 100, minimum: 1 }, description: '1ページの件数（デフォルト20、最大100）' },
+          { name: 'offset', in: 'query', schema: { type: 'integer', default: 0, minimum: 0 }, description: '取得開始位置' },
+        ],
+        responses: {
+          '200': {
+            description: 'ログイン履歴',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: { type: 'array', items: { $ref: '#/components/schemas/LoginEvent' } },
+                    total: { type: 'integer', description: '総件数' },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'UNAUTHORIZED' },
+          '403': { description: 'FORBIDDEN — 管理者権限なし' },
           '404': { description: 'NOT_FOUND — ユーザー未存在' },
         },
       },
@@ -584,8 +670,8 @@ const INTERNAL_OPENAPI = {
       },
       patch: {
         tags: ['サービス管理 API (管理者)'],
-        summary: 'サービス スコープ更新',
-        description: '指定サービスの許可スコープを更新する（管理者専用）。Origin/RefererヘッダーによるCSRF検証あり。',
+        summary: 'サービス情報更新',
+        description: '指定サービスの名前・許可スコープを更新する（管理者専用）。name と allowed_scopes の少なくとも一方が必要。Origin/RefererヘッダーによるCSRF検証あり。',
         security: [{ BearerAuth: [] }],
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
@@ -597,13 +683,13 @@ const INTERNAL_OPENAPI = {
               schema: {
                 type: 'object',
                 properties: {
+                  name: { type: 'string', description: '新しいサービス名（省略時は変更なし、空文字不可）' },
                   allowed_scopes: {
                     type: 'array',
                     items: { type: 'string', enum: ['profile', 'email', 'phone', 'address'] },
-                    description: '新しい許可スコープ（空配列不可）',
+                    description: '新しい許可スコープ（省略時は変更なし、空配列不可）',
                   },
                 },
-                required: ['allowed_scopes'],
               },
             },
           },
@@ -680,6 +766,109 @@ const INTERNAL_OPENAPI = {
           '401': { description: 'UNAUTHORIZED' },
           '403': { description: 'FORBIDDEN — 管理者権限なし、またはオリジン不正' },
           '404': { description: 'NOT_FOUND — サービス未存在' },
+        },
+      },
+    },
+    '/api/services/{id}/owner': {
+      patch: {
+        tags: ['サービス管理 API (管理者)'],
+        summary: 'サービス所有権移譲',
+        description: '指定サービスの所有権を別ユーザーに移譲する（管理者専用）。移譲先ユーザーが存在しない場合は 404 を返す。Origin/RefererヘッダーによるCSRF検証あり。',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'サービスID' },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  new_owner_user_id: { type: 'string', description: '新しいオーナーのユーザーID（必須）' },
+                },
+                required: ['new_owner_user_id'],
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: '移譲成功',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'string' },
+                        name: { type: 'string' },
+                        client_id: { type: 'string' },
+                        owner_user_id: { type: 'string' },
+                        updated_at: { type: 'string', format: 'date-time' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '400': { description: 'BAD_REQUEST — new_owner_user_id が未指定' },
+          '401': { description: 'UNAUTHORIZED' },
+          '403': { description: 'FORBIDDEN — 管理者権限なし、またはオリジン不正' },
+          '404': { description: 'NOT_FOUND — サービスまたは移譲先ユーザーが未存在' },
+        },
+      },
+    },
+    '/api/services/{id}/users': {
+      get: {
+        tags: ['サービス管理 API (管理者)'],
+        summary: 'サービス認可済みユーザー一覧取得',
+        description: '指定サービスにアクティブなリフレッシュトークンを持つ認可済みユーザー一覧を返す（管理者専用、ページネーション対応）。',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'サービスID' },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 100, minimum: 1 }, description: '1ページの件数' },
+          { name: 'offset', in: 'query', schema: { type: 'integer', default: 0, minimum: 0 }, description: '取得開始位置' },
+        ],
+        responses: {
+          '200': {
+            description: '認可済みユーザー一覧',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: { type: 'array', items: { $ref: '#/components/schemas/User' } },
+                    total: { type: 'integer', description: '総ユーザー数' },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'UNAUTHORIZED' },
+          '403': { description: 'FORBIDDEN — 管理者権限なし' },
+          '404': { description: 'NOT_FOUND — サービス未存在' },
+        },
+      },
+    },
+    '/api/services/{id}/users/{userId}': {
+      delete: {
+        tags: ['サービス管理 API (管理者)'],
+        summary: 'ユーザーのサービスアクセス失効',
+        description: '指定ユーザーの指定サービスに対するすべてのリフレッシュトークンを失効させる（管理者専用）。ユーザーのサービスアクセスを強制的に取り消す。Origin/RefererヘッダーによるCSRF検証あり。',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'サービスID' },
+          { name: 'userId', in: 'path', required: true, schema: { type: 'string' }, description: 'ユーザーID' },
+        ],
+        responses: {
+          '204': { description: 'アクセス失効成功' },
+          '401': { description: 'UNAUTHORIZED' },
+          '403': { description: 'FORBIDDEN — 管理者権限なし、またはオリジン不正' },
+          '404': { description: 'NOT_FOUND — サービス未存在、ユーザー未存在、またはユーザーの認可が存在しない' },
         },
       },
     },
@@ -843,10 +1032,10 @@ const INTERNAL_OPENAPI = {
     },
   },
   tags: [
-    { name: '認証フロー', description: 'Google OAuth2.0を使ったログイン・トークン管理' },
-    { name: 'ユーザー API', description: 'ユーザー自身のプロフィール・連携管理' },
-    { name: 'ユーザー API (管理者)', description: '管理者専用のユーザー管理API' },
-    { name: 'サービス管理 API (管理者)', description: '管理者専用のサービス登録・設定API' },
+    { name: '認証フロー', description: 'OAuth2.0（Google/LINE/Twitch/GitHub/X）を使ったログイン・トークン管理' },
+    { name: 'ユーザー API', description: 'ユーザー自身のプロフィール・連携・ログイン履歴管理' },
+    { name: 'ユーザー API (管理者)', description: '管理者専用のユーザー管理・ログイン履歴閲覧API' },
+    { name: 'サービス管理 API (管理者)', description: '管理者専用のサービス登録・設定・認可ユーザー管理API' },
     { name: 'トークン', description: 'JWTトークン検証・イントロスペクション' },
     { name: '外部サービス向け API', description: '連携サービス向けのユーザーデータ取得API' },
     { name: '公開エンドポイント', description: '認証不要の公開エンドポイント' },
