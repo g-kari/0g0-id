@@ -191,7 +191,7 @@ export async function revokeUserServiceTokens(
   const result = await db
     .prepare(
       `UPDATE refresh_tokens SET revoked_at = datetime('now')
-       WHERE user_id = ? AND service_id = ? AND revoked_at IS NULL`
+       WHERE user_id = ? AND service_id = ? AND revoked_at IS NULL AND expires_at > datetime('now')`
     )
     .bind(userId, serviceId)
     .run();

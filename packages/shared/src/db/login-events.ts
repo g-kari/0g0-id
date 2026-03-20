@@ -27,7 +27,7 @@ export async function getLoginEventsByUserId(
   const [eventsResult, countResult] = await Promise.all([
     db
       .prepare(
-        'SELECT * FROM login_events WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
+        'SELECT * FROM login_events WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?'
       )
       .bind(userId, limit, offset)
       .all<LoginEvent>(),

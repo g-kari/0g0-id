@@ -23,6 +23,20 @@ vi.mock('@0g0-id/shared', () => ({
   listUsersAuthorizedForService: vi.fn(),
   countUsersAuthorizedForService: vi.fn(),
   revokeUserServiceTokens: vi.fn(),
+  parsePagination: (
+    query: { limit?: string; offset?: string },
+    options: { defaultLimit: number; maxLimit: number } = { defaultLimit: 20, maxLimit: 100 }
+  ) => {
+    const limitRaw = query.limit !== undefined ? parseInt(query.limit, 10) : options.defaultLimit;
+    const offsetRaw = query.offset !== undefined ? parseInt(query.offset, 10) : 0;
+    if (query.limit !== undefined && (isNaN(limitRaw) || limitRaw < 1)) {
+      return { error: 'limit は1以上の整数で指定してください' };
+    }
+    if (query.offset !== undefined && (isNaN(offsetRaw) || offsetRaw < 0)) {
+      return { error: 'offset は0以上の整数で指定してください' };
+    }
+    return { limit: Math.min(limitRaw, options.maxLimit), offset: offsetRaw };
+  },
   verifyAccessToken: vi.fn(),
 }));
 

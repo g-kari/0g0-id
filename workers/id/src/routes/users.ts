@@ -14,6 +14,7 @@ import {
   getUserProviders,
   unlinkProvider,
   getLoginEventsByUserId,
+  parsePagination,
   type UserFilter,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
@@ -119,10 +120,14 @@ app.get('/me/providers', authMiddleware, async (c) => {
 // GET /api/users/me/login-history — 自分のログイン履歴取得
 app.get('/me/login-history', authMiddleware, async (c) => {
   const tokenUser = c.get('user');
-  const limitStr = c.req.query('limit') ?? '20';
-  const offsetStr = c.req.query('offset') ?? '0';
-  const limit = Math.min(parseInt(limitStr, 10) || 20, 100);
-  const offset = parseInt(offsetStr, 10) || 0;
+  const pagination = parsePagination(
+    { limit: c.req.query('limit'), offset: c.req.query('offset') },
+    { defaultLimit: 20, maxLimit: 100 }
+  );
+  if ('error' in pagination) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
+  }
+  const { limit, offset } = pagination;
 
   const { events, total } = await getLoginEventsByUserId(c.env.DB, tokenUser.sub, limit, offset);
   return c.json({ data: events, total });
@@ -205,10 +210,14 @@ app.get('/:id/services', authMiddleware, adminMiddleware, async (c) => {
 // GET /api/users/:id/login-history（管理者のみ）
 app.get('/:id/login-history', authMiddleware, adminMiddleware, async (c) => {
   const targetId = c.req.param('id');
-  const limitStr = c.req.query('limit') ?? '20';
-  const offsetStr = c.req.query('offset') ?? '0';
-  const limit = Math.min(parseInt(limitStr, 10) || 20, 100);
-  const offset = parseInt(offsetStr, 10) || 0;
+  const pagination = parsePagination(
+    { limit: c.req.query('limit'), offset: c.req.query('offset') },
+    { defaultLimit: 20, maxLimit: 100 }
+  );
+  if ('error' in pagination) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
+  }
+  const { limit, offset } = pagination;
 
   const targetUser = await findUserById(c.env.DB, targetId);
   if (!targetUser) {

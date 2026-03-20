@@ -19,6 +19,7 @@ import {
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
   revokeUserServiceTokens,
+  parsePagination,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
@@ -340,10 +341,14 @@ app.patch('/:id/owner', authMiddleware, adminMiddleware, csrfMiddleware, async (
 // GET /api/services/:id/users — サービスを認可済みのユーザー一覧（管理者のみ）
 app.get('/:id/users', authMiddleware, adminMiddleware, async (c) => {
   const serviceId = c.req.param('id');
-  const limitStr = c.req.query('limit') ?? '50';
-  const offsetStr = c.req.query('offset') ?? '0';
-  const limit = Math.min(parseInt(limitStr, 10) || 50, 100);
-  const offset = parseInt(offsetStr, 10) || 0;
+  const pagination = parsePagination(
+    { limit: c.req.query('limit'), offset: c.req.query('offset') },
+    { defaultLimit: 50, maxLimit: 100 }
+  );
+  if ('error' in pagination) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
+  }
+  const { limit, offset } = pagination;
 
   const service = await findServiceById(c.env.DB, serviceId);
   if (!service) {
