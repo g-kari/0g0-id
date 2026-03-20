@@ -111,3 +111,18 @@ export async function rotateClientSecret(
     .bind(newClientSecretHash, id)
     .first<Service>();
 }
+
+export async function transferServiceOwnership(
+  db: D1Database,
+  id: string,
+  newOwnerUserId: string
+): Promise<Service | null> {
+  return db
+    .prepare(
+      `UPDATE services SET owner_user_id = ?, updated_at = datetime('now')
+       WHERE id = ?
+       RETURNING *`
+    )
+    .bind(newOwnerUserId, id)
+    .first<Service>();
+}

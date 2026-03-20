@@ -5,6 +5,7 @@ import { Hono } from 'hono';
 vi.mock('@0g0-id/shared', () => ({
   listServices: vi.fn(),
   findServiceById: vi.fn(),
+  findUserById: vi.fn(),
   createService: vi.fn(),
   updateServiceAllowedScopes: vi.fn(),
   updateServiceName: vi.fn(),
@@ -17,12 +18,14 @@ vi.mock('@0g0-id/shared', () => ({
   sha256: vi.fn(),
   normalizeRedirectUri: vi.fn(),
   rotateClientSecret: vi.fn(),
+  transferServiceOwnership: vi.fn(),
   verifyAccessToken: vi.fn(),
 }));
 
 import {
   listServices,
   findServiceById,
+  findUserById,
   createService,
   updateServiceAllowedScopes,
   updateServiceName,
@@ -35,6 +38,7 @@ import {
   sha256,
   normalizeRedirectUri,
   rotateClientSecret,
+  transferServiceOwnership,
   verifyAccessToken,
 } from '@0g0-id/shared';
 
@@ -725,6 +729,147 @@ describe('POST /api/services/:id/rotate-secret', () => {
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('NOT_FOUND');
+  });
+});
+
+// ===== PATCH /api/services/:id/owner（管理者のみ）=====
+describe('PATCH /api/services/:id/owner', () => {
+  const app = buildApp();
+
+  const mockNewOwner = {
+    id: 'new-owner-id',
+    email: 'newowner@example.com',
+    name: 'New Owner',
+    picture: null,
+    phone: null,
+    address: null,
+    role: 'user' as const,
+    google_sub: null,
+    line_sub: null,
+    twitch_sub: null,
+    github_sub: null,
+    x_sub: null,
+    email_verified: 1,
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  };
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findServiceById).mockResolvedValue(mockService);
+    vi.mocked(findUserById).mockResolvedValue(mockNewOwner);
+    vi.mocked(transferServiceOwnership).mockResolvedValue({
+      ...mockService,
+      owner_user_id: 'new-owner-id',
+      updated_at: '2024-06-01T00:00:00Z',
+    });
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/owner', {
+      method: 'PATCH',
+      withAuth: false,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者でない場合 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/services/service-1/owner', {
+      method: 'PATCH',
+      body: { new_owner_user_id: 'new-owner-id' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('Originヘッダーなし（CSRF）→ 403を返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/owner', {
+      method: 'PATCH',
+      body: { new_owner_user_id: 'new-owner-id' },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('所有権を転送して新しいowner_user_idを返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/owner', {
+      method: 'PATCH',
+      body: { new_owner_user_id: 'new-owner-id' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.id).toBe('service-1');
+    expect(body.data.owner_user_id).toBe('new-owner-id');
+    expect(vi.mocked(transferServiceOwnership)).toHaveBeenCalledWith(
+      expect.anything(),
+      'service-1',
+      'new-owner-id'
+    );
+  });
+
+  it('client_secret_hashを含まない', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/owner', {
+      method: 'PATCH',
+      body: { new_owner_user_id: 'new-owner-id' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data).not.toHaveProperty('client_secret_hash');
+  });
+
+  it('サービスが存在しない場合 → 404を返す', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/services/no-such/owner', {
+      method: 'PATCH',
+      body: { new_owner_user_id: 'new-owner-id' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('新しいオーナーが存在しない場合 → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/services/service-1/owner', {
+      method: 'PATCH',
+      body: { new_owner_user_id: 'nonexistent-user' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+    expect(body.error.message).toContain('owner');
+  });
+
+  it('new_owner_user_idが省略された場合 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/owner', {
+      method: 'PATCH',
+      body: {},
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('不正なJSONボディ → 400を返す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/services/service-1/owner`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: 'Bearer mock-token',
+          'Content-Type': 'application/json',
+          Origin: 'https://admin.0g0.xyz',
+        },
+        body: 'invalid-json',
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(400);
   });
 });
 

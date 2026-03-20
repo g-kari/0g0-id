@@ -15,6 +15,8 @@ import {
   sha256,
   normalizeRedirectUri,
   rotateClientSecret,
+  transferServiceOwnership,
+  findUserById,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
@@ -45,6 +47,10 @@ const PatchServiceSchema = z
 
 const AddRedirectUriSchema = z.object({
   uri: z.string().min(1, 'uri is required'),
+});
+
+const TransferOwnerSchema = z.object({
+  new_owner_user_id: z.string().min(1, 'new_owner_user_id is required'),
 });
 
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
@@ -289,6 +295,52 @@ app.post('/:id/rotate-secret', authMiddleware, adminMiddleware, csrfMiddleware, 
       id: updated.id,
       client_id: updated.client_id,
       client_secret: newClientSecret,
+      updated_at: updated.updated_at,
+    },
+  });
+});
+
+// PATCH /api/services/:id/owner — サービス所有権の転送
+app.patch('/:id/owner', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+  const serviceId = c.req.param('id');
+
+  let rawBody: unknown;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
+  }
+
+  const parsed = TransferOwnerSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return c.json(
+      { error: { code: 'BAD_REQUEST', message: parsed.error.issues[0]?.message ?? 'Invalid request' } },
+      400
+    );
+  }
+  const { new_owner_user_id } = parsed.data;
+
+  const service = await findServiceById(c.env.DB, serviceId);
+  if (!service) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+  }
+
+  const newOwner = await findUserById(c.env.DB, new_owner_user_id);
+  if (!newOwner) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'New owner user not found' } }, 404);
+  }
+
+  const updated = await transferServiceOwnership(c.env.DB, serviceId, new_owner_user_id);
+  if (!updated) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+  }
+
+  return c.json({
+    data: {
+      id: updated.id,
+      name: updated.name,
+      client_id: updated.client_id,
+      owner_user_id: updated.owner_user_id,
       updated_at: updated.updated_at,
     },
   });
