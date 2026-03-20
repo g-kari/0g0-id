@@ -915,6 +915,78 @@ describe('GET /api/users/me/login-history', () => {
   });
 });
 
+// ===== GET /api/users/:id/services（管理者のみ）=====
+describe('GET /api/users/:id/services', () => {
+  const app = buildApp();
+
+  const mockConnections = [
+    {
+      service_id: 'service-1',
+      service_name: 'Test Service',
+      client_id: 'client-abc',
+      first_authorized_at: '2024-01-01T00:00:00Z',
+      last_authorized_at: '2024-01-02T00:00:00Z',
+    },
+    {
+      service_id: 'service-2',
+      service_name: 'Another Service',
+      client_id: 'client-xyz',
+      first_authorized_at: '2024-02-01T00:00:00Z',
+      last_authorized_at: '2024-02-03T00:00:00Z',
+    },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(listUserConnections).mockResolvedValue(mockConnections);
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/services', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者でない場合 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/users/user-1/services');
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('対象ユーザーが存在しない場合 → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/no-such/services');
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('認可済みサービス一覧を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/services');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[] }>();
+    expect(body.data).toHaveLength(2);
+    expect(body.data[0]).toMatchObject({ service_id: 'service-1', service_name: 'Test Service' });
+    expect(body.data[1]).toMatchObject({ service_id: 'service-2', service_name: 'Another Service' });
+  });
+
+  it('認可済みサービスがない場合は空配列を返す', async () => {
+    vi.mocked(listUserConnections).mockResolvedValue([]);
+    const res = await sendRequest(app, '/api/users/user-1/services');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[] }>();
+    expect(body.data).toHaveLength(0);
+  });
+
+  it('対象ユーザーのIDでlistUserConnectionsを呼ぶ', async () => {
+    await sendRequest(app, '/api/users/user-1/services');
+    expect(vi.mocked(listUserConnections)).toHaveBeenCalledWith(expect.anything(), 'user-1');
+  });
+});
+
 // ===== GET /api/users/:id/login-history（管理者のみ）=====
 describe('GET /api/users/:id/login-history', () => {
   const app = buildApp();

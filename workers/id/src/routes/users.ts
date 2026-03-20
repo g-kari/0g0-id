@@ -189,6 +189,19 @@ app.get('/:id', authMiddleware, adminMiddleware, async (c) => {
   });
 });
 
+// GET /api/users/:id/services — ユーザーが認可しているサービス一覧（管理者のみ）
+app.get('/:id/services', authMiddleware, adminMiddleware, async (c) => {
+  const targetId = c.req.param('id');
+
+  const targetUser = await findUserById(c.env.DB, targetId);
+  if (!targetUser) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+
+  const connections = await listUserConnections(c.env.DB, targetId);
+  return c.json({ data: connections });
+});
+
 // GET /api/users/:id/login-history（管理者のみ）
 app.get('/:id/login-history', authMiddleware, adminMiddleware, async (c) => {
   const targetId = c.req.param('id');

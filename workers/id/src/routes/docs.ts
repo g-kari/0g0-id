@@ -488,6 +488,48 @@ const INTERNAL_OPENAPI = {
         },
       },
     },
+    '/api/users/{id}/services': {
+      get: {
+        tags: ['ユーザー API (管理者)'],
+        summary: 'ユーザーの認可済みサービス一覧取得',
+        description: '指定ユーザーが現在アクティブなリフレッシュトークンを保有するサービス一覧を返す（管理者専用）。`GET /api/services/{id}/users` の逆方向エンドポイント。',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'ユーザーID' },
+        ],
+        responses: {
+          '200': {
+            description: '認可済みサービス一覧',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          service_id: { type: 'string' },
+                          service_name: { type: 'string' },
+                          client_id: { type: 'string' },
+                          first_authorized_at: { type: 'string', format: 'date-time' },
+                          last_authorized_at: { type: 'string', format: 'date-time' },
+                        },
+                        required: ['service_id', 'service_name', 'client_id', 'first_authorized_at', 'last_authorized_at'],
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'UNAUTHORIZED' },
+          '403': { description: 'FORBIDDEN — 管理者権限なし' },
+          '404': { description: 'NOT_FOUND — ユーザー未存在' },
+        },
+      },
+    },
     '/api/users/{id}/login-history': {
       get: {
         tags: ['ユーザー API (管理者)'],
