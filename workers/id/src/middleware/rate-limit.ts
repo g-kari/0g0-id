@@ -77,3 +77,31 @@ export const externalApiRateLimitMiddleware = createMiddleware<{ Bindings: IdpEn
     await next();
   }
 );
+
+/**
+ * トークンエンドポイント向けレートリミッター（IP単位）。
+ * 対象: POST /auth/exchange, POST /auth/refresh
+ *
+ * コード横取り・リフレッシュトークンブルートフォースを緩和する。
+ * RATE_LIMITER_TOKEN バインディングが未設定の場合はスキップ（ローカル開発・テスト時）。
+ */
+export const tokenApiRateLimitMiddleware = createMiddleware<{ Bindings: IdpEnv }>(
+  async (c, next) => {
+    if (c.env.RATE_LIMITER_TOKEN) {
+      const key = getClientIp(c.req.raw);
+      const { success } = await c.env.RATE_LIMITER_TOKEN.limit({ key });
+      if (!success) {
+        return c.json(
+          {
+            error: {
+              code: 'TOO_MANY_REQUESTS',
+              message: 'Too many requests. Please try again later.',
+            },
+          },
+          429
+        );
+      }
+    }
+    await next();
+  }
+);

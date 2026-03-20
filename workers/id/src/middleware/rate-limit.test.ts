@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Hono } from 'hono';
 import type { IdpEnv, RateLimitBinding } from '@0g0-id/shared';
-import { authRateLimitMiddleware, externalApiRateLimitMiddleware } from './rate-limit';
+import { authRateLimitMiddleware, externalApiRateLimitMiddleware, tokenApiRateLimitMiddleware } from './rate-limit';
 
 const baseUrl = 'https://id.0g0.xyz';
 
@@ -161,5 +161,65 @@ describe('externalApiRateLimitMiddleware', () => {
       'cf-connecting-ip': '9.9.9.9',
     });
     expect(rateLimiter.limit).toHaveBeenCalledWith({ key: '9.9.9.9' });
+  });
+});
+
+// ─── tokenApiRateLimitMiddleware ─────────────────────────────────────────────
+
+describe('tokenApiRateLimitMiddleware', () => {
+  function buildApp(env: Partial<IdpEnv>) {
+    const app = new Hono<{ Bindings: typeof env }>();
+    app.use('/auth/*', tokenApiRateLimitMiddleware);
+    app.post('/auth/exchange', (c) => c.json({ ok: true }));
+    app.post('/auth/refresh', (c) => c.json({ ok: true }));
+    return {
+      request: (path: string, headers?: Record<string, string>) =>
+        app.request(
+          new Request(`${baseUrl}${path}`, { method: 'POST', headers }),
+          undefined,
+          env as unknown as Record<string, string>
+        ),
+    };
+  }
+
+  it('制限内のリクエスト → 200を返す', async () => {
+    const app = buildApp(makeBaseEnv({ RATE_LIMITER_TOKEN: makeRateLimiter(true) }));
+    const res = await app.request('/auth/exchange');
+    expect(res.status).toBe(200);
+  });
+
+  it('制限超過のリクエスト → 429を返す', async () => {
+    const app = buildApp(makeBaseEnv({ RATE_LIMITER_TOKEN: makeRateLimiter(false) }));
+    const res = await app.request('/auth/refresh');
+    expect(res.status).toBe(429);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe('TOO_MANY_REQUESTS');
+  });
+
+  it('バインディング未設定の場合はスキップして通過する', async () => {
+    const app = buildApp(makeBaseEnv({ RATE_LIMITER_TOKEN: undefined }));
+    const res = await app.request('/auth/exchange');
+    expect(res.status).toBe(200);
+  });
+
+  it('cf-connecting-ip ヘッダーをキーとして limit() を呼ぶ', async () => {
+    const rateLimiter = makeRateLimiter(true);
+    const app = buildApp(makeBaseEnv({ RATE_LIMITER_TOKEN: rateLimiter }));
+    await app.request('/auth/exchange', { 'cf-connecting-ip': '1.2.3.4' });
+    expect(rateLimiter.limit).toHaveBeenCalledWith({ key: '1.2.3.4' });
+  });
+
+  it('cf-connecting-ip がない場合は x-forwarded-for をキーとして使う', async () => {
+    const rateLimiter = makeRateLimiter(true);
+    const app = buildApp(makeBaseEnv({ RATE_LIMITER_TOKEN: rateLimiter }));
+    await app.request('/auth/refresh', { 'x-forwarded-for': '10.0.0.1, 10.0.0.2' });
+    expect(rateLimiter.limit).toHaveBeenCalledWith({ key: '10.0.0.1' });
+  });
+
+  it('IPが取得できない場合は "unknown" をキーとして使う', async () => {
+    const rateLimiter = makeRateLimiter(true);
+    const app = buildApp(makeBaseEnv({ RATE_LIMITER_TOKEN: rateLimiter }));
+    await app.request('/auth/exchange');
+    expect(rateLimiter.limit).toHaveBeenCalledWith({ key: 'unknown' });
   });
 });
