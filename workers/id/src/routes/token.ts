@@ -1,10 +1,34 @@
 import { Hono } from 'hono';
+import type { HonoRequest } from 'hono';
 import { findRefreshTokenByHash, findUserById, revokeRefreshToken, sha256 } from '@0g0-id/shared';
 import type { IdpEnv } from '@0g0-id/shared';
 import { externalApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authenticateService } from '../utils/service-auth';
 
 const app = new Hono<{ Bindings: IdpEnv }>();
+
+/**
+ * RFC 7009 / RFC 7662 準拠: リクエストボディのパース。
+ * application/x-www-form-urlencoded（RFC標準）と application/json（後方互換）の両方に対応。
+ */
+async function parseTokenBody(
+  req: HonoRequest
+): Promise<{ token?: string; token_type_hint?: string } | null> {
+  const contentType = req.header('Content-Type') ?? '';
+  try {
+    if (contentType.includes('application/x-www-form-urlencoded')) {
+      const body = await req.parseBody();
+      return {
+        token: typeof body['token'] === 'string' ? body['token'] : undefined,
+        token_type_hint:
+          typeof body['token_type_hint'] === 'string' ? body['token_type_hint'] : undefined,
+      };
+    }
+    return await req.json<{ token?: string; token_type_hint?: string }>();
+  } catch {
+    return null;
+  }
+}
 
 // POST /api/token/introspect — RFC 7662 トークンイントロスペクション
 app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
@@ -19,11 +43,9 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
     return c.json({ active: false }, 401);
   }
 
-  // トークン取得
-  let body: { token?: string };
-  try {
-    body = await c.req.json<{ token?: string }>();
-  } catch {
+  // トークン取得（RFC 7662: application/x-www-form-urlencoded および application/json に対応）
+  const body = await parseTokenBody(c.req);
+  if (!body) {
     return c.json({ active: false }, 400);
   }
 
@@ -103,11 +125,9 @@ app.post('/revoke', externalApiRateLimitMiddleware, async (c) => {
     return c.json({ error: 'invalid_client' }, 401);
   }
 
-  // トークン取得（JSON形式）
-  let body: { token?: string; token_type_hint?: string };
-  try {
-    body = await c.req.json<{ token?: string; token_type_hint?: string }>();
-  } catch {
+  // トークン取得（RFC 7009: application/x-www-form-urlencoded および application/json に対応）
+  const body = await parseTokenBody(c.req);
+  if (!body) {
     return c.json({ error: 'invalid_request' }, 400);
   }
 
