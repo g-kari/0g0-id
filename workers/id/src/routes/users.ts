@@ -153,6 +153,28 @@ app.delete('/me/connections/:serviceId', authMiddleware, csrfMiddleware, async (
   return c.body(null, 204);
 });
 
+// GET /api/users/:id（管理者のみ）
+app.get('/:id', authMiddleware, adminMiddleware, async (c) => {
+  const targetId = c.req.param('id');
+  const user = await findUserById(c.env.DB, targetId);
+  if (!user) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+  return c.json({
+    data: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      picture: user.picture,
+      phone: user.phone,
+      address: user.address,
+      role: user.role,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+    },
+  });
+});
+
 // PATCH /api/users/:id/role（管理者のみ）
 app.patch('/:id/role', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const targetId = c.req.param('id');

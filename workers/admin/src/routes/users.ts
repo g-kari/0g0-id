@@ -17,6 +17,16 @@ app.get('/', async (c) => {
   return proxyResponse(res);
 });
 
+// GET /api/users/:id
+app.get('/:id', async (c) => {
+  const res = await fetchWithAuth(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}`
+  );
+  return proxyResponse(res);
+});
+
 // PATCH /api/users/:id/role
 app.patch('/:id/role', async (c) => {
   let body: unknown;
