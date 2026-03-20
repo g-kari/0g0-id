@@ -395,7 +395,7 @@
           }
           serviceUsersContent.innerHTML =
             '<div class="table-wrap"><table aria-label="サービス認可ユーザー一覧">' +
-            '<thead><tr><th>名前</th><th>メール</th><th>ロール</th><th>スコープ</th><th>認可日</th></tr></thead>' +
+            '<thead><tr><th>名前</th><th>メール</th><th>ロール</th><th>登録日</th></tr></thead>' +
             '<tbody>' +
             items.map(function (u) {
               var roleBadge = u.role === 'admin'
@@ -405,7 +405,6 @@
                 '<td>' + escHtml(u.name || '—') + '</td>' +
                 '<td>' + escHtml(u.email) + '</td>' +
                 '<td>' + roleBadge + '</td>' +
-                '<td class="mono">' + escHtml(u.scope || '—') + '</td>' +
                 '<td>' + new Date(u.created_at).toLocaleString('ja-JP') + '</td>' +
                 '</tr>';
             }).join('') +
@@ -609,7 +608,7 @@
               ? '<span class="badge badge-admin">admin</span>'
               : '<span class="badge badge-user">user</span>';
             panel.innerHTML =
-              '<div class="detail-row"><span class="detail-label">ID</span><span class="detail-value mono">' + escHtml(u.id) + '</span></div>' +
+              '<div class="detail-row"><span class="detail-label">内部ID</span><span class="detail-value mono">' + escHtml(u.id) + '</span></div>' +
               '<div class="detail-row"><span class="detail-label">名前</span><span class="detail-value">' + escHtml(u.name || '—') + '</span></div>' +
               '<div class="detail-row"><span class="detail-label">メール</span><span class="detail-value">' + escHtml(u.email) + verifiedBadge + '</span></div>' +
               '<div class="detail-row"><span class="detail-label">ロール</span><span class="detail-value">' + roleBadge + '</span></div>' +
@@ -658,9 +657,12 @@
             var items = data.data || [];
             if (items.length === 0) { panel.innerHTML = '<p style="color:var(--text-muted);font-size:0.875rem;">連携プロバイダーがありません</p>'; return; }
             panel.innerHTML = items.map(function (item) {
+              var badge = item.connected
+                ? '<span class="badge badge-admin">連携済み</span>'
+                : '<span class="badge badge-user">未連携</span>';
               return '<div class="detail-row">' +
                 '<span class="detail-label">' + escHtml(item.provider) + '</span>' +
-                '<span class="detail-value mono">' + escHtml(item.provider_user_id) + '</span>' +
+                '<span class="detail-value">' + badge + '</span>' +
                 '</div>';
             }).join('');
           })
@@ -678,18 +680,28 @@
             if (data.error) { panel.innerHTML = '<p style="color:var(--error);font-size:0.875rem;">取得に失敗しました</p>'; return; }
             var items = data.data || [];
             if (items.length === 0) { panel.innerHTML = '<p style="color:var(--text-muted);font-size:0.875rem;">認可済みサービスがありません</p>'; return; }
-            panel.innerHTML =
-              '<div class="table-wrap"><table aria-label="認可済みサービス">' +
-              '<thead><tr><th>サービス名</th><th>スコープ</th><th>認可日</th></tr></thead>' +
-              '<tbody>' +
-              items.map(function (item) {
-                return '<tr>' +
-                  '<td>' + escHtml(item.service_name || '—') + '</td>' +
-                  '<td class="mono">' + escHtml(item.scope || '—') + '</td>' +
-                  '<td>' + new Date(item.created_at).toLocaleString('ja-JP') + '</td>' +
-                  '</tr>';
-              }).join('') +
-              '</tbody></table></div>';
+            // ペアワイズ sub = sha256(client_id:userId) をブラウザ WebCrypto で算出
+            return Promise.all(items.map(function (item) {
+              var raw = new TextEncoder().encode(item.client_id + ':' + userId);
+              return crypto.subtle.digest('SHA-256', raw).then(function (buf) {
+                var hex = Array.from(new Uint8Array(buf)).map(function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+                return Object.assign({}, item, { pairwise_sub: hex });
+              });
+            })).then(function (itemsWithSub) {
+              panel.innerHTML =
+                '<div class="table-wrap"><table aria-label="認可済みサービス">' +
+                '<thead><tr><th>サービス名</th><th>ペアワイズ sub</th><th>初回認可日</th><th>最終認可日</th></tr></thead>' +
+                '<tbody>' +
+                itemsWithSub.map(function (item) {
+                  return '<tr>' +
+                    '<td>' + escHtml(item.service_name || '—') + '</td>' +
+                    '<td class="mono" style="font-size:0.7rem;word-break:break-all;">' + escHtml(item.pairwise_sub) + '</td>' +
+                    '<td>' + new Date(item.first_authorized_at).toLocaleString('ja-JP') + '</td>' +
+                    '<td>' + new Date(item.last_authorized_at).toLocaleString('ja-JP') + '</td>' +
+                    '</tr>';
+                }).join('') +
+                '</tbody></table></div>';
+            });
           })
           .catch(function () { hideProgress(); panel.innerHTML = '<p style="color:var(--error);font-size:0.875rem;">通信エラーが発生しました</p>'; });
         return;
