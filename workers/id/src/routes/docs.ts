@@ -1079,6 +1079,43 @@ const INTERNAL_OPENAPI = {
         },
       },
     },
+    '/api/users/me/tokens': {
+      get: {
+        tags: ['ユーザー API'],
+        summary: 'アクティブセッション一覧取得',
+        description: '認証済みユーザー自身のアクティブなセッション（リフレッシュトークン）一覧を返す。IdPセッションと外部サービストークン両方を含む。',
+        security: [{ BearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'アクティブセッション一覧',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string', description: 'セッションID' },
+                          service_id: { type: 'string', nullable: true, description: '外部サービスID（IdPセッションはnull）' },
+                          service_name: { type: 'string', nullable: true, description: 'サービス名（IdPセッションはnull）' },
+                          created_at: { type: 'string', format: 'date-time' },
+                          expires_at: { type: 'string', format: 'date-time' },
+                        },
+                        required: ['id', 'service_id', 'service_name', 'created_at', 'expires_at'],
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'UNAUTHORIZED' },
+        },
+      },
+    },
     '/api/external/users': {
       get: {
         tags: ['外部サービス向け API'],
@@ -1243,6 +1280,233 @@ Authorization: Basic <Base64(client_id:client_secret)>
     },
   },
   paths: {
+    '/auth/exchange': {
+      post: {
+        tags: ['認証フロー'],
+        summary: 'ワンタイムコードをトークンに交換',
+        description:
+          'ログイン後にコールバックで受け取ったワンタイムコードを、アクセストークン（15分）とリフレッシュトークン（30日）に交換する。\n\n' +
+          'このエンドポイントはサーバーサイドから呼び出すこと（コードは1回しか使えない）。\n\n' +
+          '`redirect_to` には `/auth/login` に渡したのと同じコールバックURLを指定する。',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'コールバックで受け取ったワンタイムコード' },
+                  redirect_to: { type: 'string', description: 'コールバックURL（/auth/loginに渡したものと一致が必要）' },
+                },
+                required: ['code', 'redirect_to'],
+              },
+              example: { code: 'abc123xyz...', redirect_to: 'https://myapp.com/auth/callback' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'トークン発行成功',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: {
+                      type: 'object',
+                      properties: {
+                        access_token: { type: 'string', description: 'JWTアクセストークン（ES256、有効期限15分）' },
+                        refresh_token: { type: 'string', description: 'リフレッシュトークン（有効期限30日）' },
+                        token_type: { type: 'string', example: 'Bearer' },
+                        expires_in: { type: 'integer', example: 900, description: 'アクセストークン有効期限（秒）' },
+                        user: {
+                          type: 'object',
+                          properties: {
+                            id: { type: 'string', description: '0g0 ID 内部ユーザーID（External API で使用）' },
+                            email: { type: 'string' },
+                            name: { type: 'string' },
+                            picture: { type: 'string', nullable: true },
+                            role: { type: 'string', enum: ['user', 'admin'] },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '400': { description: 'BAD_REQUEST — コード不正または redirect_to 不一致' },
+          '404': { description: 'NOT_FOUND — ユーザー未存在' },
+        },
+      },
+    },
+    '/auth/refresh': {
+      post: {
+        tags: ['認証フロー'],
+        summary: 'アクセストークンの更新',
+        description:
+          'リフレッシュトークンを使って新しいアクセストークンとリフレッシュトークンを発行する（トークンローテーション）。\n\n' +
+          '⚠️ **旧リフレッシュトークンは即時無効化される**。必ず新しいリフレッシュトークンを保存すること。\n\n' +
+          '同じリフレッシュトークンを2回使った場合（再使用検出）、そのファミリー全体が失効する（セキュリティ機能）。',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  refresh_token: { type: 'string', description: '有効なリフレッシュトークン' },
+                },
+                required: ['refresh_token'],
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: '新しいトークンペア',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: {
+                      type: 'object',
+                      properties: {
+                        access_token: { type: 'string' },
+                        refresh_token: { type: 'string', description: '新しいリフレッシュトークン（旧トークンは無効）' },
+                        token_type: { type: 'string', example: 'Bearer' },
+                        expires_in: { type: 'integer', example: 900 },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'UNAUTHORIZED — トークン無効・期限切れ・再使用検出' },
+        },
+      },
+    },
+    '/auth/logout': {
+      post: {
+        tags: ['認証フロー'],
+        summary: 'ログアウト',
+        description: 'リフレッシュトークンファミリー全体を失効させる。ユーザーのログアウト処理で呼び出すこと。',
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  refresh_token: { type: 'string', description: '失効させるリフレッシュトークン（省略時はno-op）' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'ログアウト成功' },
+        },
+      },
+    },
+    '/api/token/introspect': {
+      post: {
+        tags: ['トークン検証'],
+        summary: 'リフレッシュトークンの有効性確認',
+        description:
+          'RFC 7662 準拠のトークンイントロスペクションエンドポイント。\n\n' +
+          'リフレッシュトークンが有効かどうかを確認し、有効な場合はユーザー情報を返す。\n\n' +
+          '認証には Basic 認証（`client_id:client_secret`）を使用する。\n\n' +
+          '自サービス向けに発行されたトークンのみ照会可能（他サービスのトークンは `active: false`）。',
+        security: [{ BasicAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  token: { type: 'string', description: '検証するリフレッシュトークン' },
+                },
+                required: ['token'],
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'イントロスペクション結果（active: false はトークン無効・期限切れ・他サービス向け）',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    active: { type: 'boolean', description: 'トークンが有効かどうか' },
+                    sub: { type: 'string', description: 'ペアワイズユーザー識別子（active: true のみ）' },
+                    exp: { type: 'integer', description: '有効期限（Unix timestamp）' },
+                    scope: { type: 'string', description: '許可スコープ（スペース区切り）' },
+                    name: { type: 'string', description: '表示名（profileスコープ）' },
+                    picture: { type: 'string', nullable: true, description: 'プロフィール画像URL（profileスコープ）' },
+                    email: { type: 'string', description: 'メールアドレス（emailスコープ）' },
+                    email_verified: { type: 'boolean', description: 'メール認証済みフラグ（emailスコープ）' },
+                    phone: { type: 'string', nullable: true, description: '電話番号（phoneスコープ）' },
+                    address: { type: 'string', nullable: true, description: '住所（addressスコープ）' },
+                  },
+                  required: ['active'],
+                },
+                examples: {
+                  valid: { value: { active: true, sub: 'a1b2c3...', exp: 1735689600, scope: 'profile email', name: '山田 太郎', email: 'taro@example.com', email_verified: true } },
+                  invalid: { value: { active: false } },
+                },
+              },
+            },
+          },
+          '400': { description: 'BAD_REQUEST — リクエストボディ不正' },
+          '401': { description: 'UNAUTHORIZED — Basic 認証失敗' },
+        },
+      },
+    },
+    '/.well-known/jwks.json': {
+      get: {
+        tags: ['JWT検証'],
+        summary: 'JWK Set 取得',
+        description:
+          'JWT署名検証用のES256公開鍵（JWK Set）を返す。\n\n' +
+          'アクセストークンの署名をサーバーサイドで検証する場合に使用する。\n\n' +
+          'レスポンスは1時間キャッシュ可能（`Cache-Control: public, max-age=3600`）。',
+        responses: {
+          '200': {
+            description: 'JWK Set',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    keys: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          kty: { type: 'string', example: 'EC' },
+                          use: { type: 'string', example: 'sig' },
+                          crv: { type: 'string', example: 'P-256' },
+                          kid: { type: 'string' },
+                          x: { type: 'string' },
+                          y: { type: 'string' },
+                          alg: { type: 'string', example: 'ES256' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     '/api/external/users': {
       get: {
         tags: ['ユーザーデータ取得'],
@@ -1381,6 +1645,9 @@ Authorization: Basic <Base64(client_id:client_secret)>
     },
   },
   tags: [
+    { name: '認証フロー', description: 'ログイン・トークン交換・更新・ログアウト' },
+    { name: 'トークン検証', description: 'RFC 7662 トークンイントロスペクション（Basic認証）' },
+    { name: 'JWT検証', description: 'アクセストークンの署名検証用公開鍵' },
     { name: 'ユーザーデータ取得', description: '連携サービス向けのユーザー情報取得API（Basic認証）' },
   ],
 };
