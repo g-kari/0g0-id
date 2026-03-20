@@ -192,6 +192,36 @@ app.delete('/me/tokens', authMiddleware, csrfMiddleware, async (c) => {
   return c.body(null, 204);
 });
 
+// DELETE /api/users/me — 自分のアカウントを削除
+app.delete('/me', authMiddleware, csrfMiddleware, async (c) => {
+  const tokenUser = c.get('user');
+
+  const targetUser = await findUserById(c.env.DB, tokenUser.sub);
+  if (!targetUser) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+
+  // サービスの所有者である場合は削除不可（所有権を先に移譲すること）
+  const ownedServices = await countServicesByOwner(c.env.DB, tokenUser.sub);
+  if (ownedServices > 0) {
+    return c.json(
+      {
+        error: {
+          code: 'CONFLICT',
+          message: `User owns ${ownedServices} service(s). Transfer ownership before deleting.`,
+        },
+      },
+      409
+    );
+  }
+
+  // 削除前にトークンを失効
+  await revokeUserTokens(c.env.DB, tokenUser.sub);
+  await deleteUser(c.env.DB, tokenUser.sub);
+
+  return c.body(null, 204);
+});
+
 // GET /api/users/:id（管理者のみ）
 app.get('/:id', authMiddleware, adminMiddleware, async (c) => {
   const targetId = c.req.param('id');

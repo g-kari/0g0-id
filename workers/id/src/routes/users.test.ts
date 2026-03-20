@@ -1518,3 +1518,77 @@ describe('DELETE /api/users/:id/tokens', () => {
     expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), 'user-1');
   });
 });
+
+// ===== DELETE /api/users/me — 自己アカウント削除 =====
+describe('DELETE /api/users/me', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: mockUserPayload.sub });
+    vi.mocked(countServicesByOwner).mockResolvedValue(0);
+    vi.mocked(revokeUserTokens).mockResolvedValue(undefined);
+    vi.mocked(deleteUser).mockResolvedValue(true);
+  });
+
+  it('Authorizationヘッダーなし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+      withAuth: false,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('Originヘッダーなし（CSRF） → 403を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', { method: 'DELETE' });
+    expect(res.status).toBe(403);
+  });
+
+  it('ユーザーが存在しない → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('サービスを所有している場合 → 409を返す', async () => {
+    vi.mocked(countServicesByOwner).mockResolvedValue(2);
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe('CONFLICT');
+    expect(body.error.message).toContain('2 service(s)');
+  });
+
+  it('トークンを失効してからユーザーを削除し204を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(204);
+    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), mockUserPayload.sub);
+    expect(vi.mocked(deleteUser)).toHaveBeenCalledWith(expect.anything(), mockUserPayload.sub);
+  });
+
+  it('revokeUserTokensがdeleteUserより先に呼ばれる', async () => {
+    const callOrder: string[] = [];
+    vi.mocked(revokeUserTokens).mockImplementation(async () => { callOrder.push('revoke'); });
+    vi.mocked(deleteUser).mockImplementation(async () => { callOrder.push('delete'); return true; });
+
+    await sendRequest(app, '/api/users/me', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+    });
+
+    expect(callOrder).toEqual(['revoke', 'delete']);
+  });
+});
