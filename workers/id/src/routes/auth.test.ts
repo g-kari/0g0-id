@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { isAllowedRedirectTo } from './auth';
 import { Hono } from 'hono';
 
 // @0g0-id/sharedの全関数をモック
@@ -1423,5 +1424,53 @@ describe('GET /auth/callback - ブートストラップ管理者', () => {
     );
     expect(res.status).toBe(302);
     expect(vi.mocked(updateUserRole)).not.toHaveBeenCalled();
+  });
+});
+
+// ===== isAllowedRedirectTo =====
+describe('isAllowedRedirectTo', () => {
+  const IDP = 'https://id.0g0.xyz';
+
+  it('同一親ドメインのサブドメインは許可', () => {
+    expect(isAllowedRedirectTo('https://user.0g0.xyz/auth/callback', IDP)).toBe(true);
+    expect(isAllowedRedirectTo('https://admin.0g0.xyz/auth/callback', IDP)).toBe(true);
+    expect(isAllowedRedirectTo('https://rss.0g0.xyz/api/auth/callback', IDP)).toBe(true);
+  });
+
+  it('親ドメイン自身も許可', () => {
+    expect(isAllowedRedirectTo('https://0g0.xyz/callback', IDP)).toBe(true);
+  });
+
+  it('全く異なるドメインは拒否', () => {
+    expect(isAllowedRedirectTo('https://evil.com/callback', IDP)).toBe(false);
+    expect(isAllowedRedirectTo('https://0g0.xyz.evil.com/callback', IDP)).toBe(false);
+  });
+
+  it('http:// は拒否（HTTPS必須）', () => {
+    expect(isAllowedRedirectTo('http://rss.0g0.xyz/callback', IDP)).toBe(false);
+  });
+
+  it('不正なURLは拒否', () => {
+    expect(isAllowedRedirectTo('not-a-url', IDP)).toBe(false);
+    expect(isAllowedRedirectTo('', IDP)).toBe(false);
+  });
+
+  it('EXTRA_BFF_ORIGINS に一致するオリジンは許可', () => {
+    expect(
+      isAllowedRedirectTo('https://external.example.com/callback', IDP, 'https://external.example.com')
+    ).toBe(true);
+  });
+
+  it('EXTRA_BFF_ORIGINS に一致しないオリジンは拒否', () => {
+    expect(
+      isAllowedRedirectTo('https://other.example.com/callback', IDP, 'https://external.example.com')
+    ).toBe(false);
+  });
+
+  it('EXTRA_BFF_ORIGINS にカンマ区切りで複数指定できる', () => {
+    const extras = 'https://a.example.com,https://b.example.com';
+    expect(isAllowedRedirectTo('https://a.example.com/cb', IDP, extras)).toBe(true);
+    expect(isAllowedRedirectTo('https://b.example.com/cb', IDP, extras)).toBe(true);
+    expect(isAllowedRedirectTo('https://c.example.com/cb', IDP, extras)).toBe(false);
   });
 });

@@ -102,6 +102,8 @@ export interface IdpEnv {
   IDP_ORIGIN: string;
   USER_ORIGIN: string;
   ADMIN_ORIGIN: string;
+  /** 追加BFFオリジン（カンマ区切り）。例: "https://rss.0g0.xyz,https://app.0g0.xyz" */
+  EXTRA_BFF_ORIGINS?: string;
   /** /auth/login, /auth/callback 向けレートリミッター（IP単位） */
   RATE_LIMITER_AUTH?: RateLimitBinding;
   /** /api/external/*, /api/token/introspect 向けレートリミッター（client_id単位） */
