@@ -89,7 +89,7 @@ export async function listUserConnections(
        JOIN services s ON rt.service_id = s.id
        WHERE rt.user_id = ?
          AND rt.revoked_at IS NULL
-         AND rt.expires_at > datetime('now')
+         AND datetime(rt.expires_at) > datetime('now')
        GROUP BY s.id, s.name, s.client_id
        ORDER BY last_authorized_at DESC`
     )
@@ -102,7 +102,7 @@ export async function countActiveRefreshTokens(db: D1Database): Promise<number> 
   const result = await db
     .prepare(
       `SELECT COUNT(*) as count FROM refresh_tokens
-       WHERE revoked_at IS NULL AND expires_at > datetime('now')`
+       WHERE revoked_at IS NULL AND datetime(expires_at) > datetime('now')`
     )
     .first<{ count: number }>();
   return result?.count ?? 0;
@@ -132,7 +132,7 @@ export async function listActiveSessionsByUserId(
        LEFT JOIN services s ON rt.service_id = s.id
        WHERE rt.user_id = ?
          AND rt.revoked_at IS NULL
-         AND rt.expires_at > datetime('now')
+         AND datetime(rt.expires_at) > datetime('now')
        ORDER BY rt.created_at DESC`
     )
     .bind(userId)
@@ -151,7 +151,7 @@ export async function hasUserAuthorizedService(
   const result = await db
     .prepare(
       `SELECT 1 FROM refresh_tokens
-       WHERE user_id = ? AND service_id = ? AND revoked_at IS NULL AND expires_at > datetime('now')
+       WHERE user_id = ? AND service_id = ? AND revoked_at IS NULL AND datetime(expires_at) > datetime('now')
        LIMIT 1`
     )
     .bind(userId, serviceId)
@@ -178,7 +178,7 @@ export async function listUsersAuthorizedForService(
          WHERE rt.user_id = u.id
            AND rt.service_id = ?
            AND rt.revoked_at IS NULL
-           AND rt.expires_at > datetime('now')
+           AND datetime(rt.expires_at) > datetime('now')
        )
        ORDER BY u.created_at DESC, u.id DESC
        LIMIT ? OFFSET ?`
@@ -204,7 +204,7 @@ export async function countUsersAuthorizedForService(
          WHERE rt.user_id = u.id
            AND rt.service_id = ?
            AND rt.revoked_at IS NULL
-           AND rt.expires_at > datetime('now')
+           AND datetime(rt.expires_at) > datetime('now')
        )`
     )
     .bind(serviceId)
@@ -223,7 +223,7 @@ export async function revokeUserServiceTokens(
   const result = await db
     .prepare(
       `UPDATE refresh_tokens SET revoked_at = datetime('now')
-       WHERE user_id = ? AND service_id = ? AND revoked_at IS NULL AND expires_at > datetime('now')`
+       WHERE user_id = ? AND service_id = ? AND revoked_at IS NULL AND datetime(expires_at) > datetime('now')`
     )
     .bind(userId, serviceId)
     .run();

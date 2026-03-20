@@ -30,7 +30,7 @@ export async function findAndConsumeAuthCode(
        SET used_at = datetime('now')
        WHERE code_hash = ?
          AND used_at IS NULL
-         AND expires_at >= datetime('now')
+         AND datetime(expires_at) >= datetime('now')
        RETURNING *`
     )
     .bind(codeHash)
