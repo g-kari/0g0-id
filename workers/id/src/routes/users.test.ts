@@ -15,6 +15,7 @@ vi.mock('@0g0-id/shared', () => ({
   countServicesByOwner: vi.fn(),
   getUserProviders: vi.fn(),
   unlinkProvider: vi.fn(),
+  getLoginEventsByUserId: vi.fn(),
   verifyAccessToken: vi.fn(),
 }));
 
@@ -31,6 +32,7 @@ import {
   countServicesByOwner,
   getUserProviders,
   unlinkProvider,
+  getLoginEventsByUserId,
   verifyAccessToken,
   type UserFilter,
 } from '@0g0-id/shared';
@@ -821,6 +823,198 @@ describe('GET /api/users', () => {
     expect(vi.mocked(listUsers)).toHaveBeenCalledWith(
       expect.anything(), 50, 0,
       expect.objectContaining<UserFilter>({ email: 'test', role: 'user', name: 'Alice' })
+    );
+  });
+});
+
+// ===== GET /api/users/me/login-history =====
+describe('GET /api/users/me/login-history', () => {
+  const app = buildApp();
+
+  const mockLoginEvents = [
+    {
+      id: 'event-1',
+      user_id: 'regular-user-id',
+      provider: 'google',
+      ip_address: '127.0.0.1',
+      user_agent: 'Mozilla/5.0',
+      created_at: '2024-01-01T00:00:00Z',
+    },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(getLoginEventsByUserId).mockResolvedValue({ events: mockLoginEvents, total: 1 });
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/login-history', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('ログイン履歴とtotalを返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/login-history');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[]; total: number }>();
+    expect(body.data).toHaveLength(1);
+    expect(body.total).toBe(1);
+  });
+
+  it('自分のuser_idでgetLoginEventsByUserIdを呼ぶ', async () => {
+    await sendRequest(app, '/api/users/me/login-history');
+    expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
+      expect.anything(),
+      'regular-user-id',
+      20,
+      0
+    );
+  });
+
+  it('limitとoffsetをクエリパラメータから受け取る', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users/me/login-history?limit=5&offset=10`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
+      expect.anything(),
+      'regular-user-id',
+      5,
+      10
+    );
+  });
+
+  it('limitの上限は100', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users/me/login-history?limit=999`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
+      expect.anything(),
+      'regular-user-id',
+      100,
+      0
+    );
+  });
+
+  it('ログイン履歴が0件の場合は空配列を返す', async () => {
+    vi.mocked(getLoginEventsByUserId).mockResolvedValue({ events: [], total: 0 });
+    const res = await sendRequest(app, '/api/users/me/login-history');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[]; total: number }>();
+    expect(body.data).toHaveLength(0);
+    expect(body.total).toBe(0);
+  });
+});
+
+// ===== GET /api/users/:id/login-history（管理者のみ）=====
+describe('GET /api/users/:id/login-history', () => {
+  const app = buildApp();
+
+  const mockLoginEvents = [
+    {
+      id: 'event-2',
+      user_id: 'user-1',
+      provider: 'google',
+      ip_address: '192.168.0.1',
+      user_agent: 'Chrome/120',
+      created_at: '2024-02-01T00:00:00Z',
+    },
+    {
+      id: 'event-1',
+      user_id: 'user-1',
+      provider: 'github',
+      ip_address: '192.168.0.2',
+      user_agent: 'Firefox/120',
+      created_at: '2024-01-01T00:00:00Z',
+    },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(getLoginEventsByUserId).mockResolvedValue({ events: mockLoginEvents, total: 2 });
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/login-history', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者でない場合 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/users/user-1/login-history');
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('対象ユーザーが存在しない場合 → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/no-such/login-history');
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('ログイン履歴とtotalを返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/login-history');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[]; total: number }>();
+    expect(body.data).toHaveLength(2);
+    expect(body.total).toBe(2);
+  });
+
+  it('対象ユーザーのuser_idでgetLoginEventsByUserIdを呼ぶ', async () => {
+    await sendRequest(app, '/api/users/user-1/login-history');
+    expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
+      expect.anything(),
+      'user-1',
+      20,
+      0
+    );
+  });
+
+  it('limitとoffsetをクエリパラメータから受け取る', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users/user-1/login-history?limit=10&offset=5`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
+      expect.anything(),
+      'user-1',
+      10,
+      5
+    );
+  });
+
+  it('limitの上限は100', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users/user-1/login-history?limit=500`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
+      expect.anything(),
+      'user-1',
+      100,
+      0
     );
   });
 });

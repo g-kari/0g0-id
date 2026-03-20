@@ -22,6 +22,7 @@ vi.mock('@0g0-id/shared', () => ({
   transferServiceOwnership: vi.fn(),
   listUsersAuthorizedForService: vi.fn(),
   countUsersAuthorizedForService: vi.fn(),
+  revokeUserServiceTokens: vi.fn(),
   verifyAccessToken: vi.fn(),
 }));
 
@@ -45,6 +46,7 @@ import {
   transferServiceOwnership,
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
+  revokeUserServiceTokens,
   verifyAccessToken,
 } from '@0g0-id/shared';
 
@@ -988,6 +990,109 @@ describe('GET /api/services/:id/users', () => {
       100,
       0
     );
+  });
+});
+
+// ===== DELETE /api/services/:id/users/:userId（管理者のみ）=====
+describe('DELETE /api/services/:id/users/:userId', () => {
+  const app = buildApp();
+
+  const mockTargetUser = {
+    id: 'target-user-id',
+    email: 'target@example.com',
+    name: 'Target User',
+    picture: null,
+    phone: null,
+    address: null,
+    role: 'user' as const,
+    google_sub: null,
+    line_sub: null,
+    twitch_sub: null,
+    github_sub: null,
+    x_sub: null,
+    email_verified: 1,
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  };
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findServiceById).mockResolvedValue(mockService);
+    vi.mocked(findUserById).mockResolvedValue(mockTargetUser);
+    vi.mocked(revokeUserServiceTokens).mockResolvedValue(2);
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/users/target-user-id', {
+      method: 'DELETE',
+      withAuth: false,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者でない場合 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/services/service-1/users/target-user-id', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('Originヘッダーなし（CSRF）→ 403を返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/users/target-user-id', {
+      method: 'DELETE',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('認可を失効させて204を返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/users/target-user-id', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(204);
+    expect(vi.mocked(revokeUserServiceTokens)).toHaveBeenCalledWith(
+      expect.anything(),
+      'target-user-id',
+      'service-1'
+    );
+  });
+
+  it('サービスが存在しない場合 → 404を返す', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/services/no-such/users/target-user-id', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('ユーザーが存在しない場合 → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/services/service-1/users/no-such-user', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('アクティブな認可がない場合 → 404を返す', async () => {
+    vi.mocked(revokeUserServiceTokens).mockResolvedValue(0);
+    const res = await sendRequest(app, '/api/services/service-1/users/target-user-id', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
   });
 });
 
