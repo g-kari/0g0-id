@@ -110,6 +110,17 @@
     </div>
   </div>
 
+  <!-- サービスユーザー一覧モーダル -->
+  <div class="modal-overlay" id="service-users-modal" hidden role="dialog" aria-modal="true" aria-labelledby="service-users-title">
+    <div class="modal" style="max-width:620px;max-height:90vh;display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+        <h2 id="service-users-title" style="margin-bottom:0;"></h2>
+        <button class="btn btn-secondary btn-sm" id="service-users-close-btn" aria-label="閉じる">閉じる</button>
+      </div>
+      <div id="service-users-content" style="overflow-y:auto;flex:1;min-height:0;"></div>
+    </div>
+  </div>
+
   <script src="/app.js"></script>
 </body>
 </html>

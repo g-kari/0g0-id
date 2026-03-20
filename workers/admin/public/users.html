@@ -51,6 +51,30 @@
       </div>
     </main>
   </div>
+  <!-- ユーザー詳細モーダル -->
+  <div class="modal-overlay" id="user-detail-modal" hidden role="dialog" aria-modal="true" aria-labelledby="user-detail-title">
+    <div class="modal modal-lg" style="max-height:90vh;display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+        <h2 id="user-detail-title" style="margin-bottom:0;"></h2>
+        <button class="btn btn-secondary btn-sm" id="user-detail-close-btn" aria-label="閉じる">閉じる</button>
+      </div>
+      <nav class="tab-nav" aria-label="ユーザー詳細タブ">
+        <button class="tab-btn active" data-tab="profile" aria-selected="true">プロフィール</button>
+        <button class="tab-btn" data-tab="login-history" aria-selected="false">ログイン履歴</button>
+        <button class="tab-btn" data-tab="providers" aria-selected="false">プロバイダー</button>
+        <button class="tab-btn" data-tab="services" aria-selected="false">サービス</button>
+        <button class="tab-btn" data-tab="sessions" aria-selected="false">セッション</button>
+      </nav>
+      <div id="user-detail-content" style="overflow-y:auto;flex:1;min-height:0;">
+        <div id="tab-profile"></div>
+        <div id="tab-login-history" hidden></div>
+        <div id="tab-providers" hidden></div>
+        <div id="tab-services" hidden></div>
+        <div id="tab-sessions" hidden></div>
+      </div>
+    </div>
+  </div>
+
   <script src="/app.js"></script>
 </body>
 </html>

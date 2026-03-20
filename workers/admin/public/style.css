@@ -319,6 +319,60 @@ tr:hover td { background: var(--bg); }
   to { transform: rotate(360deg); }
 }
 
+/* 大きなモーダル */
+.modal-lg { max-width: 680px; }
+
+/* ボタン: セカンダリ */
+.btn-secondary {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+/* タブナビゲーション */
+.tab-nav {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 1rem;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-bottom-color 0.15s;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ユーザー詳細モーダル: プロフィール行 */
+.detail-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+.detail-row:last-child { border-bottom: none; }
+.detail-label {
+  width: 8rem;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.detail-value { flex: 1; word-break: break-all; }
+
 /* ダークモード */
 @media (prefers-color-scheme: dark) {
   :root {
@@ -355,4 +409,10 @@ tr:hover td { background: var(--bg); }
 
   .toast-success { background: #14532d; }
   .toast-error { background: #7f1d1d; }
+
+  .btn-secondary {
+    background: #0f172a;
+    color: var(--text);
+    border-color: var(--border);
+  }
 }
