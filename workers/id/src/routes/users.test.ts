@@ -1104,3 +1104,59 @@ describe('GET /api/users/:id/login-history', () => {
     );
   });
 });
+
+// ===== GET /api/users/:id/providers（管理者のみ）=====
+describe('GET /api/users/:id/providers', () => {
+  const app = buildApp();
+
+  const mockProviders: ProviderStatus[] = [
+    { provider: 'google', connected: true },
+    { provider: 'line', connected: false },
+    { provider: 'twitch', connected: false },
+    { provider: 'github', connected: true },
+    { provider: 'x', connected: false },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(getUserProviders).mockResolvedValue(mockProviders);
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/providers', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者でない場合 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/users/user-1/providers');
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('対象ユーザーが存在しない場合 → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/no-such/providers');
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('プロバイダー連携状態の一覧を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/providers');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: ProviderStatus[] }>();
+    expect(body.data).toHaveLength(5);
+    expect(body.data.find((p) => p.provider === 'google')?.connected).toBe(true);
+    expect(body.data.find((p) => p.provider === 'github')?.connected).toBe(true);
+    expect(body.data.find((p) => p.provider === 'line')?.connected).toBe(false);
+  });
+
+  it('対象ユーザーのIDでgetUserProvidersを呼ぶ', async () => {
+    await sendRequest(app, '/api/users/user-1/providers');
+    expect(vi.mocked(getUserProviders)).toHaveBeenCalledWith(expect.anything(), 'user-1');
+  });
+});

@@ -537,4 +537,61 @@ describe('admin BFF — /api/users', () => {
       expect(res.status).toBe(404);
     });
   });
+
+  describe('GET /:id/providers — ユーザーのSNSプロバイダー連携状態', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1/providers');
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('管理者セッションでIdPにGETしてプロバイダー連携状態を返す', async () => {
+      const mockProviders = [
+        { provider: 'google', connected: true },
+        { provider: 'line', connected: false },
+        { provider: 'twitch', connected: false },
+        { provider: 'github', connected: true },
+        { provider: 'x', connected: false },
+      ];
+      const idpFetch = mockIdp(200, { data: mockProviders });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1/providers', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof mockProviders }>();
+      expect(body.data).toHaveLength(5);
+      expect(body.data.find((p) => p.provider === 'google')?.connected).toBe(true);
+      expect(body.data.find((p) => p.provider === 'line')?.connected).toBe(false);
+    });
+
+    it('ユーザーIDをIdPのURLに正しく含める', async () => {
+      const idpFetch = mockIdp(200, { data: [] });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users/specific-user-xyz/providers', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/users/specific-user-xyz/providers');
+      expect(calledReq.headers.get('Authorization')).toBe('Bearer mock-access-token');
+    });
+
+    it('IdPが404（ユーザー不在）を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(404, { error: { code: 'NOT_FOUND' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/no-such-user/providers', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(404);
+    });
+  });
 });

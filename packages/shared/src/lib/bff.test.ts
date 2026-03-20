@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parseSession, proxyResponse } from './bff';
+import { parseSession, proxyResponse, fetchWithJsonBody } from './bff';
 import type { BffSession } from './bff';
 
 // hono/cookie をトップレベルでモック（vi.mock はホイスティングが必要）
@@ -132,5 +132,61 @@ describe('fetchWithAuth', () => {
     expect(result.status).toBe(502);
     const body = await result.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('UPSTREAM_ERROR');
+  });
+});
+
+describe('fetchWithJsonBody', () => {
+  it('JSONパース失敗時は400を返す', async () => {
+    vi.mocked(getCookie).mockReturnValue(encodeSession(mockSession));
+
+    const ctx = {
+      req: { json: vi.fn().mockRejectedValue(new SyntaxError('Unexpected token')) },
+      env: { IDP: { fetch: vi.fn() }, IDP_ORIGIN: 'https://id.0g0.xyz' },
+    } as unknown as Parameters<typeof fetchWithJsonBody>[0];
+
+    const result = await fetchWithJsonBody(ctx, '__session', 'https://id.0g0.xyz/api/test', 'POST');
+    expect(result.status).toBe(400);
+    const body = await result.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+    expect(body.error.message).toBe('Invalid JSON body');
+  });
+
+  it('正常なJSONボディをIdPへ転送してproxyResponseを返す', async () => {
+    vi.mocked(getCookie).mockReturnValue(encodeSession(mockSession));
+
+    const requestBody = { name: 'test-service' };
+    const idpFetch = vi.fn().mockResolvedValue(
+      new Response('{"data":{"id":"svc-1"}}', { status: 201 })
+    );
+    const ctx = {
+      req: { json: vi.fn().mockResolvedValue(requestBody) },
+      env: { IDP: { fetch: idpFetch }, IDP_ORIGIN: 'https://id.0g0.xyz' },
+    } as unknown as Parameters<typeof fetchWithJsonBody>[0];
+
+    const result = await fetchWithJsonBody(ctx, '__session', 'https://id.0g0.xyz/api/services', 'POST');
+    expect(result.status).toBe(201);
+    expect(idpFetch).toHaveBeenCalledOnce();
+    const reqArg: Request = idpFetch.mock.calls[0][0];
+    expect(reqArg.method).toBe('POST');
+    expect(reqArg.headers.get('Content-Type')).toBe('application/json');
+    expect(reqArg.headers.get('Origin')).toBe('https://id.0g0.xyz');
+    expect(reqArg.headers.get('Authorization')).toBe('Bearer access-token-123');
+    expect(await reqArg.json()).toEqual(requestBody);
+  });
+
+  it('methodパラメータがPATCHの場合はPATCHリクエストを送る', async () => {
+    vi.mocked(getCookie).mockReturnValue(encodeSession(mockSession));
+
+    const idpFetch = vi.fn().mockResolvedValue(
+      new Response('{"data":{"id":"svc-1"}}', { status: 200 })
+    );
+    const ctx = {
+      req: { json: vi.fn().mockResolvedValue({ role: 'admin' }) },
+      env: { IDP: { fetch: idpFetch }, IDP_ORIGIN: 'https://id.0g0.xyz' },
+    } as unknown as Parameters<typeof fetchWithJsonBody>[0];
+
+    await fetchWithJsonBody(ctx, '__session', 'https://id.0g0.xyz/api/users/u-1/role', 'PATCH');
+    const reqArg: Request = idpFetch.mock.calls[0][0];
+    expect(reqArg.method).toBe('PATCH');
   });
 });

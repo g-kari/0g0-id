@@ -116,6 +116,37 @@ export async function fetchWithAuth(
 }
 
 /**
+ * JSONリクエストボディをパースしてBFF→IdPへ転送するユーティリティ。
+ * JSONパース失敗時は400を返す。成功時はfetchWithAuthでリクエストを転送しproxyResponseを返す。
+ *
+ * @example
+ * return fetchWithJsonBody(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/services`, 'POST');
+ */
+export async function fetchWithJsonBody(
+  c: Context<{ Bindings: BffEnv }>,
+  sessionCookieName: string,
+  url: string,
+  method: 'POST' | 'PATCH' | 'PUT' = 'POST'
+): Promise<Response> {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return errorResponse(400, 'BAD_REQUEST', 'Invalid JSON body');
+  }
+
+  const res = await fetchWithAuth(c, sessionCookieName, url, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      Origin: c.env.IDP_ORIGIN,
+    },
+    body: JSON.stringify(body),
+  });
+  return proxyResponse(res);
+}
+
+/**
  * IdPからのResponseをそのままBFFクライアントへ返すユーティリティ。
  * c.json() の `as 200` 型アサーション回避のため Response を直接構築する。
  * 204 No Content の場合は body なしで返す。

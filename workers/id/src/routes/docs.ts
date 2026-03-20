@@ -562,6 +562,45 @@ const INTERNAL_OPENAPI = {
         },
       },
     },
+    '/api/users/{id}/providers': {
+      get: {
+        tags: ['ユーザー API (管理者)'],
+        summary: 'ユーザーのSNSプロバイダー連携状態取得',
+        description: '指定ユーザーの連携済み・未連携のSNSプロバイダー一覧を返す（管理者専用）。',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'ユーザーID' },
+        ],
+        responses: {
+          '200': {
+            description: 'プロバイダー一覧',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          provider: { type: 'string', enum: ['google', 'line', 'twitch', 'github', 'x'] },
+                          connected: { type: 'boolean' },
+                        },
+                        required: ['provider', 'connected'],
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'UNAUTHORIZED' },
+          '403': { description: 'FORBIDDEN — 管理者権限なし' },
+          '404': { description: 'NOT_FOUND — ユーザー未存在' },
+        },
+      },
+    },
     '/api/users/{id}': {
       get: {
         tags: ['ユーザー API (管理者)'],
