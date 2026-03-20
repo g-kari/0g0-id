@@ -62,6 +62,24 @@ const app = new Hono<{ Bindings: IdpEnv }>();
 
 const CALLBACK_PATH = '/auth/callback';
 
+/**
+ * OAuthプロバイダーから返されるエラーコードの安全なマッピング。
+ * 未知のエラーコードはフォールバックメッセージに置き換え、
+ * プロバイダーの内部情報をそのまま反射することを防ぐ。
+ */
+const OAUTH_ERROR_MAP: Record<string, string> = {
+  access_denied: 'Access was denied',
+  server_error: 'Authorization server error',
+  temporarily_unavailable: 'Authorization server temporarily unavailable',
+  invalid_request: 'Invalid request',
+  unsupported_response_type: 'Unsupported response type',
+  invalid_scope: 'Invalid scope requested',
+  interaction_required: 'User interaction required',
+  login_required: 'Login required',
+  consent_required: 'User consent required',
+  account_selection_required: 'Account selection required',
+};
+
 // state/PKCE保存用Cookie名
 const STATE_COOKIE = '__Host-oauth-state';
 const PKCE_COOKIE = '__Host-oauth-pkce';
@@ -470,7 +488,8 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
   const error = c.req.query('error');
 
   if (error) {
-    return c.json({ error: { code: 'OAUTH_ERROR', message: error } }, 400);
+    const safeMessage = OAUTH_ERROR_MAP[error] ?? 'Authentication failed';
+    return c.json({ error: { code: 'OAUTH_ERROR', message: safeMessage } }, 400);
   }
 
   if (!code || !state) {

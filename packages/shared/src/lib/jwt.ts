@@ -7,18 +7,22 @@ export interface JWTKeys {
   kid: string;
 }
 
-let cachedKeys: JWTKeys | null = null;
-let cachedPublicKey: CryptoKey | null = null;
+/** PEM文字列をキーとしたキャッシュ（鍵ローテーション時にも正しく反映される） */
+const keyCache = new Map<string, JWTKeys>();
+const publicKeyCache = new Map<string, CryptoKey>();
 
 async function getCachedPublicKey(publicKeyPem: string): Promise<CryptoKey> {
-  if (!cachedPublicKey) {
-    cachedPublicKey = await importSPKI(publicKeyPem, 'ES256');
-  }
-  return cachedPublicKey;
+  const cached = publicKeyCache.get(publicKeyPem);
+  if (cached) return cached;
+  const key = await importSPKI(publicKeyPem, 'ES256');
+  publicKeyCache.set(publicKeyPem, key);
+  return key;
 }
 
 export async function getJWTKeys(privateKeyPem: string, publicKeyPem: string): Promise<JWTKeys> {
-  if (cachedKeys) return cachedKeys;
+  const cacheKey = publicKeyPem;
+  const cached = keyCache.get(cacheKey);
+  if (cached) return cached;
 
   const privateKey = await importPKCS8(privateKeyPem, 'ES256');
   const publicKey = await importSPKI(publicKeyPem, 'ES256');
@@ -31,7 +35,7 @@ export async function getJWTKeys(privateKeyPem: string, publicKeyPem: string): P
   const kid = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
 
   const keys: JWTKeys = { privateKey, publicKey, kid };
-  cachedKeys = keys;
+  keyCache.set(cacheKey, keys);
   return keys;
 }
 
