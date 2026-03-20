@@ -75,6 +75,8 @@ export interface TokenPayload {
   kid: string;
   email: string;
   role: 'user' | 'admin';
+  /** OIDCスコープ（スペース区切り）。サービストークンのみ設定される。BFFセッションはundefined。 */
+  scope?: string;
 }
 
 /**

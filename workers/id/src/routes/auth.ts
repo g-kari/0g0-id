@@ -41,6 +41,7 @@ import {
   createAuthCode,
   findAndConsumeAuthCode,
   findServiceByClientId,
+  findServiceById,
   isValidRedirectUri,
   timingSafeEqual,
   linkProvider,
@@ -49,6 +50,7 @@ import {
 import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
 import { authRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authMiddleware } from '../middleware/auth';
+import { parseAllowedScopes } from '../utils/scopes';
 
 const ExchangeSchema = z.object({
   code: z.string().min(1, 'code is required'),
@@ -446,12 +448,12 @@ async function issueTokenPair(
   db: D1Database,
   env: IdpEnv,
   user: User,
-  options: { serviceId: string | null; familyId?: string }
+  options: { serviceId: string | null; familyId?: string; scope?: string }
 ): Promise<{ accessToken: string; refreshToken: string }> {
-  const { serviceId, familyId = crypto.randomUUID() } = options;
+  const { serviceId, familyId = crypto.randomUUID(), scope } = options;
 
   const accessToken = await signAccessToken(
-    { iss: env.IDP_ORIGIN, sub: user.id, aud: env.IDP_ORIGIN, email: user.email, role: user.role },
+    { iss: env.IDP_ORIGIN, sub: user.id, aud: env.IDP_ORIGIN, email: user.email, role: user.role, scope },
     env.JWT_PRIVATE_KEY,
     env.JWT_PUBLIC_KEY
   );
@@ -747,6 +749,7 @@ app.post('/exchange', tokenApiRateLimitMiddleware, async (c) => {
   let serviceId: string | null = null;
   let idTokenSub: string = user.id;
   let idTokenAud: string = c.env.IDP_ORIGIN;
+  let serviceScope: string | undefined = undefined;
 
   if (authCode.service_id !== null) {
     // Authorization: Basic <base64(client_id:client_secret)> を検証
@@ -794,11 +797,15 @@ app.post('/exchange', tokenApiRateLimitMiddleware, async (c) => {
     // ペアワイズ sub（OIDC Core 1.0 §8.1）: sha256(client_id:user_id)
     idTokenSub = await sha256(`${service.client_id}:${user.id}`);
     idTokenAud = service.client_id;
+    // サービストークンのスコープ: サービスの allowed_scopes に openid を付加
+    const allowedScopes = parseAllowedScopes(service.allowed_scopes);
+    serviceScope = ['openid', ...allowedScopes].join(' ');
   }
 
   // アクセストークン・リフレッシュトークン発行
   const { accessToken, refreshToken: refreshTokenRaw } = await issueTokenPair(c.env.DB, c.env, user, {
     serviceId,
+    scope: serviceScope,
   });
 
   // OIDC ID トークン発行（OpenID Connect Core 1.0）
@@ -867,10 +874,21 @@ app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
+  // サービストークンの場合: 元のサービスのスコープを引き継ぐ
+  let refreshScope: string | undefined = undefined;
+  if (storedToken.service_id !== null) {
+    const service = await findServiceById(c.env.DB, storedToken.service_id);
+    if (service) {
+      const allowedScopes = parseAllowedScopes(service.allowed_scopes);
+      refreshScope = ['openid', ...allowedScopes].join(' ');
+    }
+  }
+
   // 新アクセストークン・リフレッシュトークン発行（ローテーション、同じfamily_id）
   const { accessToken, refreshToken: newRefreshTokenRaw } = await issueTokenPair(c.env.DB, c.env, user, {
     serviceId: storedToken.service_id,
     familyId: storedToken.family_id,
+    scope: refreshScope,
   });
 
   return c.json({

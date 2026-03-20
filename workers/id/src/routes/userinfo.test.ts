@@ -161,11 +161,119 @@ describe('GET /api/userinfo', () => {
       expect(body).not.toHaveProperty('role');
     });
 
-    it('phone/addressを返さない（標準クレーム外）', async () => {
+    it('scopeなし（BFFセッション）ではphone/addressを返さない', async () => {
       const res = await requestUserInfo(app);
       const body = await res.json<Record<string, unknown>>();
-      expect(body).not.toHaveProperty('phone');
+      expect(body).not.toHaveProperty('phone_number');
       expect(body).not.toHaveProperty('address');
+    });
+  });
+
+  describe('スコープベースのクレームフィルタリング（OIDC Core 1.0 Section 5.3）', () => {
+    it('scope=openid profile → name/pictureを返し、email/phone/addressを返さない', async () => {
+      vi.mocked(verifyAccessToken).mockResolvedValue({
+        ...mockTokenPayload,
+        scope: 'openid profile',
+      } as never);
+      const res = await requestUserInfo(app);
+      expect(res.status).toBe(200);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body).toHaveProperty('sub');
+      expect(body).toHaveProperty('name');
+      expect(body).toHaveProperty('picture');
+      expect(body).not.toHaveProperty('email');
+      expect(body).not.toHaveProperty('email_verified');
+      expect(body).not.toHaveProperty('phone_number');
+      expect(body).not.toHaveProperty('address');
+    });
+
+    it('scope=openid email → email/email_verifiedを返し、name/pictureを返さない', async () => {
+      vi.mocked(verifyAccessToken).mockResolvedValue({
+        ...mockTokenPayload,
+        scope: 'openid email',
+      } as never);
+      const res = await requestUserInfo(app);
+      expect(res.status).toBe(200);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body).toHaveProperty('sub');
+      expect(body).toHaveProperty('email');
+      expect(body).toHaveProperty('email_verified');
+      expect(body).not.toHaveProperty('name');
+      expect(body).not.toHaveProperty('picture');
+    });
+
+    it('scope=openid profile email → name/picture/email/email_verifiedを全て返す', async () => {
+      vi.mocked(verifyAccessToken).mockResolvedValue({
+        ...mockTokenPayload,
+        scope: 'openid profile email',
+      } as never);
+      const res = await requestUserInfo(app);
+      expect(res.status).toBe(200);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body).toHaveProperty('name');
+      expect(body).toHaveProperty('picture');
+      expect(body).toHaveProperty('email');
+      expect(body).toHaveProperty('email_verified');
+    });
+
+    it('scope=openid phone → phone_numberを返す（ユーザーに電話番号がある場合）', async () => {
+      vi.mocked(verifyAccessToken).mockResolvedValue({
+        ...mockTokenPayload,
+        scope: 'openid phone',
+      } as never);
+      const res = await requestUserInfo(app);
+      expect(res.status).toBe(200);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body).toHaveProperty('phone_number', '090-0000-0000');
+      expect(body).not.toHaveProperty('name');
+      expect(body).not.toHaveProperty('email');
+    });
+
+    it('scope=openid phone → phone_numberを返さない（ユーザーに電話番号がない場合）', async () => {
+      vi.mocked(verifyAccessToken).mockResolvedValue({
+        ...mockTokenPayload,
+        scope: 'openid phone',
+      } as never);
+      vi.mocked(findUserById).mockResolvedValue({ ...mockUser, phone: null });
+      const res = await requestUserInfo(app);
+      expect(res.status).toBe(200);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body).not.toHaveProperty('phone_number');
+    });
+
+    it('scope=openid address → addressを返す（ユーザーに住所がある場合）', async () => {
+      vi.mocked(verifyAccessToken).mockResolvedValue({
+        ...mockTokenPayload,
+        scope: 'openid address',
+      } as never);
+      const res = await requestUserInfo(app);
+      expect(res.status).toBe(200);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body).toHaveProperty('address', { formatted: 'Tokyo' });
+    });
+
+    it('scopeなし（BFFセッション）→ name/picture/email/email_verifiedを返す（後方互換）', async () => {
+      vi.mocked(verifyAccessToken).mockResolvedValue({
+        ...mockTokenPayload,
+        scope: undefined,
+      } as never);
+      const res = await requestUserInfo(app);
+      expect(res.status).toBe(200);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body).toHaveProperty('name');
+      expect(body).toHaveProperty('picture');
+      expect(body).toHaveProperty('email');
+      expect(body).toHaveProperty('email_verified');
+    });
+
+    it('updated_atは常にUNIXタイムスタンプで返す', async () => {
+      vi.mocked(verifyAccessToken).mockResolvedValue({
+        ...mockTokenPayload,
+        scope: 'openid profile',
+      } as never);
+      const res = await requestUserInfo(app);
+      const body = await res.json<{ updated_at: number }>();
+      expect(typeof body.updated_at).toBe('number');
     });
   });
 

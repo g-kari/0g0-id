@@ -21,14 +21,35 @@ async function handleUserInfo(c: AppContext): Promise<Response> {
     return c.json({ error: 'invalid_token', error_description: 'User not found' }, 401);
   }
 
-  return c.json({
+  // スコープベースのクレームフィルタリング（OIDC Core 1.0 Section 5.3）
+  // scope未定義 = BFFセッション（全クレームを返す）
+  // scope定義済み = サービストークン（スコープに応じてフィルタリング）
+  const scopes = tokenUser.scope ? new Set(tokenUser.scope.split(' ')) : null;
+
+  const claims: Record<string, unknown> = {
     sub: user.id,
-    name: user.name,
-    picture: user.picture,
-    email: user.email,
-    email_verified: user.email_verified === 1,
     updated_at: Math.floor(new Date(user.updated_at).getTime() / 1000),
-  });
+  };
+
+  if (scopes === null || scopes.has('profile')) {
+    claims.name = user.name;
+    claims.picture = user.picture;
+  }
+
+  if (scopes === null || scopes.has('email')) {
+    claims.email = user.email;
+    claims.email_verified = user.email_verified === 1;
+  }
+
+  if (scopes !== null && scopes.has('phone') && user.phone !== null) {
+    claims.phone_number = user.phone;
+  }
+
+  if (scopes !== null && scopes.has('address') && user.address !== null) {
+    claims.address = { formatted: user.address };
+  }
+
+  return c.json(claims);
 }
 
 // GET /api/userinfo — OIDC UserInfo エンドポイント (OpenID Connect Core 1.0 Section 5.3)
