@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { fetchWithAuth, proxyResponse } from '@0g0-id/shared';
+import { fetchWithAuth, fetchWithJsonBody, proxyResponse } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 import { SESSION_COOKIE } from './auth';
 
@@ -52,27 +52,12 @@ app.get('/:id/login-history', async (c) => {
 
 // PATCH /api/users/:id/role
 app.patch('/:id/role', async (c) => {
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON' } }, 400);
-  }
-
-  const res = await fetchWithAuth(
+  return fetchWithJsonBody(
     c,
     SESSION_COOKIE,
     `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/role`,
-    {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Origin: c.env.IDP_ORIGIN,
-      },
-      body: JSON.stringify(body),
-    }
+    'PATCH'
   );
-  return proxyResponse(res);
 });
 
 // DELETE /api/users/:id
