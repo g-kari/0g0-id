@@ -904,7 +904,7 @@ app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
 // POST /auth/link-intent — SNSプロバイダー連携用ワンタイムトークン発行（認証済みユーザー専用）
 // link_user_id をURLパラメータとして直接受け付けると第三者が任意ユーザーのIDを指定し
 // アカウント乗っ取りが可能なため、アクセストークンで認証したうえでワンタイムトークンを発行する
-app.post('/link-intent', authMiddleware, async (c) => {
+app.post('/link-intent', tokenApiRateLimitMiddleware, authMiddleware, async (c) => {
   const tokenUser = c.get('user');
 
   const linkToken = generateToken(32);
@@ -923,7 +923,7 @@ app.post('/link-intent', authMiddleware, async (c) => {
 });
 
 // POST /auth/logout — ログアウト（BFFサーバー間専用）
-app.post('/logout', async (c) => {
+app.post('/logout', tokenApiRateLimitMiddleware, async (c) => {
   let rawBody: unknown;
   try {
     rawBody = await c.req.json();
