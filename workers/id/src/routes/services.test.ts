@@ -7,6 +7,7 @@ vi.mock('@0g0-id/shared', () => ({
   findServiceById: vi.fn(),
   createService: vi.fn(),
   updateServiceAllowedScopes: vi.fn(),
+  updateServiceName: vi.fn(),
   deleteService: vi.fn(),
   listRedirectUris: vi.fn(),
   addRedirectUri: vi.fn(),
@@ -24,6 +25,7 @@ import {
   findServiceById,
   createService,
   updateServiceAllowedScopes,
+  updateServiceName,
   deleteService,
   listRedirectUris,
   addRedirectUri,
@@ -356,6 +358,10 @@ describe('PATCH /api/services/:id', () => {
       ...mockService,
       allowed_scopes: JSON.stringify(['profile', 'email', 'phone']),
     });
+    vi.mocked(updateServiceName).mockResolvedValue({
+      ...mockService,
+      name: '新しいサービス名',
+    });
   });
 
   it('管理者でない場合 → 403を返す', async () => {
@@ -415,6 +421,77 @@ describe('PATCH /api/services/:id', () => {
     const res = await sendRequest(app, '/api/services/no-such-service', {
       method: 'PATCH',
       body: { allowed_scopes: ['profile'] },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('nameのみ更新する', async () => {
+    const res = await sendRequest(app, '/api/services/service-1', {
+      method: 'PATCH',
+      body: { name: '新しいサービス名' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.name).toBe('新しいサービス名');
+    expect(vi.mocked(updateServiceName)).toHaveBeenCalledWith(
+      expect.anything(),
+      'service-1',
+      '新しいサービス名'
+    );
+    expect(vi.mocked(updateServiceAllowedScopes)).not.toHaveBeenCalled();
+  });
+
+  it('nameとallowed_scopesを同時に更新する', async () => {
+    vi.mocked(updateServiceName).mockResolvedValue({
+      ...mockService,
+      name: '新しいサービス名',
+    });
+    vi.mocked(updateServiceAllowedScopes).mockResolvedValue({
+      ...mockService,
+      name: '新しいサービス名',
+      allowed_scopes: JSON.stringify(['profile']),
+    });
+    const res = await sendRequest(app, '/api/services/service-1', {
+      method: 'PATCH',
+      body: { name: '新しいサービス名', allowed_scopes: ['profile'] },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(updateServiceName)).toHaveBeenCalled();
+    expect(vi.mocked(updateServiceAllowedScopes)).toHaveBeenCalled();
+  });
+
+  it('nameもallowed_scopesも省略した場合 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1', {
+      method: 'PATCH',
+      body: {},
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('nameが空文字の場合 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1', {
+      method: 'PATCH',
+      body: { name: '' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('nameが存在しないサービスの場合 → 404を返す', async () => {
+    vi.mocked(updateServiceName).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/services/no-such', {
+      method: 'PATCH',
+      body: { name: '新しい名前' },
       origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(404);

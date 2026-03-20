@@ -4,6 +4,7 @@ import {
   findServiceByClientId,
   createService,
   updateServiceAllowedScopes,
+  updateServiceName,
   deleteService,
   listServices,
   countServicesByOwner,
@@ -131,6 +132,27 @@ describe('updateServiceAllowedScopes', () => {
     const db = makeD1Mock(baseService);
     await updateServiceAllowedScopes(db, 'service-1', '["profile"]');
     expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('UPDATE services SET allowed_scopes'));
+  });
+});
+
+describe('updateServiceName', () => {
+  it('nameを更新してServiceを返す', async () => {
+    const updated = { ...baseService, name: '新しいサービス名' };
+    const db = makeD1Mock(updated);
+    const result = await updateServiceName(db, 'service-1', '新しいサービス名');
+    expect(result?.name).toBe('新しいサービス名');
+  });
+
+  it('サービスが存在しない場合はnullを返す', async () => {
+    const db = makeD1Mock(null);
+    const result = await updateServiceName(db, 'not-exist', '新しい名前');
+    expect(result).toBeNull();
+  });
+
+  it('UPDATEのSQLを使用する', async () => {
+    const db = makeD1Mock(baseService);
+    await updateServiceName(db, 'service-1', '新しい名前');
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('UPDATE services SET name'));
   });
 });
 

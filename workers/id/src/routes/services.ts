@@ -5,6 +5,7 @@ import {
   findServiceById,
   createService,
   updateServiceAllowedScopes,
+  updateServiceName,
   deleteService,
   listRedirectUris,
   addRedirectUri,
@@ -31,9 +32,16 @@ const CreateServiceSchema = z.object({
   allowed_scopes: z.array(z.string()).optional(),
 });
 
-const PatchServiceSchema = z.object({
-  allowed_scopes: z.array(z.string(), { message: 'allowed_scopes must be an array' }),
-});
+const PatchServiceSchema = z
+  .object({
+    name: z.string().min(1, 'name must not be empty').optional(),
+    allowed_scopes: z
+      .array(z.string(), { message: 'allowed_scopes must be an array' })
+      .optional(),
+  })
+  .refine((data) => data.name !== undefined || data.allowed_scopes !== undefined, {
+    message: 'At least one of name or allowed_scopes must be provided',
+  });
 
 const AddRedirectUriSchema = z.object({
   uri: z.string().min(1, 'uri is required'),
@@ -123,7 +131,7 @@ app.post('/', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   );
 });
 
-// PATCH /api/services/:id — allowed_scopesの更新
+// PATCH /api/services/:id — name または allowed_scopesの更新
 app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const serviceId = c.req.param('id');
 
@@ -136,47 +144,65 @@ app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => 
 
   const parsed = PatchServiceSchema.safeParse(rawBody);
   if (!parsed.success) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: parsed.error.issues[0]?.message ?? 'Invalid request' } }, 400);
-  }
-  const { allowed_scopes } = parsed.data;
-
-  // 不正なスコープが含まれていないか検証
-  const invalidScopes = allowed_scopes.filter(
-    (s) => !SUPPORTED_SCOPES.includes(s as SupportedScope)
-  );
-  if (invalidScopes.length > 0) {
     return c.json(
-      {
-        error: {
-          code: 'BAD_REQUEST',
-          message: `Invalid scopes: ${invalidScopes.join(', ')}. Supported scopes: ${SUPPORTED_SCOPES.join(', ')}`,
-        },
-      },
+      { error: { code: 'BAD_REQUEST', message: parsed.error.issues[0]?.message ?? 'Invalid request' } },
       400
     );
   }
+  const { name, allowed_scopes } = parsed.data;
 
-  if (allowed_scopes.length === 0) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'allowed_scopes must not be empty' } }, 400);
+  // allowed_scopesが指定された場合はバリデーション
+  if (allowed_scopes !== undefined) {
+    const invalidScopes = allowed_scopes.filter(
+      (s) => !SUPPORTED_SCOPES.includes(s as SupportedScope)
+    );
+    if (invalidScopes.length > 0) {
+      return c.json(
+        {
+          error: {
+            code: 'BAD_REQUEST',
+            message: `Invalid scopes: ${invalidScopes.join(', ')}. Supported scopes: ${SUPPORTED_SCOPES.join(', ')}`,
+          },
+        },
+        400
+      );
+    }
+    if (allowed_scopes.length === 0) {
+      return c.json(
+        { error: { code: 'BAD_REQUEST', message: 'allowed_scopes must not be empty' } },
+        400
+      );
+    }
   }
 
-  const updated = await updateServiceAllowedScopes(
-    c.env.DB,
-    serviceId,
-    JSON.stringify(allowed_scopes)
-  );
-  if (!updated) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+  let updated: Awaited<ReturnType<typeof updateServiceAllowedScopes>> = null;
+
+  if (name !== undefined) {
+    updated = await updateServiceName(c.env.DB, serviceId, name.trim());
+    if (!updated) {
+      return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+    }
+  }
+
+  if (allowed_scopes !== undefined) {
+    updated = await updateServiceAllowedScopes(
+      c.env.DB,
+      serviceId,
+      JSON.stringify(allowed_scopes)
+    );
+    if (!updated) {
+      return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+    }
   }
 
   return c.json({
     data: {
-      id: updated.id,
-      name: updated.name,
-      client_id: updated.client_id,
-      allowed_scopes: updated.allowed_scopes,
-      owner_user_id: updated.owner_user_id,
-      updated_at: updated.updated_at,
+      id: updated!.id,
+      name: updated!.name,
+      client_id: updated!.client_id,
+      allowed_scopes: updated!.allowed_scopes,
+      owner_user_id: updated!.owner_user_id,
+      updated_at: updated!.updated_at,
     },
   });
 });
