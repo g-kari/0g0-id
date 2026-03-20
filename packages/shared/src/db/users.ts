@@ -306,25 +306,22 @@ export async function updateUserProfile(
   userId: string,
   params: { name: string; picture?: string | null; phone?: string | null; address?: string | null }
 ): Promise<User> {
-  const setClauses: string[] = ['name = ?', "updated_at = datetime('now')"];
+  const setClauses: string[] = ['name = ?'];
   const values: unknown[] = [params.name];
 
   if ('picture' in params) {
-    setClauses.splice(1, 0, 'picture = ?');
+    setClauses.push('picture = ?');
     values.push(params.picture ?? null);
   }
   if ('phone' in params) {
-    const idx = 'picture' in params ? 2 : 1;
-    setClauses.splice(idx, 0, 'phone = ?');
+    setClauses.push('phone = ?');
     values.push(params.phone ?? null);
   }
   if ('address' in params) {
-    let idx = 1;
-    if ('picture' in params) idx++;
-    if ('phone' in params) idx++;
-    setClauses.splice(idx, 0, 'address = ?');
+    setClauses.push('address = ?');
     values.push(params.address ?? null);
   }
+  setClauses.push("updated_at = datetime('now')");
   values.push(userId);
 
   const user = await db
