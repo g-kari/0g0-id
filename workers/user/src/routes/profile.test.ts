@@ -182,4 +182,83 @@ describe('user BFF — /api/me', () => {
       expect(res.status).toBe(400);
     });
   });
+
+  describe('GET /login-history — ログイン履歴取得', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/login-history');
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('セッションありでIdPへプロキシしてログイン履歴を返す', async () => {
+      const mockEvents = [
+        { id: 'evt-1', user_id: 'user-123', ip_address: '1.2.3.4', created_at: '2024-01-01T00:00:00Z' },
+      ];
+      const idpFetch = mockIdp(200, { data: mockEvents, total: 1 });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/login-history', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof mockEvents; total: number }>();
+      expect(body.data).toHaveLength(1);
+    });
+
+    it('IdPの /api/users/me/login-history エンドポイントを呼び出す', async () => {
+      const idpFetch = mockIdp(200, { data: [], total: 0 });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/me/login-history', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(new URL(calledReq.url).pathname).toBe('/api/users/me/login-history');
+      expect(calledReq.headers.get('Authorization')).toBe('Bearer mock-access-token');
+    });
+
+    it('デフォルトのlimit=20/offset=0をIdPに転送する', async () => {
+      const idpFetch = mockIdp(200, { data: [], total: 0 });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/me/login-history', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.get('limit')).toBe('20');
+      expect(url.searchParams.get('offset')).toBe('0');
+    });
+
+    it('指定したlimit/offsetをIdPに転送する', async () => {
+      const idpFetch = mockIdp(200, { data: [], total: 0 });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/me/login-history?limit=5&offset=10', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.get('limit')).toBe('5');
+      expect(url.searchParams.get('offset')).toBe('10');
+    });
+
+    it('IdPが500を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/login-history', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(500);
+    });
+  });
 });

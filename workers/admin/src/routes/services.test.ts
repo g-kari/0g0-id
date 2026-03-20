@@ -501,4 +501,136 @@ describe('admin BFF — /api/services', () => {
       );
     });
   });
+
+  describe('GET /:id/users — 認可済みユーザー一覧', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/services/service-1/users');
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('管理者セッションでIdPにGETして認可済みユーザー一覧を返す', async () => {
+      const mockUsers = [{ id: 'user-1', email: 'user@example.com', name: 'User One' }];
+      const idpFetch = mockIdp(200, { data: mockUsers, total: 1 });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/services/service-1/users', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof mockUsers; total: number }>();
+      expect(body.data).toHaveLength(1);
+    });
+
+    it('デフォルトのlimit=50/offset=0をIdPに転送する', async () => {
+      const idpFetch = mockIdp(200, { data: [], total: 0 });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/services/service-1/users', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.get('limit')).toBe('50');
+      expect(url.searchParams.get('offset')).toBe('0');
+    });
+
+    it('指定したlimit/offsetをIdPに転送する', async () => {
+      const idpFetch = mockIdp(200, { data: [], total: 0 });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/services/service-1/users?limit=10&offset=20', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.get('limit')).toBe('10');
+      expect(url.searchParams.get('offset')).toBe('20');
+      expect(url.pathname).toBe('/api/services/service-1/users');
+    });
+
+    it('IdPが404を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(404, { error: { code: 'NOT_FOUND' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/services/no-such/users', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('DELETE /:id/users/:userId — ユーザーのサービスアクセス失効', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/services/service-1/users/user-1', {
+        method: 'DELETE',
+      });
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('管理者セッションでIdPにDELETEしてアクセスを失効する', async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/services/service-1/users/user-1', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(204);
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.method).toBe('DELETE');
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/services/service-1/users/user-1');
+    });
+
+    it('サービスIDとユーザーIDをIdPのURLに正しく含める', async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/services/svc-abc/users/usr-xyz', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/services/svc-abc/users/usr-xyz');
+    });
+
+    it('Originヘッダーを付与してIdPに送信する', async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/services/service-1/users/user-1', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.headers.get('Origin')).toBe('https://id.0g0.xyz');
+    });
+
+    it('IdPが404を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(404, { error: { code: 'NOT_FOUND' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/services/service-1/users/no-such-user', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(404);
+    });
+  });
 });
