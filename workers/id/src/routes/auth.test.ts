@@ -24,6 +24,7 @@ vi.mock('@0g0-id/shared', () => ({
   generateToken: vi.fn(),
   sha256: vi.fn(),
   signAccessToken: vi.fn(),
+  signIdToken: vi.fn(),
   createRefreshToken: vi.fn(),
   findRefreshTokenByHash: vi.fn(),
   findUserById: vi.fn(),
@@ -69,6 +70,7 @@ import {
   generateToken,
   sha256,
   signAccessToken,
+  signIdToken,
   createRefreshToken,
   findRefreshTokenByHash,
   findUserById,
@@ -481,6 +483,7 @@ describe('POST /auth/exchange', () => {
     } as never);
     vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(signAccessToken).mockResolvedValue('mock-access-token');
+    vi.mocked(signIdToken).mockResolvedValue('mock-id-token');
     vi.mocked(createRefreshToken).mockResolvedValue(undefined as never);
   });
 
@@ -541,7 +544,7 @@ describe('POST /auth/exchange', () => {
     expect(body.error.code).toBe('NOT_FOUND');
   });
 
-  it('正常なコード交換 → アクセストークンとリフレッシュトークンを返す', async () => {
+  it('正常なコード交換 → アクセストークン・IDトークン・リフレッシュトークンを返す', async () => {
     const res = await sendRequest(app, '/auth/exchange', {
       method: 'POST',
       body: { code: 'valid-code', redirect_to: 'https://user.0g0.xyz/callback' },
@@ -550,6 +553,7 @@ describe('POST /auth/exchange', () => {
     const body = await res.json<{
       data: {
         access_token: string;
+        id_token: string;
         refresh_token: string;
         token_type: string;
         expires_in: number;
@@ -557,10 +561,23 @@ describe('POST /auth/exchange', () => {
       };
     }>();
     expect(body.data.access_token).toBe('mock-access-token');
+    expect(body.data.id_token).toBe('mock-id-token');
     expect(body.data.token_type).toBe('Bearer');
     expect(body.data.expires_in).toBe(900);
     expect(body.data.user.id).toBe('user-1');
     expect(body.data.user.email).toBe('test@example.com');
+    // signIdToken が正しいペイロードで呼ばれていることを確認
+    expect(vi.mocked(signIdToken)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        iss: 'https://id.0g0.xyz',
+        sub: 'user-1',
+        aud: 'https://id.0g0.xyz',
+        email: 'test@example.com',
+        name: 'Test User',
+      }),
+      'mock-private-key',
+      'mock-public-key'
+    );
   });
 });
 

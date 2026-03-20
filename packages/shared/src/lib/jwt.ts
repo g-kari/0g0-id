@@ -61,6 +61,43 @@ export async function signAccessToken(
     .sign(privateKey);
 }
 
+/**
+ * OIDC ID トークン（RFC 7519 / OpenID Connect Core 1.0）の署名・発行。
+ * アクセストークンとは別に、認証イベントのアイデンティティ表明として発行する。
+ */
+export async function signIdToken(
+  payload: {
+    iss: string;
+    sub: string;
+    aud: string;
+    email: string;
+    name: string;
+    picture: string | null;
+    authTime: number;
+  },
+  privateKeyPem: string,
+  publicKeyPem: string
+): Promise<string> {
+  const { privateKey, kid } = await getJWTKeys(privateKeyPem, publicKeyPem);
+  const jti = crypto.randomUUID();
+
+  const builder = new SignJWT({
+    email: payload.email,
+    name: payload.name,
+    ...(payload.picture !== null ? { picture: payload.picture } : {}),
+    auth_time: payload.authTime,
+  })
+    .setProtectedHeader({ alg: 'ES256', kid })
+    .setIssuer(payload.iss)
+    .setSubject(payload.sub)
+    .setAudience(payload.aud)
+    .setIssuedAt()
+    .setExpirationTime('1h')
+    .setJti(jti);
+
+  return builder.sign(privateKey);
+}
+
 export async function verifyAccessToken(
   token: string,
   publicKeyPem: string,

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { signAccessToken, verifyAccessToken, getJWTKeys, getJWKS } from './jwt';
+import { signAccessToken, signIdToken, verifyAccessToken, getJWTKeys, getJWKS } from './jwt';
 
 // テスト用 ES256 鍵ペア（固定値）
 const TEST_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
@@ -80,6 +80,70 @@ describe('signAccessToken', () => {
     // 15分 = 900秒
     expect(payload.exp).toBeGreaterThan(before + 800);
     expect(payload.exp).toBeLessThan(before + 1000);
+  });
+});
+
+describe('signIdToken', () => {
+  const idPayload = {
+    iss: 'https://id.0g0.xyz',
+    sub: 'user-id-123',
+    aud: 'https://id.0g0.xyz',
+    email: 'test@example.com',
+    name: 'Test User',
+    picture: 'https://example.com/pic.jpg',
+    authTime: Math.floor(Date.now() / 1000),
+  };
+
+  it('JWTトークン文字列を返す', async () => {
+    const token = await signIdToken(idPayload, TEST_PRIVATE_KEY, TEST_PUBLIC_KEY);
+    expect(typeof token).toBe('string');
+    const parts = token.split('.');
+    expect(parts).toHaveLength(3);
+  });
+
+  it('ヘッダーにES256アルゴリズムとkidが含まれる', async () => {
+    const token = await signIdToken(idPayload, TEST_PRIVATE_KEY, TEST_PUBLIC_KEY);
+    const header = JSON.parse(atob(token.split('.')[0].replace(/-/g, '+').replace(/_/g, '/')));
+    expect(header.alg).toBe('ES256');
+    expect(typeof header.kid).toBe('string');
+  });
+
+  it('ペイロードにOIDC必須クレームが含まれる', async () => {
+    const token = await signIdToken(idPayload, TEST_PRIVATE_KEY, TEST_PUBLIC_KEY);
+    const raw = token.split('.')[1];
+    const padded = raw + '='.repeat((4 - (raw.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded.replace(/-/g, '+').replace(/_/g, '/')));
+    expect(payload.iss).toBe('https://id.0g0.xyz');
+    expect(payload.sub).toBe('user-id-123');
+    expect(payload.aud).toBe('https://id.0g0.xyz');
+    expect(payload.email).toBe('test@example.com');
+    expect(payload.name).toBe('Test User');
+    expect(payload.picture).toBe('https://example.com/pic.jpg');
+    expect(typeof payload.auth_time).toBe('number');
+    expect(typeof payload.jti).toBe('string');
+  });
+
+  it('有効期限（exp）が1時間後に設定される', async () => {
+    const before = Math.floor(Date.now() / 1000);
+    const token = await signIdToken(idPayload, TEST_PRIVATE_KEY, TEST_PUBLIC_KEY);
+    const raw = token.split('.')[1];
+    const padded = raw + '='.repeat((4 - (raw.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded.replace(/-/g, '+').replace(/_/g, '/')));
+    // 1時間 = 3600秒
+    expect(payload.exp).toBeGreaterThan(before + 3500);
+    expect(payload.exp).toBeLessThan(before + 3700);
+  });
+
+  it('pictureがnullの場合はpictureクレームを含まない', async () => {
+    const token = await signIdToken(
+      { ...idPayload, picture: null },
+      TEST_PRIVATE_KEY,
+      TEST_PUBLIC_KEY
+    );
+    const raw = token.split('.')[1];
+    const padded = raw + '='.repeat((4 - (raw.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded.replace(/-/g, '+').replace(/_/g, '/')));
+    expect(payload.picture).toBeUndefined();
   });
 });
 
