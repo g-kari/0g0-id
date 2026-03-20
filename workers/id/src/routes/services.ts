@@ -4,8 +4,7 @@ import {
   listServices,
   findServiceById,
   createService,
-  updateServiceAllowedScopes,
-  updateServiceName,
+  updateServiceFields,
   deleteService,
   listRedirectUris,
   addRedirectUri,
@@ -181,24 +180,13 @@ app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => 
     }
   }
 
-  let updated: Awaited<ReturnType<typeof updateServiceAllowedScopes>> = null;
+  const updated = await updateServiceFields(c.env.DB, serviceId, {
+    ...(name !== undefined ? { name: name.trim() } : {}),
+    ...(allowed_scopes !== undefined ? { allowedScopes: JSON.stringify(allowed_scopes) } : {}),
+  });
 
-  if (name !== undefined) {
-    updated = await updateServiceName(c.env.DB, serviceId, name.trim());
-    if (!updated) {
-      return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
-    }
-  }
-
-  if (allowed_scopes !== undefined) {
-    updated = await updateServiceAllowedScopes(
-      c.env.DB,
-      serviceId,
-      JSON.stringify(allowed_scopes)
-    );
-    if (!updated) {
-      return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
-    }
+  if (!updated) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
 
   return c.json({

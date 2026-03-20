@@ -81,9 +81,12 @@ app.post('/introspect', async (c) => {
       allowedScopes = ['profile', 'email'];
     }
 
+    // ペアワイズsub: 内部IDを直接公開しないようにsha256(client_id:user_id)を使用
+    const sub = await sha256(service.client_id + ':' + refreshToken.user_id);
+
     const response: Record<string, unknown> = {
       active: true,
-      sub: refreshToken.user_id,
+      sub,
       exp: Math.floor(new Date(refreshToken.expires_at).getTime() / 1000),
       scope: allowedScopes.join(' '),
     };

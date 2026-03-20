@@ -41,6 +41,34 @@ export async function createService(
   return service;
 }
 
+export async function updateServiceFields(
+  db: D1Database,
+  id: string,
+  fields: { name?: string; allowedScopes?: string }
+): Promise<Service | null> {
+  const sets: string[] = [];
+  const binds: unknown[] = [];
+
+  if (fields.name !== undefined) {
+    sets.push('name = ?');
+    binds.push(fields.name);
+  }
+  if (fields.allowedScopes !== undefined) {
+    sets.push('allowed_scopes = ?');
+    binds.push(fields.allowedScopes);
+  }
+
+  binds.push(id);
+  return db
+    .prepare(
+      `UPDATE services SET ${sets.join(', ')}, updated_at = datetime('now')
+       WHERE id = ?
+       RETURNING *`
+    )
+    .bind(...binds)
+    .first<Service>();
+}
+
 export async function updateServiceAllowedScopes(
   db: D1Database,
   id: string,
