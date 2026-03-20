@@ -16,6 +16,8 @@ import {
   rotateClientSecret,
   transferServiceOwnership,
   findUserById,
+  listUsersAuthorizedForService,
+  countUsersAuthorizedForService,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
@@ -331,6 +333,37 @@ app.patch('/:id/owner', authMiddleware, adminMiddleware, csrfMiddleware, async (
       owner_user_id: updated.owner_user_id,
       updated_at: updated.updated_at,
     },
+  });
+});
+
+// GET /api/services/:id/users — サービスを認可済みのユーザー一覧（管理者のみ）
+app.get('/:id/users', authMiddleware, adminMiddleware, async (c) => {
+  const serviceId = c.req.param('id');
+  const limitStr = c.req.query('limit') ?? '50';
+  const offsetStr = c.req.query('offset') ?? '0';
+  const limit = Math.min(parseInt(limitStr, 10) || 50, 100);
+  const offset = parseInt(offsetStr, 10) || 0;
+
+  const service = await findServiceById(c.env.DB, serviceId);
+  if (!service) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+  }
+
+  const [users, total] = await Promise.all([
+    listUsersAuthorizedForService(c.env.DB, serviceId, limit, offset),
+    countUsersAuthorizedForService(c.env.DB, serviceId),
+  ]);
+
+  return c.json({
+    data: users.map((u) => ({
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      picture: u.picture,
+      role: u.role,
+      created_at: u.created_at,
+    })),
+    total,
   });
 });
 

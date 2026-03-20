@@ -20,6 +20,8 @@ vi.mock('@0g0-id/shared', () => ({
   normalizeRedirectUri: vi.fn(),
   rotateClientSecret: vi.fn(),
   transferServiceOwnership: vi.fn(),
+  listUsersAuthorizedForService: vi.fn(),
+  countUsersAuthorizedForService: vi.fn(),
   verifyAccessToken: vi.fn(),
 }));
 
@@ -41,6 +43,8 @@ import {
   normalizeRedirectUri,
   rotateClientSecret,
   transferServiceOwnership,
+  listUsersAuthorizedForService,
+  countUsersAuthorizedForService,
   verifyAccessToken,
 } from '@0g0-id/shared';
 
@@ -870,6 +874,120 @@ describe('PATCH /api/services/:id/owner', () => {
       mockEnv as unknown as Record<string, string>
     );
     expect(res.status).toBe(400);
+  });
+});
+
+// ===== GET /api/services/:id/users（管理者のみ）=====
+describe('GET /api/services/:id/users', () => {
+  const app = buildApp();
+
+  const mockAuthorizedUser = {
+    id: 'user-1',
+    email: 'user@example.com',
+    name: 'Test User',
+    picture: null,
+    phone: null,
+    address: null,
+    role: 'user' as const,
+    google_sub: null,
+    line_sub: null,
+    twitch_sub: null,
+    github_sub: null,
+    x_sub: null,
+    email_verified: 1,
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  };
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findServiceById).mockResolvedValue(mockService);
+    vi.mocked(listUsersAuthorizedForService).mockResolvedValue([mockAuthorizedUser]);
+    vi.mocked(countUsersAuthorizedForService).mockResolvedValue(1);
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/users', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者でない場合 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/services/service-1/users');
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('サービスが存在しない場合 → 404を返す', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/services/no-such/users');
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('認可済みユーザー一覧とtotalを返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/users');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown>[]; total: number }>();
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].id).toBe('user-1');
+    expect(body.data[0].email).toBe('user@example.com');
+    expect(body.total).toBe(1);
+  });
+
+  it('センシティブなフィールドを含まない', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/users');
+    const body = await res.json<{ data: Record<string, unknown>[] }>();
+    expect(body.data[0]).not.toHaveProperty('google_sub');
+    expect(body.data[0]).not.toHaveProperty('phone');
+    expect(body.data[0]).not.toHaveProperty('address');
+  });
+
+  it('認可済みユーザーが0件の場合は空配列を返す', async () => {
+    vi.mocked(listUsersAuthorizedForService).mockResolvedValue([]);
+    vi.mocked(countUsersAuthorizedForService).mockResolvedValue(0);
+    const res = await sendRequest(app, '/api/services/service-1/users');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[]; total: number }>();
+    expect(body.data).toHaveLength(0);
+    expect(body.total).toBe(0);
+  });
+
+  it('limitとoffsetをDBに渡す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/services/service-1/users?limit=10&offset=20`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(listUsersAuthorizedForService)).toHaveBeenCalledWith(
+      expect.anything(),
+      'service-1',
+      10,
+      20
+    );
+  });
+
+  it('limitの上限は100', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/services/service-1/users?limit=999`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(listUsersAuthorizedForService)).toHaveBeenCalledWith(
+      expect.anything(),
+      'service-1',
+      100,
+      0
+    );
   });
 });
 

@@ -126,6 +126,16 @@ app.post('/:id/redirect-uris', async (c) => {
   return proxyResponse(res);
 });
 
+// GET /api/services/:id/users — サービスを認可済みのユーザー一覧
+app.get('/:id/users', async (c) => {
+  const url = new URL(`${c.env.IDP_ORIGIN}/api/services/${c.req.param('id')}/users`);
+  url.searchParams.set('limit', c.req.query('limit') ?? '50');
+  url.searchParams.set('offset', c.req.query('offset') ?? '0');
+
+  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  return proxyResponse(res);
+});
+
 // PATCH /api/services/:id/owner — サービス所有権の転送
 app.patch('/:id/owner', async (c) => {
   let body: unknown;
