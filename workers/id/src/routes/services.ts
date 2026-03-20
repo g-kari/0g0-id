@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import {
   listServices,
   findServiceById,
@@ -24,6 +25,19 @@ type Variables = { user: TokenPayload };
 const SUPPORTED_SCOPES = ['profile', 'email', 'phone', 'address'] as const;
 type SupportedScope = (typeof SUPPORTED_SCOPES)[number];
 
+const CreateServiceSchema = z.object({
+  name: z.string().min(1, 'name is required'),
+  allowed_scopes: z.array(z.string()).optional(),
+});
+
+const PatchServiceSchema = z.object({
+  allowed_scopes: z.array(z.string(), { message: 'allowed_scopes must be an array' }),
+});
+
+const AddRedirectUriSchema = z.object({
+  uri: z.string().min(1, 'uri is required'),
+});
+
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
 // GET /api/services
@@ -43,16 +57,18 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
 
 // POST /api/services
 app.post('/', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
-  let body: { name?: string; allowed_scopes?: string[] };
+  let rawBody: unknown;
   try {
-    body = await c.req.json<{ name?: string; allowed_scopes?: string[] }>();
+    rawBody = await c.req.json();
   } catch {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
   }
 
-  if (!body.name || typeof body.name !== 'string' || body.name.trim().length === 0) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'name is required' } }, 400);
+  const parsed = CreateServiceSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: parsed.error.issues[0]?.message ?? 'Invalid request' } }, 400);
   }
+  const body = parsed.data;
 
   const tokenUser = c.get('user');
   const clientId = generateClientId();
@@ -89,19 +105,21 @@ app.post('/', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
 app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const serviceId = c.req.param('id');
 
-  let body: { allowed_scopes?: string[] };
+  let rawBody: unknown;
   try {
-    body = await c.req.json<{ allowed_scopes?: string[] }>();
+    rawBody = await c.req.json();
   } catch {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
   }
 
-  if (!Array.isArray(body.allowed_scopes)) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'allowed_scopes must be an array' } }, 400);
+  const parsed = PatchServiceSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: parsed.error.issues[0]?.message ?? 'Invalid request' } }, 400);
   }
+  const { allowed_scopes } = parsed.data;
 
   // 不正なスコープが含まれていないか検証
-  const invalidScopes = body.allowed_scopes.filter(
+  const invalidScopes = allowed_scopes.filter(
     (s) => !SUPPORTED_SCOPES.includes(s as SupportedScope)
   );
   if (invalidScopes.length > 0) {
@@ -116,14 +134,14 @@ app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => 
     );
   }
 
-  if (body.allowed_scopes.length === 0) {
+  if (allowed_scopes.length === 0) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'allowed_scopes must not be empty' } }, 400);
   }
 
   const updated = await updateServiceAllowedScopes(
     c.env.DB,
     serviceId,
-    JSON.stringify(body.allowed_scopes)
+    JSON.stringify(allowed_scopes)
   );
   if (!updated) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
@@ -173,18 +191,19 @@ app.post('/:id/redirect-uris', authMiddleware, adminMiddleware, csrfMiddleware, 
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
 
-  let body: { uri?: string };
+  let rawBody: unknown;
   try {
-    body = await c.req.json<{ uri?: string }>();
+    rawBody = await c.req.json();
   } catch {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
   }
 
-  if (!body.uri) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'uri is required' } }, 400);
+  const parsed = AddRedirectUriSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: parsed.error.issues[0]?.message ?? 'Invalid request' } }, 400);
   }
 
-  const normalized = normalizeRedirectUri(body.uri);
+  const normalized = normalizeRedirectUri(parsed.data.uri);
   if (!normalized) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid redirect URI' } }, 400);
   }
