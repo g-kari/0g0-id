@@ -109,6 +109,8 @@ export interface IdpEnv {
   RATE_LIMITER_AUTH?: RateLimitBinding;
   /** /api/external/*, /api/token/introspect 向けレートリミッター（client_id単位） */
   RATE_LIMITER_EXTERNAL?: RateLimitBinding;
+  /** /auth/exchange, /auth/refresh 向けレートリミッター（IP単位） */
+  RATE_LIMITER_TOKEN?: RateLimitBinding;
 }
 
 export interface BffEnv {
