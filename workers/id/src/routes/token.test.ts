@@ -6,6 +6,7 @@ vi.mock('@0g0-id/shared', () => ({
   findRefreshTokenByHash: vi.fn(),
   findServiceByClientId: vi.fn(),
   findUserById: vi.fn(),
+  revokeRefreshToken: vi.fn(),
   sha256: vi.fn(),
   timingSafeEqual: vi.fn(),
 }));
@@ -14,6 +15,7 @@ import {
   findRefreshTokenByHash,
   findServiceByClientId,
   findUserById,
+  revokeRefreshToken,
   sha256,
   timingSafeEqual,
 } from '@0g0-id/shared';
@@ -335,5 +337,155 @@ describe('POST /api/token/introspect', () => {
     const body = await res.json<Record<string, unknown>>();
     expect(body.active).toBe(true);
     expect(body.scope).toBe('profile email');
+  });
+});
+
+// ===== POST /api/token/revoke =====
+describe('POST /api/token/revoke', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(sha256).mockResolvedValue('hashed-token');
+    vi.mocked(findServiceByClientId).mockResolvedValue(mockService as never);
+    vi.mocked(timingSafeEqual).mockReturnValue(true);
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(mockRefreshToken as never);
+    vi.mocked(revokeRefreshToken).mockResolvedValue(undefined);
+  });
+
+  it('Authorizationヘッダーなし → { error: invalid_client } + 401', async () => {
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'some-token' },
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_client');
+  });
+
+  it('Basicでないauth形式 → 401', async () => {
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'some-token' },
+      authHeader: 'Bearer some-token',
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('不正なBase64エンコード → 401', async () => {
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'some-token' },
+      authHeader: 'Basic !!!invalid!!!',
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('コロンなしのクレデンシャル → 401', async () => {
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'some-token' },
+      authHeader: `Basic ${btoa('nocredshere')}`,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('存在しないサービス → 401', async () => {
+    vi.mocked(findServiceByClientId).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'some-token' },
+      authHeader: makeBasicAuth('unknown-client', 'secret'),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('シークレット不一致 → 401', async () => {
+    vi.mocked(timingSafeEqual).mockReturnValue(false);
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'some-token' },
+      authHeader: makeBasicAuth('test-client-id', 'wrong-secret'),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('JSONボディが不正 → 400', async () => {
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/api/token/revoke`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: makeBasicAuth('test-client-id', 'secret'),
+        },
+        body: 'not-json',
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_request');
+  });
+
+  it('tokenが未指定 → 400', async () => {
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: {},
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_request');
+  });
+
+  it('有効なトークン → 200 + revokeRefreshTokenが呼ばれる', async () => {
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'valid-token' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(revokeRefreshToken)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      mockRefreshToken.id
+    );
+  });
+
+  it('token_type_hintを指定しても正常動作 → 200', async () => {
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'valid-token', token_type_hint: 'refresh_token' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(revokeRefreshToken)).toHaveBeenCalledOnce();
+  });
+
+  it('RFC 7009: 存在しないトークン → revokeせずに 200 OK を返す', async () => {
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'nonexistent-token' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(revokeRefreshToken)).not.toHaveBeenCalled();
+  });
+
+  it('RFC 7009: 失効済みトークン → revokeせずに 200 OK を返す', async () => {
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      revoked_at: '2024-01-01T00:00:00Z',
+    } as never);
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'revoked-token' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(revokeRefreshToken)).not.toHaveBeenCalled();
+  });
+
+  it('RFC 7009: 他サービスのトークン → revokeせずに 200 OK を返す（情報漏洩防止）', async () => {
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      service_id: 'other-service-id',
+    } as never);
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'other-service-token' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(revokeRefreshToken)).not.toHaveBeenCalled();
   });
 });
