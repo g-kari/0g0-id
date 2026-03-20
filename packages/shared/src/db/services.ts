@@ -1,5 +1,37 @@
 import type { Service } from '../types';
 
+// ─── インメモリ TTL キャッシュ ───────────────────────────────────────────────
+// Cloudflare Workers の isolate はリクエスト間で再利用されるため、
+// モジュールレベルの Map によるキャッシュが有効に機能する。
+
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5分
+
+interface ServiceCacheEntry {
+  service: Service;
+  expiresAt: number;
+}
+
+/** client_id → Service のキャッシュ */
+const byClientId = new Map<string, ServiceCacheEntry>();
+/** service.id → client_id の逆引き（無効化用） */
+const idToClientId = new Map<string, string>();
+
+function cachePut(service: Service): void {
+  byClientId.set(service.client_id, { service, expiresAt: Date.now() + CACHE_TTL_MS });
+  idToClientId.set(service.id, service.client_id);
+}
+
+/** サービスの更新・削除・シークレットローテーション時にキャッシュを即時破棄する */
+export function invalidateServiceCache(id: string): void {
+  const clientId = idToClientId.get(id);
+  if (clientId) {
+    byClientId.delete(clientId);
+    idToClientId.delete(id);
+  }
+}
+
+// ─── DB アクセス関数 ─────────────────────────────────────────────────────────
+
 export async function findServiceById(db: D1Database, id: string): Promise<Service | null> {
   return db.prepare('SELECT * FROM services WHERE id = ?').bind(id).first<Service>();
 }
@@ -8,7 +40,19 @@ export async function findServiceByClientId(
   db: D1Database,
   clientId: string
 ): Promise<Service | null> {
-  return db.prepare('SELECT * FROM services WHERE client_id = ?').bind(clientId).first<Service>();
+  const now = Date.now();
+  const cached = byClientId.get(clientId);
+  if (cached && cached.expiresAt > now) {
+    return cached.service;
+  }
+
+  const service = await db
+    .prepare('SELECT * FROM services WHERE client_id = ?')
+    .bind(clientId)
+    .first<Service>();
+
+  if (service) cachePut(service);
+  return service;
 }
 
 export async function createService(
@@ -59,7 +103,7 @@ export async function updateServiceFields(
   }
 
   binds.push(id);
-  return db
+  const service = await db
     .prepare(
       `UPDATE services SET ${sets.join(', ')}, updated_at = datetime('now')
        WHERE id = ?
@@ -67,6 +111,10 @@ export async function updateServiceFields(
     )
     .bind(...binds)
     .first<Service>();
+
+  if (service) cachePut(service);
+  else invalidateServiceCache(id);
+  return service;
 }
 
 export async function updateServiceAllowedScopes(
@@ -74,7 +122,7 @@ export async function updateServiceAllowedScopes(
   id: string,
   allowedScopes: string
 ): Promise<Service | null> {
-  return db
+  const service = await db
     .prepare(
       `UPDATE services SET allowed_scopes = ?, updated_at = datetime('now')
        WHERE id = ?
@@ -82,6 +130,10 @@ export async function updateServiceAllowedScopes(
     )
     .bind(allowedScopes, id)
     .first<Service>();
+
+  if (service) cachePut(service);
+  else invalidateServiceCache(id);
+  return service;
 }
 
 export async function updateServiceName(
@@ -89,7 +141,7 @@ export async function updateServiceName(
   id: string,
   name: string
 ): Promise<Service | null> {
-  return db
+  const service = await db
     .prepare(
       `UPDATE services SET name = ?, updated_at = datetime('now')
        WHERE id = ?
@@ -97,9 +149,14 @@ export async function updateServiceName(
     )
     .bind(name, id)
     .first<Service>();
+
+  if (service) cachePut(service);
+  else invalidateServiceCache(id);
+  return service;
 }
 
 export async function deleteService(db: D1Database, id: string): Promise<void> {
+  invalidateServiceCache(id);
   await db.prepare('DELETE FROM services WHERE id = ?').bind(id).run();
 }
 
@@ -138,7 +195,9 @@ export async function rotateClientSecret(
   id: string,
   newClientSecretHash: string
 ): Promise<Service | null> {
-  return db
+  // シークレットローテーション: 旧キャッシュを即時破棄してから更新
+  invalidateServiceCache(id);
+  const service = await db
     .prepare(
       `UPDATE services SET client_secret_hash = ?, updated_at = datetime('now')
        WHERE id = ?
@@ -146,6 +205,9 @@ export async function rotateClientSecret(
     )
     .bind(newClientSecretHash, id)
     .first<Service>();
+
+  if (service) cachePut(service);
+  return service;
 }
 
 export async function transferServiceOwnership(
@@ -153,7 +215,7 @@ export async function transferServiceOwnership(
   id: string,
   newOwnerUserId: string
 ): Promise<Service | null> {
-  return db
+  const service = await db
     .prepare(
       `UPDATE services SET owner_user_id = ?, updated_at = datetime('now')
        WHERE id = ?
@@ -161,4 +223,8 @@ export async function transferServiceOwnership(
     )
     .bind(newOwnerUserId, id)
     .first<Service>();
+
+  if (service) cachePut(service);
+  else invalidateServiceCache(id);
+  return service;
 }
