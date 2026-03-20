@@ -1,14 +1,13 @@
 import { Hono } from 'hono';
 import {
   findUserById,
-  findServiceByClientId,
   sha256,
-  timingSafeEqual,
   hasUserAuthorizedService,
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
 } from '@0g0-id/shared';
 import type { IdpEnv, User, Service } from '@0g0-id/shared';
+import { authenticateService } from '../utils/service-auth';
 import { externalApiRateLimitMiddleware } from '../middleware/rate-limit';
 
 const app = new Hono<{ Bindings: IdpEnv }>();
@@ -20,40 +19,6 @@ const SCOPE_FIELDS: Record<string, (u: User) => Record<string, unknown>> = {
   phone: (u) => ({ phone: u.phone }),
   address: (u) => ({ address: u.address }),
 };
-
-/**
- * Basic認証でサービス認証を行い、サービス情報を返す。
- * 認証失敗時はnullを返す。
- */
-async function authenticateService(db: D1Database, authHeader: string | undefined) {
-  if (!authHeader?.startsWith('Basic ')) return null;
-
-  let credentials: string;
-  try {
-    credentials = atob(authHeader.slice(6));
-  } catch {
-    return null;
-  }
-
-  const colonIndex = credentials.indexOf(':');
-  if (colonIndex === -1) return null;
-
-  const clientId = credentials.slice(0, colonIndex);
-  const clientSecret = credentials.slice(colonIndex + 1);
-
-  try {
-    const service = await findServiceByClientId(db, clientId);
-    if (!service) return null;
-
-    const secretHash = await sha256(clientSecret);
-    if (!timingSafeEqual(secretHash, service.client_secret_hash)) return null;
-
-    return service;
-  } catch {
-    // DB障害・暗号処理エラーは認証失敗として扱い、呼び出し元で500を返す
-    throw new Error('Service authentication failed due to internal error');
-  }
-}
 
 /**
  * サービス固有の不透明なユーザー識別子（ペアワイズsub）を生成する。

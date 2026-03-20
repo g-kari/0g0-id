@@ -1,46 +1,21 @@
 import { Hono } from 'hono';
-import {
-  findRefreshTokenByHash,
-  findServiceByClientId,
-  findUserById,
-  revokeRefreshToken,
-  sha256,
-  timingSafeEqual,
-} from '@0g0-id/shared';
+import { findRefreshTokenByHash, findUserById, revokeRefreshToken, sha256 } from '@0g0-id/shared';
 import type { IdpEnv } from '@0g0-id/shared';
 import { externalApiRateLimitMiddleware } from '../middleware/rate-limit';
+import { authenticateService } from '../utils/service-auth';
 
 const app = new Hono<{ Bindings: IdpEnv }>();
 
 // POST /api/token/introspect — RFC 7662 トークンイントロスペクション
 app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
   // Basic認証でサービス認証
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader?.startsWith('Basic ')) {
-    return c.json({ active: false }, 401);
-  }
-
-  let credentials: string;
+  let service: Awaited<ReturnType<typeof authenticateService>>;
   try {
-    credentials = atob(authHeader.slice(6));
+    service = await authenticateService(c.env.DB, c.req.header('Authorization'));
   } catch {
-    return c.json({ active: false }, 401);
+    return c.json({ active: false }, 500);
   }
-  const colonIndex = credentials.indexOf(':');
-  if (colonIndex === -1) {
-    return c.json({ active: false }, 401);
-  }
-
-  const clientId = credentials.slice(0, colonIndex);
-  const clientSecret = credentials.slice(colonIndex + 1);
-
-  const service = await findServiceByClientId(c.env.DB, clientId);
   if (!service) {
-    return c.json({ active: false }, 401);
-  }
-
-  const secretHash = await sha256(clientSecret);
-  if (!timingSafeEqual(secretHash, service.client_secret_hash)) {
     return c.json({ active: false }, 401);
   }
 
@@ -118,32 +93,13 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
 // POST /api/token/revoke — RFC 7009 トークン失効
 app.post('/revoke', externalApiRateLimitMiddleware, async (c) => {
   // Basic認証でサービス認証
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader?.startsWith('Basic ')) {
-    return c.json({ error: 'invalid_client' }, 401);
-  }
-
-  let credentials: string;
+  let service: Awaited<ReturnType<typeof authenticateService>>;
   try {
-    credentials = atob(authHeader.slice(6));
+    service = await authenticateService(c.env.DB, c.req.header('Authorization'));
   } catch {
-    return c.json({ error: 'invalid_client' }, 401);
+    return c.json({ error: 'invalid_client' }, 500);
   }
-  const colonIndex = credentials.indexOf(':');
-  if (colonIndex === -1) {
-    return c.json({ error: 'invalid_client' }, 401);
-  }
-
-  const clientId = credentials.slice(0, colonIndex);
-  const clientSecret = credentials.slice(colonIndex + 1);
-
-  const service = await findServiceByClientId(c.env.DB, clientId);
   if (!service) {
-    return c.json({ error: 'invalid_client' }, 401);
-  }
-
-  const secretHash = await sha256(clientSecret);
-  if (!timingSafeEqual(secretHash, service.client_secret_hash)) {
     return c.json({ error: 'invalid_client' }, 401);
   }
 
