@@ -1,4 +1,8 @@
+import { createMiddleware } from 'hono/factory';
 import { findServiceByClientId, sha256, timingSafeEqual } from '@0g0-id/shared';
+import type { IdpEnv, Service } from '@0g0-id/shared';
+
+type ServiceVariables = { service: Service };
 
 /**
  * Basic認証でサービス認証を行い、サービス情報を返す。
@@ -34,3 +38,25 @@ export async function authenticateService(db: D1Database, authHeader: string | u
     throw new Error('Service authentication failed due to internal error');
   }
 }
+
+/**
+ * 外部サービス向け認証ミドルウェア。
+ * Basic 認証でサービスを認証し、context に service をセットする。
+ * 認証失敗は 401、DB 障害は 500 を返す。
+ */
+export const serviceAuthMiddleware = createMiddleware<{
+  Bindings: IdpEnv;
+  Variables: ServiceVariables;
+}>(async (c, next) => {
+  let service: Service | null;
+  try {
+    service = await authenticateService(c.env.DB, c.req.header('Authorization'));
+  } catch {
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
+  if (!service) {
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid client credentials' } }, 401);
+  }
+  c.set('service', service);
+  await next();
+});
