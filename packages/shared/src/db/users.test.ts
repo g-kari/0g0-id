@@ -256,8 +256,41 @@ describe('linkProvider', () => {
 });
 
 describe('upsertUser', () => {
-  it('新規Googleユーザーを作成/更新してUserを返す', async () => {
-    const db = makeD1Mock({ ...baseUser, google_sub: 'google-sub-1' });
+  const googleUser = { ...baseUser, google_sub: 'google-sub-1' };
+
+  it('既存Googleユーザーが見つかった場合はプロフィールを更新する', async () => {
+    // findUserByGoogleSub → existing, UPDATE → updated
+    const db = makeMultiD1Mock({ first: googleUser }, { first: googleUser });
+    const user = await upsertUser(db, {
+      id: 'user-new',
+      googleSub: 'google-sub-1',
+      email: 'test@example.com',
+      emailVerified: true,
+      name: 'Test User',
+      picture: null,
+    });
+    expect(user.google_sub).toBe('google-sub-1');
+  });
+
+  it('google_sub未登録・同メールの既存ユーザーがいれば Google アカウントを連携する', async () => {
+    // findUserByGoogleSub → null, findUserByEmail → existing, UPDATE → linked
+    const emailUser = { ...baseUser, google_sub: null };
+    const linked = { ...baseUser, google_sub: 'google-sub-new' };
+    const db = makeMultiD1Mock({ first: null }, { first: emailUser }, { first: linked });
+    const user = await upsertUser(db, {
+      id: 'user-new',
+      googleSub: 'google-sub-new',
+      email: 'test@example.com',
+      emailVerified: true,
+      name: 'Test User',
+      picture: null,
+    });
+    expect(user.google_sub).toBe('google-sub-new');
+  });
+
+  it('新規ユーザーを作成する', async () => {
+    // findUserByGoogleSub → null, findUserByEmail → null, INSERT → new
+    const db = makeMultiD1Mock({ first: null }, { first: null }, { first: googleUser });
     const user = await upsertUser(db, {
       id: 'user-1',
       googleSub: 'google-sub-1',
@@ -270,8 +303,8 @@ describe('upsertUser', () => {
     expect(user.email_verified).toBe(1);
   });
 
-  it('DBがnullを返した場合はエラーを投げる', async () => {
-    const db = makeD1Mock(null);
+  it('DBがnullを返した場合はエラーを投げる（新規作成時）', async () => {
+    const db = makeMultiD1Mock({ first: null }, { first: null }, { first: null });
     await expect(
       upsertUser(db, {
         id: 'user-1',
@@ -281,22 +314,22 @@ describe('upsertUser', () => {
         name: 'Test User',
         picture: null,
       })
-    ).rejects.toThrow('Failed to upsert user');
+    ).rejects.toThrow('Failed to create Google user');
   });
 
-  it('INSERT INTO users ON CONFLICT のSQLを実行する', async () => {
-    const db = makeD1Mock(baseUser);
-    await upsertUser(db, {
-      id: 'user-1',
-      googleSub: 'g-sub',
-      email: 'x@example.com',
-      emailVerified: false,
-      name: 'Name',
-      picture: null,
-    });
-    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(sql).toContain('INSERT INTO users');
-    expect(sql).toContain('ON CONFLICT');
+  it('DBがnullを返した場合はエラーを投げる（連携時）', async () => {
+    const emailUser = { ...baseUser, google_sub: null };
+    const db = makeMultiD1Mock({ first: null }, { first: emailUser }, { first: null });
+    await expect(
+      upsertUser(db, {
+        id: 'user-new',
+        googleSub: 'google-sub-new',
+        email: 'test@example.com',
+        emailVerified: true,
+        name: 'Test User',
+        picture: null,
+      })
+    ).rejects.toThrow('Failed to link Google account');
   });
 });
 

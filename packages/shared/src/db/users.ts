@@ -42,28 +42,43 @@ export async function upsertUser(
     picture: string | null;
   }
 ): Promise<User> {
+  // 既存のGoogleユーザーがいればプロフィールを更新
+  const existingByGoogle = await findUserByGoogleSub(db, params.googleSub);
+  if (existingByGoogle) {
+    const user = await db
+      .prepare(
+        `UPDATE users SET email = ?, email_verified = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
+      )
+      .bind(params.email, params.emailVerified ? 1 : 0, params.name, params.picture, existingByGoogle.id)
+      .first<User>();
+    if (!user) throw new Error('Failed to update Google user');
+    return user;
+  }
+
+  // 同メールで既存ユーザーがいれば Google アカウントを連携
+  // （他プロバイダーで先に登録済みのケース）
+  const existingByEmail = await findUserByEmail(db, params.email);
+  if (existingByEmail) {
+    const user = await db
+      .prepare(
+        `UPDATE users SET google_sub = ?, email_verified = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
+      )
+      .bind(params.googleSub, params.emailVerified ? 1 : 0, params.name, params.picture, existingByEmail.id)
+      .first<User>();
+    if (!user) throw new Error('Failed to link Google account');
+    return user;
+  }
+
+  // 新規ユーザー作成
   const user = await db
     .prepare(
       `INSERT INTO users (id, google_sub, email, email_verified, name, picture)
        VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(google_sub) DO UPDATE SET
-         email = excluded.email,
-         email_verified = excluded.email_verified,
-         name = excluded.name,
-         picture = excluded.picture,
-         updated_at = datetime('now')
        RETURNING *`
     )
-    .bind(
-      params.id,
-      params.googleSub,
-      params.email,
-      params.emailVerified ? 1 : 0,
-      params.name,
-      params.picture
-    )
+    .bind(params.id, params.googleSub, params.email, params.emailVerified ? 1 : 0, params.name, params.picture)
     .first<User>();
-  if (!user) throw new Error('Failed to upsert user');
+  if (!user) throw new Error('Failed to create Google user');
   return user;
 }
 
