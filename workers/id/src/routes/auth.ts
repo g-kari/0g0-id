@@ -352,6 +352,46 @@ async function resolveXProvider(
   };
 }
 
+/** リフレッシュトークンの有効期限（30日）*/
+const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * アクセストークンとリフレッシュトークンのペアを発行する。
+ * /auth/exchange（新規ログイン）と /auth/refresh（トークンローテーション）で共通利用。
+ *
+ * @param options.serviceId - サービス連携トークンの場合はサービスID、IdP直接セッションはnull
+ * @param options.familyId  - 既存ファミリーへの追加（ローテーション）の場合は既存ID、省略で新規UUID
+ */
+async function issueTokenPair(
+  db: D1Database,
+  env: IdpEnv,
+  user: User,
+  options: { serviceId: string | null; familyId?: string }
+): Promise<{ accessToken: string; refreshToken: string }> {
+  const { serviceId, familyId = crypto.randomUUID() } = options;
+
+  const accessToken = await signAccessToken(
+    { iss: env.IDP_ORIGIN, sub: user.id, aud: env.IDP_ORIGIN, email: user.email, role: user.role },
+    env.JWT_PRIVATE_KEY,
+    env.JWT_PUBLIC_KEY
+  );
+
+  const refreshToken = generateToken(32);
+  const tokenHash = await sha256(refreshToken);
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
+
+  await createRefreshToken(db, {
+    id: crypto.randomUUID(),
+    userId: user.id,
+    serviceId,
+    tokenHash,
+    familyId,
+    expiresAt,
+  });
+
+  return { accessToken, refreshToken };
+}
+
 // ─── ルートハンドラー ──────────────────────────────────────────────────────────
 
 // GET /auth/login — BFFからのリダイレクト受け取り + プロバイダー認可へリダイレクト
@@ -589,32 +629,9 @@ app.post('/exchange', async (c) => {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  // アクセストークン発行
-  const accessToken = await signAccessToken(
-    {
-      iss: c.env.IDP_ORIGIN,
-      sub: user.id,
-      aud: c.env.IDP_ORIGIN,
-      email: user.email,
-      role: user.role,
-    },
-    c.env.JWT_PRIVATE_KEY,
-    c.env.JWT_PUBLIC_KEY
-  );
-
-  // リフレッシュトークン発行
-  const refreshTokenRaw = generateToken(32);
-  const refreshTokenHash = await sha256(refreshTokenRaw);
-  const familyId = crypto.randomUUID();
-  const refreshExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-
-  await createRefreshToken(c.env.DB, {
-    id: crypto.randomUUID(),
-    userId: user.id,
+  // アクセストークン・リフレッシュトークン発行
+  const { accessToken, refreshToken: refreshTokenRaw } = await issueTokenPair(c.env.DB, c.env, user, {
     serviceId: null,
-    tokenHash: refreshTokenHash,
-    familyId,
-    expiresAt: refreshExpiresAt,
   });
 
   return c.json({
@@ -666,31 +683,10 @@ app.post('/refresh', async (c) => {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  // 新アクセストークン発行
-  const accessToken = await signAccessToken(
-    {
-      iss: c.env.IDP_ORIGIN,
-      sub: user.id,
-      aud: c.env.IDP_ORIGIN,
-      email: user.email,
-      role: user.role,
-    },
-    c.env.JWT_PRIVATE_KEY,
-    c.env.JWT_PUBLIC_KEY
-  );
-
-  // 新リフレッシュトークン発行（ローテーション、同じfamily_id）
-  const newRefreshTokenRaw = generateToken(32);
-  const newRefreshTokenHash = await sha256(newRefreshTokenRaw);
-  const refreshExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-
-  await createRefreshToken(c.env.DB, {
-    id: crypto.randomUUID(),
-    userId: user.id,
+  // 新アクセストークン・リフレッシュトークン発行（ローテーション、同じfamily_id）
+  const { accessToken, refreshToken: newRefreshTokenRaw } = await issueTokenPair(c.env.DB, c.env, user, {
     serviceId: storedToken.service_id,
-    tokenHash: newRefreshTokenHash,
     familyId: storedToken.family_id,
-    expiresAt: refreshExpiresAt,
   });
 
   return c.json({
