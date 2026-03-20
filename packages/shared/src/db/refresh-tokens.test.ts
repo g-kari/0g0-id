@@ -11,6 +11,7 @@ import {
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
   revokeUserServiceTokens,
+  listActiveSessionsByUserId,
 } from './refresh-tokens';
 import type { RefreshToken, User } from '../types';
 
@@ -271,5 +272,54 @@ describe('revokeUserServiceTokens', () => {
     await revokeUserServiceTokens(db, 'user-1', 'service-1');
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
     expect(stmt.bind).toHaveBeenCalledWith('user-1', 'service-1');
+  });
+});
+
+describe('listActiveSessionsByUserId', () => {
+  it('アクティブセッション一覧を返す', async () => {
+    const mockSessions = [
+      {
+        id: 'token-id-1',
+        service_id: null,
+        service_name: null,
+        created_at: '2024-01-01T00:00:00Z',
+        expires_at: '2025-12-31T23:59:59Z',
+      },
+      {
+        id: 'token-id-2',
+        service_id: 'service-1',
+        service_name: 'My App',
+        created_at: '2024-06-01T00:00:00Z',
+        expires_at: '2025-12-31T23:59:59Z',
+      },
+    ];
+    const db = makeD1Mock(null, mockSessions);
+    const result = await listActiveSessionsByUserId(db, 'user-1');
+    expect(result).toHaveLength(2);
+    expect(result[0].id).toBe('token-id-1');
+    expect(result[0].service_id).toBeNull();
+    expect(result[1].service_name).toBe('My App');
+  });
+
+  it('アクティブセッションがない場合は空配列を返す', async () => {
+    const db = makeD1Mock(null, []);
+    const result = await listActiveSessionsByUserId(db, 'user-1');
+    expect(result).toEqual([]);
+  });
+
+  it('userIdでbindを呼ぶ', async () => {
+    const db = makeD1Mock(null, []);
+    await listActiveSessionsByUserId(db, 'user-1');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('user-1');
+  });
+
+  it('SQLにLEFT JOINとservice_nameが含まれる', async () => {
+    const db = makeD1Mock(null, []);
+    await listActiveSessionsByUserId(db, 'user-1');
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('LEFT JOIN services');
+    expect(sql).toContain('service_name');
+    expect(sql).toContain('revoked_at IS NULL');
   });
 });

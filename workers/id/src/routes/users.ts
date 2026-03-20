@@ -10,6 +10,7 @@ import {
   listUserConnections,
   revokeUserServiceTokens,
   revokeUserTokens,
+  listActiveSessionsByUserId,
   countServicesByOwner,
   listServicesByOwner,
   getUserProviders,
@@ -163,6 +164,13 @@ app.delete('/me/connections/:serviceId', authMiddleware, csrfMiddleware, async (
     return c.json({ error: { code: 'NOT_FOUND', message: 'Connection not found' } }, 404);
   }
   return c.body(null, 204);
+});
+
+// GET /api/users/me/tokens — アクティブセッション一覧
+app.get('/me/tokens', authMiddleware, async (c) => {
+  const tokenUser = c.get('user');
+  const sessions = await listActiveSessionsByUserId(c.env.DB, tokenUser.sub);
+  return c.json({ data: sessions });
 });
 
 // DELETE /api/users/me/tokens — 全デバイスからログアウト（全リフレッシュトークン無効化）

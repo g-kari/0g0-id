@@ -32,6 +32,74 @@ function buildApp(idpFetch: (req: Request) => Promise<Response>) {
 }
 
 describe('user BFF — /api/me/sessions', () => {
+  describe('GET / — アクティブセッション一覧', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/sessions');
+
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('セッションありでIdPへGETしてセッション一覧を返す', async () => {
+      const mockSessions = [
+        { id: 'token-1', service_id: null, service_name: null, created_at: '2024-01-01T00:00:00Z', expires_at: '2025-12-31T23:59:59Z' },
+      ];
+      const idpFetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ data: mockSessions }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/sessions', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: unknown[] }>();
+      expect(body.data).toHaveLength(1);
+    });
+
+    it('IdPの /api/users/me/tokens エンドポイントをGETで呼び出す', async () => {
+      const idpFetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ data: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/me/sessions', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.method).toBe('GET');
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/users/me/tokens');
+    });
+
+    it('AuthorizationヘッダーにアクセストークンをBearerで付与する', async () => {
+      const idpFetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ data: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/me/sessions', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.headers.get('Authorization')).toBe('Bearer mock-access-token');
+    });
+  });
+
   describe('DELETE / — 全デバイスからログアウト', () => {
     it('セッションなしで401を返す', async () => {
       const idpFetch = vi.fn();
