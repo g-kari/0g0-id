@@ -118,6 +118,62 @@ describe('admin BFF — /api/users', () => {
       expect(url.searchParams.get('offset')).toBe('0');
     });
 
+    it('emailフィルタをIdPに転送する', async () => {
+      const idpFetch = mockIdp(200, { data: [], total: 0 });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users?email=test%40example.com', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.get('email')).toBe('test@example.com');
+    });
+
+    it('roleフィルタをIdPに転送する', async () => {
+      const idpFetch = mockIdp(200, { data: [], total: 0 });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users?role=admin', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.get('role')).toBe('admin');
+    });
+
+    it('nameフィルタをIdPに転送する', async () => {
+      const idpFetch = mockIdp(200, { data: [], total: 0 });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users?name=Alice', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.get('name')).toBe('Alice');
+    });
+
+    it('複数フィルタを同時にIdPに転送する', async () => {
+      const idpFetch = mockIdp(200, { data: [], total: 0 });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users?email=test&role=user&name=Alice&limit=10&offset=5', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.get('email')).toBe('test');
+      expect(url.searchParams.get('role')).toBe('user');
+      expect(url.searchParams.get('name')).toBe('Alice');
+      expect(url.searchParams.get('limit')).toBe('10');
+      expect(url.searchParams.get('offset')).toBe('5');
+    });
+
     it('Authorizationヘッダーにセッションのアクセストークンを付与する', async () => {
       const idpFetch = mockIdp(200, { data: [] });
       const app = buildApp(idpFetch);

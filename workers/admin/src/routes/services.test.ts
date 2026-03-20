@@ -391,6 +391,87 @@ describe('admin BFF — /api/services', () => {
     });
   });
 
+  describe('PATCH /:id/owner — サービス所有権転送', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/services/service-1/owner', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_owner_user_id: 'user-2' }),
+      });
+
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('不正なJSONで400を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/services/service-1/owner', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}`,
+        },
+        body: 'not-json',
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('BAD_REQUEST');
+    });
+
+    it('管理者セッションでIdPにPATCHして所有権を転送する', async () => {
+      const updated = {
+        id: 'service-1',
+        name: 'Test Service',
+        client_id: 'client-abc',
+        owner_user_id: 'user-2',
+        updated_at: '2024-06-01T00:00:00Z',
+      };
+      const idpFetch = mockIdp(200, { data: updated });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/services/service-1/owner', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}`,
+        },
+        body: JSON.stringify({ new_owner_user_id: 'user-2' }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof updated }>();
+      expect(body.data.owner_user_id).toBe('user-2');
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.method).toBe('PATCH');
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/services/service-1/owner');
+      expect(calledReq.headers.get('Authorization')).toBe('Bearer mock-access-token');
+      expect(calledReq.headers.get('Origin')).toBe('https://id.0g0.xyz');
+    });
+
+    it('IdPが404を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(404, { error: { code: 'NOT_FOUND' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/services/no-such/owner', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}`,
+        },
+        body: JSON.stringify({ new_owner_user_id: 'user-2' }),
+      });
+
+      expect(res.status).toBe(404);
+    });
+  });
+
   describe('DELETE /:id/redirect-uris/:uriId — リダイレクトURI削除', () => {
     it('セッションなしで401を返す', async () => {
       const idpFetch = vi.fn();

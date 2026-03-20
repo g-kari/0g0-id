@@ -126,6 +126,31 @@ app.post('/:id/redirect-uris', async (c) => {
   return proxyResponse(res);
 });
 
+// PATCH /api/services/:id/owner — サービス所有権の転送
+app.patch('/:id/owner', async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON' } }, 400);
+  }
+
+  const res = await fetchWithAuth(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/services/${c.req.param('id')}/owner`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: c.env.IDP_ORIGIN,
+      },
+      body: JSON.stringify(body),
+    }
+  );
+  return proxyResponse(res);
+});
+
 // DELETE /api/services/:id/redirect-uris/:uriId
 app.delete('/:id/redirect-uris/:uriId', async (c) => {
   const res = await fetchWithAuth(
