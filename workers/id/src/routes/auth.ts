@@ -25,6 +25,7 @@ import {
   generateToken,
   sha256,
   signAccessToken,
+  signIdToken,
   createRefreshToken,
   findRefreshTokenByHash,
   findUserById,
@@ -664,14 +665,31 @@ app.post('/exchange', async (c) => {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  // アクセストークン・リフレッシュトークン発行
+  // アクセストークン・リフレッシュトークン・IDトークン発行
   const { accessToken, refreshToken: refreshTokenRaw } = await issueTokenPair(c.env.DB, c.env, user, {
     serviceId: null,
   });
 
+  // OIDC ID トークン発行（OpenID Connect Core 1.0）
+  const authTime = Math.floor(Date.now() / 1000);
+  const idToken = await signIdToken(
+    {
+      iss: c.env.IDP_ORIGIN,
+      sub: user.id,
+      aud: c.env.IDP_ORIGIN,
+      email: user.email,
+      name: user.name,
+      picture: user.picture,
+      authTime,
+    },
+    c.env.JWT_PRIVATE_KEY,
+    c.env.JWT_PUBLIC_KEY
+  );
+
   return c.json({
     data: {
       access_token: accessToken,
+      id_token: idToken,
       refresh_token: refreshTokenRaw,
       token_type: 'Bearer',
       expires_in: 900, // 15分
