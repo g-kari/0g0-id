@@ -6,6 +6,7 @@ vi.mock('@0g0-id/shared', () => ({
   countAdminUsers: vi.fn(),
   countServices: vi.fn(),
   countActiveRefreshTokens: vi.fn(),
+  countRecentLoginEvents: vi.fn(),
   verifyAccessToken: vi.fn(),
 }));
 
@@ -14,6 +15,7 @@ import {
   countAdminUsers,
   countServices,
   countActiveRefreshTokens,
+  countRecentLoginEvents,
   verifyAccessToken,
 } from '@0g0-id/shared';
 
@@ -95,6 +97,7 @@ describe('GET /api/metrics', () => {
     vi.mocked(countAdminUsers).mockResolvedValue(5);
     vi.mocked(countServices).mockResolvedValue(10);
     vi.mocked(countActiveRefreshTokens).mockResolvedValue(42);
+    vi.mocked(countRecentLoginEvents).mockResolvedValue(13);
 
     const res = await app.request(
       makeRequest('/api/metrics', 'admin-token'),
@@ -109,12 +112,14 @@ describe('GET /api/metrics', () => {
         admin_users: number;
         total_services: number;
         active_sessions: number;
+        recent_logins_24h: number;
       };
     }>();
     expect(body.data.total_users).toBe(100);
     expect(body.data.admin_users).toBe(5);
     expect(body.data.total_services).toBe(10);
     expect(body.data.active_sessions).toBe(42);
+    expect(body.data.recent_logins_24h).toBe(13);
   });
 
   it('管理者トークンでDBへの各カウント関数が呼ばれる', async () => {
@@ -123,6 +128,7 @@ describe('GET /api/metrics', () => {
     vi.mocked(countAdminUsers).mockResolvedValue(0);
     vi.mocked(countServices).mockResolvedValue(0);
     vi.mocked(countActiveRefreshTokens).mockResolvedValue(0);
+    vi.mocked(countRecentLoginEvents).mockResolvedValue(0);
 
     await app.request(
       makeRequest('/api/metrics', 'admin-token'),
@@ -134,6 +140,34 @@ describe('GET /api/metrics', () => {
     expect(vi.mocked(countAdminUsers)).toHaveBeenCalledWith(mockEnv.DB);
     expect(vi.mocked(countServices)).toHaveBeenCalledWith(mockEnv.DB);
     expect(vi.mocked(countActiveRefreshTokens)).toHaveBeenCalledWith(mockEnv.DB);
+    expect(vi.mocked(countRecentLoginEvents)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/)
+    );
+  });
+
+  it('countRecentLoginEventsには過去24時間以内のISO日時が渡される', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(countUsers).mockResolvedValue(0);
+    vi.mocked(countAdminUsers).mockResolvedValue(0);
+    vi.mocked(countServices).mockResolvedValue(0);
+    vi.mocked(countActiveRefreshTokens).mockResolvedValue(0);
+    vi.mocked(countRecentLoginEvents).mockResolvedValue(0);
+
+    const before = Date.now();
+    await app.request(
+      makeRequest('/api/metrics', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    const after = Date.now();
+
+    const calledSince = vi.mocked(countRecentLoginEvents).mock.calls[0][1];
+    const calledSinceMs = new Date(calledSince).getTime();
+    const expectedMin = before - 24 * 60 * 60 * 1000;
+    const expectedMax = after - 24 * 60 * 60 * 1000;
+    expect(calledSinceMs).toBeGreaterThanOrEqual(expectedMin);
+    expect(calledSinceMs).toBeLessThanOrEqual(expectedMax);
   });
 
   it('無効なトークンで401を返す', async () => {

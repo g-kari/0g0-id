@@ -41,3 +41,14 @@ export async function getLoginEventsByUserId(
     total: countResult?.count ?? 0,
   };
 }
+
+export async function countRecentLoginEvents(
+  db: D1Database,
+  sinceIso: string
+): Promise<number> {
+  const result = await db
+    .prepare('SELECT COUNT(*) as count FROM login_events WHERE created_at >= ?')
+    .bind(sinceIso)
+    .first<{ count: number }>();
+  return result?.count ?? 0;
+}

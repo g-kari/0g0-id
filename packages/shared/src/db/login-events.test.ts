@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { insertLoginEvent, getLoginEventsByUserId } from './login-events';
+import { insertLoginEvent, getLoginEventsByUserId, countRecentLoginEvents } from './login-events';
 import type { LoginEvent } from '../types';
 
 function makeD1Mock(
@@ -247,5 +247,54 @@ describe('getLoginEventsByUserId', () => {
     expect(result.events[0].id).toBe('event-2');
     expect(result.events[1].id).toBe('event-1');
     expect(result.total).toBe(2);
+  });
+});
+
+describe('countRecentLoginEvents', () => {
+  it('指定日時以降のログインイベント数を返す', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue({ count: 7 }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const result = await countRecentLoginEvents(db, '2024-01-01T00:00:00.000Z');
+    expect(result).toBe(7);
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('COUNT(*)'));
+    expect(stmt.bind).toHaveBeenCalledWith('2024-01-01T00:00:00.000Z');
+  });
+
+  it('イベントがない場合は0を返す', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue({ count: 0 }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const result = await countRecentLoginEvents(db, '2024-01-01T00:00:00.000Z');
+    expect(result).toBe(0);
+  });
+
+  it('first()がnullを返した場合は0にフォールバックする', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue(null),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const result = await countRecentLoginEvents(db, '2024-01-01T00:00:00.000Z');
+    expect(result).toBe(0);
+  });
+
+  it('SQLにcreated_at >= ?の条件が含まれる', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue({ count: 3 }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    await countRecentLoginEvents(db, '2024-06-01T00:00:00.000Z');
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('created_at >=');
   });
 });
