@@ -41,6 +41,16 @@ app.get('/:id/services', async (c) => {
   return proxyResponse(res);
 });
 
+// GET /api/users/:id/providers — ユーザーのSNSプロバイダー連携状態
+app.get('/:id/providers', async (c) => {
+  const res = await fetchWithAuth(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/providers`
+  );
+  return proxyResponse(res);
+});
+
 // GET /api/users/:id/login-history
 app.get('/:id/login-history', async (c) => {
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/login-history`);
