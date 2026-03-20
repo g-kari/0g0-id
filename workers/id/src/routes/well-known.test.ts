@@ -84,3 +84,103 @@ describe('GET /.well-known/jwks.json', () => {
     expect(vi.mocked(getJWKS)).toHaveBeenCalledWith(mockEnv.JWT_PUBLIC_KEY, 'mock-kid-1234');
   });
 });
+
+describe('GET /.well-known/openid-configuration', () => {
+  const mockEnvWithOrigin = {
+    ...mockEnv,
+    IDP_ORIGIN: 'https://id.0g0.xyz',
+  };
+
+  function buildAppWithOrigin() {
+    const app = new Hono<{ Bindings: typeof mockEnvWithOrigin }>();
+    app.route('/.well-known', wellKnownRoutes);
+    return app;
+  }
+
+  it('200を返してDiscovery Documentを返す', async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/openid-configuration`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<Record<string, unknown>>();
+    expect(body.issuer).toBe('https://id.0g0.xyz');
+    expect(body.authorization_endpoint).toBe('https://id.0g0.xyz/auth/login');
+    expect(body.token_endpoint).toBe('https://id.0g0.xyz/auth/exchange');
+    expect(body.jwks_uri).toBe('https://id.0g0.xyz/.well-known/jwks.json');
+    expect(body.introspection_endpoint).toBe('https://id.0g0.xyz/api/token/introspect');
+    expect(body.revocation_endpoint).toBe('https://id.0g0.xyz/api/token/revoke');
+  });
+
+  it('必須スコープを含む', async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/openid-configuration`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>
+    );
+    const body = await res.json<{ scopes_supported: string[] }>();
+    expect(body.scopes_supported).toContain('openid');
+    expect(body.scopes_supported).toContain('profile');
+    expect(body.scopes_supported).toContain('email');
+    expect(body.scopes_supported).toContain('phone');
+    expect(body.scopes_supported).toContain('address');
+  });
+
+  it('response_types_supported に code を含む', async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/openid-configuration`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>
+    );
+    const body = await res.json<{ response_types_supported: string[] }>();
+    expect(body.response_types_supported).toContain('code');
+  });
+
+  it('id_token_signing_alg_values_supported に ES256 を含む', async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/openid-configuration`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>
+    );
+    const body = await res.json<{ id_token_signing_alg_values_supported: string[] }>();
+    expect(body.id_token_signing_alg_values_supported).toContain('ES256');
+  });
+
+  it('code_challenge_methods_supported に S256 を含む（PKCE対応）', async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/openid-configuration`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>
+    );
+    const body = await res.json<{ code_challenge_methods_supported: string[] }>();
+    expect(body.code_challenge_methods_supported).toContain('S256');
+  });
+
+  it('Cache-Controlヘッダーが1日に設定されている', async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/openid-configuration`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>
+    );
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=86400');
+  });
+
+  it('subject_types_supported に pairwise を含む', async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/openid-configuration`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>
+    );
+    const body = await res.json<{ subject_types_supported: string[] }>();
+    expect(body.subject_types_supported).toContain('pairwise');
+  });
+});
+
