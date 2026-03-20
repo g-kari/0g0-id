@@ -395,6 +395,17 @@ describe('POST /api/services', () => {
     expect(body.error.code).toBe('BAD_REQUEST');
     expect(body.error.message).toContain('allowed_scopes must not be empty');
   });
+
+  it('nameが101文字 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/services', {
+      method: 'POST',
+      body: { name: 'a'.repeat(101) },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
 });
 
 // ===== PATCH /api/services/:id（管理者のみ）=====

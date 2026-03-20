@@ -292,6 +292,87 @@ describe('PATCH /api/users/me', () => {
     expect(body.data.phone).toBe('080-1111-2222');
     expect(body.data.address).toBe('Osaka');
   });
+
+  it('pictureにHTTP URLを指定 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'Test User', picture: 'http://example.com/pic.jpg' },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('pictureにjavascript: URLを指定 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'Test User', picture: 'javascript:alert(1)' },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('pictureにdata: URLを指定 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'Test User', picture: 'data:image/png;base64,abc' },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('pictureに有効なHTTPS URLを指定 → 成功する', async () => {
+    vi.mocked(updateUserProfile).mockResolvedValue({
+      ...mockUser,
+      picture: 'https://cdn.example.com/avatar.jpg',
+    });
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'Test User', picture: 'https://cdn.example.com/avatar.jpg' },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.picture).toBe('https://cdn.example.com/avatar.jpg');
+  });
+
+  it('nameが101文字 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'a'.repeat(101) },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('phoneが51文字 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'Test User', phone: 'a'.repeat(51) },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('addressが501文字 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'Test User', address: 'a'.repeat(501) },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
 });
 
 // ===== GET /api/users/me/connections =====

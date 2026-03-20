@@ -27,10 +27,16 @@ import { csrfMiddleware } from '../middleware/csrf';
 import { parseJsonBody } from '../utils/parse-body';
 
 const PatchMeSchema = z.object({
-  name: z.string().min(1, 'name is required'),
-  picture: z.string().nullable().optional(),
-  phone: z.string().nullable().optional(),
-  address: z.string().nullable().optional(),
+  name: z.string().min(1, 'name is required').max(100, 'name must be 100 characters or less'),
+  picture: z
+    .string()
+    .url('picture must be a valid URL')
+    .startsWith('https://', 'picture must use HTTPS')
+    .max(2048, 'picture URL must be 2048 characters or less')
+    .nullable()
+    .optional(),
+  phone: z.string().max(50, 'phone must be 50 characters or less').nullable().optional(),
+  address: z.string().max(500, 'address must be 500 characters or less').nullable().optional(),
 });
 
 const PatchRoleSchema = z.object({
