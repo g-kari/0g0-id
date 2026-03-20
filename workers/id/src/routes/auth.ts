@@ -111,6 +111,61 @@ type ProviderResolution =
   | { ok: true; sub: string; upsert: (db: D1Database, id: string) => Promise<User> }
   | { ok: false; response: Response };
 
+
+/**
+ * redirect_to が許可されたオリジンかどうかを検証する。
+ *
+ * 許可条件（いずれかを満たせばOK）:
+ * 1. IDP_ORIGIN のホスト名から第1ラベルを除いた「親ドメイン」（例: id.0g0.xyz → 0g0.xyz）配下の
+ *    サブドメイン、または親ドメイン自身（例: *.0g0.xyz, 0g0.xyz）
+ * 2. EXTRA_BFF_ORIGINS（カンマ区切り）に一致するオリジン
+ *
+ * ❌ http:// は拒否（HTTPS必須）
+ */
+export function isAllowedRedirectTo(
+  redirectTo: string,
+  idpOrigin: string,
+  extraBffOrigins?: string
+): boolean {
+  let redirectUrl: URL;
+  try {
+    redirectUrl = new URL(redirectTo);
+  } catch {
+    return false;
+  }
+
+  // HTTPS のみ許可
+  if (redirectUrl.protocol !== 'https:') return false;
+
+  // IDP_ORIGIN から親ドメインを導出して *.parentDomain を許可
+  try {
+    const idpUrl = new URL(idpOrigin);
+    const parts = idpUrl.hostname.split('.');
+    // ラベルが3つ以上 (e.g. id.0g0.xyz) なら第1ラベルを除いた親ドメインを使用
+    // ラベルが2つ以下 (e.g. 0g0.xyz) ならそのまま使用
+    const parentDomain = parts.length > 2 ? parts.slice(1).join('.') : parts.join('.');
+    const host = redirectUrl.hostname;
+    if (host === parentDomain || host.endsWith('.' + parentDomain)) {
+      return true;
+    }
+  } catch {
+    // ignore — fallthrough to EXTRA_BFF_ORIGINS
+  }
+
+  // EXTRA_BFF_ORIGINS による追加オリジン（外部ドメイン向け）
+  if (extraBffOrigins) {
+    const extras = extraBffOrigins
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean);
+    if (extras.some((origin) => redirectTo.startsWith(origin + '/'))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function setSecureCookie(
   c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
   name: string,
@@ -447,9 +502,11 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
     }
   }
 
-  // redirect_toの検証（user/adminオリジンのみ許可）
-  const allowedOrigins = [c.env.USER_ORIGIN, c.env.ADMIN_ORIGIN];
-  const isAllowed = allowedOrigins.some((origin) => redirectTo.startsWith(origin + '/'));
+  // redirect_toの検証
+  // IDP_ORIGIN と同一ベースドメイン（eTLD+1）のサブドメインを自動許可する。
+  // 例: IDP_ORIGIN が https://id.0g0.xyz なら https://*.0g0.xyz/* を全て許可。
+  // EXTRA_BFF_ORIGINS でさらに追加オリジン（カンマ区切り）を設定可能。
+  const isAllowed = isAllowedRedirectTo(redirectTo, c.env.IDP_ORIGIN, c.env.EXTRA_BFF_ORIGINS);
   if (!isAllowed) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid redirect_to' } }, 400);
   }
