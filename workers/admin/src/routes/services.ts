@@ -136,6 +136,17 @@ app.get('/:id/users', async (c) => {
   return proxyResponse(res);
 });
 
+// DELETE /api/services/:id/users/:userId — ユーザーのサービスアクセスを失効
+app.delete('/:id/users/:userId', async (c) => {
+  const res = await fetchWithAuth(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/services/${c.req.param('id')}/users/${c.req.param('userId')}`,
+    { method: 'DELETE', headers: { Origin: c.env.IDP_ORIGIN } }
+  );
+  return proxyResponse(res);
+});
+
 // PATCH /api/services/:id/owner — サービス所有権の転送
 app.patch('/:id/owner', async (c) => {
   let body: unknown;

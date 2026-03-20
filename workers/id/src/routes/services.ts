@@ -18,6 +18,7 @@ import {
   findUserById,
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
+  revokeUserServiceTokens,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
@@ -365,6 +366,32 @@ app.get('/:id/users', authMiddleware, adminMiddleware, async (c) => {
     })),
     total,
   });
+});
+
+// DELETE /api/services/:id/users/:userId — ユーザーのサービスアクセスを失効
+app.delete('/:id/users/:userId', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+  const serviceId = c.req.param('id');
+  const userId = c.req.param('userId');
+
+  const service = await findServiceById(c.env.DB, serviceId);
+  if (!service) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+  }
+
+  const user = await findUserById(c.env.DB, userId);
+  if (!user) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+
+  const revokedCount = await revokeUserServiceTokens(c.env.DB, userId, serviceId);
+  if (revokedCount === 0) {
+    return c.json(
+      { error: { code: 'NOT_FOUND', message: 'User has no active authorization for this service' } },
+      404
+    );
+  }
+
+  return c.body(null, 204);
 });
 
 // DELETE /api/services/:id/redirect-uris/:uriId
