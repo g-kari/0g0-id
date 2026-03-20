@@ -13,6 +13,7 @@ vi.mock('@0g0-id/shared', () => ({
   revokeUserServiceTokens: vi.fn(),
   revokeUserTokens: vi.fn(),
   countServicesByOwner: vi.fn(),
+  listServicesByOwner: vi.fn(),
   getUserProviders: vi.fn(),
   unlinkProvider: vi.fn(),
   getLoginEventsByUserId: vi.fn(),
@@ -44,6 +45,7 @@ import {
   revokeUserServiceTokens,
   revokeUserTokens,
   countServicesByOwner,
+  listServicesByOwner,
   getUserProviders,
   unlinkProvider,
   getLoginEventsByUserId,
@@ -1158,5 +1160,90 @@ describe('GET /api/users/:id/providers', () => {
   it('対象ユーザーのIDでgetUserProvidersを呼ぶ', async () => {
     await sendRequest(app, '/api/users/user-1/providers');
     expect(vi.mocked(getUserProviders)).toHaveBeenCalledWith(expect.anything(), 'user-1');
+  });
+});
+
+// ===== GET /api/users/:id/owned-services（管理者のみ）=====
+describe('GET /api/users/:id/owned-services', () => {
+  const app = buildApp();
+
+  const mockOwnedServices = [
+    {
+      id: 'service-1',
+      name: 'My Service',
+      client_id: 'client-abc',
+      client_secret_hash: 'hash-1',
+      allowed_scopes: '["profile","email"]',
+      owner_user_id: 'user-1',
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    },
+    {
+      id: 'service-2',
+      name: 'Another Owned Service',
+      client_id: 'client-xyz',
+      client_secret_hash: 'hash-2',
+      allowed_scopes: '["profile"]',
+      owner_user_id: 'user-1',
+      created_at: '2024-02-01T00:00:00Z',
+      updated_at: '2024-02-01T00:00:00Z',
+    },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(listServicesByOwner).mockResolvedValue(mockOwnedServices);
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/owned-services', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者でない場合 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/users/user-1/owned-services');
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('対象ユーザーが存在しない場合 → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/no-such/owned-services');
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('所有サービス一覧を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/owned-services');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[] }>();
+    expect(body.data).toHaveLength(2);
+    expect(body.data[0]).toMatchObject({ id: 'service-1', name: 'My Service' });
+    expect(body.data[1]).toMatchObject({ id: 'service-2', name: 'Another Owned Service' });
+  });
+
+  it('所有サービスがない場合は空配列を返す', async () => {
+    vi.mocked(listServicesByOwner).mockResolvedValue([]);
+    const res = await sendRequest(app, '/api/users/user-1/owned-services');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[] }>();
+    expect(body.data).toHaveLength(0);
+  });
+
+  it('レスポンスにclient_secret_hashを含まない', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/owned-services');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown>[] }>();
+    expect(body.data[0]).not.toHaveProperty('client_secret_hash');
+  });
+
+  it('対象ユーザーのIDでlistServicesByOwnerを呼ぶ', async () => {
+    await sendRequest(app, '/api/users/user-1/owned-services');
+    expect(vi.mocked(listServicesByOwner)).toHaveBeenCalledWith(expect.anything(), 'user-1');
   });
 });

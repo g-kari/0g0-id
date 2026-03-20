@@ -11,6 +11,7 @@ import {
   revokeUserServiceTokens,
   revokeUserTokens,
   countServicesByOwner,
+  listServicesByOwner,
   getUserProviders,
   unlinkProvider,
   getLoginEventsByUserId,
@@ -183,6 +184,27 @@ app.get('/:id', authMiddleware, adminMiddleware, async (c) => {
       created_at: user.created_at,
       updated_at: user.updated_at,
     },
+  });
+});
+
+// GET /api/users/:id/owned-services — ユーザーが所有するサービス一覧（管理者のみ）
+app.get('/:id/owned-services', authMiddleware, adminMiddleware, async (c) => {
+  const targetId = c.req.param('id');
+
+  const targetUser = await findUserById(c.env.DB, targetId);
+  if (!targetUser) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+
+  const services = await listServicesByOwner(c.env.DB, targetId);
+  return c.json({
+    data: services.map((s) => ({
+      id: s.id,
+      name: s.name,
+      client_id: s.client_id,
+      allowed_scopes: s.allowed_scopes,
+      created_at: s.created_at,
+    })),
   });
 });
 

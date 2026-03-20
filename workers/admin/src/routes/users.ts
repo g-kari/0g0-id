@@ -31,6 +31,16 @@ app.get('/:id', async (c) => {
   return proxyResponse(res);
 });
 
+// GET /api/users/:id/owned-services — ユーザーが所有するサービス一覧
+app.get('/:id/owned-services', async (c) => {
+  const res = await fetchWithAuth(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/owned-services`
+  );
+  return proxyResponse(res);
+});
+
 // GET /api/users/:id/services — ユーザーが認可しているサービス一覧
 app.get('/:id/services', async (c) => {
   const res = await fetchWithAuth(

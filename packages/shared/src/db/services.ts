@@ -118,6 +118,14 @@ export async function countServicesByOwner(db: D1Database, userId: string): Prom
   return result?.count ?? 0;
 }
 
+export async function listServicesByOwner(db: D1Database, userId: string): Promise<Service[]> {
+  const result = await db
+    .prepare('SELECT * FROM services WHERE owner_user_id = ? ORDER BY created_at DESC')
+    .bind(userId)
+    .all<Service>();
+  return result.results;
+}
+
 export async function countServices(db: D1Database): Promise<number> {
   const result = await db
     .prepare('SELECT COUNT(*) as count FROM services')

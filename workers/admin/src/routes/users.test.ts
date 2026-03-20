@@ -594,4 +594,57 @@ describe('admin BFF — /api/users', () => {
       expect(res.status).toBe(404);
     });
   });
+
+  describe('GET /:id/owned-services — ユーザー所有サービス一覧', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1/owned-services');
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('管理者セッションでIdPにGETして所有サービス一覧を返す', async () => {
+      const mockServices = [
+        { id: 'service-1', name: 'My Service', client_id: 'client-abc', allowed_scopes: ['profile', 'email'], created_at: '2024-01-01T00:00:00Z' },
+        { id: 'service-2', name: 'Another Service', client_id: 'client-xyz', allowed_scopes: ['profile'], created_at: '2024-02-01T00:00:00Z' },
+      ];
+      const idpFetch = mockIdp(200, { data: mockServices });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1/owned-services', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof mockServices }>();
+      expect(body.data).toHaveLength(2);
+      expect(body.data[0]).toMatchObject({ id: 'service-1', name: 'My Service' });
+    });
+
+    it('ユーザーIDをIdPのURLに正しく含める', async () => {
+      const idpFetch = mockIdp(200, { data: [] });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users/specific-user-xyz/owned-services', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/users/specific-user-xyz/owned-services');
+      expect(calledReq.headers.get('Authorization')).toBe('Bearer mock-access-token');
+    });
+
+    it('IdPが404（ユーザー不在）を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(404, { error: { code: 'NOT_FOUND' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/no-such-user/owned-services', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(404);
+    });
+  });
 });
