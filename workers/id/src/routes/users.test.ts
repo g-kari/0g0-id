@@ -292,6 +292,87 @@ describe('PATCH /api/users/me', () => {
     expect(body.data.phone).toBe('080-1111-2222');
     expect(body.data.address).toBe('Osaka');
   });
+
+  it('pictureにHTTP URLを指定 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'Test User', picture: 'http://example.com/pic.jpg' },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('pictureにjavascript: URLを指定 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'Test User', picture: 'javascript:alert(1)' },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('pictureにdata: URLを指定 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'Test User', picture: 'data:image/png;base64,abc' },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('pictureに有効なHTTPS URLを指定 → 成功する', async () => {
+    vi.mocked(updateUserProfile).mockResolvedValue({
+      ...mockUser,
+      picture: 'https://cdn.example.com/avatar.jpg',
+    });
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'Test User', picture: 'https://cdn.example.com/avatar.jpg' },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.picture).toBe('https://cdn.example.com/avatar.jpg');
+  });
+
+  it('nameが101文字 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'a'.repeat(101) },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('phoneが51文字 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'Test User', phone: 'a'.repeat(51) },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('addressが501文字 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { name: 'Test User', address: 'a'.repeat(501) },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
 });
 
 // ===== GET /api/users/me/connections =====
@@ -1516,5 +1597,79 @@ describe('DELETE /api/users/:id/tokens', () => {
     });
     expect(res.status).toBe(204);
     expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), 'user-1');
+  });
+});
+
+// ===== DELETE /api/users/me — 自己アカウント削除 =====
+describe('DELETE /api/users/me', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: mockUserPayload.sub });
+    vi.mocked(countServicesByOwner).mockResolvedValue(0);
+    vi.mocked(revokeUserTokens).mockResolvedValue(undefined);
+    vi.mocked(deleteUser).mockResolvedValue(true);
+  });
+
+  it('Authorizationヘッダーなし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+      withAuth: false,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('Originヘッダーなし（CSRF） → 403を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', { method: 'DELETE' });
+    expect(res.status).toBe(403);
+  });
+
+  it('ユーザーが存在しない → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('サービスを所有している場合 → 409を返す', async () => {
+    vi.mocked(countServicesByOwner).mockResolvedValue(2);
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe('CONFLICT');
+    expect(body.error.message).toContain('2 service(s)');
+  });
+
+  it('トークンを失効してからユーザーを削除し204を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(204);
+    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), mockUserPayload.sub);
+    expect(vi.mocked(deleteUser)).toHaveBeenCalledWith(expect.anything(), mockUserPayload.sub);
+  });
+
+  it('revokeUserTokensがdeleteUserより先に呼ばれる', async () => {
+    const callOrder: string[] = [];
+    vi.mocked(revokeUserTokens).mockImplementation(async () => { callOrder.push('revoke'); });
+    vi.mocked(deleteUser).mockImplementation(async () => { callOrder.push('delete'); return true; });
+
+    await sendRequest(app, '/api/users/me', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+    });
+
+    expect(callOrder).toEqual(['revoke', 'delete']);
   });
 });

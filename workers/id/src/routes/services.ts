@@ -35,13 +35,13 @@ const SUPPORTED_SCOPES = ['profile', 'email', 'phone', 'address'] as const;
 const ScopeEnum = z.enum(SUPPORTED_SCOPES);
 
 const CreateServiceSchema = z.object({
-  name: z.string().min(1, 'name is required'),
+  name: z.string().min(1, 'name is required').max(100, 'name must be 100 characters or less'),
   allowed_scopes: z.array(ScopeEnum).min(1, 'allowed_scopes must not be empty').optional(),
 });
 
 const PatchServiceSchema = z
   .object({
-    name: z.string().min(1, 'name must not be empty').optional(),
+    name: z.string().min(1, 'name must not be empty').max(100, 'name must be 100 characters or less').optional(),
     allowed_scopes: z.array(ScopeEnum).min(1, 'allowed_scopes must not be empty').optional(),
   })
   .refine((data) => data.name !== undefined || data.allowed_scopes !== undefined, {

@@ -27,10 +27,16 @@ import { csrfMiddleware } from '../middleware/csrf';
 import { parseJsonBody } from '../utils/parse-body';
 
 const PatchMeSchema = z.object({
-  name: z.string().min(1, 'name is required'),
-  picture: z.string().nullable().optional(),
-  phone: z.string().nullable().optional(),
-  address: z.string().nullable().optional(),
+  name: z.string().min(1, 'name is required').max(100, 'name must be 100 characters or less'),
+  picture: z
+    .string()
+    .url('picture must be a valid URL')
+    .startsWith('https://', 'picture must use HTTPS')
+    .max(2048, 'picture URL must be 2048 characters or less')
+    .nullable()
+    .optional(),
+  phone: z.string().max(50, 'phone must be 50 characters or less').nullable().optional(),
+  address: z.string().max(500, 'address must be 500 characters or less').nullable().optional(),
 });
 
 const PatchRoleSchema = z.object({
@@ -189,6 +195,36 @@ app.delete('/me/tokens/:tokenId', authMiddleware, csrfMiddleware, async (c) => {
 app.delete('/me/tokens', authMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
   await revokeUserTokens(c.env.DB, tokenUser.sub);
+  return c.body(null, 204);
+});
+
+// DELETE /api/users/me — 自分のアカウントを削除
+app.delete('/me', authMiddleware, csrfMiddleware, async (c) => {
+  const tokenUser = c.get('user');
+
+  const targetUser = await findUserById(c.env.DB, tokenUser.sub);
+  if (!targetUser) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+
+  // サービスの所有者である場合は削除不可（所有権を先に移譲すること）
+  const ownedServices = await countServicesByOwner(c.env.DB, tokenUser.sub);
+  if (ownedServices > 0) {
+    return c.json(
+      {
+        error: {
+          code: 'CONFLICT',
+          message: `User owns ${ownedServices} service(s). Transfer ownership before deleting.`,
+        },
+      },
+      409
+    );
+  }
+
+  // 削除前にトークンを失効
+  await revokeUserTokens(c.env.DB, tokenUser.sub);
+  await deleteUser(c.env.DB, tokenUser.sub);
+
   return c.body(null, 204);
 });
 

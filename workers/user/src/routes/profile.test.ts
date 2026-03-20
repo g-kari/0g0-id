@@ -261,4 +261,111 @@ describe('user BFF — /api/me', () => {
       expect(res.status).toBe(500);
     });
   });
+
+  describe('DELETE / — アカウント削除', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me', { method: 'DELETE' });
+
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('セッションありでIdPにDELETEして204を返す', async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(204);
+    });
+
+    it('IdPの /api/users/me エンドポイントをDELETEで呼び出す', async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/me', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.method).toBe('DELETE');
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/users/me');
+    });
+
+    it('AuthorizationヘッダーにアクセストークンをBearerで付与する', async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/me', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.headers.get('Authorization')).toBe('Bearer mock-access-token');
+    });
+
+    it('OriginヘッダーをIdPのoriginに設定して送信する', async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/me', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.headers.get('Origin')).toBe('https://id.0g0.xyz');
+    });
+
+    it('削除成功時にセッションCookieを削除するSet-Cookieヘッダーを返す', async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(204);
+      const setCookie = res.headers.get('Set-Cookie');
+      expect(setCookie).not.toBeNull();
+      expect(setCookie).toContain(SESSION_COOKIE);
+    });
+
+    it('IdPが409（サービス所有）を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(409, {
+        error: { code: 'CONFLICT', message: 'User owns 1 service(s). Transfer ownership before deleting.' },
+      });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(409);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('CONFLICT');
+    });
+
+    it('IdPが500を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(500);
+    });
+  });
 });
