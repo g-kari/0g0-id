@@ -254,8 +254,16 @@ describe('user BFF — /auth', () => {
       expect(res.headers.get('Location')).toBe('/profile.html?error=invalid_provider');
     });
 
-    it('ログイン済みユーザーがIdPへリダイレクトする際にlink_user_idを含める', async () => {
-      const idpFetch = vi.fn();
+    it('link-intentエンドポイントを呼び出してlink_tokenをIdPのURLに含める', async () => {
+      const linkIntentData = { data: { link_token: 'mock-one-time-link-token' } };
+      const idpFetch = vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify(linkIntentData), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        );
       const app = buildApp(idpFetch);
 
       const res = await app.request('/auth/link?provider=github', {
@@ -263,14 +271,41 @@ describe('user BFF — /auth', () => {
       });
 
       expect(res.status).toBe(302);
+      // IdPの /auth/link-intent を呼び出したことを確認
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.url).toBe('https://id.0g0.xyz/auth/link-intent');
+      expect(calledReq.method).toBe('POST');
+      expect(calledReq.headers.get('Authorization')).toBe('Bearer mock-access-token');
+      // リダイレクトURLにlink_tokenが含まれ、link_user_idは含まれないことを確認
       const location = res.headers.get('Location') ?? '';
       expect(location).toContain('https://id.0g0.xyz/auth/login');
       expect(location).toContain('provider=github');
-      expect(location).toContain('link_user_id=user-abc');
+      expect(location).toContain('link_token=mock-one-time-link-token');
+      expect(location).not.toContain('link_user_id');
+    });
+
+    it('link-intent呼び出し失敗時に /profile.html?error=link_failed にリダイレクトする', async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/auth/link?provider=github', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(302);
+      expect(res.headers.get('Location')).toBe('/profile.html?error=link_failed');
     });
 
     it('stateクエリパラメータをIdPのURLに含める', async () => {
-      const idpFetch = vi.fn();
+      const linkIntentData = { data: { link_token: 'mock-link-token' } };
+      const idpFetch = vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify(linkIntentData), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        );
       const app = buildApp(idpFetch);
 
       const res = await app.request('/auth/link?provider=google', {

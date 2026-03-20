@@ -42,8 +42,9 @@ import {
   linkProvider,
   insertLoginEvent,
 } from '@0g0-id/shared';
-import type { IdpEnv, User } from '@0g0-id/shared';
+import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
 import { authRateLimitMiddleware } from '../middleware/rate-limit';
+import { authMiddleware } from '../middleware/auth';
 
 const ExchangeSchema = z.object({
   code: z.string().min(1, 'code is required'),
@@ -58,7 +59,9 @@ const LogoutSchema = z.object({
   refresh_token: z.string().optional(),
 });
 
-const app = new Hono<{ Bindings: IdpEnv }>();
+type Variables = { user: TokenPayload };
+
+const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
 const CALLBACK_PATH = '/auth/callback';
 
@@ -108,7 +111,7 @@ type ProviderResolution =
   | { ok: false; response: Response };
 
 function setSecureCookie(
-  c: Context<{ Bindings: IdpEnv }>,
+  c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
   name: string,
   value: string,
   maxAge: number
@@ -146,7 +149,7 @@ async function handleProviderLink(
 // ─── プロバイダー固有の認証解決関数 ──────────────────────────────────────────
 
 async function resolveGoogleProvider(
-  c: Context<{ Bindings: IdpEnv }>,
+  c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
   code: string,
   pkceVerifier: string,
   callbackUri: string
@@ -191,7 +194,7 @@ async function resolveGoogleProvider(
 }
 
 async function resolveLineProvider(
-  c: Context<{ Bindings: IdpEnv }>,
+  c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
   code: string,
   pkceVerifier: string,
   callbackUri: string
@@ -235,7 +238,7 @@ async function resolveLineProvider(
 }
 
 async function resolveTwitchProvider(
-  c: Context<{ Bindings: IdpEnv }>,
+  c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
   code: string,
   pkceVerifier: string,
   callbackUri: string
@@ -280,7 +283,7 @@ async function resolveTwitchProvider(
 }
 
 async function resolveGithubProvider(
-  c: Context<{ Bindings: IdpEnv }>,
+  c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
   code: string,
   pkceVerifier: string,
   callbackUri: string
@@ -329,7 +332,7 @@ async function resolveGithubProvider(
 }
 
 async function resolveXProvider(
-  c: Context<{ Bindings: IdpEnv }>,
+  c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
   code: string,
   pkceVerifier: string,
   callbackUri: string
@@ -417,7 +420,9 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
   const redirectTo = c.req.query('redirect_to');
   const bffState = c.req.query('state');
   const providerParam = c.req.query('provider') ?? 'google';
-  const linkUserId = c.req.query('link_user_id');
+  // link_user_id を直接URLパラメータとして受け付けるのはアカウント乗っ取り攻撃に悪用可能なため、
+  // サーバー側で発行したワンタイムトークン（link_token）を使用する
+  const linkToken = c.req.query('link_token');
 
   if (!redirectTo || !bffState) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Missing required parameters' } }, 400);
@@ -446,6 +451,17 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
   const isAllowed = allowedOrigins.some((origin) => redirectTo.startsWith(origin + '/'));
   if (!isAllowed) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid redirect_to' } }, 400);
+  }
+
+  // link_token の検証（SNSプロバイダー連携フロー）
+  let linkUserId: string | undefined;
+  if (linkToken) {
+    const tokenHash = await sha256(linkToken);
+    const linkCode = await findAndConsumeAuthCode(c.env.DB, tokenHash);
+    if (!linkCode || linkCode.redirect_to !== 'link-intent') {
+      return c.json({ error: { code: 'INVALID_LINK_TOKEN', message: 'Invalid or expired link token' } }, 400);
+    }
+    linkUserId = linkCode.user_id;
   }
 
   // id側のstate/PKCEを生成
@@ -716,6 +732,27 @@ app.post('/refresh', async (c) => {
       expires_in: 900,
     },
   });
+});
+
+// POST /auth/link-intent — SNSプロバイダー連携用ワンタイムトークン発行（認証済みユーザー専用）
+// link_user_id をURLパラメータとして直接受け付けると第三者が任意ユーザーのIDを指定し
+// アカウント乗っ取りが可能なため、アクセストークンで認証したうえでワンタイムトークンを発行する
+app.post('/link-intent', authMiddleware, async (c) => {
+  const tokenUser = c.get('user');
+
+  const linkToken = generateToken(32);
+  const tokenHash = await sha256(linkToken);
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5分
+
+  await createAuthCode(c.env.DB, {
+    id: crypto.randomUUID(),
+    userId: tokenUser.sub,
+    codeHash: tokenHash,
+    redirectTo: 'link-intent', // 連携用の特別な値（通常のコード交換フローと区別する）
+    expiresAt,
+  });
+
+  return c.json({ data: { link_token: linkToken } });
 });
 
 // POST /auth/logout — ログアウト（BFFサーバー間専用）

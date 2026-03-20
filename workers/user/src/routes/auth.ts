@@ -120,10 +120,29 @@ app.get('/link', async (c) => {
     return c.redirect('/profile.html?error=invalid_provider');
   }
 
-  // ログイン済みセッションからユーザーIDを取得
+  // ログイン済みセッションからアクセストークンを取得
   const session = parseSession(getCookie(c, SESSION_COOKIE));
   if (!session) {
     return c.redirect('/?error=not_authenticated');
+  }
+
+  // IdPに対してlink_user_idを直接渡すのはアカウント乗っ取りに悪用可能なため、
+  // サーバー側でワンタイムトークンを発行してもらい、それをログインURLに含める
+  let linkToken: string;
+  try {
+    const res = await c.env.IDP.fetch(
+      new Request(`${c.env.IDP_ORIGIN}/auth/link-intent`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+    );
+    if (!res.ok) {
+      return c.redirect('/profile.html?error=link_failed');
+    }
+    const data = await res.json<{ data: { link_token: string } }>();
+    linkToken = data.data.link_token;
+  } catch {
+    return c.redirect('/profile.html?error=link_failed');
   }
 
   const state = generateToken(16);
@@ -141,7 +160,7 @@ app.get('/link', async (c) => {
   loginUrl.searchParams.set('redirect_to', callbackUrl);
   loginUrl.searchParams.set('state', state);
   loginUrl.searchParams.set('provider', provider);
-  loginUrl.searchParams.set('link_user_id', session.user.id);
+  loginUrl.searchParams.set('link_token', linkToken);
 
   return c.redirect(loginUrl.toString());
 });
