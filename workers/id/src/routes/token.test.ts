@@ -86,19 +86,28 @@ async function sendRequest(
   options: {
     method?: string;
     body?: unknown;
+    formBody?: Record<string, string>;
     authHeader?: string;
   } = {}
 ) {
-  const { method = 'POST', body, authHeader } = options;
+  const { method = 'POST', body, formBody, authHeader } = options;
   const headers: Record<string, string> = {};
   if (authHeader) headers['Authorization'] = authHeader;
-  if (body) headers['Content-Type'] = 'application/json';
+
+  let bodyToSend: string | undefined;
+  if (formBody) {
+    headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    bodyToSend = new URLSearchParams(formBody).toString();
+  } else if (body) {
+    headers['Content-Type'] = 'application/json';
+    bodyToSend = JSON.stringify(body);
+  }
 
   return app.request(
     new Request(`${baseUrl}${path}`, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : undefined,
+      body: bodyToSend,
     }),
     undefined,
     mockEnv as unknown as Record<string, string>
@@ -338,6 +347,39 @@ describe('POST /api/token/introspect', () => {
     expect(body.active).toBe(true);
     expect(body.scope).toBe('profile email');
   });
+
+  // RFC 7662: application/x-www-form-urlencoded サポート
+  it('form-encoded: 有効なトークン → { active: true } を返す', async () => {
+    const res = await sendRequest(app, '/api/token/introspect', {
+      formBody: { token: 'valid-token' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ active: boolean; name: string; email: string }>();
+    expect(body.active).toBe(true);
+    expect(body.name).toBe('Test User');
+    expect(body.email).toBe('test@example.com');
+  });
+
+  it('form-encoded: tokenが未指定 → { active: false } + 400', async () => {
+    const res = await sendRequest(app, '/api/token/introspect', {
+      formBody: {},
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ active: boolean }>();
+    expect(body.active).toBe(false);
+  });
+
+  it('form-encoded: token_type_hintを指定しても正常動作 → { active: true }', async () => {
+    const res = await sendRequest(app, '/api/token/introspect', {
+      formBody: { token: 'valid-token', token_type_hint: 'refresh_token' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ active: boolean }>();
+    expect(body.active).toBe(true);
+  });
 });
 
 // ===== POST /api/token/revoke =====
@@ -487,5 +529,34 @@ describe('POST /api/token/revoke', () => {
     });
     expect(res.status).toBe(200);
     expect(vi.mocked(revokeRefreshToken)).not.toHaveBeenCalled();
+  });
+
+  // RFC 7009: application/x-www-form-urlencoded サポート
+  it('form-encoded: 有効なトークン → 200 + revokeRefreshTokenが呼ばれる', async () => {
+    const res = await sendRequest(app, '/api/token/revoke', {
+      formBody: { token: 'valid-token' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(revokeRefreshToken)).toHaveBeenCalledWith(mockEnv.DB, mockRefreshToken.id);
+  });
+
+  it('form-encoded: token_type_hintを指定しても正常動作 → 200', async () => {
+    const res = await sendRequest(app, '/api/token/revoke', {
+      formBody: { token: 'valid-token', token_type_hint: 'refresh_token' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(revokeRefreshToken)).toHaveBeenCalledOnce();
+  });
+
+  it('form-encoded: tokenが未指定 → { error: invalid_request } + 400', async () => {
+    const res = await sendRequest(app, '/api/token/revoke', {
+      formBody: {},
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_request');
   });
 });
