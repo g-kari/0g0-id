@@ -13,6 +13,7 @@ import {
   generateClientSecret,
   sha256,
   normalizeRedirectUri,
+  rotateClientSecret,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
@@ -239,6 +240,32 @@ app.post('/:id/redirect-uris', authMiddleware, adminMiddleware, csrfMiddleware, 
   } catch {
     return c.json({ error: { code: 'CONFLICT', message: 'Redirect URI already exists' } }, 409);
   }
+});
+
+// POST /api/services/:id/rotate-secret — client_secretの再発行
+app.post('/:id/rotate-secret', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+  const serviceId = c.req.param('id');
+  const service = await findServiceById(c.env.DB, serviceId);
+  if (!service) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+  }
+
+  const newClientSecret = generateClientSecret();
+  const newClientSecretHash = await sha256(newClientSecret);
+
+  const updated = await rotateClientSecret(c.env.DB, serviceId, newClientSecretHash);
+  if (!updated) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+  }
+
+  return c.json({
+    data: {
+      id: updated.id,
+      client_id: updated.client_id,
+      client_secret: newClientSecret,
+      updated_at: updated.updated_at,
+    },
+  });
 });
 
 // DELETE /api/services/:id/redirect-uris/:uriId

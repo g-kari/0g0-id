@@ -15,6 +15,7 @@ vi.mock('@0g0-id/shared', () => ({
   generateClientSecret: vi.fn(),
   sha256: vi.fn(),
   normalizeRedirectUri: vi.fn(),
+  rotateClientSecret: vi.fn(),
   verifyAccessToken: vi.fn(),
 }));
 
@@ -31,6 +32,7 @@ import {
   generateClientSecret,
   sha256,
   normalizeRedirectUri,
+  rotateClientSecret,
   verifyAccessToken,
 } from '@0g0-id/shared';
 
@@ -568,6 +570,84 @@ describe('POST /api/services/:id/redirect-uris', () => {
     expect(res.status).toBe(409);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('CONFLICT');
+  });
+});
+
+// ===== POST /api/services/:id/rotate-secret（管理者のみ）=====
+describe('POST /api/services/:id/rotate-secret', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findServiceById).mockResolvedValue(mockService);
+    vi.mocked(generateClientSecret).mockReturnValue('new-client-secret');
+    vi.mocked(sha256).mockResolvedValue('new-secret-hash');
+    vi.mocked(rotateClientSecret).mockResolvedValue({
+      ...mockService,
+      client_secret_hash: 'new-secret-hash',
+      updated_at: '2024-06-01T00:00:00Z',
+    });
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/rotate-secret', {
+      method: 'POST',
+      withAuth: false,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者でない場合 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/services/service-1/rotate-secret', {
+      method: 'POST',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('Originヘッダーなし（CSRF）→ 403を返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/rotate-secret', {
+      method: 'POST',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('新しいclient_secretを発行して返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/rotate-secret', {
+      method: 'POST',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.id).toBe('service-1');
+    expect(body.data.client_id).toBe('client-abc');
+    expect(body.data.client_secret).toBe('new-client-secret');
+    expect(body.data).not.toHaveProperty('client_secret_hash');
+  });
+
+  it('rotateClientSecretが新しいハッシュで呼ばれる', async () => {
+    await sendRequest(app, '/api/services/service-1/rotate-secret', {
+      method: 'POST',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(vi.mocked(rotateClientSecret)).toHaveBeenCalledWith(
+      expect.anything(),
+      'service-1',
+      'new-secret-hash'
+    );
+  });
+
+  it('サービスが存在しない場合（findServiceById）→ 404を返す', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/services/no-such/rotate-secret', {
+      method: 'POST',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
   });
 });
 

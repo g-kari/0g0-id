@@ -77,6 +77,20 @@ app.delete('/:id', async (c) => {
   return proxyResponse(res);
 });
 
+// POST /api/services/:id/rotate-secret — client_secretの再発行
+app.post('/:id/rotate-secret', async (c) => {
+  const res = await fetchWithAuth(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/services/${c.req.param('id')}/rotate-secret`,
+    {
+      method: 'POST',
+      headers: { Origin: c.env.IDP_ORIGIN },
+    }
+  );
+  return proxyResponse(res);
+});
+
 // GET /api/services/:id/redirect-uris
 app.get('/:id/redirect-uris', async (c) => {
   const res = await fetchWithAuth(
