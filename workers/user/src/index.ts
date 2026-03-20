@@ -6,6 +6,7 @@ import profileRoutes from './routes/profile';
 import connectionsRoutes from './routes/connections';
 import providersRoutes from './routes/providers';
 import loginHistoryRoutes from './routes/login-history';
+import sessionsRoutes from './routes/sessions';
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
@@ -16,6 +17,7 @@ app.route('/api/me', profileRoutes);
 app.route('/api/connections', connectionsRoutes);
 app.route('/api/providers', providersRoutes);
 app.route('/api/login-history', loginHistoryRoutes);
+app.route('/api/me/sessions', sessionsRoutes);
 
 app.get('/api/health', (c) => {
   return c.json({ status: 'ok', worker: 'user', timestamp: new Date().toISOString() });

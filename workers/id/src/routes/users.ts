@@ -165,6 +165,13 @@ app.delete('/me/connections/:serviceId', authMiddleware, csrfMiddleware, async (
   return c.body(null, 204);
 });
 
+// DELETE /api/users/me/tokens — 全デバイスからログアウト（全リフレッシュトークン無効化）
+app.delete('/me/tokens', authMiddleware, csrfMiddleware, async (c) => {
+  const tokenUser = c.get('user');
+  await revokeUserTokens(c.env.DB, tokenUser.sub);
+  return c.body(null, 204);
+});
+
 // GET /api/users/:id（管理者のみ）
 app.get('/:id', authMiddleware, adminMiddleware, async (c) => {
   const targetId = c.req.param('id');
@@ -291,6 +298,19 @@ app.patch('/:id/role', authMiddleware, adminMiddleware, csrfMiddleware, async (c
       created_at: user.created_at,
     },
   });
+});
+
+// DELETE /api/users/:id/tokens — ユーザーの全セッション無効化（管理者のみ）
+app.delete('/:id/tokens', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+  const targetId = c.req.param('id');
+
+  const targetUser = await findUserById(c.env.DB, targetId);
+  if (!targetUser) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+
+  await revokeUserTokens(c.env.DB, targetId);
+  return c.body(null, 204);
 });
 
 // DELETE /api/users/:id（管理者のみ）
