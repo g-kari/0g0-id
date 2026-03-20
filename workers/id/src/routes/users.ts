@@ -10,6 +10,7 @@ import {
   listUserConnections,
   revokeUserServiceTokens,
   revokeUserTokens,
+  revokeTokenByIdForUser,
   listActiveSessionsByUserId,
   countServicesByOwner,
   listServicesByOwner,
@@ -171,6 +172,17 @@ app.get('/me/tokens', authMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const sessions = await listActiveSessionsByUserId(c.env.DB, tokenUser.sub);
   return c.json({ data: sessions });
+});
+
+// DELETE /api/users/me/tokens/:tokenId — 特定セッションのみログアウト（単一リフレッシュトークン無効化）
+app.delete('/me/tokens/:tokenId', authMiddleware, csrfMiddleware, async (c) => {
+  const tokenUser = c.get('user');
+  const tokenId = c.req.param('tokenId');
+  const revoked = await revokeTokenByIdForUser(c.env.DB, tokenId, tokenUser.sub);
+  if (revoked === 0) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Session not found' } }, 404);
+  }
+  return c.body(null, 204);
 });
 
 // DELETE /api/users/me/tokens — 全デバイスからログアウト（全リフレッシュトークン無効化）

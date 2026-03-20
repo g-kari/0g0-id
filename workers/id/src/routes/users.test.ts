@@ -12,6 +12,7 @@ vi.mock('@0g0-id/shared', () => ({
   listUserConnections: vi.fn(),
   revokeUserServiceTokens: vi.fn(),
   revokeUserTokens: vi.fn(),
+  revokeTokenByIdForUser: vi.fn(),
   countServicesByOwner: vi.fn(),
   listServicesByOwner: vi.fn(),
   getUserProviders: vi.fn(),
@@ -44,6 +45,7 @@ import {
   listUserConnections,
   revokeUserServiceTokens,
   revokeUserTokens,
+  revokeTokenByIdForUser,
   countServicesByOwner,
   listServicesByOwner,
   getUserProviders,
@@ -1275,6 +1277,65 @@ describe('DELETE /api/users/me/tokens', () => {
     });
     expect(res.status).toBe(204);
     expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), mockUserPayload.sub);
+  });
+});
+
+// ===== DELETE /api/users/me/tokens/:tokenId =====
+describe('DELETE /api/users/me/tokens/:tokenId', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(revokeTokenByIdForUser).mockResolvedValue(1);
+  });
+
+  it('Authorizationヘッダーなし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/tokens/token-abc', {
+      method: 'DELETE',
+      withAuth: false,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('Originヘッダーなし（CSRF）→ 403を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/tokens/token-abc', {
+      method: 'DELETE',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('指定セッションを失効させて204を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/tokens/token-abc', {
+      method: 'DELETE',
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(204);
+    expect(vi.mocked(revokeTokenByIdForUser)).toHaveBeenCalledWith(
+      expect.anything(),
+      'token-abc',
+      mockUserPayload.sub
+    );
+  });
+
+  it('存在しないor他ユーザーのセッションID → 404を返す', async () => {
+    vi.mocked(revokeTokenByIdForUser).mockResolvedValue(0);
+    const res = await sendRequest(app, '/api/users/me/tokens/no-such-token', {
+      method: 'DELETE',
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('他ユーザーのトークンIDは失効できない（所有権チェック）', async () => {
+    vi.mocked(revokeTokenByIdForUser).mockResolvedValue(0);
+    const res = await sendRequest(app, '/api/users/me/tokens/other-user-token', {
+      method: 'DELETE',
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
   });
 });
 

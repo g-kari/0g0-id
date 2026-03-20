@@ -229,3 +229,22 @@ export async function revokeUserServiceTokens(
     .run();
   return result.meta.changes ?? 0;
 }
+
+/**
+ * 特定のリフレッシュトークン（セッション）をユーザー所有権チェック付きで失効させる。
+ * 対象トークンが存在しない・既に失効済み・別ユーザー所有の場合は 0 を返す。
+ */
+export async function revokeTokenByIdForUser(
+  db: D1Database,
+  tokenId: string,
+  userId: string
+): Promise<number> {
+  const result = await db
+    .prepare(
+      `UPDATE refresh_tokens SET revoked_at = datetime('now')
+       WHERE id = ? AND user_id = ? AND revoked_at IS NULL AND expires_at > datetime('now')`
+    )
+    .bind(tokenId, userId)
+    .run();
+  return result.meta.changes ?? 0;
+}

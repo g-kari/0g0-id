@@ -15,6 +15,21 @@ app.get('/', async (c) => {
   return proxyResponse(res);
 });
 
+// DELETE /api/me/sessions/:sessionId — 特定セッションのみログアウト
+app.delete('/:sessionId', async (c) => {
+  const sessionId = c.req.param('sessionId');
+  const res = await fetchWithAuth(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/users/me/tokens/${sessionId}`,
+    {
+      method: 'DELETE',
+      headers: { Origin: c.env.IDP_ORIGIN },
+    }
+  );
+  return proxyResponse(res);
+});
+
 // DELETE /api/me/sessions — 全デバイスからログアウト（全リフレッシュトークン無効化）
 app.delete('/', async (c) => {
   const res = await fetchWithAuth(
