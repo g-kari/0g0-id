@@ -21,6 +21,7 @@ import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
 import { adminMiddleware } from '../middleware/admin';
 import { csrfMiddleware } from '../middleware/csrf';
+import { parseJsonBody } from '../utils/parse-body';
 
 const PatchMeSchema = z.object({
   name: z.string().min(1, 'name is required'),
@@ -63,18 +64,9 @@ app.get('/me', authMiddleware, async (c) => {
 app.patch('/me', authMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
 
-  let rawBody: unknown;
-  try {
-    rawBody = await c.req.json();
-  } catch {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
-  }
-
-  const parsed = PatchMeSchema.safeParse(rawBody);
-  if (!parsed.success) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: parsed.error.issues[0]?.message ?? 'Invalid request' } }, 400);
-  }
-  const body = parsed.data;
+  const result = await parseJsonBody(c, PatchMeSchema);
+  if (!result.ok) return result.response;
+  const body = result.data;
 
   const profileUpdate: { name: string; picture?: string | null; phone?: string | null; address?: string | null } = {
     name: body.name.trim(),
@@ -233,21 +225,9 @@ app.patch('/:id/role', authMiddleware, adminMiddleware, csrfMiddleware, async (c
   const targetId = c.req.param('id');
   const tokenUser = c.get('user');
 
-  let rawBody: unknown;
-  try {
-    rawBody = await c.req.json();
-  } catch {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
-  }
-
-  const parsed = PatchRoleSchema.safeParse(rawBody);
-  if (!parsed.success) {
-    return c.json(
-      { error: { code: 'BAD_REQUEST', message: parsed.error.issues[0]?.message ?? 'Invalid request' } },
-      400
-    );
-  }
-  const { role } = parsed.data;
+  const result = await parseJsonBody(c, PatchRoleSchema);
+  if (!result.ok) return result.response;
+  const { role } = result.data;
 
   // 自分自身のロールを変更不可（誤操作防止）
   if (targetId === tokenUser.sub) {
@@ -316,10 +296,14 @@ app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
 
 // GET /api/users（管理者のみ）
 app.get('/', authMiddleware, adminMiddleware, async (c) => {
-  const limitStr = c.req.query('limit') ?? '50';
-  const offsetStr = c.req.query('offset') ?? '0';
-  const limit = Math.min(parseInt(limitStr, 10) || 50, 100);
-  const offset = parseInt(offsetStr, 10) || 0;
+  const pagination = parsePagination(
+    { limit: c.req.query('limit'), offset: c.req.query('offset') },
+    { defaultLimit: 50, maxLimit: 100 }
+  );
+  if ('error' in pagination) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
+  }
+  const { limit, offset } = pagination;
 
   const filter: UserFilter = {};
   const emailQuery = c.req.query('email');

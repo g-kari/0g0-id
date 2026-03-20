@@ -1,6 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { z } from 'zod';
+import { parseJsonBody } from '../utils/parse-body';
 
 import {
   buildGoogleAuthUrl,
@@ -547,18 +548,9 @@ app.get('/callback', async (c) => {
 
 // POST /auth/exchange — ワンタイムコード交換（BFFサーバー間専用）
 app.post('/exchange', async (c) => {
-  let rawBody: unknown;
-  try {
-    rawBody = await c.req.json();
-  } catch {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
-  }
-
-  const parsed = ExchangeSchema.safeParse(rawBody);
-  if (!parsed.success) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: parsed.error.issues[0]?.message ?? 'Invalid request' } }, 400);
-  }
-  const body = parsed.data;
+  const result = await parseJsonBody(c, ExchangeSchema);
+  if (!result.ok) return result.response;
+  const body = result.data;
 
   const codeHash = await sha256(body.code);
   const authCode = await findAndConsumeAuthCode(c.env.DB, codeHash);
@@ -625,19 +617,10 @@ app.post('/exchange', async (c) => {
 
 // POST /auth/refresh — トークンリフレッシュ（BFFサーバー間専用）
 app.post('/refresh', async (c) => {
-  let rawBody: unknown;
-  try {
-    rawBody = await c.req.json();
-  } catch {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
-  }
+  const result = await parseJsonBody(c, RefreshSchema);
+  if (!result.ok) return result.response;
 
-  const parsed = RefreshSchema.safeParse(rawBody);
-  if (!parsed.success) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: parsed.error.issues[0]?.message ?? 'Invalid request' } }, 400);
-  }
-
-  const tokenHash = await sha256(parsed.data.refresh_token);
+  const tokenHash = await sha256(result.data.refresh_token);
   const storedToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
 
   if (!storedToken) {

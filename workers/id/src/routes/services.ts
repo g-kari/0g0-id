@@ -25,6 +25,7 @@ import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
 import { adminMiddleware } from '../middleware/admin';
 import { csrfMiddleware } from '../middleware/csrf';
+import { parseJsonBody } from '../utils/parse-body';
 
 type Variables = { user: TokenPayload };
 
@@ -96,18 +97,9 @@ app.get('/:id', authMiddleware, adminMiddleware, async (c) => {
 
 // POST /api/services
 app.post('/', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
-  let rawBody: unknown;
-  try {
-    rawBody = await c.req.json();
-  } catch {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
-  }
-
-  const parsed = CreateServiceSchema.safeParse(rawBody);
-  if (!parsed.success) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: parsed.error.issues[0]?.message ?? 'Invalid request' } }, 400);
-  }
-  const body = parsed.data;
+  const result = await parseJsonBody(c, CreateServiceSchema);
+  if (!result.ok) return result.response;
+  const body = result.data;
 
   const tokenUser = c.get('user');
   const clientId = generateClientId();
@@ -144,21 +136,9 @@ app.post('/', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
 app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const serviceId = c.req.param('id');
 
-  let rawBody: unknown;
-  try {
-    rawBody = await c.req.json();
-  } catch {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
-  }
-
-  const parsed = PatchServiceSchema.safeParse(rawBody);
-  if (!parsed.success) {
-    return c.json(
-      { error: { code: 'BAD_REQUEST', message: parsed.error.issues[0]?.message ?? 'Invalid request' } },
-      400
-    );
-  }
-  const { name, allowed_scopes } = parsed.data;
+  const result = await parseJsonBody(c, PatchServiceSchema);
+  if (!result.ok) return result.response;
+  const { name, allowed_scopes } = result.data;
 
   // allowed_scopesが指定された場合はバリデーション
   if (allowed_scopes !== undefined) {
@@ -195,12 +175,12 @@ app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => 
 
   return c.json({
     data: {
-      id: updated!.id,
-      name: updated!.name,
-      client_id: updated!.client_id,
-      allowed_scopes: updated!.allowed_scopes,
-      owner_user_id: updated!.owner_user_id,
-      updated_at: updated!.updated_at,
+      id: updated.id,
+      name: updated.name,
+      client_id: updated.client_id,
+      allowed_scopes: updated.allowed_scopes,
+      owner_user_id: updated.owner_user_id,
+      updated_at: updated.updated_at,
     },
   });
 });
@@ -237,19 +217,10 @@ app.post('/:id/redirect-uris', authMiddleware, adminMiddleware, csrfMiddleware, 
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
 
-  let rawBody: unknown;
-  try {
-    rawBody = await c.req.json();
-  } catch {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
-  }
+  const result = await parseJsonBody(c, AddRedirectUriSchema);
+  if (!result.ok) return result.response;
 
-  const parsed = AddRedirectUriSchema.safeParse(rawBody);
-  if (!parsed.success) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: parsed.error.issues[0]?.message ?? 'Invalid request' } }, 400);
-  }
-
-  const normalized = normalizeRedirectUri(parsed.data.uri);
+  const normalized = normalizeRedirectUri(result.data.uri);
   if (!normalized) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid redirect URI' } }, 400);
   }
@@ -296,21 +267,9 @@ app.post('/:id/rotate-secret', authMiddleware, adminMiddleware, csrfMiddleware, 
 app.patch('/:id/owner', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const serviceId = c.req.param('id');
 
-  let rawBody: unknown;
-  try {
-    rawBody = await c.req.json();
-  } catch {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
-  }
-
-  const parsed = TransferOwnerSchema.safeParse(rawBody);
-  if (!parsed.success) {
-    return c.json(
-      { error: { code: 'BAD_REQUEST', message: parsed.error.issues[0]?.message ?? 'Invalid request' } },
-      400
-    );
-  }
-  const { new_owner_user_id } = parsed.data;
+  const result = await parseJsonBody(c, TransferOwnerSchema);
+  if (!result.ok) return result.response;
+  const { new_owner_user_id } = result.data;
 
   const service = await findServiceById(c.env.DB, serviceId);
   if (!service) {
