@@ -343,6 +343,54 @@ describe('admin BFF — /api/services', () => {
     });
   });
 
+  describe('POST /:id/rotate-secret — client_secret再発行', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/services/service-1/rotate-secret', {
+        method: 'POST',
+      });
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('管理者セッションでIdPにPOSTして新しいsecretを返す', async () => {
+      const rotated = {
+        id: 'service-1',
+        client_id: 'client-abc',
+        client_secret: 'new-secret-xyz',
+        updated_at: '2024-06-01T00:00:00Z',
+      };
+      const idpFetch = mockIdp(200, { data: rotated });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/services/service-1/rotate-secret', {
+        method: 'POST',
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof rotated }>();
+      expect(body.data.client_secret).toBe('new-secret-xyz');
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.method).toBe('POST');
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/services/service-1/rotate-secret');
+    });
+
+    it('IdPが404を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(404, { error: { code: 'NOT_FOUND' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/services/no-such/rotate-secret', {
+        method: 'POST',
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(404);
+    });
+  });
+
   describe('DELETE /:id/redirect-uris/:uriId — リダイレクトURI削除', () => {
     it('セッションなしで401を返す', async () => {
       const idpFetch = vi.fn();

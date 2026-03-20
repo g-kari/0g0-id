@@ -56,6 +56,21 @@ export async function updateServiceAllowedScopes(
     .first<Service>();
 }
 
+export async function updateServiceName(
+  db: D1Database,
+  id: string,
+  name: string
+): Promise<Service | null> {
+  return db
+    .prepare(
+      `UPDATE services SET name = ?, updated_at = datetime('now')
+       WHERE id = ?
+       RETURNING *`
+    )
+    .bind(name, id)
+    .first<Service>();
+}
+
 export async function deleteService(db: D1Database, id: string): Promise<void> {
   await db.prepare('DELETE FROM services WHERE id = ?').bind(id).run();
 }
@@ -80,4 +95,19 @@ export async function countServices(db: D1Database): Promise<number> {
     .prepare('SELECT COUNT(*) as count FROM services')
     .first<{ count: number }>();
   return result?.count ?? 0;
+}
+
+export async function rotateClientSecret(
+  db: D1Database,
+  id: string,
+  newClientSecretHash: string
+): Promise<Service | null> {
+  return db
+    .prepare(
+      `UPDATE services SET client_secret_hash = ?, updated_at = datetime('now')
+       WHERE id = ?
+       RETURNING *`
+    )
+    .bind(newClientSecretHash, id)
+    .first<Service>();
 }

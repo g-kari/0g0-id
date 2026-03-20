@@ -7,6 +7,7 @@ vi.mock('@0g0-id/shared', () => ({
   findServiceById: vi.fn(),
   createService: vi.fn(),
   updateServiceAllowedScopes: vi.fn(),
+  updateServiceName: vi.fn(),
   deleteService: vi.fn(),
   listRedirectUris: vi.fn(),
   addRedirectUri: vi.fn(),
@@ -15,6 +16,7 @@ vi.mock('@0g0-id/shared', () => ({
   generateClientSecret: vi.fn(),
   sha256: vi.fn(),
   normalizeRedirectUri: vi.fn(),
+  rotateClientSecret: vi.fn(),
   verifyAccessToken: vi.fn(),
 }));
 
@@ -23,6 +25,7 @@ import {
   findServiceById,
   createService,
   updateServiceAllowedScopes,
+  updateServiceName,
   deleteService,
   listRedirectUris,
   addRedirectUri,
@@ -31,6 +34,7 @@ import {
   generateClientSecret,
   sha256,
   normalizeRedirectUri,
+  rotateClientSecret,
   verifyAccessToken,
 } from '@0g0-id/shared';
 
@@ -354,6 +358,10 @@ describe('PATCH /api/services/:id', () => {
       ...mockService,
       allowed_scopes: JSON.stringify(['profile', 'email', 'phone']),
     });
+    vi.mocked(updateServiceName).mockResolvedValue({
+      ...mockService,
+      name: '新しいサービス名',
+    });
   });
 
   it('管理者でない場合 → 403を返す', async () => {
@@ -413,6 +421,77 @@ describe('PATCH /api/services/:id', () => {
     const res = await sendRequest(app, '/api/services/no-such-service', {
       method: 'PATCH',
       body: { allowed_scopes: ['profile'] },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('nameのみ更新する', async () => {
+    const res = await sendRequest(app, '/api/services/service-1', {
+      method: 'PATCH',
+      body: { name: '新しいサービス名' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.name).toBe('新しいサービス名');
+    expect(vi.mocked(updateServiceName)).toHaveBeenCalledWith(
+      expect.anything(),
+      'service-1',
+      '新しいサービス名'
+    );
+    expect(vi.mocked(updateServiceAllowedScopes)).not.toHaveBeenCalled();
+  });
+
+  it('nameとallowed_scopesを同時に更新する', async () => {
+    vi.mocked(updateServiceName).mockResolvedValue({
+      ...mockService,
+      name: '新しいサービス名',
+    });
+    vi.mocked(updateServiceAllowedScopes).mockResolvedValue({
+      ...mockService,
+      name: '新しいサービス名',
+      allowed_scopes: JSON.stringify(['profile']),
+    });
+    const res = await sendRequest(app, '/api/services/service-1', {
+      method: 'PATCH',
+      body: { name: '新しいサービス名', allowed_scopes: ['profile'] },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(updateServiceName)).toHaveBeenCalled();
+    expect(vi.mocked(updateServiceAllowedScopes)).toHaveBeenCalled();
+  });
+
+  it('nameもallowed_scopesも省略した場合 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1', {
+      method: 'PATCH',
+      body: {},
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('nameが空文字の場合 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1', {
+      method: 'PATCH',
+      body: { name: '' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('nameが存在しないサービスの場合 → 404を返す', async () => {
+    vi.mocked(updateServiceName).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/services/no-such', {
+      method: 'PATCH',
+      body: { name: '新しい名前' },
       origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(404);
@@ -568,6 +647,84 @@ describe('POST /api/services/:id/redirect-uris', () => {
     expect(res.status).toBe(409);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('CONFLICT');
+  });
+});
+
+// ===== POST /api/services/:id/rotate-secret（管理者のみ）=====
+describe('POST /api/services/:id/rotate-secret', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findServiceById).mockResolvedValue(mockService);
+    vi.mocked(generateClientSecret).mockReturnValue('new-client-secret');
+    vi.mocked(sha256).mockResolvedValue('new-secret-hash');
+    vi.mocked(rotateClientSecret).mockResolvedValue({
+      ...mockService,
+      client_secret_hash: 'new-secret-hash',
+      updated_at: '2024-06-01T00:00:00Z',
+    });
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/rotate-secret', {
+      method: 'POST',
+      withAuth: false,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者でない場合 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/services/service-1/rotate-secret', {
+      method: 'POST',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('Originヘッダーなし（CSRF）→ 403を返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/rotate-secret', {
+      method: 'POST',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('新しいclient_secretを発行して返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/rotate-secret', {
+      method: 'POST',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.id).toBe('service-1');
+    expect(body.data.client_id).toBe('client-abc');
+    expect(body.data.client_secret).toBe('new-client-secret');
+    expect(body.data).not.toHaveProperty('client_secret_hash');
+  });
+
+  it('rotateClientSecretが新しいハッシュで呼ばれる', async () => {
+    await sendRequest(app, '/api/services/service-1/rotate-secret', {
+      method: 'POST',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(vi.mocked(rotateClientSecret)).toHaveBeenCalledWith(
+      expect.anything(),
+      'service-1',
+      'new-secret-hash'
+    );
+  });
+
+  it('サービスが存在しない場合（findServiceById）→ 404を返す', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/services/no-such/rotate-secret', {
+      method: 'POST',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
   });
 });
 
