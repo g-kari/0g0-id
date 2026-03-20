@@ -13,6 +13,7 @@ vi.mock('@0g0-id/shared', () => ({
   revokeUserServiceTokens: vi.fn(),
   revokeUserTokens: vi.fn(),
   revokeTokenByIdForUser: vi.fn(),
+  listActiveSessionsByUserId: vi.fn(),
   countServicesByOwner: vi.fn(),
   listServicesByOwner: vi.fn(),
   getUserProviders: vi.fn(),
@@ -46,6 +47,7 @@ import {
   revokeUserServiceTokens,
   revokeUserTokens,
   revokeTokenByIdForUser,
+  listActiveSessionsByUserId,
   countServicesByOwner,
   listServicesByOwner,
   getUserProviders,
@@ -1340,6 +1342,71 @@ describe('DELETE /api/users/me/tokens/:tokenId', () => {
 });
 
 // ===== DELETE /api/users/:id/tokens（管理者のみ）=====
+describe('GET /api/users/:id/tokens', () => {
+  const app = buildApp();
+
+  const mockSessions = [
+    {
+      id: 'rt-1',
+      service_id: null,
+      service_name: null,
+      created_at: '2024-01-01T00:00:00Z',
+      expires_at: '2024-02-01T00:00:00Z',
+    },
+    {
+      id: 'rt-2',
+      service_id: 'svc-1',
+      service_name: 'My Service',
+      created_at: '2024-01-02T00:00:00Z',
+      expires_at: '2024-02-02T00:00:00Z',
+    },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(listActiveSessionsByUserId).mockResolvedValue(mockSessions);
+  });
+
+  it('管理者: 存在するユーザーのアクティブセッション一覧を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/tokens');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: typeof mockSessions }>();
+    expect(body.data).toHaveLength(2);
+    expect(body.data[0].id).toBe('rt-1');
+    expect(body.data[1].service_name).toBe('My Service');
+    expect(vi.mocked(listActiveSessionsByUserId)).toHaveBeenCalledWith(mockEnv.DB, 'user-1');
+  });
+
+  it('管理者: 存在しないユーザー → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/no-such-user/tokens');
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('管理者: セッションが0件でも空配列を返す', async () => {
+    vi.mocked(listActiveSessionsByUserId).mockResolvedValue([]);
+    const res = await sendRequest(app, '/api/users/user-1/tokens');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[] }>();
+    expect(body.data).toHaveLength(0);
+  });
+
+  it('一般ユーザー → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/users/user-1/tokens');
+    expect(res.status).toBe(403);
+  });
+
+  it('未認証 → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/tokens', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('DELETE /api/users/:id/tokens', () => {
   const app = buildApp();
 

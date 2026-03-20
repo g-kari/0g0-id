@@ -320,6 +320,19 @@ app.patch('/:id/role', authMiddleware, adminMiddleware, csrfMiddleware, async (c
   });
 });
 
+// GET /api/users/:id/tokens — ユーザーのアクティブセッション一覧（管理者のみ）
+app.get('/:id/tokens', authMiddleware, adminMiddleware, async (c) => {
+  const targetId = c.req.param('id');
+
+  const targetUser = await findUserById(c.env.DB, targetId);
+  if (!targetUser) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+
+  const sessions = await listActiveSessionsByUserId(c.env.DB, targetId);
+  return c.json({ data: sessions });
+});
+
 // DELETE /api/users/:id/tokens — ユーザーの全セッション無効化（管理者のみ）
 app.delete('/:id/tokens', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const targetId = c.req.param('id');

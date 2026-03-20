@@ -70,6 +70,30 @@ app.get('/:id/login-history', async (c) => {
   return proxyResponse(res);
 });
 
+// GET /api/users/:id/tokens — ユーザーのアクティブセッション一覧
+app.get('/:id/tokens', async (c) => {
+  const res = await fetchWithAuth(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/tokens`
+  );
+  return proxyResponse(res);
+});
+
+// DELETE /api/users/:id/tokens — ユーザーの全セッション無効化
+app.delete('/:id/tokens', async (c) => {
+  const res = await fetchWithAuth(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/tokens`,
+    {
+      method: 'DELETE',
+      headers: { Origin: c.env.IDP_ORIGIN },
+    }
+  );
+  return proxyResponse(res);
+});
+
 // PATCH /api/users/:id/role
 app.patch('/:id/role', async (c) => {
   return fetchWithJsonBody(
