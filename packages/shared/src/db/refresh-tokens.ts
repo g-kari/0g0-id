@@ -108,6 +108,38 @@ export async function countActiveRefreshTokens(db: D1Database): Promise<number> 
   return result?.count ?? 0;
 }
 
+export interface ActiveSession {
+  id: string;
+  service_id: string | null;
+  service_name: string | null;
+  created_at: string;
+  expires_at: string;
+}
+
+/**
+ * ユーザーのアクティブセッション一覧を返す。
+ * IdPセッション（service_id IS NULL）とサービストークン両方を含む。
+ * token_hash / family_id などの機密フィールドは含まない。
+ */
+export async function listActiveSessionsByUserId(
+  db: D1Database,
+  userId: string
+): Promise<ActiveSession[]> {
+  const result = await db
+    .prepare(
+      `SELECT rt.id, rt.service_id, s.name as service_name, rt.created_at, rt.expires_at
+       FROM refresh_tokens rt
+       LEFT JOIN services s ON rt.service_id = s.id
+       WHERE rt.user_id = ?
+         AND rt.revoked_at IS NULL
+         AND rt.expires_at > datetime('now')
+       ORDER BY rt.created_at DESC`
+    )
+    .bind(userId)
+    .all<ActiveSession>();
+  return result.results;
+}
+
 /**
  * ユーザーが特定サービスにアクティブな認可を持つか確認する
  */
