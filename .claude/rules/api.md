@@ -29,6 +29,23 @@ paths:
 - 409: 競合（重複登録など）
 - 500: サーバーエラー
 
+## OpenAPI ドキュメント更新ルール
+
+**API を追加・編集・削除したら、必ず `workers/id/src/routes/docs.ts` の OpenAPI 仕様も同じコミットで更新すること。**
+
+| 変更の種類 | 更新対象 |
+|-----------|---------|
+| id worker の API 追加・変更 | `INTERNAL_OPENAPI.paths` |
+| 外部サービス向け API（`/api/external/`, `/auth/`, `/api/token/introspect`, `/.well-known/`）の変更 | `EXTERNAL_OPENAPI.paths` |
+| 新しいスキーマ型の追加 | `INTERNAL_OPENAPI.components.schemas` および/または `EXTERNAL_OPENAPI.components.schemas` |
+| API の削除 | 対応する `paths` エントリも削除 |
+
+### チェック観点
+- エンドポイントのパス・メソッドが一致しているか
+- リクエスト/レスポンスのスキーマが実装と一致しているか
+- 認証方式（BearerAuth / BasicAuth / Public）が正しいか
+- タグが適切に分類されているか
+
 ## id.0g0.xyz エンドポイント一覧
 | パス | メソッド | 認証 | 説明 |
 |------|----------|------|------|
@@ -45,3 +62,26 @@ paths:
 | /api/services | GET/POST | JWT+Admin | サービス管理 |
 | /api/services/:id | DELETE | JWT+Admin | サービス削除 |
 | /api/services/:id/redirect-uris | GET/POST/DELETE | JWT+Admin | redirect_uri管理 |
+| /api/users/me/tokens | GET | JWT | アクティブセッション一覧 |
+| /api/users/me/tokens | DELETE | JWT+CSRF | 全セッション無効化 |
+| /api/users/me/providers | GET | JWT | SNSプロバイダー一覧 |
+| /api/users/me/providers/:provider | DELETE | JWT+CSRF | SNSプロバイダー連携解除 |
+| /api/users/me/connections | GET | JWT | 連携サービス一覧 |
+| /api/users/me/connections/:serviceId | DELETE | JWT+CSRF | サービス連携解除 |
+| /api/users/me/login-history | GET | JWT | ログイン履歴 |
+| /api/users/:id | GET/DELETE | JWT+Admin | ユーザー詳細・削除 |
+| /api/users/:id/role | PATCH | JWT+Admin+CSRF | ロール変更 |
+| /api/users/:id/login-history | GET | JWT+Admin | ユーザーログイン履歴 |
+| /api/users/:id/providers | GET | JWT+Admin | ユーザーSNS連携状態 |
+| /api/users/:id/services | GET | JWT+Admin | ユーザー認可済みサービス |
+| /api/users/:id/owned-services | GET | JWT+Admin | ユーザー所有サービス |
+| /api/users/:id/tokens | DELETE | JWT+Admin+CSRF | ユーザー全セッション無効化 |
+| /api/services/:id/rotate-secret | POST | JWT+Admin+CSRF | クライアントシークレット再発行 |
+| /api/services/:id/owner | PATCH | JWT+Admin+CSRF | サービス所有権移譲 |
+| /api/services/:id/users | GET | JWT+Admin | サービス認可済みユーザー |
+| /api/services/:id/users/:userId | DELETE | JWT+Admin+CSRF | ユーザーのサービスアクセス失効 |
+| /api/external/users | GET | Basic認証 | 外部: 認可済みユーザー一覧 |
+| /api/external/users/:id | GET | Basic認証 | 外部: ユーザー取得 |
+| /api/metrics | GET | JWT+Admin | メトリクス |
+| /docs | GET | Public | IdP内部APIドキュメント |
+| /docs/external | GET | Public | 外部連携サービス向けAPIドキュメント |
