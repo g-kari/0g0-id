@@ -1,4 +1,4 @@
-import type { Context } from 'hono';
+import type { Context, Env } from 'hono';
 import type { z } from 'zod';
 
 /**
@@ -10,8 +10,8 @@ import type { z } from 'zod';
  * if (!result.ok) return result.response;
  * const body = result.data;
  */
-export async function parseJsonBody<T>(
-  c: Context,
+export async function parseJsonBody<T, E extends Env = Env>(
+  c: Context<E>,
   schema: z.ZodType<T>
 ): Promise<{ ok: true; data: T } | { ok: false; response: Response }> {
   let rawBody: unknown;
