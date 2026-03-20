@@ -234,6 +234,127 @@
     }
   }
 
+  // セッション管理ページ
+  if (path === '/sessions') {
+    var sessionsListEl = document.getElementById('sessions-list');
+    var sessionsLoadingEl = document.getElementById('loading');
+    var sessionsEmptyEl = document.getElementById('empty-msg');
+    var sessionsErrorEl = document.getElementById('error-msg');
+    var revokeAllWrap = document.getElementById('revoke-all-wrap');
+    var revokeAllBtn = document.getElementById('revoke-all-btn');
+
+    function formatDatetime(iso) {
+      return new Date(iso).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function escHtmlSessions(str) {
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function loadSessions() {
+      showProgress();
+      fetch('/api/me/sessions', { credentials: 'same-origin' })
+        .then(function (res) {
+          if (res.status === 401) { window.location.href = '/'; return null; }
+          return res.json();
+        })
+        .then(function (data) {
+          hideProgress();
+          if (!data) return;
+          if (sessionsLoadingEl) sessionsLoadingEl.style.display = 'none';
+          if (data.error) {
+            if (sessionsErrorEl) { sessionsErrorEl.textContent = 'セッション一覧の取得に失敗しました'; sessionsErrorEl.style.display = 'block'; }
+            return;
+          }
+          var sessions = data.data || [];
+          if (sessions.length === 0) {
+            if (sessionsEmptyEl) sessionsEmptyEl.style.display = 'block';
+            return;
+          }
+          if (sessionsListEl) {
+            sessionsListEl.style.display = 'block';
+            sessionsListEl.innerHTML = sessions.map(function (s) {
+              var label = s.service_name ? escHtmlSessions(s.service_name) : '0g0 ID（IdP セッション）';
+              var icon = s.service_name
+                ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>'
+                : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
+              return '<div class="connection-item">' +
+                '<div class="connection-info">' +
+                  '<div class="connection-name" style="display:flex;align-items:center;gap:0.375rem;">' + icon + label + '</div>' +
+                  '<div class="connection-meta">作成: ' + formatDatetime(s.created_at) + ' ／ 有効期限: ' + formatDatetime(s.expires_at) + '</div>' +
+                '</div>' +
+                '<button class="btn btn-danger btn-sm" data-session-id="' + escHtmlSessions(s.id) + '" aria-label="' + label + 'のセッションを無効化">無効化</button>' +
+              '</div>';
+            }).join('');
+
+            sessionsListEl.querySelectorAll('[data-session-id]').forEach(function (btn) {
+              btn.addEventListener('click', function () {
+                if (!confirm('このセッションを無効化しますか？')) return;
+                btn.disabled = true;
+                showProgress();
+                fetch('/api/me/sessions/' + btn.dataset.sessionId, {
+                  method: 'DELETE',
+                  credentials: 'same-origin',
+                  headers: { Origin: window.location.origin },
+                })
+                  .then(function (res) {
+                    hideProgress();
+                    if (res.ok || res.status === 204) {
+                      showToast('セッションを無効化しました', 'success');
+                      loadSessions();
+                    } else {
+                      showToast('無効化に失敗しました', 'error');
+                      btn.disabled = false;
+                    }
+                  })
+                  .catch(function () {
+                    hideProgress();
+                    showToast('通信エラーが発生しました', 'error');
+                    btn.disabled = false;
+                  });
+              });
+            });
+          }
+          if (revokeAllWrap) revokeAllWrap.style.display = 'block';
+        })
+        .catch(function () {
+          hideProgress();
+          if (sessionsLoadingEl) sessionsLoadingEl.style.display = 'none';
+          if (sessionsErrorEl) { sessionsErrorEl.textContent = '通信エラーが発生しました'; sessionsErrorEl.style.display = 'block'; }
+        });
+    }
+
+    if (revokeAllBtn) {
+      revokeAllBtn.addEventListener('click', function () {
+        if (!confirm('すべてのセッションを無効化しますか？この操作後、ログアウトされます。')) return;
+        revokeAllBtn.disabled = true;
+        showProgress();
+        fetch('/api/me/sessions', {
+          method: 'DELETE',
+          credentials: 'same-origin',
+          headers: { Origin: window.location.origin },
+        })
+          .then(function (res) {
+            hideProgress();
+            if (res.ok || res.status === 204) {
+              showToast('すべてのセッションを無効化しました', 'success');
+              setTimeout(function () { window.location.href = '/'; }, 1200);
+            } else {
+              showToast('無効化に失敗しました', 'error');
+              revokeAllBtn.disabled = false;
+            }
+          })
+          .catch(function () {
+            hideProgress();
+            showToast('通信エラーが発生しました', 'error');
+            revokeAllBtn.disabled = false;
+          });
+      });
+    }
+
+    loadSessions();
+  }
+
   // 連携サービスページ
   if (path === '/connections') {
     var listEl = document.getElementById('connections-list');
