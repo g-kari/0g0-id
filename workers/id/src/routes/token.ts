@@ -7,11 +7,12 @@ import {
   timingSafeEqual,
 } from '@0g0-id/shared';
 import type { IdpEnv } from '@0g0-id/shared';
+import { externalApiRateLimitMiddleware } from '../middleware/rate-limit';
 
 const app = new Hono<{ Bindings: IdpEnv }>();
 
 // POST /api/token/introspect — RFC 7662 トークンイントロスペクション
-app.post('/introspect', async (c) => {
+app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
   // Basic認証でサービス認証
   const authHeader = c.req.header('Authorization');
   if (!authHeader?.startsWith('Basic ')) {

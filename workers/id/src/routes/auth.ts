@@ -43,6 +43,7 @@ import {
   insertLoginEvent,
 } from '@0g0-id/shared';
 import type { IdpEnv, User } from '@0g0-id/shared';
+import { authRateLimitMiddleware } from '../middleware/rate-limit';
 
 const ExchangeSchema = z.object({
   code: z.string().min(1, 'code is required'),
@@ -112,7 +113,7 @@ async function handleProviderLink(
 }
 
 // GET /auth/login — BFFからのリダイレクト受け取り + プロバイダー認可へリダイレクト
-app.get('/login', async (c) => {
+app.get('/login', authRateLimitMiddleware, async (c) => {
   const redirectTo = c.req.query('redirect_to');
   const bffState = c.req.query('state');
   const providerParam = c.req.query('provider') ?? 'google';
@@ -181,7 +182,7 @@ app.get('/login', async (c) => {
 });
 
 // GET /auth/callback — OAuthコールバック（全プロバイダー共通）
-app.get('/callback', async (c) => {
+app.get('/callback', authRateLimitMiddleware, async (c) => {
   const code = c.req.query('code');
   const state = c.req.query('state');
   const error = c.req.query('error');

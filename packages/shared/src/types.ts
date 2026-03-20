@@ -76,6 +76,14 @@ export interface TokenPayload {
   role: 'user' | 'admin';
 }
 
+/**
+ * Cloudflare Workers Rate Limiting API のバインディング型。
+ * `limit()` は key ごとのリクエスト数が制限内なら { success: true } を返す。
+ */
+export interface RateLimitBinding {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
 export interface IdpEnv {
   DB: D1Database;
   GOOGLE_CLIENT_ID: string;
@@ -94,6 +102,10 @@ export interface IdpEnv {
   IDP_ORIGIN: string;
   USER_ORIGIN: string;
   ADMIN_ORIGIN: string;
+  /** /auth/login, /auth/callback 向けレートリミッター（IP単位） */
+  RATE_LIMITER_AUTH?: RateLimitBinding;
+  /** /api/external/*, /api/token/introspect 向けレートリミッター（client_id単位） */
+  RATE_LIMITER_EXTERNAL?: RateLimitBinding;
 }
 
 export interface BffEnv {

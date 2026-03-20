@@ -21,3 +21,15 @@ binding = "DB"
 database_name = "0g0-id-db"
 database_id = "f13d6e85-7a42-463f-b07e-5201423dc840"
 migrations_dir = "../../migrations"
+
+[[unsafe.bindings]]
+name = "RATE_LIMITER_AUTH"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 20, period = 60 }
+
+[[unsafe.bindings]]
+name = "RATE_LIMITER_EXTERNAL"
+type = "ratelimit"
+namespace_id = "1002"
+simple = { limit = 200, period = 60 }

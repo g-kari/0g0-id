@@ -9,6 +9,7 @@ import {
   countUsersAuthorizedForService,
 } from '@0g0-id/shared';
 import type { IdpEnv, User, Service } from '@0g0-id/shared';
+import { externalApiRateLimitMiddleware } from '../middleware/rate-limit';
 
 const app = new Hono<{ Bindings: IdpEnv }>();
 
@@ -94,7 +95,7 @@ function parseAllowedScopes(service: Service): string[] {
 }
 
 // GET /api/external/users — 認可済みユーザー一覧（外部サービス向け）
-app.get('/users', async (c) => {
+app.get('/users', externalApiRateLimitMiddleware, async (c) => {
   let service: Awaited<ReturnType<typeof authenticateService>>;
   try {
     service = await authenticateService(c.env.DB, c.req.header('Authorization'));
@@ -131,7 +132,7 @@ app.get('/users', async (c) => {
 });
 
 // GET /api/external/users/:id — IDによるユーザー完全一致検索（外部サービス向け）
-app.get('/users/:id', async (c) => {
+app.get('/users/:id', externalApiRateLimitMiddleware, async (c) => {
   let service: Awaited<ReturnType<typeof authenticateService>>;
   try {
     service = await authenticateService(c.env.DB, c.req.header('Authorization'));
