@@ -44,6 +44,50 @@ describe('parseSession', () => {
   it('空文字列は null を返す', () => {
     expect(parseSession('')).toBeNull();
   });
+
+  it('access_token が欠けている場合は null を返す', () => {
+    const invalid = btoa(encodeURIComponent(JSON.stringify({
+      refresh_token: 'rt',
+      user: { id: 'u1', email: 'a@b.com', name: 'A', role: 'user' },
+    })));
+    expect(parseSession(invalid)).toBeNull();
+  });
+
+  it('user.role が不正な値の場合は null を返す', () => {
+    const invalid = btoa(encodeURIComponent(JSON.stringify({
+      access_token: 'at',
+      refresh_token: 'rt',
+      user: { id: 'u1', email: 'a@b.com', name: 'A', role: 'superadmin' },
+    })));
+    expect(parseSession(invalid)).toBeNull();
+  });
+
+  it('user フィールドが欠けている場合は null を返す', () => {
+    const invalid = btoa(encodeURIComponent(JSON.stringify({
+      access_token: 'at',
+      refresh_token: 'rt',
+    })));
+    expect(parseSession(invalid)).toBeNull();
+  });
+
+  it('配列を渡した場合は null を返す（プロトタイプ汚染対策）', () => {
+    const invalid = btoa(encodeURIComponent(JSON.stringify(['not', 'an', 'object'])));
+    expect(parseSession(invalid)).toBeNull();
+  });
+
+  it('余分なフィールドは含まれず、既知フィールドのみを返す', () => {
+    const withExtra = btoa(encodeURIComponent(JSON.stringify({
+      access_token: 'at',
+      refresh_token: 'rt',
+      user: { id: 'u1', email: 'a@b.com', name: 'A', role: 'user' },
+      __proto__: { polluted: true },
+      extra_field: 'should-be-ignored',
+    })));
+    const result = parseSession(withExtra);
+    expect(result).not.toBeNull();
+    expect('extra_field' in (result ?? {})).toBe(false);
+    expect(result?.access_token).toBe('at');
+  });
 });
 
 describe('proxyResponse', () => {
