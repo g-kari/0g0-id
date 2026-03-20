@@ -1,5 +1,6 @@
 import { createMiddleware } from 'hono/factory';
-import type { IdpEnv } from '@0g0-id/shared';
+import type { Context } from 'hono';
+import type { IdpEnv, RateLimitBinding } from '@0g0-id/shared';
 
 /** リクエスト元IPアドレスを取得する（Cloudflare → x-forwarded-for の順にフォールバック） */
 function getClientIp(req: Request): string {
@@ -22,23 +23,29 @@ function extractClientId(authHeader: string | undefined): string | null {
   }
 }
 
+type IdpContext = Context<{ Bindings: IdpEnv }>;
+
 /**
- * 認証フロー向けレートリミッター（IP単位）。
- * 対象: GET /auth/login, GET /auth/callback
- *
- * RATE_LIMITER_AUTH バインディングが未設定の場合はスキップ（ローカル開発・テスト時）。
+ * レートリミットミドルウェアのファクトリ関数。
+ * バインディングの取得・キー抽出・エラーメッセージを差し込むことで
+ * 各エンドポイント向けのミドルウェアを生成する。
  */
-export const authRateLimitMiddleware = createMiddleware<{ Bindings: IdpEnv }>(
-  async (c, next) => {
-    if (c.env.RATE_LIMITER_AUTH) {
-      const key = getClientIp(c.req.raw);
-      const { success } = await c.env.RATE_LIMITER_AUTH.limit({ key });
+function createRateLimitMiddleware(
+  getBinding: (env: IdpEnv) => RateLimitBinding | undefined,
+  getKey: (c: IdpContext) => string,
+  errorMessage: string,
+) {
+  return createMiddleware<{ Bindings: IdpEnv }>(async (c, next) => {
+    const binding = getBinding(c.env);
+    if (binding) {
+      const key = getKey(c);
+      const { success } = await binding.limit({ key });
       if (!success) {
         return c.json(
           {
             error: {
               code: 'TOO_MANY_REQUESTS',
-              message: 'Too many requests. Please try again later.',
+              message: errorMessage,
             },
           },
           429
@@ -46,7 +53,19 @@ export const authRateLimitMiddleware = createMiddleware<{ Bindings: IdpEnv }>(
       }
     }
     await next();
-  }
+  });
+}
+
+/**
+ * 認証フロー向けレートリミッター（IP単位）。
+ * 対象: GET /auth/login, GET /auth/callback
+ *
+ * RATE_LIMITER_AUTH バインディングが未設定の場合はスキップ（ローカル開発・テスト時）。
+ */
+export const authRateLimitMiddleware = createRateLimitMiddleware(
+  (env) => env.RATE_LIMITER_AUTH,
+  (c) => getClientIp(c.req.raw),
+  'Too many requests. Please try again later.',
 );
 
 /**
@@ -56,26 +75,10 @@ export const authRateLimitMiddleware = createMiddleware<{ Bindings: IdpEnv }>(
  * client_id が取得できない場合は IP をキーとして使用する。
  * RATE_LIMITER_EXTERNAL バインディングが未設定の場合はスキップ。
  */
-export const externalApiRateLimitMiddleware = createMiddleware<{ Bindings: IdpEnv }>(
-  async (c, next) => {
-    if (c.env.RATE_LIMITER_EXTERNAL) {
-      const clientId = extractClientId(c.req.header('Authorization'));
-      const key = clientId ?? getClientIp(c.req.raw);
-      const { success } = await c.env.RATE_LIMITER_EXTERNAL.limit({ key });
-      if (!success) {
-        return c.json(
-          {
-            error: {
-              code: 'TOO_MANY_REQUESTS',
-              message: 'Rate limit exceeded.',
-            },
-          },
-          429
-        );
-      }
-    }
-    await next();
-  }
+export const externalApiRateLimitMiddleware = createRateLimitMiddleware(
+  (env) => env.RATE_LIMITER_EXTERNAL,
+  (c) => extractClientId(c.req.header('Authorization')) ?? getClientIp(c.req.raw),
+  'Rate limit exceeded.',
 );
 
 /**
@@ -85,23 +88,8 @@ export const externalApiRateLimitMiddleware = createMiddleware<{ Bindings: IdpEn
  * コード横取り・リフレッシュトークンブルートフォースを緩和する。
  * RATE_LIMITER_TOKEN バインディングが未設定の場合はスキップ（ローカル開発・テスト時）。
  */
-export const tokenApiRateLimitMiddleware = createMiddleware<{ Bindings: IdpEnv }>(
-  async (c, next) => {
-    if (c.env.RATE_LIMITER_TOKEN) {
-      const key = getClientIp(c.req.raw);
-      const { success } = await c.env.RATE_LIMITER_TOKEN.limit({ key });
-      if (!success) {
-        return c.json(
-          {
-            error: {
-              code: 'TOO_MANY_REQUESTS',
-              message: 'Too many requests. Please try again later.',
-            },
-          },
-          429
-        );
-      }
-    }
-    await next();
-  }
+export const tokenApiRateLimitMiddleware = createRateLimitMiddleware(
+  (env) => env.RATE_LIMITER_TOKEN,
+  (c) => getClientIp(c.req.raw),
+  'Too many requests. Please try again later.',
 );
