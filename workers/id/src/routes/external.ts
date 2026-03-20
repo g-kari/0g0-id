@@ -8,6 +8,7 @@ import {
 } from '@0g0-id/shared';
 import type { IdpEnv, User, Service } from '@0g0-id/shared';
 import { authenticateService } from '../utils/service-auth';
+import { parseAllowedScopes } from '../utils/scopes';
 import { externalApiRateLimitMiddleware } from '../middleware/rate-limit';
 
 const app = new Hono<{ Bindings: IdpEnv }>();
@@ -47,18 +48,6 @@ async function buildUserData(
   return data;
 }
 
-/**
- * allowed_scopesをパースする。失敗時はfail-closed（空配列）。
- */
-function parseAllowedScopes(service: Service): string[] {
-  try {
-    const scopes = JSON.parse(service.allowed_scopes) as string[];
-    return Array.isArray(scopes) ? scopes : [];
-  } catch {
-    return [];
-  }
-}
-
 // GET /api/external/users — 認可済みユーザー一覧（外部サービス向け）
 app.get('/users', externalApiRateLimitMiddleware, async (c) => {
   let service: Awaited<ReturnType<typeof authenticateService>>;
@@ -89,7 +78,7 @@ app.get('/users', externalApiRateLimitMiddleware, async (c) => {
     return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
   }
 
-  const allowedScopes = parseAllowedScopes(service);
+  const allowedScopes = parseAllowedScopes(service.allowed_scopes);
 
   const data = await Promise.all(users.map((user) => buildUserData(service!, user, allowedScopes)));
 
@@ -126,7 +115,7 @@ app.get('/users/:id', externalApiRateLimitMiddleware, async (c) => {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  const allowedScopes = parseAllowedScopes(service);
+  const allowedScopes = parseAllowedScopes(service.allowed_scopes);
   const data = await buildUserData(service, user, allowedScopes);
 
   return c.json({ data });

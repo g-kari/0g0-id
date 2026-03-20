@@ -333,7 +333,7 @@ describe('POST /api/token/introspect', () => {
     expect(body.active).toBe(false);
   });
 
-  it('allowed_scopesのJSONが不正 → デフォルトスコープ（profile, email）を使用', async () => {
+  it('allowed_scopesのJSONが不正 → fail-closedでスコープなし（ユーザーデータ非公開）', async () => {
     vi.mocked(findServiceByClientId).mockResolvedValue({
       ...mockService,
       allowed_scopes: 'invalid-json',
@@ -345,7 +345,9 @@ describe('POST /api/token/introspect', () => {
     expect(res.status).toBe(200);
     const body = await res.json<Record<string, unknown>>();
     expect(body.active).toBe(true);
-    expect(body.scope).toBe('profile email');
+    expect(body.scope).toBe('');
+    expect(body.name).toBeUndefined();
+    expect(body.email).toBeUndefined();
   });
 
   // RFC 7662: application/x-www-form-urlencoded サポート

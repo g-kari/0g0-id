@@ -4,6 +4,7 @@ import { findRefreshTokenByHash, findUserById, revokeRefreshToken, sha256 } from
 import type { IdpEnv } from '@0g0-id/shared';
 import { externalApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authenticateService } from '../utils/service-auth';
+import { parseAllowedScopes } from '../utils/scopes';
 
 const app = new Hono<{ Bindings: IdpEnv }>();
 
@@ -73,12 +74,7 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
       return c.json({ active: false });
     }
 
-    let allowedScopes: string[];
-    try {
-      allowedScopes = JSON.parse(service.allowed_scopes) as string[];
-    } catch {
-      allowedScopes = ['profile', 'email'];
-    }
+    const allowedScopes = parseAllowedScopes(service.allowed_scopes);
 
     // ペアワイズsub: 内部IDを直接公開しないようにsha256(client_id:user_id)を使用
     const sub = await sha256(service.client_id + ':' + refreshToken.user_id);
