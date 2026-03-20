@@ -273,7 +273,7 @@ describe('POST /api/token/introspect', () => {
       email: string;
     }>();
     expect(body.active).toBe(true);
-    expect(body.sub).toBe('user-1');
+    expect(body.sub).toBe('hashed-token'); // sha256(client_id:user_id) ペアワイズsub
     expect(body.scope).toBe('profile email');
     expect(body.name).toBe('Test User');
     expect(body.email).toBe('test@example.com');

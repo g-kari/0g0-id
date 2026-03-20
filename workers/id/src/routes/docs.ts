@@ -267,6 +267,9 @@ const INTERNAL_OPENAPI = {
         parameters: [
           { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 100, minimum: 1 }, description: '1ページの件数' },
           { name: 'offset', in: 'query', schema: { type: 'integer', default: 0, minimum: 0 }, description: '取得開始位置' },
+          { name: 'email', in: 'query', schema: { type: 'string' }, description: 'メールアドレスで部分一致フィルタリング' },
+          { name: 'role', in: 'query', schema: { type: 'string', enum: ['user', 'admin'] }, description: 'ロールで絞り込み' },
+          { name: 'name', in: 'query', schema: { type: 'string' }, description: '表示名で部分一致フィルタリング' },
         ],
         responses: {
           '200': {

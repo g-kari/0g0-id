@@ -32,6 +32,7 @@ import {
   getUserProviders,
   unlinkProvider,
   verifyAccessToken,
+  type UserFilter,
 } from '@0g0-id/shared';
 import type { ProviderStatus } from '@0g0-id/shared';
 
@@ -725,7 +726,7 @@ describe('GET /api/users', () => {
       mockEnv as unknown as Record<string, string>
     );
     expect(res.status).toBe(200);
-    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(expect.anything(), 10, 20);
+    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(expect.anything(), 10, 20, expect.any(Object));
   });
 
   it('limitが100を超える場合は100に制限する', async () => {
@@ -737,7 +738,7 @@ describe('GET /api/users', () => {
       mockEnv as unknown as Record<string, string>
     );
     expect(res.status).toBe(200);
-    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(expect.anything(), 100, 0);
+    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(expect.anything(), 100, 0, expect.any(Object));
   });
 
   it('レスポンスに内部フィールド（google_sub等）を含まない', async () => {
@@ -747,5 +748,79 @@ describe('GET /api/users', () => {
     expect(body.data[0]).not.toHaveProperty('line_sub');
     expect(body.data[0]).not.toHaveProperty('github_sub');
     expect(body.data[0]).not.toHaveProperty('x_sub');
+  });
+
+  it('emailクエリパラメータをフィルターに渡す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users?email=example.com`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(
+      expect.anything(), 50, 0, expect.objectContaining<UserFilter>({ email: 'example.com' })
+    );
+    expect(vi.mocked(countUsers)).toHaveBeenCalledWith(
+      expect.anything(), expect.objectContaining<UserFilter>({ email: 'example.com' })
+    );
+  });
+
+  it('roleクエリパラメータをフィルターに渡す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users?role=admin`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(
+      expect.anything(), 50, 0, expect.objectContaining<UserFilter>({ role: 'admin' })
+    );
+  });
+
+  it('nameクエリパラメータをフィルターに渡す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users?name=Test`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(
+      expect.anything(), 50, 0, expect.objectContaining<UserFilter>({ name: 'Test' })
+    );
+  });
+
+  it('不正なrole値は無視してフィルターに含めない', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users?role=superuser`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    const call = vi.mocked(listUsers).mock.calls[0];
+    const filter = call[3] as UserFilter;
+    expect(filter.role).toBeUndefined();
+  });
+
+  it('複数フィルターを同時に渡せる', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users?email=test&role=user&name=Alice`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(
+      expect.anything(), 50, 0,
+      expect.objectContaining<UserFilter>({ email: 'test', role: 'user', name: 'Alice' })
+    );
   });
 });

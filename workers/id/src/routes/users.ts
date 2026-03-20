@@ -13,6 +13,7 @@ import {
   countServicesByOwner,
   getUserProviders,
   unlinkProvider,
+  type UserFilter,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
@@ -268,9 +269,18 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
   const limit = Math.min(parseInt(limitStr, 10) || 50, 100);
   const offset = parseInt(offsetStr, 10) || 0;
 
+  const filter: UserFilter = {};
+  const emailQuery = c.req.query('email');
+  const roleQuery = c.req.query('role');
+  const nameQuery = c.req.query('name');
+
+  if (emailQuery) filter.email = emailQuery;
+  if (roleQuery === 'user' || roleQuery === 'admin') filter.role = roleQuery;
+  if (nameQuery) filter.name = nameQuery;
+
   const [users, total] = await Promise.all([
-    listUsers(c.env.DB, limit, offset),
-    countUsers(c.env.DB),
+    listUsers(c.env.DB, limit, offset, filter),
+    countUsers(c.env.DB, filter),
   ]);
   return c.json({
     data: users.map((u) => ({

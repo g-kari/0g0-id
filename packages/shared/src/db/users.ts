@@ -343,21 +343,54 @@ export async function countAdminUsers(db: D1Database): Promise<number> {
   return result?.count ?? 0;
 }
 
+export interface UserFilter {
+  email?: string;
+  role?: 'user' | 'admin';
+  name?: string;
+}
+
+function buildUserFilterClause(filter?: UserFilter): { where: string; params: unknown[] } {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (filter?.email) {
+    conditions.push('email LIKE ?');
+    params.push(`%${filter.email}%`);
+  }
+  if (filter?.role) {
+    conditions.push('role = ?');
+    params.push(filter.role);
+  }
+  if (filter?.name) {
+    conditions.push('name LIKE ?');
+    params.push(`%${filter.name}%`);
+  }
+
+  return {
+    where: conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '',
+    params,
+  };
+}
+
 export async function listUsers(
   db: D1Database,
   limit: number = 50,
-  offset: number = 0
+  offset: number = 0,
+  filter?: UserFilter
 ): Promise<User[]> {
+  const { where, params } = buildUserFilterClause(filter);
   const result = await db
-    .prepare('SELECT * FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?')
-    .bind(limit, offset)
+    .prepare(`SELECT * FROM users ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+    .bind(...params, limit, offset)
     .all<User>();
   return result.results;
 }
 
-export async function countUsers(db: D1Database): Promise<number> {
+export async function countUsers(db: D1Database, filter?: UserFilter): Promise<number> {
+  const { where, params } = buildUserFilterClause(filter);
   const result = await db
-    .prepare('SELECT COUNT(*) as count FROM users')
+    .prepare(`SELECT COUNT(*) as count FROM users ${where}`)
+    .bind(...params)
     .first<{ count: number }>();
   return result?.count ?? 0;
 }
