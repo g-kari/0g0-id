@@ -50,6 +50,7 @@ export async function signAccessToken(
   return new SignJWT({
     email: payload.email,
     role: payload.role,
+    ...(payload.scope !== undefined ? { scope: payload.scope } : {}),
   })
     .setProtectedHeader({ alg: 'ES256', kid })
     .setIssuer(payload.iss)
