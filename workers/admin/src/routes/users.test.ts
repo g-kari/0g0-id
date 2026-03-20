@@ -391,6 +391,74 @@ describe('admin BFF — /api/users', () => {
     });
   });
 
+  describe('GET /:id/services — ユーザー認可サービス一覧', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1/services');
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('管理者セッションでIdPにGETして認可サービス一覧を返す', async () => {
+      const mockConnections = [
+        { service_id: 'svc-1', service_name: 'Service One', authorized_at: '2024-01-01T00:00:00Z' },
+        { service_id: 'svc-2', service_name: 'Service Two', authorized_at: '2024-01-02T00:00:00Z' },
+      ];
+      const idpFetch = mockIdp(200, { data: mockConnections });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1/services', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof mockConnections }>();
+      expect(body.data).toHaveLength(2);
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/users/user-1/services');
+      expect(calledReq.headers.get('Authorization')).toBe('Bearer mock-access-token');
+    });
+
+    it('ユーザーIDをIdPのURLに正しく含める', async () => {
+      const idpFetch = mockIdp(200, { data: [] });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users/specific-user-xyz/services', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/users/specific-user-xyz/services');
+    });
+
+    it('IdPが404（ユーザー不在）を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(404, { error: { code: 'NOT_FOUND' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/no-such-user/services', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(404);
+    });
+
+    it('認可サービスが0件の場合も正常に返す', async () => {
+      const idpFetch = mockIdp(200, { data: [] });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-no-services/services', {
+        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: unknown[] }>();
+      expect(body.data).toHaveLength(0);
+    });
+  });
+
   describe('GET /:id/login-history — ユーザーログイン履歴取得', () => {
     it('セッションなしで401を返す', async () => {
       const idpFetch = vi.fn();
