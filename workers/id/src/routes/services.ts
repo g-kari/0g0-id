@@ -31,19 +31,18 @@ type Variables = { user: TokenPayload };
 
 // サポートされているスコープの一覧
 const SUPPORTED_SCOPES = ['profile', 'email', 'phone', 'address'] as const;
-type SupportedScope = (typeof SUPPORTED_SCOPES)[number];
+
+const ScopeEnum = z.enum(SUPPORTED_SCOPES);
 
 const CreateServiceSchema = z.object({
   name: z.string().min(1, 'name is required'),
-  allowed_scopes: z.array(z.string()).optional(),
+  allowed_scopes: z.array(ScopeEnum).min(1, 'allowed_scopes must not be empty').optional(),
 });
 
 const PatchServiceSchema = z
   .object({
     name: z.string().min(1, 'name must not be empty').optional(),
-    allowed_scopes: z
-      .array(z.string(), { message: 'allowed_scopes must be an array' })
-      .optional(),
+    allowed_scopes: z.array(ScopeEnum).min(1, 'allowed_scopes must not be empty').optional(),
   })
   .refine((data) => data.name !== undefined || data.allowed_scopes !== undefined, {
     message: 'At least one of name or allowed_scopes must be provided',
@@ -139,30 +138,6 @@ app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => 
   const result = await parseJsonBody(c, PatchServiceSchema);
   if (!result.ok) return result.response;
   const { name, allowed_scopes } = result.data;
-
-  // allowed_scopesが指定された場合はバリデーション
-  if (allowed_scopes !== undefined) {
-    const invalidScopes = allowed_scopes.filter(
-      (s) => !SUPPORTED_SCOPES.includes(s as SupportedScope)
-    );
-    if (invalidScopes.length > 0) {
-      return c.json(
-        {
-          error: {
-            code: 'BAD_REQUEST',
-            message: `Invalid scopes: ${invalidScopes.join(', ')}. Supported scopes: ${SUPPORTED_SCOPES.join(', ')}`,
-          },
-        },
-        400
-      );
-    }
-    if (allowed_scopes.length === 0) {
-      return c.json(
-        { error: { code: 'BAD_REQUEST', message: 'allowed_scopes must not be empty' } },
-        400
-      );
-    }
-  }
 
   const updated = await updateServiceFields(c.env.DB, serviceId, {
     ...(name !== undefined ? { name: name.trim() } : {}),

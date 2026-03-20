@@ -371,6 +371,30 @@ describe('POST /api/services', () => {
       })
     );
   });
+
+  it('不正なスコープが含まれる場合 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/services', {
+      method: 'POST',
+      body: { name: 'New Service', allowed_scopes: ['profile', 'invalid_scope'] },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+    expect(body.error.message).toContain('profile');
+  });
+
+  it('空のallowed_scopesを指定した場合 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/services', {
+      method: 'POST',
+      body: { name: 'New Service', allowed_scopes: [] },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+    expect(body.error.message).toContain('allowed_scopes must not be empty');
+  });
 });
 
 // ===== PATCH /api/services/:id（管理者のみ）=====
@@ -426,7 +450,7 @@ describe('PATCH /api/services/:id', () => {
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string; message: string } }>();
     expect(body.error.code).toBe('BAD_REQUEST');
-    expect(body.error.message).toContain('invalid_scope');
+    expect(body.error.message).toContain('profile');
   });
 
   it('空配列の場合 → 400を返す', async () => {
