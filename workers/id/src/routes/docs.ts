@@ -333,9 +333,10 @@ const INTERNAL_OPENAPI = {
           { name: 'serviceId', in: 'path', required: true, schema: { type: 'string' } },
         ],
         responses: {
-          '200': { description: '連携解除成功' },
+          '204': { description: '連携解除成功' },
           '401': { description: 'UNAUTHORIZED' },
-          '403': { description: 'FORBIDDEN' },
+          '403': { description: 'FORBIDDEN — オリジン不正' },
+          '404': { description: 'NOT_FOUND — 連携未存在' },
         },
       },
     },
@@ -431,6 +432,45 @@ const INTERNAL_OPENAPI = {
       },
     },
     '/api/users/{id}': {
+      get: {
+        tags: ['ユーザー API (管理者)'],
+        summary: 'ユーザー詳細取得',
+        description: '指定ユーザーの詳細情報を返す（管理者専用）。phone / address など内部フィールドも含む。',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': {
+            description: 'ユーザー詳細',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: {
+                      allOf: [
+                        { $ref: '#/components/schemas/User' },
+                        {
+                          type: 'object',
+                          properties: {
+                            phone: { type: 'string', nullable: true },
+                            address: { type: 'string', nullable: true },
+                            updated_at: { type: 'string', format: 'date-time' },
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'UNAUTHORIZED' },
+          '403': { description: 'FORBIDDEN — 管理者権限なし' },
+          '404': { description: 'NOT_FOUND — ユーザー未存在' },
+        },
+      },
       delete: {
         tags: ['ユーザー API (管理者)'],
         summary: 'ユーザー削除',
@@ -514,16 +554,129 @@ const INTERNAL_OPENAPI = {
       },
     },
     '/api/services/{id}': {
-      delete: {
+      get: {
         tags: ['サービス管理 API (管理者)'],
-        summary: 'サービス削除',
+        summary: 'サービス取得',
+        description: '指定IDのサービス詳細を返す（管理者専用）。',
         security: [{ BearerAuth: [] }],
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
         ],
         responses: {
-          '200': { description: '削除成功' },
-          '404': { description: 'NOT_FOUND' },
+          '200': {
+            description: 'サービス詳細',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { data: { $ref: '#/components/schemas/Service' } },
+                },
+              },
+            },
+          },
+          '401': { description: 'UNAUTHORIZED' },
+          '403': { description: 'FORBIDDEN — 管理者権限なし' },
+          '404': { description: 'NOT_FOUND — サービス未存在' },
+        },
+      },
+      patch: {
+        tags: ['サービス管理 API (管理者)'],
+        summary: 'サービス スコープ更新',
+        description: '指定サービスの許可スコープを更新する（管理者専用）。Origin/RefererヘッダーによるCSRF検証あり。',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  allowed_scopes: {
+                    type: 'array',
+                    items: { type: 'string', enum: ['profile', 'email', 'phone', 'address'] },
+                    description: '新しい許可スコープ（空配列不可）',
+                  },
+                },
+                required: ['allowed_scopes'],
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: '更新成功',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { data: { $ref: '#/components/schemas/Service' } },
+                },
+              },
+            },
+          },
+          '400': { description: 'BAD_REQUEST — 不正なスコープ値または空配列' },
+          '401': { description: 'UNAUTHORIZED' },
+          '403': { description: 'FORBIDDEN — 管理者権限なし、またはオリジン不正' },
+          '404': { description: 'NOT_FOUND — サービス未存在' },
+        },
+      },
+      delete: {
+        tags: ['サービス管理 API (管理者)'],
+        summary: 'サービス削除',
+        description: '指定サービスを削除する（管理者専用）。Origin/RefererヘッダーによるCSRF検証あり。',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '204': { description: '削除成功' },
+          '401': { description: 'UNAUTHORIZED' },
+          '403': { description: 'FORBIDDEN — 管理者権限なし、またはオリジン不正' },
+          '404': { description: 'NOT_FOUND — サービス未存在' },
+        },
+      },
+    },
+    '/api/services/{id}/rotate-secret': {
+      post: {
+        tags: ['サービス管理 API (管理者)'],
+        summary: 'クライアントシークレット再発行',
+        description:
+          '指定サービスのクライアントシークレットを再発行する（管理者専用）。' +
+          '旧シークレットは即時無効化される。新しい `client_secret` はこのレスポンスのみで返却（再取得不可）。' +
+          'Origin/RefererヘッダーによるCSRF検証あり。',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': {
+            description: '再発行成功（新しいclient_secretを含む）',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'string' },
+                        client_id: { type: 'string' },
+                        client_secret: { type: 'string', description: '新しいクライアントシークレット（このレスポンスのみ）' },
+                        updated_at: { type: 'string', format: 'date-time' },
+                      },
+                      required: ['id', 'client_id', 'client_secret', 'updated_at'],
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'UNAUTHORIZED' },
+          '403': { description: 'FORBIDDEN — 管理者権限なし、またはオリジン不正' },
+          '404': { description: 'NOT_FOUND — サービス未存在' },
         },
       },
     },
@@ -569,13 +722,17 @@ const INTERNAL_OPENAPI = {
       delete: {
         tags: ['サービス管理 API (管理者)'],
         summary: 'リダイレクトURI削除',
+        description: '指定リダイレクトURIを削除する（管理者専用）。Origin/RefererヘッダーによるCSRF検証あり。',
         security: [{ BearerAuth: [] }],
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'uriId', in: 'path', required: true, schema: { type: 'string' } },
         ],
         responses: {
-          '200': { description: '削除成功' },
+          '204': { description: '削除成功' },
+          '401': { description: 'UNAUTHORIZED' },
+          '403': { description: 'FORBIDDEN — 管理者権限なし、またはオリジン不正' },
+          '404': { description: 'NOT_FOUND — サービス未存在' },
         },
       },
     },
