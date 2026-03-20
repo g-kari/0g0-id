@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import { generateToken } from '@0g0-id/shared';
+import { generateToken, parseSession, setSessionCookie } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 
 const app = new Hono<{ Bindings: BffEnv }>();
@@ -68,7 +68,7 @@ app.get('/callback', async (c) => {
     data: {
       access_token: string;
       refresh_token: string;
-      user: { id: string; email: string; name: string; role: string };
+      user: { id: string; email: string; name: string; role: 'user' | 'admin' };
     };
   }>();
 
@@ -77,22 +77,10 @@ app.get('/callback', async (c) => {
     return c.redirect('/?error=not_admin');
   }
 
-  const sessionData = btoa(
-    encodeURIComponent(
-      JSON.stringify({
-        access_token: exchangeData.data.access_token,
-        refresh_token: exchangeData.data.refresh_token,
-        user: exchangeData.data.user,
-      })
-    )
-  );
-
-  setCookie(c, SESSION_COOKIE, sessionData, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'Lax',
-    path: '/',
-    maxAge: 30 * 24 * 60 * 60,
+  setSessionCookie(c, SESSION_COOKIE, {
+    access_token: exchangeData.data.access_token,
+    refresh_token: exchangeData.data.refresh_token,
+    user: exchangeData.data.user,
   });
 
   return c.redirect('/dashboard.html');
@@ -101,14 +89,14 @@ app.get('/callback', async (c) => {
 // POST /auth/logout
 app.post('/logout', async (c) => {
   const session = getCookie(c, SESSION_COOKIE);
-  if (session) {
+  const sessionData = parseSession(session);
+  if (sessionData) {
     try {
-      const data = JSON.parse(decodeURIComponent(atob(session))) as { refresh_token: string };
       await c.env.IDP.fetch(
         new Request(`${c.env.IDP_ORIGIN}/auth/logout`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh_token: data.refresh_token }),
+          body: JSON.stringify({ refresh_token: sessionData.refresh_token }),
         })
       );
     } catch {
