@@ -46,6 +46,7 @@ export interface LoginEvent {
 export interface AuthCode {
   id: string;
   user_id: string;
+  service_id: string | null;
   code_hash: string;
   redirect_to: string;
   expires_at: string;

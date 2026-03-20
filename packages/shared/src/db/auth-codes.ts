@@ -5,6 +5,7 @@ export async function createAuthCode(
   params: {
     id: string;
     userId: string;
+    serviceId?: string | null;
     codeHash: string;
     redirectTo: string;
     expiresAt: string;
@@ -12,10 +13,10 @@ export async function createAuthCode(
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO auth_codes (id, user_id, code_hash, redirect_to, expires_at)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO auth_codes (id, user_id, service_id, code_hash, redirect_to, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
     )
-    .bind(params.id, params.userId, params.codeHash, params.redirectTo, params.expiresAt)
+    .bind(params.id, params.userId, params.serviceId ?? null, params.codeHash, params.redirectTo, params.expiresAt)
     .run();
 }
 
