@@ -34,6 +34,15 @@ export interface ServiceRedirectUri {
   created_at: string;
 }
 
+export interface LoginEvent {
+  id: string;
+  user_id: string;
+  provider: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+}
+
 export interface AuthCode {
   id: string;
   user_id: string;

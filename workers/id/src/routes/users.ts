@@ -13,6 +13,7 @@ import {
   countServicesByOwner,
   getUserProviders,
   unlinkProvider,
+  getLoginEventsByUserId,
   type UserFilter,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
@@ -115,6 +116,18 @@ app.get('/me/providers', authMiddleware, async (c) => {
   return c.json({ data: providers });
 });
 
+// GET /api/users/me/login-history — 自分のログイン履歴取得
+app.get('/me/login-history', authMiddleware, async (c) => {
+  const tokenUser = c.get('user');
+  const limitStr = c.req.query('limit') ?? '20';
+  const offsetStr = c.req.query('offset') ?? '0';
+  const limit = Math.min(parseInt(limitStr, 10) || 20, 100);
+  const offset = parseInt(offsetStr, 10) || 0;
+
+  const { events, total } = await getLoginEventsByUserId(c.env.DB, tokenUser.sub, limit, offset);
+  return c.json({ data: events, total });
+});
+
 // DELETE /api/users/me/providers/:provider — SNSプロバイダー連携解除
 app.delete('/me/providers/:provider', authMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
@@ -174,6 +187,23 @@ app.get('/:id', authMiddleware, adminMiddleware, async (c) => {
       updated_at: user.updated_at,
     },
   });
+});
+
+// GET /api/users/:id/login-history（管理者のみ）
+app.get('/:id/login-history', authMiddleware, adminMiddleware, async (c) => {
+  const targetId = c.req.param('id');
+  const limitStr = c.req.query('limit') ?? '20';
+  const offsetStr = c.req.query('offset') ?? '0';
+  const limit = Math.min(parseInt(limitStr, 10) || 20, 100);
+  const offset = parseInt(offsetStr, 10) || 0;
+
+  const targetUser = await findUserById(c.env.DB, targetId);
+  if (!targetUser) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+
+  const { events, total } = await getLoginEventsByUserId(c.env.DB, targetId, limit, offset);
+  return c.json({ data: events, total });
 });
 
 // PATCH /api/users/:id/role（管理者のみ）

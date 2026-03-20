@@ -31,6 +31,15 @@ app.get('/:id', async (c) => {
   return proxyResponse(res);
 });
 
+// GET /api/users/:id/login-history
+app.get('/:id/login-history', async (c) => {
+  const url = new URL(`${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/login-history`);
+  url.searchParams.set('limit', c.req.query('limit') ?? '20');
+  url.searchParams.set('offset', c.req.query('offset') ?? '0');
+  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  return proxyResponse(res);
+});
+
 // PATCH /api/users/:id/role
 app.patch('/:id/role', async (c) => {
   let body: unknown;

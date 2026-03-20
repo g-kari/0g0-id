@@ -39,6 +39,7 @@ import {
   createAuthCode,
   findAndConsumeAuthCode,
   linkProvider,
+  insertLoginEvent,
 } from '@0g0-id/shared';
 import type { IdpEnv, User } from '@0g0-id/shared';
 
@@ -505,6 +506,21 @@ app.get('/callback', async (c) => {
     } catch (err) {
       console.error('[bootstrap] Failed to elevate bootstrap admin:', err);
     }
+  }
+
+  // ログインイベント記録（エラーがあってもログインフローは継続）
+  try {
+    const ipAddress =
+      c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null;
+    const userAgent = c.req.header('user-agent') ?? null;
+    await insertLoginEvent(c.env.DB, {
+      userId: user.id,
+      provider,
+      ipAddress,
+      userAgent,
+    });
+  } catch (err) {
+    console.error('[login-event] Failed to record login event:', err);
   }
 
   // ワンタイム認可コード発行

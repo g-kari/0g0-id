@@ -14,3 +14,4 @@ export * from './db/services';
 export * from './db/service-redirect-uris';
 export * from './db/refresh-tokens';
 export * from './db/auth-codes';
+export * from './db/login-events';
