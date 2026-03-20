@@ -1252,6 +1252,65 @@ describe('GET /api/users/:id/owned-services', () => {
   });
 });
 
+// ===== GET /api/users/me/tokens =====
+describe('GET /api/users/me/tokens', () => {
+  const app = buildApp();
+
+  const mockSessions = [
+    {
+      id: 'rt-1',
+      service_id: null,
+      service_name: null,
+      created_at: '2024-01-01T00:00:00Z',
+      expires_at: '2024-02-01T00:00:00Z',
+    },
+    {
+      id: 'rt-2',
+      service_id: 'svc-1',
+      service_name: 'My Service',
+      created_at: '2024-01-02T00:00:00Z',
+      expires_at: '2024-02-02T00:00:00Z',
+    },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(listActiveSessionsByUserId).mockResolvedValue(mockSessions);
+  });
+
+  it('Authorizationヘッダーなし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/tokens', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('アクティブセッション一覧を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/tokens');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: typeof mockSessions }>();
+    expect(body.data).toHaveLength(2);
+    expect(body.data[0].id).toBe('rt-1');
+    expect(body.data[0].service_id).toBeNull();
+    expect(body.data[1].service_name).toBe('My Service');
+  });
+
+  it('自分のuser_idでlistActiveSessionsByUserIdを呼ぶ', async () => {
+    await sendRequest(app, '/api/users/me/tokens');
+    expect(vi.mocked(listActiveSessionsByUserId)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      mockUserPayload.sub
+    );
+  });
+
+  it('セッションが0件の場合は空配列を返す', async () => {
+    vi.mocked(listActiveSessionsByUserId).mockResolvedValue([]);
+    const res = await sendRequest(app, '/api/users/me/tokens');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[] }>();
+    expect(body.data).toHaveLength(0);
+  });
+});
+
 // ===== DELETE /api/users/me/tokens =====
 describe('DELETE /api/users/me/tokens', () => {
   const app = buildApp();
