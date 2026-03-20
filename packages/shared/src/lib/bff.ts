@@ -9,12 +9,45 @@ export interface BffSession {
 }
 
 /**
- * セッションCookieをパースしてBffSessionを返す
+ * BffSession の構造を実行時に検証する型ガード。
+ * プロトタイプ汚染（JSON.parse による __proto__ インジェクション）への対策として、
+ * 既知フィールドのみを明示的に検査する。
+ */
+function isBffSession(obj: unknown): obj is BffSession {
+  if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return false;
+  const s = obj as Record<string, unknown>;
+  if (typeof s['access_token'] !== 'string' || !s['access_token']) return false;
+  if (typeof s['refresh_token'] !== 'string' || !s['refresh_token']) return false;
+  if (typeof s['user'] !== 'object' || s['user'] === null || Array.isArray(s['user'])) return false;
+  const u = s['user'] as Record<string, unknown>;
+  if (typeof u['id'] !== 'string' || !u['id']) return false;
+  if (typeof u['email'] !== 'string' || !u['email']) return false;
+  if (typeof u['name'] !== 'string') return false;
+  if (u['role'] !== 'user' && u['role'] !== 'admin') return false;
+  return true;
+}
+
+/**
+ * セッションCookieをパースしてBffSessionを返す。
+ * JSON.parse の結果を実行時バリデーションし、構造が不正な場合は null を返す。
+ * プロトタイプ汚染対策として既知フィールドのみを抽出して新オブジェクトを構築する。
  */
 export function parseSession(cookie: string | undefined): BffSession | null {
   if (!cookie) return null;
   try {
-    return JSON.parse(decodeURIComponent(atob(cookie)));
+    const raw: unknown = JSON.parse(decodeURIComponent(atob(cookie)));
+    if (!isBffSession(raw)) return null;
+    // 既知フィールドのみを抽出してプロトタイプ汚染を防止
+    return {
+      access_token: raw.access_token,
+      refresh_token: raw.refresh_token,
+      user: {
+        id: raw.user.id,
+        email: raw.user.email,
+        name: raw.user.name,
+        role: raw.user.role,
+      },
+    };
   } catch {
     return null;
   }
