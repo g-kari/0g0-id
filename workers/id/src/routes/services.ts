@@ -55,6 +55,27 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
   });
 });
 
+// GET /api/services/:id
+app.get('/:id', authMiddleware, adminMiddleware, async (c) => {
+  const serviceId = c.req.param('id');
+  const service = await findServiceById(c.env.DB, serviceId);
+  if (!service) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+  }
+
+  return c.json({
+    data: {
+      id: service.id,
+      name: service.name,
+      client_id: service.client_id,
+      allowed_scopes: service.allowed_scopes,
+      owner_user_id: service.owner_user_id,
+      created_at: service.created_at,
+      updated_at: service.updated_at,
+    },
+  });
+});
+
 // POST /api/services
 app.post('/', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   let rawBody: unknown;

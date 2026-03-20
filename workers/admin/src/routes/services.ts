@@ -11,6 +11,16 @@ app.get('/', async (c) => {
   return proxyResponse(res);
 });
 
+// GET /api/services/:id
+app.get('/:id', async (c) => {
+  const res = await fetchWithAuth(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/services/${c.req.param('id')}`
+  );
+  return proxyResponse(res);
+});
+
 // POST /api/services
 app.post('/', async (c) => {
   let body: unknown;

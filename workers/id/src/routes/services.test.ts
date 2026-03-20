@@ -170,6 +170,54 @@ describe('GET /api/services', () => {
   });
 });
 
+// ===== GET /api/services/:id（管理者のみ）=====
+describe('GET /api/services/:id', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findServiceById).mockResolvedValue(mockService);
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者でない場合 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/services/service-1');
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('サービスを取得して返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.id).toBe('service-1');
+    expect(body.data.name).toBe('Test Service');
+    expect(body.data.client_id).toBe('client-abc');
+    expect(vi.mocked(findServiceById)).toHaveBeenCalledWith(expect.anything(), 'service-1');
+  });
+
+  it('client_secret_hashを含まない', async () => {
+    const res = await sendRequest(app, '/api/services/service-1');
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data).not.toHaveProperty('client_secret_hash');
+  });
+
+  it('サービスが存在しない場合 → 404を返す', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/services/nonexistent');
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+});
+
 // ===== POST /api/services（管理者のみ）=====
 describe('POST /api/services', () => {
   const app = buildApp();
