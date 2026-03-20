@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parseSession, proxyResponse, fetchWithJsonBody } from './bff';
+import { parseSession, encodeSession, proxyResponse, fetchWithJsonBody } from './bff';
 import type { BffSession } from './bff';
 
 // hono/cookie をトップレベルでモック（vi.mock はホイスティングが必要）
@@ -10,11 +10,6 @@ vi.mock('hono/cookie', () => ({
 }));
 
 import { getCookie } from 'hono/cookie';
-
-// BffSessionをbase64エンコードするヘルパー
-function encodeSession(session: BffSession): string {
-  return btoa(encodeURIComponent(JSON.stringify(session)));
-}
 
 const mockSession: BffSession = {
   access_token: 'access-token-123',

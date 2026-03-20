@@ -20,6 +20,31 @@ export function parseSession(cookie: string | undefined): BffSession | null {
   }
 }
 
+/**
+ * BffSessionをBase64エンコードしてCookie値として返す。
+ * parseSession の逆操作。
+ */
+export function encodeSession(session: BffSession): string {
+  return btoa(encodeURIComponent(JSON.stringify(session)));
+}
+
+/**
+ * セッションCookieを30日間有効で設定する。
+ */
+export function setSessionCookie(
+  c: Context<{ Bindings: BffEnv }>,
+  cookieName: string,
+  session: BffSession
+): void {
+  setCookie(c, cookieName, encodeSession(session), {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: 30 * 24 * 60 * 60,
+  });
+}
+
 function errorResponse(status: number, code: string, message: string): Response {
   return new Response(JSON.stringify({ error: { code, message } }), {
     status,
@@ -89,13 +114,7 @@ export async function fetchWithAuth(
         access_token: refreshData.data.access_token,
         refresh_token: refreshData.data.refresh_token,
       };
-      setCookie(c, sessionCookieName, btoa(encodeURIComponent(JSON.stringify(newSession))), {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'Lax',
-        path: '/',
-        maxAge: 30 * 24 * 60 * 60,
-      });
+      setSessionCookie(c, sessionCookieName, newSession);
 
       try {
         res = await makeRequest(refreshData.data.access_token);
