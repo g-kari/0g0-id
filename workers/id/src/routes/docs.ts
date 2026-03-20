@@ -1148,13 +1148,223 @@ const INTERNAL_OPENAPI = {
         },
       },
     },
+    '/api/userinfo': {
+      get: {
+        tags: ['OIDC'],
+        summary: 'UserInfo エンドポイント',
+        description:
+          'OIDC Core 1.0 Section 5.3 準拠のUserInfoエンドポイント。\n\n' +
+          'アクセストークンのスコープに応じたクレームを返す。\n\n' +
+          '- `scope` なし（BFFセッション）: 全クレームを返す\n' +
+          '- `profile` スコープ: `name`, `picture`\n' +
+          '- `email` スコープ: `email`, `email_verified`\n' +
+          '- `phone` スコープ: `phone_number`\n' +
+          '- `address` スコープ: `address`',
+        security: [{ BearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'スコープに応じたユーザークレーム',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    sub: { type: 'string', description: 'ユーザー識別子（サービストークンはペアワイズsub）' },
+                    name: { type: 'string', description: '表示名（profileスコープ）' },
+                    picture: { type: 'string', nullable: true, description: 'プロフィール画像URL（profileスコープ）' },
+                    email: { type: 'string', description: 'メールアドレス（emailスコープ）' },
+                    email_verified: { type: 'boolean', description: 'メール認証済みフラグ（emailスコープ）' },
+                    phone_number: { type: 'string', nullable: true, description: '電話番号（phoneスコープ）' },
+                    address: {
+                      type: 'object',
+                      nullable: true,
+                      description: '住所（addressスコープ）',
+                      properties: { formatted: { type: 'string' } },
+                    },
+                    updated_at: { type: 'integer', description: '最終更新日時（Unix timestamp）' },
+                  },
+                  required: ['sub', 'updated_at'],
+                },
+                examples: {
+                  full: {
+                    value: {
+                      sub: 'user_abc123',
+                      name: '山田 太郎',
+                      picture: 'https://example.com/photo.jpg',
+                      email: 'taro@example.com',
+                      email_verified: true,
+                      updated_at: 1735689600,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'UNAUTHORIZED — トークン無効または期限切れ' },
+        },
+      },
+    },
+    '/api/metrics': {
+      get: {
+        tags: ['管理者 API'],
+        summary: 'システムメトリクス取得',
+        description: '総ユーザー数・管理者数・サービス数・アクティブセッション数・直近24時間のログイン数を返す（管理者専用）。',
+        security: [{ BearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'メトリクス',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: {
+                      type: 'object',
+                      properties: {
+                        total_users: { type: 'integer', description: '総ユーザー数' },
+                        admin_users: { type: 'integer', description: '管理者ユーザー数' },
+                        total_services: { type: 'integer', description: '登録済みサービス数' },
+                        active_sessions: { type: 'integer', description: 'アクティブなリフレッシュトークン数' },
+                        recent_logins_24h: { type: 'integer', description: '直近24時間のログイン数' },
+                      },
+                      required: ['total_users', 'admin_users', 'total_services', 'active_sessions', 'recent_logins_24h'],
+                    },
+                  },
+                },
+                example: {
+                  data: {
+                    total_users: 42,
+                    admin_users: 2,
+                    total_services: 5,
+                    active_sessions: 128,
+                    recent_logins_24h: 17,
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'UNAUTHORIZED' },
+          '403': { description: 'FORBIDDEN — 管理者権限なし' },
+        },
+      },
+    },
+    '/api/token/revoke': {
+      post: {
+        tags: ['トークン'],
+        summary: 'トークン失効（RFC 7009）',
+        description:
+          'RFC 7009 準拠のトークン失効エンドポイント。\n\n' +
+          'リフレッシュトークンを失効させる。Basic認証（`client_id:client_secret`）が必要。\n\n' +
+          'RFC 7009 に従い、トークンが存在しない・失効済みの場合も 200 OK を返す（情報漏洩防止）。\n\n' +
+          '`application/json` および `application/x-www-form-urlencoded` 両方を受け付ける。',
+        security: [{ BasicAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: { token: { type: 'string', description: '失効させるリフレッシュトークン' } },
+                required: ['token'],
+              },
+            },
+            'application/x-www-form-urlencoded': {
+              schema: {
+                type: 'object',
+                properties: { token: { type: 'string', description: '失効させるリフレッシュトークン' } },
+                required: ['token'],
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'OK（トークン存在有無に関わらず常に返す）' },
+          '400': { description: 'BAD_REQUEST — リクエストボディ不正またはtokenフィールドなし' },
+          '401': { description: 'UNAUTHORIZED — Basic認証失敗' },
+        },
+      },
+    },
+    '/.well-known/openid-configuration': {
+      get: {
+        tags: ['OIDC'],
+        summary: 'OIDC Discovery Document',
+        description:
+          'RFC 8414 / OIDC Discovery 1.0 準拠のディスカバリードキュメント。\n\n' +
+          '`issuer`, `jwks_uri`, `userinfo_endpoint` など、OIDC プロバイダーとして必要なメタデータを返す。\n\n' +
+          'レスポンスは24時間キャッシュ可能（`Cache-Control: public, max-age=86400`）。',
+        responses: {
+          '200': {
+            description: 'OIDC プロバイダーメタデータ',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    issuer: { type: 'string', example: 'https://id.0g0.xyz' },
+                    authorization_endpoint: { type: 'string', example: 'https://id.0g0.xyz/auth/login' },
+                    token_endpoint: { type: 'string', example: 'https://id.0g0.xyz/auth/exchange' },
+                    jwks_uri: { type: 'string', example: 'https://id.0g0.xyz/.well-known/jwks.json' },
+                    userinfo_endpoint: { type: 'string', example: 'https://id.0g0.xyz/api/userinfo' },
+                    introspection_endpoint: { type: 'string', example: 'https://id.0g0.xyz/api/token/introspect' },
+                    revocation_endpoint: { type: 'string', example: 'https://id.0g0.xyz/api/token/revoke' },
+                    scopes_supported: { type: 'array', items: { type: 'string' }, example: ['openid', 'profile', 'email', 'phone', 'address'] },
+                    response_types_supported: { type: 'array', items: { type: 'string' }, example: ['code'] },
+                    grant_types_supported: { type: 'array', items: { type: 'string' }, example: ['authorization_code', 'refresh_token'] },
+                    subject_types_supported: { type: 'array', items: { type: 'string' }, example: ['pairwise'] },
+                    id_token_signing_alg_values_supported: { type: 'array', items: { type: 'string' }, example: ['ES256'] },
+                    token_endpoint_auth_methods_supported: { type: 'array', items: { type: 'string' }, example: ['client_secret_basic', 'client_secret_post'] },
+                    code_challenge_methods_supported: { type: 'array', items: { type: 'string' }, example: ['S256'] },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/auth/link-intent': {
+      post: {
+        tags: ['認証フロー'],
+        summary: 'SNSプロバイダー連携用ワンタイムトークン発行',
+        description:
+          '認証済みユーザーに対してSNSプロバイダー連携用のワンタイムトークンを発行する。\n\n' +
+          '発行されたトークンは `/auth/login?link_token=<token>` の `link_token` パラメータに使用する。\n\n' +
+          'トークンの有効期限は5分。URLパラメータで `link_user_id` を直接受け付けるとアカウント乗っ取りが可能なため、このエンドポイントでアクセストークンで認証したうえでワンタイムトークンを発行する設計。',
+        security: [{ BearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'ワンタイム連携トークン',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: {
+                      type: 'object',
+                      properties: {
+                        link_token: { type: 'string', description: '5分間有効なワンタイムトークン' },
+                      },
+                      required: ['link_token'],
+                    },
+                  },
+                },
+                example: { data: { link_token: 'abc123def456...' } },
+              },
+            },
+          },
+          '401': { description: 'UNAUTHORIZED — アクセストークン無効' },
+        },
+      },
+    },
   },
   tags: [
     { name: '認証フロー', description: 'OAuth2.0（Google/LINE/Twitch/GitHub/X）を使ったログイン・トークン管理' },
+    { name: 'OIDC', description: 'OIDC Core 1.0 準拠エンドポイント（UserInfo・Discovery）' },
     { name: 'ユーザー API', description: 'ユーザー自身のプロフィール・連携・ログイン履歴管理' },
     { name: 'ユーザー API (管理者)', description: '管理者専用のユーザー管理・ログイン履歴閲覧API' },
     { name: 'サービス管理 API (管理者)', description: '管理者専用のサービス登録・設定・認可ユーザー管理API' },
-    { name: 'トークン', description: 'JWTトークン検証・イントロスペクション' },
+    { name: '管理者 API', description: '管理者専用のシステム管理API（メトリクス等）' },
+    { name: 'トークン', description: 'JWTトークン検証・イントロスペクション・失効' },
     { name: '外部サービス向け API', description: '連携サービス向けのユーザーデータ取得API' },
     { name: '公開エンドポイント', description: '認証不要の公開エンドポイント' },
   ],
@@ -1243,6 +1453,12 @@ Authorization: Basic <Base64(client_id:client_secret)>
   servers: [{ url: 'https://id.0g0.xyz', description: '本番環境' }],
   components: {
     securitySchemes: {
+      BearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'アクセストークン（ES256 JWT、有効期限15分）',
+      },
       BasicAuth: {
         type: 'http',
         scheme: 'basic',
@@ -1643,10 +1859,169 @@ Authorization: Basic <Base64(client_id:client_secret)>
         },
       },
     },
+    '/api/userinfo': {
+      get: {
+        tags: ['OIDC'],
+        summary: 'UserInfo エンドポイント（OIDC Core 1.0）',
+        description:
+          'OIDC Core 1.0 Section 5.3 準拠のUserInfoエンドポイント。\n\n' +
+          'アクセストークンに付与されたスコープに応じたユーザークレームを返す。\n\n' +
+          '| スコープ | 返却クレーム |\n' +
+          '|---------|------------|\n' +
+          '| `profile` | `name`, `picture` |\n' +
+          '| `email` | `email`, `email_verified` |\n' +
+          '| `phone` | `phone_number` |\n' +
+          '| `address` | `address` |\n\n' +
+          '`sub` は常にサービス固有のペアワイズ識別子。',
+        security: [{ BearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'スコープに応じたユーザークレーム',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    sub: { type: 'string', description: 'ペアワイズユーザー識別子' },
+                    name: { type: 'string', description: '表示名（profileスコープ）' },
+                    picture: { type: 'string', nullable: true, description: 'プロフィール画像URL（profileスコープ）' },
+                    email: { type: 'string', description: 'メールアドレス（emailスコープ）' },
+                    email_verified: { type: 'boolean', description: 'メール認証済み（emailスコープ）' },
+                    phone_number: { type: 'string', nullable: true, description: '電話番号（phoneスコープ）' },
+                    address: {
+                      type: 'object',
+                      nullable: true,
+                      description: '住所（addressスコープ）',
+                      properties: { formatted: { type: 'string' } },
+                    },
+                    updated_at: { type: 'integer', description: '最終更新日時（Unix timestamp）' },
+                  },
+                  required: ['sub', 'updated_at'],
+                },
+                example: {
+                  sub: 'pairwise_abc123',
+                  name: '山田 太郎',
+                  picture: 'https://example.com/photo.jpg',
+                  email: 'taro@example.com',
+                  email_verified: true,
+                  updated_at: 1735689600,
+                },
+              },
+            },
+          },
+          '401': {
+            description: 'UNAUTHORIZED — アクセストークン無効・期限切れ',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    error: { type: 'string', example: 'invalid_token' },
+                    error_description: { type: 'string', example: 'User not found' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/token/revoke': {
+      post: {
+        tags: ['トークン失効'],
+        summary: 'リフレッシュトークン失効（RFC 7009）',
+        description:
+          'RFC 7009 準拠のトークン失効エンドポイント。\n\n' +
+          'リフレッシュトークンを明示的に失効させる。Basic認証（`client_id:client_secret`）が必要。\n\n' +
+          '- トークンが存在しない・失効済みの場合も 200 OK を返す（RFC 7009 仕様・情報漏洩防止）\n' +
+          '- 自サービスが発行したトークンのみ失効可能（他サービスのトークンは no-op）\n' +
+          '- `application/json` と `application/x-www-form-urlencoded` の両形式に対応',
+        security: [{ BasicAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: { token: { type: 'string', description: '失効させるリフレッシュトークン' } },
+                required: ['token'],
+              },
+            },
+            'application/x-www-form-urlencoded': {
+              schema: {
+                type: 'object',
+                properties: { token: { type: 'string', description: '失効させるリフレッシュトークン' } },
+                required: ['token'],
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'OK（失効処理完了またはno-op）' },
+          '400': { description: 'BAD_REQUEST — `token` フィールドなし' },
+          '401': { description: 'UNAUTHORIZED — Basic認証失敗' },
+        },
+      },
+    },
+    '/.well-known/openid-configuration': {
+      get: {
+        tags: ['OIDC'],
+        summary: 'OIDC Discovery Document',
+        description:
+          'RFC 8414 / OIDC Discovery 1.0 準拠のプロバイダーメタデータ。\n\n' +
+          'レスポンスは24時間キャッシュ可能（`Cache-Control: public, max-age=86400`）。',
+        responses: {
+          '200': {
+            description: 'OIDC プロバイダーメタデータ',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    issuer: { type: 'string' },
+                    authorization_endpoint: { type: 'string' },
+                    token_endpoint: { type: 'string' },
+                    jwks_uri: { type: 'string' },
+                    userinfo_endpoint: { type: 'string' },
+                    introspection_endpoint: { type: 'string' },
+                    revocation_endpoint: { type: 'string' },
+                    scopes_supported: { type: 'array', items: { type: 'string' } },
+                    response_types_supported: { type: 'array', items: { type: 'string' } },
+                    grant_types_supported: { type: 'array', items: { type: 'string' } },
+                    subject_types_supported: { type: 'array', items: { type: 'string' } },
+                    id_token_signing_alg_values_supported: { type: 'array', items: { type: 'string' } },
+                    token_endpoint_auth_methods_supported: { type: 'array', items: { type: 'string' } },
+                    code_challenge_methods_supported: { type: 'array', items: { type: 'string' } },
+                  },
+                },
+                example: {
+                  issuer: 'https://id.0g0.xyz',
+                  authorization_endpoint: 'https://id.0g0.xyz/auth/login',
+                  token_endpoint: 'https://id.0g0.xyz/auth/exchange',
+                  jwks_uri: 'https://id.0g0.xyz/.well-known/jwks.json',
+                  userinfo_endpoint: 'https://id.0g0.xyz/api/userinfo',
+                  introspection_endpoint: 'https://id.0g0.xyz/api/token/introspect',
+                  revocation_endpoint: 'https://id.0g0.xyz/api/token/revoke',
+                  scopes_supported: ['openid', 'profile', 'email', 'phone', 'address'],
+                  response_types_supported: ['code'],
+                  grant_types_supported: ['authorization_code', 'refresh_token'],
+                  subject_types_supported: ['pairwise'],
+                  id_token_signing_alg_values_supported: ['ES256'],
+                  token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post'],
+                  code_challenge_methods_supported: ['S256'],
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   },
   tags: [
     { name: '認証フロー', description: 'ログイン・トークン交換・更新・ログアウト' },
+    { name: 'OIDC', description: 'OIDC Core 1.0 準拠エンドポイント（UserInfo・Discovery）' },
     { name: 'トークン検証', description: 'RFC 7662 トークンイントロスペクション（Basic認証）' },
+    { name: 'トークン失効', description: 'RFC 7009 トークン失効（Basic認証）' },
     { name: 'JWT検証', description: 'アクセストークンの署名検証用公開鍵' },
     { name: 'ユーザーデータ取得', description: '連携サービス向けのユーザー情報取得API（Basic認証）' },
   ],

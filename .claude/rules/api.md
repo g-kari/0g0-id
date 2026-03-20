@@ -36,7 +36,7 @@ paths:
 | 変更の種類 | 更新対象 |
 |-----------|---------|
 | id worker の API 追加・変更 | `INTERNAL_OPENAPI.paths` |
-| 外部サービス向け API（`/api/external/`, `/auth/`, `/api/token/introspect`, `/.well-known/`）の変更 | `EXTERNAL_OPENAPI.paths` |
+| 外部サービス向け API（`/api/external/`, `/api/userinfo`, `/auth/`, `/api/token/introspect`, `/api/token/revoke`, `/.well-known/`）の変更 | `EXTERNAL_OPENAPI.paths` |
 | 新しいスキーマ型の追加 | `INTERNAL_OPENAPI.components.schemas` および/または `EXTERNAL_OPENAPI.components.schemas` |
 | API の削除 | 対応する `paths` エントリも削除 |
 
@@ -56,9 +56,13 @@ paths:
 | /auth/logout | POST | Service Bindings | ログアウト |
 | /auth/refresh | POST | Service Bindings | トークンリフレッシュ |
 | /.well-known/jwks.json | GET | Public | JWKS公開鍵 |
+| /.well-known/openid-configuration | GET | Public | OIDC Discovery Document |
+| /api/userinfo | GET | JWT | OIDC UserInfo エンドポイント |
+| /auth/link-intent | POST | JWT | SNSプロバイダー連携用ワンタイムトークン発行 |
 | /api/users/me | GET/PATCH | JWT | 自ユーザー情報 |
 | /api/users | GET | JWT+Admin | ユーザー一覧 |
 | /api/token/introspect | POST | Basic認証 | トークンイントロスペクション |
+| /api/token/revoke | POST | Basic認証 | トークン失効（RFC 7009） |
 | /api/services | GET/POST | JWT+Admin | サービス管理 |
 | /api/services/:id | DELETE | JWT+Admin | サービス削除 |
 | /api/services/:id/redirect-uris | GET/POST/DELETE | JWT+Admin | redirect_uri管理 |
