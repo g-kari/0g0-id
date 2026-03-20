@@ -1,20 +1,16 @@
 import { createMiddleware } from 'hono/factory';
 import type { IdpEnv } from '@0g0-id/shared';
 
-const ALLOWED_ORIGINS = new Set<string>();
-
 export const csrfMiddleware = createMiddleware<{ Bindings: IdpEnv }>(async (c, next) => {
   const origin = c.req.header('Origin') ?? c.req.header('Referer');
   if (!origin) {
     return c.json({ error: { code: 'FORBIDDEN', message: 'Origin header required' } }, 403);
   }
 
-  // 許可オリジンの構築（初回のみ）
-  if (ALLOWED_ORIGINS.size === 0) {
-    ALLOWED_ORIGINS.add(c.env.IDP_ORIGIN);
-    ALLOWED_ORIGINS.add(c.env.USER_ORIGIN);
-    ALLOWED_ORIGINS.add(c.env.ADMIN_ORIGIN);
-  }
+  // リクエストごとに env から許可オリジンを構築する（モジュールレベルのキャッシュは使わない）
+  // Cloudflare Workers では env バインディングはリクエストごとに渡されるため、
+  // モジュールレベルの可変グローバルにキャッシュすると設定変更が反映されないリスクがある
+  const allowedOrigins = new Set([c.env.IDP_ORIGIN, c.env.USER_ORIGIN, c.env.ADMIN_ORIGIN]);
 
   let originBase: string;
   try {
@@ -24,7 +20,7 @@ export const csrfMiddleware = createMiddleware<{ Bindings: IdpEnv }>(async (c, n
     return c.json({ error: { code: 'FORBIDDEN', message: 'Invalid origin' } }, 403);
   }
 
-  if (!ALLOWED_ORIGINS.has(originBase)) {
+  if (!allowedOrigins.has(originBase)) {
     return c.json({ error: { code: 'FORBIDDEN', message: 'Invalid origin' } }, 403);
   }
 
