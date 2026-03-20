@@ -5,13 +5,16 @@ import {
   hasUserAuthorizedService,
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
+  parsePagination,
 } from '@0g0-id/shared';
 import type { IdpEnv, User, Service } from '@0g0-id/shared';
-import { authenticateService } from '../utils/service-auth';
+import { serviceAuthMiddleware } from '../utils/service-auth';
 import { parseAllowedScopes } from '../utils/scopes';
 import { externalApiRateLimitMiddleware } from '../middleware/rate-limit';
 
-const app = new Hono<{ Bindings: IdpEnv }>();
+type Variables = { service: Service };
+
+const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
 // スコープ→フィールド抽出のマップ（スコープ追加時はここに追記するだけ）
 const SCOPE_FIELDS: Record<string, (u: User) => Record<string, unknown>> = {
@@ -49,23 +52,17 @@ async function buildUserData(
 }
 
 // GET /api/external/users — 認可済みユーザー一覧（外部サービス向け）
-app.get('/users', externalApiRateLimitMiddleware, async (c) => {
-  let service: Awaited<ReturnType<typeof authenticateService>>;
-  try {
-    service = await authenticateService(c.env.DB, c.req.header('Authorization'));
-  } catch {
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
-  }
-  if (!service) {
-    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid client credentials' } }, 401);
-  }
+app.get('/users', externalApiRateLimitMiddleware, serviceAuthMiddleware, async (c) => {
+  const service = c.get('service');
 
-  // ページネーションパラメータのパース（Number + isInteger で厳密検証）
-  const limitRaw = Number(c.req.query('limit') ?? '50');
-  const offsetRaw = Number(c.req.query('offset') ?? '0');
-  const limit =
-    Number.isInteger(limitRaw) && limitRaw >= 1 && limitRaw <= 100 ? limitRaw : 50;
-  const offset = Number.isInteger(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
+  const pagination = parsePagination(
+    { limit: c.req.query('limit'), offset: c.req.query('offset') },
+    { defaultLimit: 50, maxLimit: 100 }
+  );
+  if ('error' in pagination) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
+  }
+  const { limit, offset } = pagination;
 
   let users: User[];
   let total: number;
@@ -80,23 +77,14 @@ app.get('/users', externalApiRateLimitMiddleware, async (c) => {
 
   const allowedScopes = parseAllowedScopes(service.allowed_scopes);
 
-  const data = await Promise.all(users.map((user) => buildUserData(service!, user, allowedScopes)));
+  const data = await Promise.all(users.map((user) => buildUserData(service, user, allowedScopes)));
 
   return c.json({ data, meta: { total, limit, offset } });
 });
 
 // GET /api/external/users/:id — IDによるユーザー完全一致検索（外部サービス向け）
-app.get('/users/:id', externalApiRateLimitMiddleware, async (c) => {
-  let service: Awaited<ReturnType<typeof authenticateService>>;
-  try {
-    service = await authenticateService(c.env.DB, c.req.header('Authorization'));
-  } catch {
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
-  }
-  if (!service) {
-    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid client credentials' } }, 401);
-  }
-
+app.get('/users/:id', externalApiRateLimitMiddleware, serviceAuthMiddleware, async (c) => {
+  const service = c.get('service');
   const userId = c.req.param('id');
 
   let authorized: boolean;

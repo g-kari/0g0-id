@@ -2,15 +2,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
 
 // モジュールモック（sha256はAtob/Btoa依存のため直接モック）
-vi.mock('@0g0-id/shared', () => ({
-  findUserById: vi.fn(),
-  findServiceByClientId: vi.fn(),
-  sha256: vi.fn(),
-  timingSafeEqual: vi.fn(),
-  hasUserAuthorizedService: vi.fn(),
-  listUsersAuthorizedForService: vi.fn(),
-  countUsersAuthorizedForService: vi.fn(),
-}));
+vi.mock('@0g0-id/shared', async (importActual) => {
+  const actual = await importActual<typeof import('@0g0-id/shared')>();
+  return {
+    ...actual,
+    findUserById: vi.fn(),
+    findServiceByClientId: vi.fn(),
+    sha256: vi.fn(),
+    timingSafeEqual: vi.fn(),
+    hasUserAuthorizedService: vi.fn(),
+    listUsersAuthorizedForService: vi.fn(),
+    countUsersAuthorizedForService: vi.fn(),
+  };
+});
 
 import {
   findUserById,
@@ -379,48 +383,40 @@ describe('GET /api/external/users', () => {
       );
     });
 
-    it('limitが範囲外（>100）の場合はデフォルト50を使用', async () => {
+    it('limitが範囲外（>100）の場合はmaxLimitの100に丸める', async () => {
       const res = await requestExternalUserList(app, { limit: '200' });
       expect(res.status).toBe(200);
       expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
         expect.anything(),
         'service-1',
-        50,
+        100,
         0
       );
     });
 
-    it('limitが不正な文字列の場合はデフォルト50を使用', async () => {
+    it('limitが不正な文字列の場合は400を返す', async () => {
       const res = await requestExternalUserList(app, { limit: 'abc' });
-      expect(res.status).toBe(200);
-      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
-        expect.anything(),
-        'service-1',
-        50,
-        0
-      );
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('BAD_REQUEST');
     });
 
-    it('limitが整数でない場合（小数点）はデフォルト50を使用', async () => {
+    it('limitが整数でない場合（小数点）はparseIntで切り捨てる', async () => {
       const res = await requestExternalUserList(app, { limit: '1.5' });
       expect(res.status).toBe(200);
       expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
         expect.anything(),
         'service-1',
-        50,
+        1,
         0
       );
     });
 
-    it('offsetが負の場合はデフォルト0を使用', async () => {
+    it('offsetが負の場合は400を返す', async () => {
       const res = await requestExternalUserList(app, { offset: '-5' });
-      expect(res.status).toBe(200);
-      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
-        expect.anything(),
-        'service-1',
-        50,
-        0
-      );
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('BAD_REQUEST');
     });
   });
 
