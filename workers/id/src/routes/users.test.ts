@@ -1247,3 +1247,87 @@ describe('GET /api/users/:id/owned-services', () => {
     expect(vi.mocked(listServicesByOwner)).toHaveBeenCalledWith(expect.anything(), 'user-1');
   });
 });
+
+// ===== DELETE /api/users/me/tokens =====
+describe('DELETE /api/users/me/tokens', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(revokeUserTokens).mockResolvedValue(undefined);
+  });
+
+  it('Authorizationヘッダーなし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/tokens', { method: 'DELETE', withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('Originヘッダーなし（CSRF）→ 403を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/tokens', { method: 'DELETE' });
+    expect(res.status).toBe(403);
+  });
+
+  it('全リフレッシュトークンを無効化して204を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/tokens', {
+      method: 'DELETE',
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(204);
+    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), mockUserPayload.sub);
+  });
+});
+
+// ===== DELETE /api/users/:id/tokens（管理者のみ）=====
+describe('DELETE /api/users/:id/tokens', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(revokeUserTokens).mockResolvedValue(undefined);
+  });
+
+  it('Authorizationヘッダーなし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/tokens', {
+      method: 'DELETE',
+      withAuth: false,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者以外 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/users/user-1/tokens', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('Originヘッダーなし（CSRF）→ 403を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/tokens', { method: 'DELETE' });
+    expect(res.status).toBe(403);
+  });
+
+  it('対象ユーザーが存在しない → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/nonexistent/tokens', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('対象ユーザーの全リフレッシュトークンを無効化して204を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/tokens', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(204);
+    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), 'user-1');
+  });
+});
