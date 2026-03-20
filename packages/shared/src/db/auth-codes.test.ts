@@ -15,6 +15,7 @@ function makeD1Mock(firstResult: unknown, changes = 1): D1Database {
 const baseAuthCode: AuthCode = {
   id: 'code-id-1',
   user_id: 'user-1',
+  service_id: null,
   code_hash: 'hash-abc123',
   redirect_to: 'https://user.0g0.xyz/callback',
   expires_at: '2024-12-31T23:59:59Z',
@@ -40,6 +41,7 @@ describe('createAuthCode', () => {
     expect(stmt.bind).toHaveBeenCalledWith(
       'code-id-1',
       'user-1',
+      null,
       'hash-abc123',
       'https://user.0g0.xyz/callback',
       '2024-12-31T23:59:59Z'

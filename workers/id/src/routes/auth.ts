@@ -40,6 +40,9 @@ import {
   countAdminUsers,
   createAuthCode,
   findAndConsumeAuthCode,
+  findServiceByClientId,
+  isValidRedirectUri,
+  timingSafeEqual,
   linkProvider,
   insertLoginEvent,
 } from '@0g0-id/shared';
@@ -472,10 +475,12 @@ async function issueTokenPair(
 // ─── ルートハンドラー ──────────────────────────────────────────────────────────
 
 // GET /auth/login — BFFからのリダイレクト受け取り + プロバイダー認可へリダイレクト
+// client_id を指定すると登録済みサービスの redirect URI で検証（OAuth 2.0 Authorization Code フロー）
 app.get('/login', authRateLimitMiddleware, async (c) => {
   const redirectTo = c.req.query('redirect_to');
   const bffState = c.req.query('state');
   const providerParam = c.req.query('provider') ?? 'google';
+  const clientId = c.req.query('client_id');
   // link_user_id を直接URLパラメータとして受け付けるのはアカウント乗っ取り攻撃に悪用可能なため、
   // サーバー側で発行したワンタイムトークン（link_token）を使用する
   const linkToken = c.req.query('link_token');
@@ -502,13 +507,25 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
     }
   }
 
-  // redirect_toの検証
-  // IDP_ORIGIN と同一ベースドメイン（eTLD+1）のサブドメインを自動許可する。
-  // 例: IDP_ORIGIN が https://id.0g0.xyz なら https://*.0g0.xyz/* を全て許可。
-  // EXTRA_BFF_ORIGINS でさらに追加オリジン（カンマ区切り）を設定可能。
-  const isAllowed = isAllowedRedirectTo(redirectTo, c.env.IDP_ORIGIN, c.env.EXTRA_BFF_ORIGINS);
-  if (!isAllowed) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid redirect_to' } }, 400);
+  // redirect_to の検証
+  // client_id 指定あり → 登録済みサービスの redirect URI テーブルで検証（外部サービス OAuth フロー）
+  // client_id 指定なし → 同一ベースドメイン / EXTRA_BFF_ORIGINS で検証（BFF フロー）
+  let serviceId: string | undefined;
+  if (clientId) {
+    const service = await findServiceByClientId(c.env.DB, clientId);
+    if (!service) {
+      return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid client_id' } }, 400);
+    }
+    const valid = await isValidRedirectUri(c.env.DB, service.id, redirectTo);
+    if (!valid) {
+      return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid redirect_to' } }, 400);
+    }
+    serviceId = service.id;
+  } else {
+    const allowed = isAllowedRedirectTo(redirectTo, c.env.IDP_ORIGIN, c.env.EXTRA_BFF_ORIGINS);
+    if (!allowed) {
+      return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid redirect_to' } }, 400);
+    }
   }
 
   // link_token の検証（SNSプロバイダー連携フロー）
@@ -527,13 +544,14 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
   const idCodeVerifier = generateCodeVerifier();
   const idCodeChallenge = await generateCodeChallenge(idCodeVerifier);
 
-  // BFF情報をstate cookieに結びつけて保存（providerも含める）
+  // BFF情報をstate cookieに結びつけて保存（provider / serviceId も含める）
   const stateData = JSON.stringify({
     idState,
     bffState,
     redirectTo,
     provider,
     ...(linkUserId ? { linkUserId } : {}),
+    ...(serviceId ? { serviceId } : {}),
   });
   setSecureCookie(c, STATE_COOKIE, btoa(encodeURIComponent(stateData)), 600); // 10分
   setSecureCookie(c, PKCE_COOKIE, idCodeVerifier, 600);
@@ -584,6 +602,7 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
     redirectTo: string;
     provider: OAuthProvider;
     linkUserId?: string;
+    serviceId?: string;
   };
   try {
     stateData = JSON.parse(decodeURIComponent(atob(stateCookieRaw)));
@@ -685,6 +704,7 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
   await createAuthCode(c.env.DB, {
     id: crypto.randomUUID(),
     userId: user.id,
+    serviceId: stateData.serviceId ?? null,
     codeHash,
     redirectTo: stateData.redirectTo,
     expiresAt,
@@ -698,7 +718,8 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
   return c.redirect(callbackUrl.toString());
 });
 
-// POST /auth/exchange — ワンタイムコード交換（BFFサーバー間専用）
+// POST /auth/exchange — ワンタイムコード交換
+// BFF（service_id なし）および外部サービス（service_id あり）の両方をサポート
 app.post('/exchange', async (c) => {
   const result = await parseJsonBody(c, ExchangeSchema);
   if (!result.ok) return result.response;
@@ -722,9 +743,62 @@ app.post('/exchange', async (c) => {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  // アクセストークン・リフレッシュトークン・IDトークン発行
+  // サービスOAuthフロー: service_id が設定されている場合はクライアント認証を要求
+  let serviceId: string | null = null;
+  let idTokenSub: string = user.id;
+  let idTokenAud: string = c.env.IDP_ORIGIN;
+
+  if (authCode.service_id !== null) {
+    // Authorization: Basic <base64(client_id:client_secret)> を検証
+    const authHeader = c.req.header('Authorization');
+    if (!authHeader || !authHeader.startsWith('Basic ')) {
+      return c.json(
+        { error: { code: 'UNAUTHORIZED', message: 'Service authentication required' } },
+        401
+      );
+    }
+
+    let clientId: string;
+    let clientSecret: string;
+    try {
+      const decoded = atob(authHeader.slice(6));
+      const colonIdx = decoded.indexOf(':');
+      if (colonIdx === -1) throw new Error('missing colon');
+      clientId = decoded.slice(0, colonIdx);
+      clientSecret = decoded.slice(colonIdx + 1);
+    } catch {
+      return c.json(
+        { error: { code: 'UNAUTHORIZED', message: 'Invalid Authorization header' } },
+        401
+      );
+    }
+
+    const service = await findServiceByClientId(c.env.DB, clientId);
+    // service_id の一致確認（認可コードが別サービス向けであれば拒否）
+    if (!service || service.id !== authCode.service_id) {
+      return c.json(
+        { error: { code: 'UNAUTHORIZED', message: 'Invalid client credentials' } },
+        401
+      );
+    }
+
+    const secretHash = await sha256(clientSecret);
+    if (!timingSafeEqual(secretHash, service.client_secret_hash)) {
+      return c.json(
+        { error: { code: 'UNAUTHORIZED', message: 'Invalid client credentials' } },
+        401
+      );
+    }
+
+    serviceId = service.id;
+    // ペアワイズ sub（OIDC Core 1.0 §8.1）: sha256(client_id:user_id)
+    idTokenSub = await sha256(`${service.client_id}:${user.id}`);
+    idTokenAud = service.client_id;
+  }
+
+  // アクセストークン・リフレッシュトークン発行
   const { accessToken, refreshToken: refreshTokenRaw } = await issueTokenPair(c.env.DB, c.env, user, {
-    serviceId: null,
+    serviceId,
   });
 
   // OIDC ID トークン発行（OpenID Connect Core 1.0）
@@ -732,8 +806,8 @@ app.post('/exchange', async (c) => {
   const idToken = await signIdToken(
     {
       iss: c.env.IDP_ORIGIN,
-      sub: user.id,
-      aud: c.env.IDP_ORIGIN,
+      sub: idTokenSub,
+      aud: idTokenAud,
       email: user.email,
       name: user.name,
       picture: user.picture,

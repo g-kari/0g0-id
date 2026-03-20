@@ -40,6 +40,9 @@ vi.mock('@0g0-id/shared', () => ({
   countAdminUsers: vi.fn(),
   createAuthCode: vi.fn(),
   findAndConsumeAuthCode: vi.fn(),
+  findServiceByClientId: vi.fn(),
+  isValidRedirectUri: vi.fn(),
+  timingSafeEqual: vi.fn(),
   linkProvider: vi.fn(),
   insertLoginEvent: vi.fn(),
   verifyAccessToken: vi.fn(),
@@ -81,6 +84,8 @@ import {
   countAdminUsers,
   createAuthCode,
   findAndConsumeAuthCode,
+  findServiceByClientId,
+  timingSafeEqual,
   verifyAccessToken,
 } from '@0g0-id/shared';
 
@@ -477,9 +482,11 @@ describe('POST /auth/exchange', () => {
     vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
       id: 'code-id',
       user_id: 'user-1',
+      service_id: null,
       code_hash: 'hashed-code',
       redirect_to: 'https://user.0g0.xyz/callback',
       expires_at: new Date(Date.now() + 60000).toISOString(),
+      used_at: null,
       created_at: '2024-01-01T00:00:00Z',
     } as never);
     vi.mocked(findUserById).mockResolvedValue(mockUser);
@@ -1472,5 +1479,177 @@ describe('isAllowedRedirectTo', () => {
     expect(isAllowedRedirectTo('https://a.example.com/cb', IDP, extras)).toBe(true);
     expect(isAllowedRedirectTo('https://b.example.com/cb', IDP, extras)).toBe(true);
     expect(isAllowedRedirectTo('https://c.example.com/cb', IDP, extras)).toBe(false);
+  });
+});
+
+// ===== POST /auth/exchange — サービスOAuthフロー =====
+describe('POST /auth/exchange (サービスOAuth)', () => {
+  const app = buildApp();
+
+  const mockService = {
+    id: 'service-1',
+    name: 'RSS App',
+    client_id: 'client-abc',
+    client_secret_hash: 'secret-hash-abc',
+    allowed_scopes: 'openid profile email',
+    owner_user_id: 'user-1',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  };
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    // sha256 は呼び出し引数に応じて返す値を変える
+    vi.mocked(sha256).mockImplementation(async (input: string) => {
+      if (input === 'my-secret') return 'secret-hash-abc';
+      if (input.includes(':')) return 'pairwise-sub-hash';
+      return 'hashed-code';
+    });
+    vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
+      id: 'code-id',
+      user_id: 'user-1',
+      service_id: 'service-1',
+      code_hash: 'hashed-code',
+      redirect_to: 'https://rss.0g0.xyz/api/auth/callback',
+      expires_at: new Date(Date.now() + 60000).toISOString(),
+      used_at: null,
+      created_at: '2024-01-01T00:00:00Z',
+    } as never);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(generateToken).mockReturnValue('mock-refresh-token');
+    vi.mocked(findServiceByClientId).mockResolvedValue(mockService as never);
+    vi.mocked(timingSafeEqual).mockReturnValue(true);
+    vi.mocked(signAccessToken).mockResolvedValue('mock-access-token');
+    vi.mocked(signIdToken).mockResolvedValue('mock-id-token');
+    vi.mocked(createRefreshToken).mockResolvedValue(undefined as never);
+  });
+
+  it('Authorization ヘッダーなし → 401を返す', async () => {
+    const res = await sendRequest(app, '/auth/exchange', {
+      method: 'POST',
+      body: { code: 'valid-code', redirect_to: 'https://rss.0g0.xyz/api/auth/callback' },
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('Basic 以外の Authorization → 401を返す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/auth/exchange`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer some-token',
+        },
+        body: JSON.stringify({ code: 'valid-code', redirect_to: 'https://rss.0g0.xyz/api/auth/callback' }),
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('不正な Base64 デコード → 401を返す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/auth/exchange`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Basic not-valid-base64!!!',
+        },
+        body: JSON.stringify({ code: 'valid-code', redirect_to: 'https://rss.0g0.xyz/api/auth/callback' }),
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('client_id が存在しない → 401を返す', async () => {
+    vi.mocked(findServiceByClientId).mockResolvedValue(null);
+    const credentials = btoa('unknown-client:my-secret');
+    const res = await app.request(
+      new Request(`${baseUrl}/auth/exchange`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Basic ${credentials}`,
+        },
+        body: JSON.stringify({ code: 'valid-code', redirect_to: 'https://rss.0g0.xyz/api/auth/callback' }),
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('service_id が認可コードと不一致 → 401を返す', async () => {
+    vi.mocked(findServiceByClientId).mockResolvedValue({ ...mockService, id: 'other-service' } as never);
+    const credentials = btoa('client-abc:my-secret');
+    const res = await app.request(
+      new Request(`${baseUrl}/auth/exchange`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Basic ${credentials}`,
+        },
+        body: JSON.stringify({ code: 'valid-code', redirect_to: 'https://rss.0g0.xyz/api/auth/callback' }),
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('client_secret が不一致 → 401を返す', async () => {
+    vi.mocked(timingSafeEqual).mockReturnValue(false);
+    const credentials = btoa('client-abc:wrong-secret');
+    const res = await app.request(
+      new Request(`${baseUrl}/auth/exchange`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Basic ${credentials}`,
+        },
+        body: JSON.stringify({ code: 'valid-code', redirect_to: 'https://rss.0g0.xyz/api/auth/callback' }),
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('正常なサービスOAuth交換 → ペアワイズsubのIDトークンを含むレスポンスを返す', async () => {
+    const credentials = btoa('client-abc:my-secret');
+    const res = await app.request(
+      new Request(`${baseUrl}/auth/exchange`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Basic ${credentials}`,
+        },
+        body: JSON.stringify({ code: 'valid-code', redirect_to: 'https://rss.0g0.xyz/api/auth/callback' }),
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: { access_token: string; id_token: string } }>();
+    expect(body.data.access_token).toBe('mock-access-token');
+    expect(body.data.id_token).toBe('mock-id-token');
+    // ペアワイズ sub（sha256(client_id:user_id)）と aud = client_id で signIdToken が呼ばれること
+    expect(vi.mocked(signIdToken)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sub: 'pairwise-sub-hash',
+        aud: 'client-abc',
+      }),
+      'mock-private-key',
+      'mock-public-key'
+    );
   });
 });
