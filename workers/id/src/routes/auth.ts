@@ -76,6 +76,19 @@ const OPTIONAL_PROVIDER_CREDENTIALS = {
   x: { id: 'X_CLIENT_ID' as const, secret: 'X_CLIENT_SECRET' as const, name: 'X' },
 } satisfies Record<Exclude<OAuthProvider, 'google'>, { id: keyof IdpEnv; secret: keyof IdpEnv; name: string }>;
 
+const PROVIDER_DISPLAY_NAMES: Record<OAuthProvider, string> = {
+  google: 'Google',
+  line: 'LINE',
+  twitch: 'Twitch',
+  github: 'GitHub',
+  x: 'X',
+};
+
+/** プロバイダー認証の解決結果 */
+type ProviderResolution =
+  | { ok: true; sub: string; upsert: (db: D1Database, id: string) => Promise<User> }
+  | { ok: false; response: Response };
+
 function setSecureCookie(
   c: Context<{ Bindings: IdpEnv }>,
   name: string,
@@ -111,6 +124,235 @@ async function handleProviderLink(
     throw err;
   }
 }
+
+// ─── プロバイダー固有の認証解決関数 ──────────────────────────────────────────
+
+async function resolveGoogleProvider(
+  c: Context<{ Bindings: IdpEnv }>,
+  code: string,
+  pkceVerifier: string,
+  callbackUri: string
+): Promise<ProviderResolution> {
+  let googleTokens;
+  try {
+    googleTokens = await exchangeGoogleCode({
+      code,
+      clientId: c.env.GOOGLE_CLIENT_ID,
+      clientSecret: c.env.GOOGLE_CLIENT_SECRET,
+      redirectUri: callbackUri,
+      codeVerifier: pkceVerifier,
+    });
+  } catch {
+    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to exchange code' } }, 400) };
+  }
+
+  let userInfo;
+  try {
+    userInfo = await fetchGoogleUserInfo(googleTokens.access_token);
+  } catch {
+    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to fetch user info' } }, 400) };
+  }
+
+  if (!userInfo.email_verified) {
+    return { ok: false, response: c.json({ error: { code: 'UNVERIFIED_EMAIL', message: 'Email not verified' } }, 400) };
+  }
+
+  return {
+    ok: true,
+    sub: userInfo.sub,
+    upsert: (db, id) =>
+      upsertUser(db, {
+        id,
+        googleSub: userInfo.sub,
+        email: userInfo.email,
+        emailVerified: userInfo.email_verified,
+        name: userInfo.name,
+        picture: userInfo.picture ?? null,
+      }),
+  };
+}
+
+async function resolveLineProvider(
+  c: Context<{ Bindings: IdpEnv }>,
+  code: string,
+  pkceVerifier: string,
+  callbackUri: string
+): Promise<ProviderResolution> {
+  let lineTokens;
+  try {
+    lineTokens = await exchangeLineCode({
+      code,
+      clientId: c.env.LINE_CLIENT_ID!,
+      clientSecret: c.env.LINE_CLIENT_SECRET!,
+      redirectUri: callbackUri,
+      codeVerifier: pkceVerifier,
+    });
+  } catch {
+    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to exchange LINE code' } }, 400) };
+  }
+
+  let userInfo;
+  try {
+    userInfo = await fetchLineUserInfo(lineTokens.access_token);
+  } catch {
+    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to fetch LINE user info' } }, 400) };
+  }
+
+  const isPlaceholderEmail = !userInfo.email;
+  const email = userInfo.email ?? `line_${userInfo.sub}@line.placeholder`;
+
+  return {
+    ok: true,
+    sub: userInfo.sub,
+    upsert: (db, id) =>
+      upsertLineUser(db, {
+        id,
+        lineSub: userInfo.sub,
+        email,
+        isPlaceholderEmail,
+        name: userInfo.name,
+        picture: userInfo.picture ?? null,
+      }),
+  };
+}
+
+async function resolveTwitchProvider(
+  c: Context<{ Bindings: IdpEnv }>,
+  code: string,
+  pkceVerifier: string,
+  callbackUri: string
+): Promise<ProviderResolution> {
+  let twitchTokens;
+  try {
+    twitchTokens = await exchangeTwitchCode({
+      code,
+      clientId: c.env.TWITCH_CLIENT_ID!,
+      clientSecret: c.env.TWITCH_CLIENT_SECRET!,
+      redirectUri: callbackUri,
+      codeVerifier: pkceVerifier,
+    });
+  } catch {
+    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to exchange Twitch code' } }, 400) };
+  }
+
+  let userInfo;
+  try {
+    userInfo = await fetchTwitchUserInfo(twitchTokens.access_token);
+  } catch {
+    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to fetch Twitch user info' } }, 400) };
+  }
+
+  const isPlaceholderEmail = !userInfo.email;
+  const email = userInfo.email ?? `twitch_${userInfo.sub}@twitch.placeholder`;
+
+  return {
+    ok: true,
+    sub: userInfo.sub,
+    upsert: (db, id) =>
+      upsertTwitchUser(db, {
+        id,
+        twitchSub: userInfo.sub,
+        email,
+        isPlaceholderEmail,
+        emailVerified: userInfo.email_verified ?? false,
+        name: userInfo.preferred_username,
+        picture: userInfo.picture ?? null,
+      }),
+  };
+}
+
+async function resolveGithubProvider(
+  c: Context<{ Bindings: IdpEnv }>,
+  code: string,
+  pkceVerifier: string,
+  callbackUri: string
+): Promise<ProviderResolution> {
+  let githubTokens;
+  try {
+    githubTokens = await exchangeGithubCode({
+      code,
+      clientId: c.env.GITHUB_CLIENT_ID!,
+      clientSecret: c.env.GITHUB_CLIENT_SECRET!,
+      redirectUri: callbackUri,
+      codeVerifier: pkceVerifier,
+    });
+  } catch {
+    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to exchange GitHub code' } }, 400) };
+  }
+
+  let githubUser;
+  try {
+    githubUser = await fetchGithubUserInfo(githubTokens.access_token);
+  } catch {
+    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to fetch GitHub user info' } }, 400) };
+  }
+
+  const githubSub = String(githubUser.id);
+  let email = githubUser.email;
+  if (!email) {
+    email = await fetchGithubPrimaryEmail(githubTokens.access_token);
+  }
+  const isPlaceholderEmail = !email;
+  const finalEmail = email ?? `github_${githubSub}@github.placeholder`;
+
+  return {
+    ok: true,
+    sub: githubSub,
+    upsert: (db, id) =>
+      upsertGithubUser(db, {
+        id,
+        githubSub,
+        email: finalEmail,
+        isPlaceholderEmail,
+        name: githubUser.name ?? githubUser.login,
+        picture: githubUser.avatar_url,
+      }),
+  };
+}
+
+async function resolveXProvider(
+  c: Context<{ Bindings: IdpEnv }>,
+  code: string,
+  pkceVerifier: string,
+  callbackUri: string
+): Promise<ProviderResolution> {
+  let xTokens;
+  try {
+    xTokens = await exchangeXCode({
+      code,
+      clientId: c.env.X_CLIENT_ID!,
+      clientSecret: c.env.X_CLIENT_SECRET!,
+      redirectUri: callbackUri,
+      codeVerifier: pkceVerifier,
+    });
+  } catch {
+    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to exchange X code' } }, 400) };
+  }
+
+  let xUser;
+  try {
+    xUser = await fetchXUserInfo(xTokens.access_token);
+  } catch {
+    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to fetch X user info' } }, 400) };
+  }
+
+  const xEmail = `x_${xUser.id}@x.placeholder`;
+
+  return {
+    ok: true,
+    sub: xUser.id,
+    upsert: (db, id) =>
+      upsertXUser(db, {
+        id,
+        xSub: xUser.id,
+        email: xEmail,
+        name: xUser.name ?? xUser.username,
+        picture: xUser.profile_image_url ?? null,
+      }),
+  };
+}
+
+// ─── ルートハンドラー ──────────────────────────────────────────────────────────
 
 // GET /auth/login — BFFからのリダイレクト受け取り + プロバイダー認可へリダイレクト
 app.get('/login', authRateLimitMiddleware, async (c) => {
@@ -239,260 +481,36 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
     }
   }
 
+  // プロバイダー固有の認証処理（コード交換・ユーザー情報取得）
+  const resolvers: Record<OAuthProvider, () => Promise<ProviderResolution>> = {
+    google: () => resolveGoogleProvider(c, code, pkceVerifier, callbackUri),
+    line: () => resolveLineProvider(c, code, pkceVerifier, callbackUri),
+    twitch: () => resolveTwitchProvider(c, code, pkceVerifier, callbackUri),
+    github: () => resolveGithubProvider(c, code, pkceVerifier, callbackUri),
+    x: () => resolveXProvider(c, code, pkceVerifier, callbackUri),
+  };
+  const resolved = await resolvers[provider]();
+  if (!resolved.ok) return resolved.response;
+
+  // アカウント連携またはユーザー作成/更新
   const userId = crypto.randomUUID();
   let user: User;
-
-  if (provider === 'google') {
-    let googleTokens;
-    try {
-      googleTokens = await exchangeGoogleCode({
-        code,
-        clientId: c.env.GOOGLE_CLIENT_ID,
-        clientSecret: c.env.GOOGLE_CLIENT_SECRET,
-        redirectUri: callbackUri,
-        codeVerifier: pkceVerifier,
-      });
-    } catch {
-      return c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to exchange code' } }, 400);
-    }
-
-    let userInfo;
-    try {
-      userInfo = await fetchGoogleUserInfo(googleTokens.access_token);
-    } catch {
-      return c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to fetch user info' } }, 400);
-    }
-
-    if (!userInfo.email_verified) {
-      return c.json({ error: { code: 'UNVERIFIED_EMAIL', message: 'Email not verified' } }, 400);
-    }
-
-    if (stateData.linkUserId) {
-      const result = await handleProviderLink(c.env.DB, stateData.linkUserId, 'google', userInfo.sub);
-      if (!result.ok) {
-        return c.json(
-          { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This Google account is already linked to another user' } },
-          409
-        );
-      }
-      user = result.user;
-    } else {
-      user = await upsertUser(c.env.DB, {
-        id: userId,
-        googleSub: userInfo.sub,
-        email: userInfo.email,
-        emailVerified: userInfo.email_verified,
-        name: userInfo.name,
-        picture: userInfo.picture ?? null,
-      });
-    }
-  } else if (provider === 'line') {
-    let lineTokens;
-    try {
-      lineTokens = await exchangeLineCode({
-        code,
-        clientId: c.env.LINE_CLIENT_ID!,
-        clientSecret: c.env.LINE_CLIENT_SECRET!,
-        redirectUri: callbackUri,
-        codeVerifier: pkceVerifier,
-      });
-    } catch {
+  if (stateData.linkUserId) {
+    const result = await handleProviderLink(c.env.DB, stateData.linkUserId, provider, resolved.sub);
+    if (!result.ok) {
       return c.json(
-        { error: { code: 'OAUTH_ERROR', message: 'Failed to exchange LINE code' } },
-        400
+        {
+          error: {
+            code: 'PROVIDER_ALREADY_LINKED',
+            message: `This ${PROVIDER_DISPLAY_NAMES[provider]} account is already linked to another user`,
+          },
+        },
+        409
       );
     }
-
-    let userInfo;
-    try {
-      userInfo = await fetchLineUserInfo(lineTokens.access_token);
-    } catch {
-      return c.json(
-        { error: { code: 'OAUTH_ERROR', message: 'Failed to fetch LINE user info' } },
-        400
-      );
-    }
-
-    // LINEはemailが取得できない場合がある（仮メールアドレスを生成）
-    const isPlaceholderEmail = !userInfo.email;
-    const email = userInfo.email ?? `line_${userInfo.sub}@line.placeholder`;
-
-    if (stateData.linkUserId) {
-      const result = await handleProviderLink(c.env.DB, stateData.linkUserId, 'line', userInfo.sub);
-      if (!result.ok) {
-        return c.json(
-          { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This LINE account is already linked to another user' } },
-          409
-        );
-      }
-      user = result.user;
-    } else {
-      user = await upsertLineUser(c.env.DB, {
-        id: userId,
-        lineSub: userInfo.sub,
-        email,
-        isPlaceholderEmail,
-        name: userInfo.name,
-        picture: userInfo.picture ?? null,
-      });
-    }
-  } else if (provider === 'twitch') {
-    let twitchTokens;
-    try {
-      twitchTokens = await exchangeTwitchCode({
-        code,
-        clientId: c.env.TWITCH_CLIENT_ID!,
-        clientSecret: c.env.TWITCH_CLIENT_SECRET!,
-        redirectUri: callbackUri,
-        codeVerifier: pkceVerifier,
-      });
-    } catch {
-      return c.json(
-        { error: { code: 'OAUTH_ERROR', message: 'Failed to exchange Twitch code' } },
-        400
-      );
-    }
-
-    let userInfo;
-    try {
-      userInfo = await fetchTwitchUserInfo(twitchTokens.access_token);
-    } catch {
-      return c.json(
-        { error: { code: 'OAUTH_ERROR', message: 'Failed to fetch Twitch user info' } },
-        400
-      );
-    }
-
-    const isPlaceholderEmail = !userInfo.email;
-    const email = userInfo.email ?? `twitch_${userInfo.sub}@twitch.placeholder`;
-
-    if (stateData.linkUserId) {
-      const result = await handleProviderLink(c.env.DB, stateData.linkUserId, 'twitch', userInfo.sub);
-      if (!result.ok) {
-        return c.json(
-          { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This Twitch account is already linked to another user' } },
-          409
-        );
-      }
-      user = result.user;
-    } else {
-      user = await upsertTwitchUser(c.env.DB, {
-        id: userId,
-        twitchSub: userInfo.sub,
-        email,
-        isPlaceholderEmail,
-        emailVerified: userInfo.email_verified ?? false,
-        name: userInfo.preferred_username,
-        picture: userInfo.picture ?? null,
-      });
-    }
-  } else if (provider === 'github') {
-    let githubTokens;
-    try {
-      githubTokens = await exchangeGithubCode({
-        code,
-        clientId: c.env.GITHUB_CLIENT_ID!,
-        clientSecret: c.env.GITHUB_CLIENT_SECRET!,
-        redirectUri: callbackUri,
-        codeVerifier: pkceVerifier,
-      });
-    } catch {
-      return c.json(
-        { error: { code: 'OAUTH_ERROR', message: 'Failed to exchange GitHub code' } },
-        400
-      );
-    }
-
-    let githubUser;
-    try {
-      githubUser = await fetchGithubUserInfo(githubTokens.access_token);
-    } catch {
-      return c.json(
-        { error: { code: 'OAUTH_ERROR', message: 'Failed to fetch GitHub user info' } },
-        400
-      );
-    }
-
-    // GitHubのユーザーIDを文字列に変換（サブジェクト識別子として使用）
-    const githubSub = String(githubUser.id);
-
-    // プライマリメールを取得（公開メールがない場合）
-    let email = githubUser.email;
-    if (!email) {
-      email = await fetchGithubPrimaryEmail(githubTokens.access_token);
-    }
-    const isPlaceholderEmail = !email;
-    const finalEmail = email ?? `github_${githubSub}@github.placeholder`;
-
-    if (stateData.linkUserId) {
-      const result = await handleProviderLink(c.env.DB, stateData.linkUserId, 'github', githubSub);
-      if (!result.ok) {
-        return c.json(
-          { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This GitHub account is already linked to another user' } },
-          409
-        );
-      }
-      user = result.user;
-    } else {
-      user = await upsertGithubUser(c.env.DB, {
-        id: userId,
-        githubSub,
-        email: finalEmail,
-        isPlaceholderEmail,
-        name: githubUser.name ?? githubUser.login,
-        picture: githubUser.avatar_url,
-      });
-    }
-  } else if (provider === 'x') {
-    let xTokens;
-    try {
-      xTokens = await exchangeXCode({
-        code,
-        clientId: c.env.X_CLIENT_ID!,
-        clientSecret: c.env.X_CLIENT_SECRET!,
-        redirectUri: callbackUri,
-        codeVerifier: pkceVerifier,
-      });
-    } catch {
-      return c.json(
-        { error: { code: 'OAUTH_ERROR', message: 'Failed to exchange X code' } },
-        400
-      );
-    }
-
-    let xUser;
-    try {
-      xUser = await fetchXUserInfo(xTokens.access_token);
-    } catch {
-      return c.json(
-        { error: { code: 'OAUTH_ERROR', message: 'Failed to fetch X user info' } },
-        400
-      );
-    }
-
-    // XはメールアドレスAPIが有料プランのため仮メールを使用
-    const xEmail = `x_${xUser.id}@x.placeholder`;
-
-    if (stateData.linkUserId) {
-      const result = await handleProviderLink(c.env.DB, stateData.linkUserId, 'x', xUser.id);
-      if (!result.ok) {
-        return c.json(
-          { error: { code: 'PROVIDER_ALREADY_LINKED', message: 'This X account is already linked to another user' } },
-          409
-        );
-      }
-      user = result.user;
-    } else {
-      user = await upsertXUser(c.env.DB, {
-        id: userId,
-        xSub: xUser.id,
-        email: xEmail,
-        name: xUser.name ?? xUser.username,
-        picture: xUser.profile_image_url ?? null,
-      });
-    }
+    user = result.user;
   } else {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Unknown provider' } }, 400);
+    user = await resolved.upsert(c.env.DB, userId);
   }
 
   // 管理者ブートストラップ（管理者が0人の場合のみ）
