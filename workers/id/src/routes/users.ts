@@ -69,6 +69,46 @@ app.get('/me', authMiddleware, async (c) => {
   });
 });
 
+// GET /api/users/me/data-export — GDPR準拠のアカウントデータ一括エクスポート
+app.get('/me/data-export', authMiddleware, async (c) => {
+  const tokenUser = c.get('user');
+  const userId = tokenUser.sub;
+
+  const user = await findUserById(c.env.DB, userId);
+  if (!user) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+
+  const [providers, connections, { events: loginHistory }, sessions] = await Promise.all([
+    getUserProviders(c.env.DB, userId),
+    listUserConnections(c.env.DB, userId),
+    getLoginEventsByUserId(c.env.DB, userId, 1000, 0),
+    listActiveSessionsByUserId(c.env.DB, userId),
+  ]);
+
+  return c.json({
+    data: {
+      exported_at: new Date().toISOString(),
+      profile: {
+        id: user.id,
+        email: user.email,
+        email_verified: user.email_verified === 1,
+        name: user.name,
+        picture: user.picture,
+        phone: user.phone,
+        address: user.address,
+        role: user.role,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+      },
+      providers,
+      service_connections: connections,
+      login_history: loginHistory,
+      active_sessions: sessions,
+    },
+  });
+});
+
 // PATCH /api/users/me
 app.patch('/me', authMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
