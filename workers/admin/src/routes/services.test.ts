@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { encodeSession } from '@0g0-id/shared';
 import { Hono } from 'hono';
 
 import servicesRoutes from './services';
@@ -7,18 +8,18 @@ const SESSION_COOKIE = '__Host-admin-session';
 const baseUrl = 'https://admin.0g0.xyz';
 
 // 管理者セッションCookieを生成するヘルパー
-function makeSessionCookie(role: 'admin' | 'user' = 'admin'): string {
+async function makeSessionCookie(role: 'admin' | 'user' = 'admin'): Promise<string> {
   const session = {
     access_token: 'mock-access-token',
     refresh_token: 'mock-refresh-token',
     user: { id: 'admin-user-id', email: 'admin@example.com', name: 'Admin', role },
   };
-  return btoa(encodeURIComponent(JSON.stringify(session)));
+  return encodeSession(session, 'test-secret');
 }
 
 function buildApp(idpFetch: (req: Request) => Promise<Response>) {
   const app = new Hono<{
-    Bindings: { IDP: { fetch: typeof idpFetch }; IDP_ORIGIN: string };
+    Bindings: { IDP: { fetch: typeof idpFetch }; IDP_ORIGIN: string; SESSION_SECRET: string };
   }>();
   app.route('/api/services', servicesRoutes);
   return {
@@ -27,6 +28,7 @@ function buildApp(idpFetch: (req: Request) => Promise<Response>) {
       return app.request(req, undefined, {
         IDP: { fetch: idpFetch },
         IDP_ORIGIN: 'https://id.0g0.xyz',
+        SESSION_SECRET: 'test-secret',
       });
     },
   };
@@ -69,7 +71,7 @@ describe('admin BFF — /api/services', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/api/services', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(200);
@@ -88,7 +90,7 @@ describe('admin BFF — /api/services', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/api/services', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(500);
@@ -111,7 +113,7 @@ describe('admin BFF — /api/services', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/api/services/service-1', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(200);
       const body = await res.json<{ data: typeof mockService }>();
@@ -127,7 +129,7 @@ describe('admin BFF — /api/services', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/api/services/nonexistent', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(404);
     });
@@ -155,7 +157,7 @@ describe('admin BFF — /api/services', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}`,
+          Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}`,
         },
         body: 'invalid-json',
       });
@@ -174,7 +176,7 @@ describe('admin BFF — /api/services', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}`,
+          Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}`,
         },
         body: JSON.stringify({ name: 'New Service' }),
       });
@@ -211,7 +213,7 @@ describe('admin BFF — /api/services', () => {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}`,
+          Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}`,
         },
         body: 'not-json',
       });
@@ -227,7 +229,7 @@ describe('admin BFF — /api/services', () => {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}`,
+          Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}`,
         },
         body: JSON.stringify({ allowed_scopes: ['profile'] }),
       });
@@ -255,7 +257,7 @@ describe('admin BFF — /api/services', () => {
 
       const res = await app.request('/api/services/service-1', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(204);
@@ -281,7 +283,7 @@ describe('admin BFF — /api/services', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/api/services/service-1/redirect-uris', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(200);
@@ -314,7 +316,7 @@ describe('admin BFF — /api/services', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}`,
+          Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}`,
         },
         body: 'bad-json',
       });
@@ -330,7 +332,7 @@ describe('admin BFF — /api/services', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}`,
+          Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}`,
         },
         body: JSON.stringify({ uri: 'https://app.example.com/cb' }),
       });
@@ -367,7 +369,7 @@ describe('admin BFF — /api/services', () => {
 
       const res = await app.request('/api/services/service-1/rotate-secret', {
         method: 'POST',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(200);
@@ -385,7 +387,7 @@ describe('admin BFF — /api/services', () => {
 
       const res = await app.request('/api/services/no-such/rotate-secret', {
         method: 'POST',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(404);
     });
@@ -414,7 +416,7 @@ describe('admin BFF — /api/services', () => {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}`,
+          Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}`,
         },
         body: 'not-json',
       });
@@ -439,7 +441,7 @@ describe('admin BFF — /api/services', () => {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}`,
+          Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}`,
         },
         body: JSON.stringify({ new_owner_user_id: 'user-2' }),
       });
@@ -463,7 +465,7 @@ describe('admin BFF — /api/services', () => {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}`,
+          Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}`,
         },
         body: JSON.stringify({ new_owner_user_id: 'user-2' }),
       });
@@ -489,7 +491,7 @@ describe('admin BFF — /api/services', () => {
 
       const res = await app.request('/api/services/service-1/redirect-uris/uri-1', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(204);
@@ -518,7 +520,7 @@ describe('admin BFF — /api/services', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/api/services/service-1/users', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(200);
@@ -531,7 +533,7 @@ describe('admin BFF — /api/services', () => {
       const app = buildApp(idpFetch);
 
       await app.request('/api/services/service-1/users', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
@@ -545,7 +547,7 @@ describe('admin BFF — /api/services', () => {
       const app = buildApp(idpFetch);
 
       await app.request('/api/services/service-1/users?limit=10&offset=20', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
@@ -560,7 +562,7 @@ describe('admin BFF — /api/services', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/api/services/no-such/users', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(404);
@@ -585,7 +587,7 @@ describe('admin BFF — /api/services', () => {
 
       const res = await app.request('/api/services/service-1/users/user-1', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(204);
@@ -601,7 +603,7 @@ describe('admin BFF — /api/services', () => {
 
       await app.request('/api/services/svc-abc/users/usr-xyz', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
@@ -614,7 +616,7 @@ describe('admin BFF — /api/services', () => {
 
       await app.request('/api/services/service-1/users/user-1', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
@@ -627,7 +629,7 @@ describe('admin BFF — /api/services', () => {
 
       const res = await app.request('/api/services/service-1/users/no-such-user', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(404);

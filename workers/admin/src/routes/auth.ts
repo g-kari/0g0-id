@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import { generateToken, parseSession, setSessionCookie } from '@0g0-id/shared';
+import { generateToken, parseSession, setSessionCookie, timingSafeEqual } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 
 const app = new Hono<{ Bindings: BffEnv }>();
@@ -44,7 +44,7 @@ app.get('/callback', async (c) => {
     return c.redirect('/?error=missing_session');
   }
 
-  if (state !== storedState) {
+  if (!timingSafeEqual(state, storedState)) {
     return c.redirect('/?error=state_mismatch');
   }
 
@@ -77,7 +77,7 @@ app.get('/callback', async (c) => {
     return c.redirect('/?error=not_admin');
   }
 
-  setSessionCookie(c, SESSION_COOKIE, {
+  await setSessionCookie(c, SESSION_COOKIE, {
     access_token: exchangeData.data.access_token,
     refresh_token: exchangeData.data.refresh_token,
     user: exchangeData.data.user,
@@ -89,7 +89,7 @@ app.get('/callback', async (c) => {
 // POST /auth/logout
 app.post('/logout', async (c) => {
   const session = getCookie(c, SESSION_COOKIE);
-  const sessionData = parseSession(session);
+  const sessionData = await parseSession(session, c.env.SESSION_SECRET);
   if (sessionData) {
     try {
       await c.env.IDP.fetch(

@@ -52,6 +52,10 @@ export interface AuthCode {
   expires_at: string;
   used_at: string | null;
   created_at: string;
+  nonce: string | null;
+  code_challenge: string | null;
+  code_challenge_method: string | null;
+  scope: string | null;
 }
 
 export interface RefreshToken {
@@ -118,4 +122,6 @@ export interface IdpEnv {
 export interface BffEnv {
   IDP: Fetcher;
   IDP_ORIGIN: string;
+  /** BFFセッションCookieのAES-GCM暗号化キー */
+  SESSION_SECRET: string;
 }

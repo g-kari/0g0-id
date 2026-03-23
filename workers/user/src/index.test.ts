@@ -13,6 +13,7 @@ import app from './index';
 const mockEnv = {
   IDP: { fetch: vi.fn() } as unknown as Fetcher,
   IDP_ORIGIN: 'https://id.0g0.xyz',
+  SESSION_SECRET: 'test-secret',
 };
 
 describe('GET /api/health', () => {

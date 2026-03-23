@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { encodeSession } from '@0g0-id/shared';
 import { Hono } from 'hono';
 
 import metricsRoutes from './metrics';
@@ -6,18 +7,18 @@ import metricsRoutes from './metrics';
 const SESSION_COOKIE = '__Host-admin-session';
 const baseUrl = 'https://admin.0g0.xyz';
 
-function makeSessionCookie(role: 'admin' | 'user' = 'admin'): string {
+async function makeSessionCookie(role: 'admin' | 'user' = 'admin'): Promise<string> {
   const session = {
     access_token: 'mock-access-token',
     refresh_token: 'mock-refresh-token',
     user: { id: 'admin-user-id', email: 'admin@example.com', name: 'Admin', role },
   };
-  return btoa(encodeURIComponent(JSON.stringify(session)));
+  return encodeSession(session, 'test-secret');
 }
 
 function buildApp(idpFetch: (req: Request) => Promise<Response>) {
   const app = new Hono<{
-    Bindings: { IDP: { fetch: typeof idpFetch }; IDP_ORIGIN: string };
+    Bindings: { IDP: { fetch: typeof idpFetch }; IDP_ORIGIN: string; SESSION_SECRET: string };
   }>();
   app.route('/api/metrics', metricsRoutes);
   return {
@@ -26,6 +27,7 @@ function buildApp(idpFetch: (req: Request) => Promise<Response>) {
       return app.request(req, undefined, {
         IDP: { fetch: idpFetch },
         IDP_ORIGIN: 'https://id.0g0.xyz',
+        SESSION_SECRET: 'test-secret',
       });
     },
   };
@@ -63,7 +65,7 @@ describe('admin BFF — /api/metrics', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/api/metrics', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(200);
@@ -80,7 +82,7 @@ describe('admin BFF — /api/metrics', () => {
       const app = buildApp(idpFetch);
 
       await app.request('/api/metrics', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const calledUrl = vi.mocked(idpFetch).mock.calls[0][0].url;
@@ -92,7 +94,7 @@ describe('admin BFF — /api/metrics', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/api/metrics', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(403);
@@ -103,7 +105,7 @@ describe('admin BFF — /api/metrics', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/api/metrics', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(500);

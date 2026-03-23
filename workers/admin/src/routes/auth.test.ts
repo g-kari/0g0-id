@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
 
-vi.mock('@0g0-id/shared', () => ({
+vi.mock('@0g0-id/shared', async () => ({
+  ...(await vi.importActual('@0g0-id/shared')),
   generateToken: vi.fn(),
 }));
 
-import { generateToken } from '@0g0-id/shared';
+import { generateToken, encodeSession } from '@0g0-id/shared';
 import authRoutes from './auth';
 
 const baseUrl = 'https://admin.0g0.xyz';
@@ -23,7 +24,7 @@ function buildIdpFetch(status: number, body: unknown): (req: Request) => Promise
 
 function buildApp(idpFetch: (req: Request) => Promise<Response> = vi.fn()) {
   const app = new Hono<{
-    Bindings: { IDP: { fetch: typeof idpFetch }; IDP_ORIGIN: string };
+    Bindings: { IDP: { fetch: typeof idpFetch }; IDP_ORIGIN: string; SESSION_SECRET: string };
   }>();
   app.route('/auth', authRoutes);
   return {
@@ -31,6 +32,7 @@ function buildApp(idpFetch: (req: Request) => Promise<Response> = vi.fn()) {
       app.request(new Request(`${baseUrl}${path}`, init), undefined, {
         IDP: { fetch: idpFetch },
         IDP_ORIGIN: 'https://id.0g0.xyz',
+        SESSION_SECRET: 'test-secret',
       }),
   };
 }
@@ -188,14 +190,13 @@ describe('admin BFF — /auth', () => {
       const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
       const app = buildApp(idpFetch);
 
-      const sessionData = btoa(
-        encodeURIComponent(
-          JSON.stringify({
-            access_token: 'mock-at',
-            refresh_token: 'mock-rt',
-            user: { id: 'user-1', email: 'admin@example.com', name: 'Admin', role: 'admin' },
-          })
-        )
+      const sessionData = await encodeSession(
+        {
+          access_token: 'mock-at',
+          refresh_token: 'mock-rt',
+          user: { id: 'user-1', email: 'admin@example.com', name: 'Admin', role: 'admin' },
+        },
+        'test-secret'
       );
 
       const res = await app.request('/auth/logout', {
