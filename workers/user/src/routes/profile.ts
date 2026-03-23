@@ -21,6 +21,12 @@ app.get('/login-history', async (c) => {
   return proxyResponse(res);
 });
 
+// GET /api/me/data-export — アカウントデータ一括エクスポート
+app.get('/data-export', async (c) => {
+  const res = await fetchWithAuth(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/me/data-export`);
+  return proxyResponse(res);
+});
+
 // PATCH /api/me
 app.patch('/', async (c) => {
   return fetchWithJsonBody(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/me`, 'PATCH');

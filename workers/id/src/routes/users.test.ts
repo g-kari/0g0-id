@@ -193,6 +193,91 @@ describe('GET /api/users/me', () => {
   });
 });
 
+// ===== GET /api/users/me/data-export =====
+describe('GET /api/users/me/data-export', () => {
+  const app = buildApp();
+
+  const mockProviders = [
+    { provider: 'google' as const, connected: true },
+    { provider: 'line' as const, connected: false },
+    { provider: 'twitch' as const, connected: false },
+    { provider: 'github' as const, connected: false },
+    { provider: 'x' as const, connected: false },
+  ];
+
+  const mockConnections = [
+    {
+      service_id: 'svc-1',
+      service_name: 'My App',
+      client_id: 'client-1',
+      first_authorized_at: '2024-01-01T00:00:00Z',
+      last_authorized_at: '2024-01-02T00:00:00Z',
+    },
+  ];
+
+  const mockLoginHistory = [
+    {
+      id: 'event-1',
+      user_id: 'user-1',
+      provider: 'google',
+      ip_address: '1.2.3.4',
+      user_agent: 'Mozilla/5.0',
+      created_at: '2024-01-01T00:00:00Z',
+    },
+  ];
+
+  const mockSessions = [
+    {
+      id: 'token-1',
+      service_id: null,
+      service_name: null,
+      created_at: '2024-01-01T00:00:00Z',
+      expires_at: '2024-02-01T00:00:00Z',
+    },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(getUserProviders).mockResolvedValue(mockProviders);
+    vi.mocked(listUserConnections).mockResolvedValue(mockConnections);
+    vi.mocked(getLoginEventsByUserId).mockResolvedValue({ events: mockLoginHistory, total: 1 });
+    vi.mocked(listActiveSessionsByUserId).mockResolvedValue(mockSessions);
+  });
+
+  it('Authorizationヘッダーなし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/data-export', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('全アカウントデータをまとめてエクスポートする', async () => {
+    const res = await sendRequest(app, '/api/users/me/data-export');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.exported_at).toBeDefined();
+    expect(body.data.profile).toMatchObject({
+      id: 'user-1',
+      email: 'test@example.com',
+      email_verified: true,
+      name: 'Test User',
+      role: 'user',
+    });
+    expect(body.data.providers).toEqual(mockProviders);
+    expect(body.data.service_connections).toEqual(mockConnections);
+    expect(body.data.login_history).toEqual(mockLoginHistory);
+    expect(body.data.active_sessions).toEqual(mockSessions);
+  });
+
+  it('ユーザーが存在しない場合 → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/me/data-export');
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+});
+
 // ===== PATCH /api/users/me =====
 describe('PATCH /api/users/me', () => {
   const app = buildApp();
