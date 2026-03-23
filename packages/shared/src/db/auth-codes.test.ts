@@ -21,6 +21,10 @@ const baseAuthCode: AuthCode = {
   expires_at: '2024-12-31T23:59:59Z',
   used_at: null,
   created_at: '2024-01-01T00:00:00Z',
+  nonce: null,
+  code_challenge: null,
+  code_challenge_method: null,
+  scope: null,
 };
 
 describe('createAuthCode', () => {
@@ -44,7 +48,11 @@ describe('createAuthCode', () => {
       null,
       'hash-abc123',
       'https://user.0g0.xyz/callback',
-      '2024-12-31T23:59:59Z'
+      '2024-12-31T23:59:59Z',
+      null,
+      null,
+      null,
+      null
     );
     expect(stmt.run).toHaveBeenCalled();
   });

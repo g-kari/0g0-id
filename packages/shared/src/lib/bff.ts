@@ -28,14 +28,55 @@ function isBffSession(obj: unknown): obj is BffSession {
 }
 
 /**
- * セッションCookieをパースしてBffSessionを返す。
- * JSON.parse の結果を実行時バリデーションし、構造が不正な場合は null を返す。
- * プロトタイプ汚染対策として既知フィールドのみを抽出して新オブジェクトを構築する。
+ * SESSION_SECRET から AES-256-GCM 鍵を導出する（HKDF-SHA256）。
  */
-export function parseSession(cookie: string | undefined): BffSession | null {
+async function deriveAesKey(secret: string): Promise<CryptoKey> {
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    'HKDF',
+    false,
+    ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new Uint8Array(32),
+      info: new TextEncoder().encode('bff-session'),
+    },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+/**
+ * セッションCookieをパースしてBffSessionを返す。
+ * AES-256-GCM で復号し、JSON.parse の結果を実行時バリデーションする。
+ * 復号・パース失敗時は null を返す。
+ */
+export async function parseSession(
+  cookie: string | undefined,
+  secret: string
+): Promise<BffSession | null> {
   if (!cookie) return null;
   try {
-    const raw: unknown = JSON.parse(decodeURIComponent(atob(cookie)));
+    // base64url → Uint8Array
+    const b64 = cookie.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const combined = Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+
+    if (combined.length < 13) return null; // 12バイトIV + 最低1バイト暗号文
+
+    const iv = combined.slice(0, 12);
+    const ciphertext = combined.slice(12);
+
+    const key = await deriveAesKey(secret);
+    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+    const raw: unknown = JSON.parse(new TextDecoder().decode(plaintext));
+
     if (!isBffSession(raw)) return null;
     // 既知フィールドのみを抽出してプロトタイプ汚染を防止
     return {
@@ -54,22 +95,35 @@ export function parseSession(cookie: string | undefined): BffSession | null {
 }
 
 /**
- * BffSessionをBase64エンコードしてCookie値として返す。
+ * BffSession を AES-256-GCM で暗号化して Cookie 値（base64url）として返す。
  * parseSession の逆操作。
  */
-export function encodeSession(session: BffSession): string {
-  return btoa(encodeURIComponent(JSON.stringify(session)));
+export async function encodeSession(session: BffSession, secret: string): Promise<string> {
+  const key = await deriveAesKey(secret);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = new TextEncoder().encode(JSON.stringify(session));
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext);
+
+  // IV + 暗号文を結合して base64url エンコード
+  const combined = new Uint8Array(iv.length + ciphertext.byteLength);
+  combined.set(iv);
+  combined.set(new Uint8Array(ciphertext), iv.length);
+  return btoa(String.fromCharCode(...combined))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
 }
 
 /**
  * セッションCookieを30日間有効で設定する。
  */
-export function setSessionCookie(
+export async function setSessionCookie(
   c: Context<{ Bindings: BffEnv }>,
   cookieName: string,
   session: BffSession
-): void {
-  setCookie(c, cookieName, encodeSession(session), {
+): Promise<void> {
+  const encoded = await encodeSession(session, c.env.SESSION_SECRET);
+  setCookie(c, cookieName, encoded, {
     httpOnly: true,
     secure: true,
     sameSite: 'Lax',
@@ -97,7 +151,7 @@ export async function fetchWithAuth(
   url: string,
   init?: RequestInit
 ): Promise<Response> {
-  const session = parseSession(getCookie(c, sessionCookieName));
+  const session = await parseSession(getCookie(c, sessionCookieName), c.env.SESSION_SECRET);
   if (!session) {
     return errorResponse(401, 'UNAUTHORIZED', 'Not authenticated');
   }
@@ -147,7 +201,7 @@ export async function fetchWithAuth(
         access_token: refreshData.data.access_token,
         refresh_token: refreshData.data.refresh_token,
       };
-      setSessionCookie(c, sessionCookieName, newSession);
+      await setSessionCookie(c, sessionCookieName, newSession);
 
       try {
         res = await makeRequest(refreshData.data.access_token);

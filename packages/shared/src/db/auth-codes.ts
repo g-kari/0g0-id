@@ -9,14 +9,29 @@ export async function createAuthCode(
     codeHash: string;
     redirectTo: string;
     expiresAt: string;
+    nonce?: string | null;
+    codeChallenge?: string | null;
+    codeChallengeMethod?: string | null;
+    scope?: string | null;
   }
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO auth_codes (id, user_id, service_id, code_hash, redirect_to, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO auth_codes (id, user_id, service_id, code_hash, redirect_to, expires_at, nonce, code_challenge, code_challenge_method, scope)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .bind(params.id, params.userId, params.serviceId ?? null, params.codeHash, params.redirectTo, params.expiresAt)
+    .bind(
+      params.id,
+      params.userId,
+      params.serviceId ?? null,
+      params.codeHash,
+      params.redirectTo,
+      params.expiresAt,
+      params.nonce ?? null,
+      params.codeChallenge ?? null,
+      params.codeChallengeMethod ?? null,
+      params.scope ?? null
+    )
     .run();
 }
 

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { encodeSession } from '@0g0-id/shared';
 import { Hono } from 'hono';
 
 import providersRoutes from './providers';
@@ -6,18 +7,18 @@ import providersRoutes from './providers';
 const SESSION_COOKIE = '__Host-user-session';
 const baseUrl = 'https://user.0g0.xyz';
 
-function makeSessionCookie(): string {
+async function makeSessionCookie(): Promise<string> {
   const session = {
     access_token: 'mock-access-token',
     refresh_token: 'mock-refresh-token',
-    user: { id: 'user-123', email: 'user@example.com', name: 'Test User', role: 'user' },
+    user: { id: 'user-123', email: 'user@example.com', name: 'Test User', role: 'user' as const },
   };
-  return btoa(encodeURIComponent(JSON.stringify(session)));
+  return encodeSession(session, 'test-secret');
 }
 
 function buildApp(idpFetch: (req: Request) => Promise<Response>) {
   const app = new Hono<{
-    Bindings: { IDP: { fetch: typeof idpFetch }; IDP_ORIGIN: string };
+    Bindings: { IDP: { fetch: typeof idpFetch }; IDP_ORIGIN: string; SESSION_SECRET: string };
   }>();
   app.route('/api/providers', providersRoutes);
   return {
@@ -26,6 +27,7 @@ function buildApp(idpFetch: (req: Request) => Promise<Response>) {
       return app.request(req, undefined, {
         IDP: { fetch: idpFetch },
         IDP_ORIGIN: 'https://id.0g0.xyz',
+        SESSION_SECRET: 'test-secret',
       });
     },
   };
@@ -67,7 +69,7 @@ describe('user BFF — /api/providers', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/api/providers', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(200);
@@ -81,7 +83,7 @@ describe('user BFF — /api/providers', () => {
       const app = buildApp(idpFetch);
 
       await app.request('/api/providers', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
@@ -94,7 +96,7 @@ describe('user BFF — /api/providers', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/api/providers', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(500);
@@ -118,7 +120,7 @@ describe('user BFF — /api/providers', () => {
 
       const res = await app.request('/api/providers/github', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(204);
@@ -135,7 +137,7 @@ describe('user BFF — /api/providers', () => {
       for (const provider of ['google', 'line', 'twitch', 'github', 'x']) {
         const res = await app.request(`/api/providers/${provider}`, {
           method: 'DELETE',
-          headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+          headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
         });
         expect(res.status).toBe(204);
 
@@ -151,7 +153,7 @@ describe('user BFF — /api/providers', () => {
 
       await app.request('/api/providers/google', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
@@ -164,7 +166,7 @@ describe('user BFF — /api/providers', () => {
 
       const res = await app.request('/api/providers/google', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(409);
@@ -176,7 +178,7 @@ describe('user BFF — /api/providers', () => {
 
       const res = await app.request('/api/providers/twitch', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(404);

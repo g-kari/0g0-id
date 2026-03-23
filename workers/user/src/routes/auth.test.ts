@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { encodeSession } from '@0g0-id/shared';
 import { Hono } from 'hono';
 
 import authRoutes from './auth';
@@ -9,7 +10,7 @@ const baseUrl = 'https://user.0g0.xyz';
 
 function buildApp(idpFetch: (req: Request) => Promise<Response>) {
   const app = new Hono<{
-    Bindings: { IDP: { fetch: typeof idpFetch }; IDP_ORIGIN: string };
+    Bindings: { IDP: { fetch: typeof idpFetch }; IDP_ORIGIN: string; SESSION_SECRET: string };
   }>();
   app.route('/auth', authRoutes);
   return {
@@ -18,18 +19,19 @@ function buildApp(idpFetch: (req: Request) => Promise<Response>) {
       return app.request(req, undefined, {
         IDP: { fetch: idpFetch },
         IDP_ORIGIN: 'https://id.0g0.xyz',
+        SESSION_SECRET: 'test-secret',
       });
     },
   };
 }
 
-function makeSessionCookie(userId = 'user-123'): string {
+async function makeSessionCookie(userId = 'user-123'): Promise<string> {
   const session = {
     access_token: 'mock-access-token',
     refresh_token: 'mock-refresh-token',
-    user: { id: userId, email: 'user@example.com', name: 'Test User', role: 'user' },
+    user: { id: userId, email: 'user@example.com', name: 'Test User', role: 'user' as const },
   };
-  return btoa(encodeURIComponent(JSON.stringify(session)));
+  return encodeSession(session, 'test-secret');
 }
 
 describe('user BFF — /auth', () => {
@@ -205,7 +207,7 @@ describe('user BFF — /auth', () => {
 
       const res = await app.request('/auth/logout', {
         method: 'POST',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(302);
@@ -223,7 +225,7 @@ describe('user BFF — /auth', () => {
 
       const res = await app.request('/auth/logout', {
         method: 'POST',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(302);
@@ -247,7 +249,7 @@ describe('user BFF — /auth', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/auth/link?provider=invalid', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(302);
@@ -267,7 +269,7 @@ describe('user BFF — /auth', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/auth/link?provider=github', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie('user-abc')}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie('user-abc')}` },
       });
 
       expect(res.status).toBe(302);
@@ -289,7 +291,7 @@ describe('user BFF — /auth', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/auth/link?provider=github', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(302);
@@ -309,7 +311,7 @@ describe('user BFF — /auth', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/auth/link?provider=google', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const location = res.headers.get('Location') ?? '';

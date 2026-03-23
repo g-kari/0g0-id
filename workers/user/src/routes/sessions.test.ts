@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { encodeSession } from '@0g0-id/shared';
 import { Hono } from 'hono';
 
 import sessionsRoutes from './sessions';
@@ -6,18 +7,18 @@ import sessionsRoutes from './sessions';
 const SESSION_COOKIE = '__Host-user-session';
 const baseUrl = 'https://user.0g0.xyz';
 
-function makeSessionCookie(): string {
+async function makeSessionCookie(): Promise<string> {
   const session = {
     access_token: 'mock-access-token',
     refresh_token: 'mock-refresh-token',
-    user: { id: 'user-123', email: 'user@example.com', name: 'Test User', role: 'user' },
+    user: { id: 'user-123', email: 'user@example.com', name: 'Test User', role: 'user' as const },
   };
-  return btoa(encodeURIComponent(JSON.stringify(session)));
+  return encodeSession(session, 'test-secret');
 }
 
 function buildApp(idpFetch: (req: Request) => Promise<Response>) {
   const app = new Hono<{
-    Bindings: { IDP: { fetch: typeof idpFetch }; IDP_ORIGIN: string };
+    Bindings: { IDP: { fetch: typeof idpFetch }; IDP_ORIGIN: string; SESSION_SECRET: string };
   }>();
   app.route('/api/me/sessions', sessionsRoutes);
   return {
@@ -26,6 +27,7 @@ function buildApp(idpFetch: (req: Request) => Promise<Response>) {
       return app.request(req, undefined, {
         IDP: { fetch: idpFetch },
         IDP_ORIGIN: 'https://id.0g0.xyz',
+        SESSION_SECRET: 'test-secret',
       });
     },
   };
@@ -56,7 +58,7 @@ describe('user BFF — /api/me/sessions', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/api/me/sessions', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(200);
@@ -74,7 +76,7 @@ describe('user BFF — /api/me/sessions', () => {
       const app = buildApp(idpFetch);
 
       await app.request('/api/me/sessions', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
@@ -92,7 +94,7 @@ describe('user BFF — /api/me/sessions', () => {
       const app = buildApp(idpFetch);
 
       await app.request('/api/me/sessions', {
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
@@ -117,7 +119,7 @@ describe('user BFF — /api/me/sessions', () => {
 
       const res = await app.request('/api/me/sessions/token-abc', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(204);
@@ -129,7 +131,7 @@ describe('user BFF — /api/me/sessions', () => {
 
       await app.request('/api/me/sessions/token-abc', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
@@ -143,7 +145,7 @@ describe('user BFF — /api/me/sessions', () => {
 
       await app.request('/api/me/sessions/token-abc', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
@@ -156,7 +158,7 @@ describe('user BFF — /api/me/sessions', () => {
 
       await app.request('/api/me/sessions/token-abc', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
@@ -174,7 +176,7 @@ describe('user BFF — /api/me/sessions', () => {
 
       const res = await app.request('/api/me/sessions/no-such-token', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(404);
@@ -198,7 +200,7 @@ describe('user BFF — /api/me/sessions', () => {
 
       const res = await app.request('/api/me/sessions', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(204);
@@ -210,7 +212,7 @@ describe('user BFF — /api/me/sessions', () => {
 
       await app.request('/api/me/sessions', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
@@ -224,7 +226,7 @@ describe('user BFF — /api/me/sessions', () => {
 
       await app.request('/api/me/sessions', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
@@ -237,7 +239,7 @@ describe('user BFF — /api/me/sessions', () => {
 
       await app.request('/api/me/sessions', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
@@ -255,7 +257,7 @@ describe('user BFF — /api/me/sessions', () => {
 
       const res = await app.request('/api/me/sessions', {
         method: 'DELETE',
-        headers: { Cookie: `${SESSION_COOKIE}=${makeSessionCookie()}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(500);

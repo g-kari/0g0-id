@@ -75,6 +75,7 @@ export async function signIdToken(
     name: string;
     picture: string | null;
     authTime: number;
+    nonce?: string;
   },
   privateKeyPem: string,
   publicKeyPem: string
@@ -87,6 +88,7 @@ export async function signIdToken(
     name: payload.name,
     ...(payload.picture !== null ? { picture: payload.picture } : {}),
     auth_time: payload.authTime,
+    ...(payload.nonce !== undefined ? { nonce: payload.nonce } : {}),
   })
     .setProtectedHeader({ alg: 'ES256', kid })
     .setIssuer(payload.iss)
