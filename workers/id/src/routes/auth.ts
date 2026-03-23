@@ -55,6 +55,7 @@ import { parseAllowedScopes } from '../utils/scopes';
 const ExchangeSchema = z.object({
   code: z.string().min(1, 'code is required'),
   redirect_to: z.string().min(1, 'redirect_to is required'),
+  code_verifier: z.string().min(43).max(128).optional(),
 });
 
 const RefreshSchema = z.object({
@@ -207,6 +208,14 @@ async function handleProviderLink(
   }
 }
 
+function oauthError(
+  c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
+  message: string,
+  code: string = 'OAUTH_ERROR'
+): ProviderResolution {
+  return { ok: false, response: c.json({ error: { code, message } }, 400) };
+}
+
 // ─── プロバイダー固有の認証解決関数 ──────────────────────────────────────────
 
 async function resolveGoogleProvider(
@@ -225,18 +234,18 @@ async function resolveGoogleProvider(
       codeVerifier: pkceVerifier,
     });
   } catch {
-    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to exchange code' } }, 400) };
+    return oauthError(c, 'Failed to exchange code');
   }
 
   let userInfo;
   try {
     userInfo = await fetchGoogleUserInfo(googleTokens.access_token);
   } catch {
-    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to fetch user info' } }, 400) };
+    return oauthError(c, 'Failed to fetch user info');
   }
 
   if (!userInfo.email_verified) {
-    return { ok: false, response: c.json({ error: { code: 'UNVERIFIED_EMAIL', message: 'Email not verified' } }, 400) };
+    return oauthError(c, 'Email not verified', 'UNVERIFIED_EMAIL');
   }
 
   return {
@@ -270,14 +279,14 @@ async function resolveLineProvider(
       codeVerifier: pkceVerifier,
     });
   } catch {
-    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to exchange LINE code' } }, 400) };
+    return oauthError(c, 'Failed to exchange LINE code');
   }
 
   let userInfo;
   try {
     userInfo = await fetchLineUserInfo(lineTokens.access_token);
   } catch {
-    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to fetch LINE user info' } }, 400) };
+    return oauthError(c, 'Failed to fetch LINE user info');
   }
 
   const isPlaceholderEmail = !userInfo.email;
@@ -314,14 +323,14 @@ async function resolveTwitchProvider(
       codeVerifier: pkceVerifier,
     });
   } catch {
-    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to exchange Twitch code' } }, 400) };
+    return oauthError(c, 'Failed to exchange Twitch code');
   }
 
   let userInfo;
   try {
     userInfo = await fetchTwitchUserInfo(twitchTokens.access_token);
   } catch {
-    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to fetch Twitch user info' } }, 400) };
+    return oauthError(c, 'Failed to fetch Twitch user info');
   }
 
   const isPlaceholderEmail = !userInfo.email;
@@ -359,14 +368,14 @@ async function resolveGithubProvider(
       codeVerifier: pkceVerifier,
     });
   } catch {
-    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to exchange GitHub code' } }, 400) };
+    return oauthError(c, 'Failed to exchange GitHub code');
   }
 
   let githubUser;
   try {
     githubUser = await fetchGithubUserInfo(githubTokens.access_token);
   } catch {
-    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to fetch GitHub user info' } }, 400) };
+    return oauthError(c, 'Failed to fetch GitHub user info');
   }
 
   const githubSub = String(githubUser.id);
@@ -408,14 +417,14 @@ async function resolveXProvider(
       codeVerifier: pkceVerifier,
     });
   } catch {
-    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to exchange X code' } }, 400) };
+    return oauthError(c, 'Failed to exchange X code');
   }
 
   let xUser;
   try {
     xUser = await fetchXUserInfo(xTokens.access_token);
   } catch {
-    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to fetch X user info' } }, 400) };
+    return oauthError(c, 'Failed to fetch X user info');
   }
 
   const xEmail = `x_${xUser.id}@x.placeholder`;
@@ -530,6 +539,20 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
     }
   }
 
+  // OIDCオプションパラメータ
+  const nonce = c.req.query('nonce');
+  const codeChallenge = c.req.query('code_challenge');
+  const codeChallengeMethod = c.req.query('code_challenge_method');
+  const scope = c.req.query('scope');
+
+  // code_challenge が指定された場合は S256 のみ許可（OAuth 2.1 / RFC 7636）
+  if (codeChallenge && codeChallengeMethod !== undefined && codeChallengeMethod !== 'S256') {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Only S256 code_challenge_method is supported' } }, 400);
+  }
+  if (!codeChallenge && codeChallengeMethod !== undefined) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'code_challenge is required when code_challenge_method is specified' } }, 400);
+  }
+
   // link_token の検証（SNSプロバイダー連携フロー）
   let linkUserId: string | undefined;
   if (linkToken) {
@@ -554,6 +577,9 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
     provider,
     ...(linkUserId ? { linkUserId } : {}),
     ...(serviceId ? { serviceId } : {}),
+    ...(nonce ? { nonce } : {}),
+    ...(codeChallenge ? { codeChallenge, codeChallengeMethod: codeChallengeMethod ?? 'S256' } : {}),
+    ...(scope ? { scope } : {}),
   });
   setSecureCookie(c, STATE_COOKIE, btoa(encodeURIComponent(stateData)), 600); // 10分
   setSecureCookie(c, PKCE_COOKIE, idCodeVerifier, 600);
@@ -605,6 +631,10 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
     provider: OAuthProvider;
     linkUserId?: string;
     serviceId?: string;
+    nonce?: string;
+    codeChallenge?: string;
+    codeChallengeMethod?: string;
+    scope?: string;
   };
   try {
     stateData = JSON.parse(decodeURIComponent(atob(stateCookieRaw)));
@@ -710,6 +740,10 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
     codeHash,
     redirectTo: stateData.redirectTo,
     expiresAt,
+    nonce: stateData.nonce ?? null,
+    codeChallenge: stateData.codeChallenge ?? null,
+    codeChallengeMethod: stateData.codeChallengeMethod ?? null,
+    scope: stateData.scope ?? null,
   });
 
   // BFFコールバックへリダイレクト
@@ -737,6 +771,17 @@ app.post('/exchange', tokenApiRateLimitMiddleware, async (c) => {
   // redirect_to の一致検証（認可コード横取り攻撃対策）
   if (authCode.redirect_to !== body.redirect_to) {
     return c.json({ error: { code: 'INVALID_CODE', message: 'redirect_to mismatch' } }, 400);
+  }
+
+  // 下流 PKCE 検証（RFC 7636 / OAuth 2.1）
+  if (authCode.code_challenge) {
+    if (!body.code_verifier) {
+      return c.json({ error: { code: 'INVALID_CODE', message: 'code_verifier is required' } }, 400);
+    }
+    const expectedChallenge = await generateCodeChallenge(body.code_verifier);
+    if (!timingSafeEqual(expectedChallenge, authCode.code_challenge)) {
+      return c.json({ error: { code: 'INVALID_CODE', message: 'code_verifier mismatch' } }, 400);
+    }
   }
 
   // ユーザー情報取得
@@ -797,9 +842,16 @@ app.post('/exchange', tokenApiRateLimitMiddleware, async (c) => {
     // ペアワイズ sub（OIDC Core 1.0 §8.1）: sha256(client_id:user_id)
     idTokenSub = await sha256(`${service.client_id}:${user.id}`);
     idTokenAud = service.client_id;
-    // サービストークンのスコープ: サービスの allowed_scopes に openid を付加
+    // サービストークンのスコープ: 要求スコープとサービスの allowed_scopes を交差検証
     const allowedScopes = parseAllowedScopes(service.allowed_scopes);
-    serviceScope = ['openid', ...allowedScopes].join(' ');
+    if (authCode.scope) {
+      // 要求スコープをサービスの allowed_scopes と openid でフィルタリング
+      const requested = authCode.scope.split(' ').filter(Boolean);
+      const valid = requested.filter((s) => s === 'openid' || allowedScopes.includes(s));
+      serviceScope = valid.length > 0 ? valid.join(' ') : undefined;
+    } else {
+      serviceScope = ['openid', ...allowedScopes].join(' ');
+    }
   }
 
   // アクセストークン・リフレッシュトークン発行
@@ -809,25 +861,31 @@ app.post('/exchange', tokenApiRateLimitMiddleware, async (c) => {
   });
 
   // OIDC ID トークン発行（OpenID Connect Core 1.0）
-  const authTime = Math.floor(Date.now() / 1000);
-  const idToken = await signIdToken(
-    {
-      iss: c.env.IDP_ORIGIN,
-      sub: idTokenSub,
-      aud: idTokenAud,
-      email: user.email,
-      name: user.name,
-      picture: user.picture,
-      authTime,
-    },
-    c.env.JWT_PRIVATE_KEY,
-    c.env.JWT_PUBLIC_KEY
-  );
+  // openid スコープがある場合（またはBFFフローでスコープ未指定）のみ発行
+  const shouldIssueIdToken = !serviceScope || serviceScope.split(' ').includes('openid');
+  let idToken: string | undefined;
+  if (shouldIssueIdToken) {
+    const authTime = Math.floor(Date.now() / 1000);
+    idToken = await signIdToken(
+      {
+        iss: c.env.IDP_ORIGIN,
+        sub: idTokenSub,
+        aud: idTokenAud,
+        email: user.email,
+        name: user.name,
+        picture: user.picture,
+        authTime,
+        nonce: authCode.nonce ?? undefined,
+      },
+      c.env.JWT_PRIVATE_KEY,
+      c.env.JWT_PUBLIC_KEY
+    );
+  }
 
   return c.json({
     data: {
       access_token: accessToken,
-      id_token: idToken,
+      ...(idToken ? { id_token: idToken } : {}),
       refresh_token: refreshTokenRaw,
       token_type: 'Bearer',
       expires_in: 900, // 15分
