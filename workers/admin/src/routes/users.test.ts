@@ -328,6 +328,162 @@ describe('admin BFF — /api/users', () => {
     });
   });
 
+  describe('PATCH /:id/ban — ユーザー停止', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1/ban', { method: 'PATCH' });
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('管理者セッションでIdPにPATCHしてユーザーを停止する', async () => {
+      const idpFetch = mockIdp(200, { data: { id: 'user-1', role: 'user', banned_at: '2024-06-01T00:00:00Z' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1/ban', {
+        method: 'PATCH',
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.method).toBe('PATCH');
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/users/user-1/ban');
+      expect(calledReq.headers.get('Authorization')).toBe('Bearer mock-access-token');
+    });
+
+    it('ユーザーIDをIdPのURLに正しく含める', async () => {
+      const idpFetch = mockIdp(200, { data: {} });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users/target-user-xyz/ban', {
+        method: 'PATCH',
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/users/target-user-xyz/ban');
+    });
+
+    it('OriginヘッダーをIdPに送信する', async () => {
+      const idpFetch = mockIdp(200, { data: {} });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users/user-1/ban', {
+        method: 'PATCH',
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.headers.get('Origin')).toBe('https://id.0g0.xyz');
+    });
+
+    it('IdPが403（自己停止禁止）を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(403, { error: { code: 'FORBIDDEN', message: 'Cannot ban yourself' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/admin-user-id/ban', {
+        method: 'PATCH',
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('IdPが409（既に停止済み）を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(409, { error: { code: 'CONFLICT', message: 'User is already banned' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1/ban', {
+        method: 'PATCH',
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(409);
+    });
+  });
+
+  describe('DELETE /:id/ban — ユーザー停止解除', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1/ban', { method: 'DELETE' });
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('管理者セッションでIdPにDELETEしてユーザー停止を解除する', async () => {
+      const idpFetch = mockIdp(200, { data: { id: 'user-1', role: 'user', banned_at: null } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1/ban', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.method).toBe('DELETE');
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/users/user-1/ban');
+      expect(calledReq.headers.get('Authorization')).toBe('Bearer mock-access-token');
+    });
+
+    it('ユーザーIDをIdPのURLに正しく含める', async () => {
+      const idpFetch = mockIdp(200, { data: {} });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users/target-user-xyz/ban', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/users/target-user-xyz/ban');
+    });
+
+    it('OriginヘッダーをIdPに送信する', async () => {
+      const idpFetch = mockIdp(200, { data: {} });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users/user-1/ban', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.headers.get('Origin')).toBe('https://id.0g0.xyz');
+    });
+
+    it('IdPが409（停止されていない）を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(409, { error: { code: 'CONFLICT', message: 'User is not banned' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/user-1/ban', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(409);
+    });
+
+    it('IdPが404（ユーザー不在）を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(404, { error: { code: 'NOT_FOUND' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/users/no-such-user/ban', {
+        method: 'DELETE',
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(404);
+    });
+  });
+
   describe('DELETE /:id — ユーザー削除', () => {
     it('セッションなしで401を返す', async () => {
       const idpFetch = vi.fn();

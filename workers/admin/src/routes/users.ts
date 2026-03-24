@@ -118,6 +118,34 @@ app.patch('/:id/role', async (c) => {
   );
 });
 
+// PATCH /api/users/:id/ban — ユーザーを停止
+app.patch('/:id/ban', async (c) => {
+  const res = await fetchWithAuth(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/ban`,
+    {
+      method: 'PATCH',
+      headers: { Origin: c.env.IDP_ORIGIN },
+    }
+  );
+  return proxyResponse(res);
+});
+
+// DELETE /api/users/:id/ban — ユーザー停止を解除
+app.delete('/:id/ban', async (c) => {
+  const res = await fetchWithAuth(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/ban`,
+    {
+      method: 'DELETE',
+      headers: { Origin: c.env.IDP_ORIGIN },
+    }
+  );
+  return proxyResponse(res);
+});
+
 // DELETE /api/users/:id
 app.delete('/:id', async (c) => {
   const res = await fetchWithAuth(
