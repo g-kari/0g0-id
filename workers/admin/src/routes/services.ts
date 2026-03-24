@@ -7,7 +7,12 @@ const app = new Hono<{ Bindings: BffEnv }>();
 
 // GET /api/services
 app.get('/', async (c) => {
-  const res = await fetchWithAuth(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/services`);
+  const url = new URL(`${c.env.IDP_ORIGIN}/api/services`);
+  const { limit, offset, name } = c.req.query();
+  if (limit) url.searchParams.set('limit', limit);
+  if (offset) url.searchParams.set('offset', offset);
+  if (name) url.searchParams.set('name', name);
+  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
   return proxyResponse(res);
 });
 

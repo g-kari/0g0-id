@@ -126,9 +126,29 @@ export async function deleteService(db: D1Database, id: string): Promise<void> {
   await db.prepare('DELETE FROM services WHERE id = ?').bind(id).run();
 }
 
-export async function listServices(db: D1Database): Promise<Service[]> {
+export interface ServiceListFilter {
+  name?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function listServices(db: D1Database, filter: ServiceListFilter = {}): Promise<Service[]> {
+  const { name, limit = 50, offset = 0 } = filter;
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (name) {
+    conditions.push('name LIKE ?');
+    params.push(`%${name}%`);
+  }
+
+  const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
+  params.push(limit, offset);
+
   const result = await db
-    .prepare('SELECT * FROM services ORDER BY created_at DESC')
+    .prepare(`SELECT * FROM services${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+    .bind(...params)
     .all<Service>();
   return result.results;
 }
@@ -149,10 +169,21 @@ export async function listServicesByOwner(db: D1Database, userId: string): Promi
   return result.results;
 }
 
-export async function countServices(db: D1Database): Promise<number> {
-  const result = await db
-    .prepare('SELECT COUNT(*) as count FROM services')
-    .first<{ count: number }>();
+export async function countServices(db: D1Database, filter: { name?: string } = {}): Promise<number> {
+  const { name } = filter;
+
+  const params: unknown[] = [];
+  let query = 'SELECT COUNT(*) as count FROM services';
+
+  if (name) {
+    query += ' WHERE name LIKE ?';
+    params.push(`%${name}%`);
+  }
+
+  const stmt = db.prepare(query);
+  const result = params.length > 0
+    ? await stmt.bind(...params).first<{ count: number }>()
+    : await stmt.first<{ count: number }>();
   return result?.count ?? 0;
 }
 

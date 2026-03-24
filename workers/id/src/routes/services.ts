@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import {
   listServices,
+  countServices,
   findServiceById,
   createService,
   updateServiceFields,
@@ -60,7 +61,18 @@ const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
 // GET /api/services
 app.get('/', authMiddleware, adminMiddleware, async (c) => {
-  const services = await listServices(c.env.DB);
+  const limitStr = c.req.query('limit') ?? '50';
+  const offsetStr = c.req.query('offset') ?? '0';
+  const name = c.req.query('name');
+
+  const limit = Math.min(Math.max(parseInt(limitStr, 10) || 50, 1), 100);
+  const offset = Math.max(parseInt(offsetStr, 10) || 0, 0);
+
+  const [services, total] = await Promise.all([
+    listServices(c.env.DB, { name, limit, offset }),
+    countServices(c.env.DB, { name }),
+  ]);
+
   return c.json({
     data: services.map((s) => ({
       id: s.id,
@@ -70,6 +82,9 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
       owner_user_id: s.owner_user_id,
       created_at: s.created_at,
     })),
+    total,
+    limit,
+    offset,
   });
 });
 
