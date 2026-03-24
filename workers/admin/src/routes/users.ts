@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { fetchWithAuth, fetchWithJsonBody, proxyResponse } from '@0g0-id/shared';
+import { fetchWithAuth, fetchWithJsonBody, proxyMutate, proxyResponse } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 import { SESSION_COOKIE } from './auth';
 
@@ -84,30 +84,16 @@ app.get('/:id/tokens', async (c) => {
 
 // DELETE /api/users/:id/tokens/:tokenId — ユーザーの特定セッションを失効
 app.delete('/:id/tokens/:tokenId', async (c) => {
-  const res = await fetchWithAuth(
+  return proxyMutate(
     c,
     SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/tokens/${c.req.param('tokenId')}`,
-    {
-      method: 'DELETE',
-      headers: { Origin: c.env.IDP_ORIGIN },
-    }
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/tokens/${c.req.param('tokenId')}`
   );
-  return proxyResponse(res);
 });
 
 // DELETE /api/users/:id/tokens — ユーザーの全セッション無効化
 app.delete('/:id/tokens', async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/tokens`,
-    {
-      method: 'DELETE',
-      headers: { Origin: c.env.IDP_ORIGIN },
-    }
-  );
-  return proxyResponse(res);
+  return proxyMutate(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/tokens`);
 });
 
 // PATCH /api/users/:id/role
@@ -122,44 +108,17 @@ app.patch('/:id/role', async (c) => {
 
 // PATCH /api/users/:id/ban — ユーザーを停止
 app.patch('/:id/ban', async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/ban`,
-    {
-      method: 'PATCH',
-      headers: { Origin: c.env.IDP_ORIGIN },
-    }
-  );
-  return proxyResponse(res);
+  return proxyMutate(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/ban`, 'PATCH');
 });
 
 // DELETE /api/users/:id/ban — ユーザー停止を解除
 app.delete('/:id/ban', async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/ban`,
-    {
-      method: 'DELETE',
-      headers: { Origin: c.env.IDP_ORIGIN },
-    }
-  );
-  return proxyResponse(res);
+  return proxyMutate(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/ban`);
 });
 
 // DELETE /api/users/:id
 app.delete('/:id', async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}`,
-    {
-      method: 'DELETE',
-      headers: { Origin: c.env.IDP_ORIGIN },
-    }
-  );
-  return proxyResponse(res);
+  return proxyMutate(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}`);
 });
 
 export default app;
