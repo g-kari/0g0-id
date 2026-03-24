@@ -7,7 +7,7 @@ import {
   countUsersAuthorizedForService,
   parsePagination,
 } from '@0g0-id/shared';
-import type { IdpEnv, User, Service } from '@0g0-id/shared';
+import type { IdpEnv, User, Service, AuthorizedUserFilter } from '@0g0-id/shared';
 import { serviceAuthMiddleware } from '../utils/service-auth';
 import { parseAllowedScopes } from '../utils/scopes';
 import { externalApiRateLimitMiddleware } from '../middleware/rate-limit';
@@ -64,18 +64,33 @@ app.get('/users', externalApiRateLimitMiddleware, serviceAuthMiddleware, async (
   }
   const { limit, offset } = pagination;
 
+  const nameQuery = c.req.query('name');
+  const emailQuery = c.req.query('email');
+
+  const allowedScopes = parseAllowedScopes(service.allowed_scopes);
+
+  if (nameQuery && !allowedScopes.includes('profile')) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'name filter requires profile scope' } }, 403);
+  }
+  if (emailQuery && !allowedScopes.includes('email')) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'email filter requires email scope' } }, 403);
+  }
+
+  const filter: AuthorizedUserFilter = {
+    ...(nameQuery ? { name: nameQuery } : {}),
+    ...(emailQuery ? { email: emailQuery } : {}),
+  };
+
   let users: User[];
   let total: number;
   try {
     [users, total] = await Promise.all([
-      listUsersAuthorizedForService(c.env.DB, service.id, limit, offset),
-      countUsersAuthorizedForService(c.env.DB, service.id),
+      listUsersAuthorizedForService(c.env.DB, service.id, limit, offset, filter),
+      countUsersAuthorizedForService(c.env.DB, service.id, filter),
     ]);
   } catch {
     return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
   }
-
-  const allowedScopes = parseAllowedScopes(service.allowed_scopes);
 
   const data = await Promise.all(users.map((user) => buildUserData(service, user, allowedScopes)));
 

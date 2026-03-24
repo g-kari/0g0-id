@@ -380,7 +380,8 @@ describe('GET /api/external/users', () => {
         expect.anything(),
         'service-1',
         10,
-        5
+        5,
+        {}
       );
     });
 
@@ -391,7 +392,8 @@ describe('GET /api/external/users', () => {
         expect.anything(),
         'service-1',
         100,
-        0
+        0,
+        {}
       );
     });
 
@@ -409,7 +411,8 @@ describe('GET /api/external/users', () => {
         expect.anything(),
         'service-1',
         1,
-        0
+        0,
+        {}
       );
     });
 
@@ -444,6 +447,93 @@ describe('GET /api/external/users', () => {
       mockListUsersAuthorizedForService.mockRejectedValue(new Error('DB error'));
       const res = await requestExternalUserList(app);
       expect(res.status).toBe(500);
+    });
+  });
+
+  describe('検索フィルタリング', () => {
+    it('nameクエリでlistUsersAuthorizedForServiceにfilterを渡す', async () => {
+      const res = await requestExternalUserList(app, { name: 'Test' });
+      expect(res.status).toBe(200);
+      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
+        expect.anything(),
+        'service-1',
+        50,
+        0,
+        expect.objectContaining({ name: 'Test' })
+      );
+      expect(mockCountUsersAuthorizedForService).toHaveBeenCalledWith(
+        expect.anything(),
+        'service-1',
+        expect.objectContaining({ name: 'Test' })
+      );
+    });
+
+    it('emailクエリでlistUsersAuthorizedForServiceにfilterを渡す', async () => {
+      const res = await requestExternalUserList(app, { email: 'test@example.com' });
+      expect(res.status).toBe(200);
+      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
+        expect.anything(),
+        'service-1',
+        50,
+        0,
+        expect.objectContaining({ email: 'test@example.com' })
+      );
+      expect(mockCountUsersAuthorizedForService).toHaveBeenCalledWith(
+        expect.anything(),
+        'service-1',
+        expect.objectContaining({ email: 'test@example.com' })
+      );
+    });
+
+    it('nameとemailを同時に指定できる', async () => {
+      const res = await requestExternalUserList(app, { name: 'Test', email: 'test@example.com' });
+      expect(res.status).toBe(200);
+      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
+        expect.anything(),
+        'service-1',
+        50,
+        0,
+        expect.objectContaining({ name: 'Test', email: 'test@example.com' })
+      );
+    });
+
+    it('profileスコープなしでnameフィルターを使用すると403', async () => {
+      mockFindServiceByClientId.mockResolvedValue({
+        ...mockService,
+        allowed_scopes: JSON.stringify(['email']),
+      });
+      const res = await requestExternalUserList(app, { name: 'Test' });
+      expect(res.status).toBe(403);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('FORBIDDEN');
+    });
+
+    it('emailスコープなしでemailフィルターを使用すると403', async () => {
+      mockFindServiceByClientId.mockResolvedValue({
+        ...mockService,
+        allowed_scopes: JSON.stringify(['profile']),
+      });
+      const res = await requestExternalUserList(app, { email: 'test@example.com' });
+      expect(res.status).toBe(403);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('FORBIDDEN');
+    });
+
+    it('フィルターなしの場合は従来どおり動作する', async () => {
+      const res = await requestExternalUserList(app);
+      expect(res.status).toBe(200);
+      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
+        expect.anything(),
+        'service-1',
+        50,
+        0,
+        {}
+      );
+      expect(mockCountUsersAuthorizedForService).toHaveBeenCalledWith(
+        expect.anything(),
+        'service-1',
+        {}
+      );
     });
   });
 });

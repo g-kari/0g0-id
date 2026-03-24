@@ -163,12 +163,31 @@ export async function hasUserAuthorizedService(
  * 特定サービスに認可済みのユーザー一覧を返す（アクティブなリフレッシュトークン保有者）
  * EXISTS を使うことで重複行の生成を避け、ページング安定性のため副キー(u.id)を追加。
  */
+export interface AuthorizedUserFilter {
+  name?: string;
+  email?: string;
+}
+
 export async function listUsersAuthorizedForService(
   db: D1Database,
   serviceId: string,
   limit: number = 50,
-  offset: number = 0
+  offset: number = 0,
+  filter?: AuthorizedUserFilter
 ): Promise<User[]> {
+  const conditions: string[] = [];
+  const bindings: unknown[] = [serviceId];
+
+  if (filter?.name) {
+    conditions.push('AND u.name LIKE ?');
+    bindings.push(`%${filter.name}%`);
+  }
+  if (filter?.email) {
+    conditions.push('AND u.email LIKE ?');
+    bindings.push(`%${filter.email}%`);
+  }
+
+  const extraConditions = conditions.length > 0 ? '\n       ' + conditions.join('\n       ') : '';
   const result = await db
     .prepare(
       `SELECT u.*
@@ -179,11 +198,11 @@ export async function listUsersAuthorizedForService(
            AND rt.service_id = ?
            AND rt.revoked_at IS NULL
            AND datetime(rt.expires_at) > datetime('now')
-       )
+       )${extraConditions}
        ORDER BY u.created_at DESC, u.id DESC
        LIMIT ? OFFSET ?`
     )
-    .bind(serviceId, limit, offset)
+    .bind(...bindings, limit, offset)
     .all<User>();
   return result.results;
 }
@@ -193,8 +212,22 @@ export async function listUsersAuthorizedForService(
  */
 export async function countUsersAuthorizedForService(
   db: D1Database,
-  serviceId: string
+  serviceId: string,
+  filter?: AuthorizedUserFilter
 ): Promise<number> {
+  const conditions: string[] = [];
+  const bindings: unknown[] = [serviceId];
+
+  if (filter?.name) {
+    conditions.push('AND u.name LIKE ?');
+    bindings.push(`%${filter.name}%`);
+  }
+  if (filter?.email) {
+    conditions.push('AND u.email LIKE ?');
+    bindings.push(`%${filter.email}%`);
+  }
+
+  const extraConditions = conditions.length > 0 ? '\n       ' + conditions.join('\n       ') : '';
   const result = await db
     .prepare(
       `SELECT COUNT(*) as count
@@ -205,9 +238,9 @@ export async function countUsersAuthorizedForService(
            AND rt.service_id = ?
            AND rt.revoked_at IS NULL
            AND datetime(rt.expires_at) > datetime('now')
-       )`
+       )${extraConditions}`
     )
-    .bind(serviceId)
+    .bind(...bindings)
     .first<{ count: number }>();
   return result?.count ?? 0;
 }
