@@ -500,6 +500,11 @@
               '</tr>';
           }).join('');
           if (tbody) tbody.innerHTML = rows || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">ユーザーなし</td></tr>';
+        })
+        .catch(function () {
+          hideProgress();
+          showUsersError('通信エラーが発生しました');
+        });
     }
 
     // イベント委譲: tbody への click 1件で全ボタンを処理
