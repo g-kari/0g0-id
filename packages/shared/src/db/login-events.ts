@@ -52,3 +52,31 @@ export async function countRecentLoginEvents(
     .first<{ count: number }>();
   return result?.count ?? 0;
 }
+
+/** プロバイダー別ログイン回数の統計エントリ */
+export interface LoginProviderStat {
+  provider: string;
+  count: number;
+}
+
+/**
+ * 指定期間内のプロバイダー別ログイン統計を返す。
+ * ログインが0件のプロバイダーは結果に含まれない。
+ * count の降順でソートされる。
+ */
+export async function getLoginEventProviderStats(
+  db: D1Database,
+  sinceIso: string
+): Promise<LoginProviderStat[]> {
+  const result = await db
+    .prepare(
+      `SELECT provider, COUNT(*) as count
+       FROM login_events
+       WHERE created_at >= ?
+       GROUP BY provider
+       ORDER BY count DESC`
+    )
+    .bind(sinceIso)
+    .all<LoginProviderStat>();
+  return result.results;
+}

@@ -5,6 +5,7 @@ import {
   countServices,
   countActiveRefreshTokens,
   countRecentLoginEvents,
+  getLoginEventProviderStats,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
@@ -16,15 +17,20 @@ const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
 // GET /api/metrics
 app.get('/', authMiddleware, adminMiddleware, async (c) => {
-  const recentSince = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const now = Date.now();
+  const since24h = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+  const since7d = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [totalUsers, adminUsers, totalServices, activeTokens, recentLogins] = await Promise.all([
-    countUsers(c.env.DB),
-    countAdminUsers(c.env.DB),
-    countServices(c.env.DB),
-    countActiveRefreshTokens(c.env.DB),
-    countRecentLoginEvents(c.env.DB, recentSince),
-  ]);
+  const [totalUsers, adminUsers, totalServices, activeTokens, recentLogins24h, recentLogins7d, providerStats7d] =
+    await Promise.all([
+      countUsers(c.env.DB),
+      countAdminUsers(c.env.DB),
+      countServices(c.env.DB),
+      countActiveRefreshTokens(c.env.DB),
+      countRecentLoginEvents(c.env.DB, since24h),
+      countRecentLoginEvents(c.env.DB, since7d),
+      getLoginEventProviderStats(c.env.DB, since7d),
+    ]);
 
   return c.json({
     data: {
@@ -32,7 +38,9 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
       admin_users: adminUsers,
       total_services: totalServices,
       active_sessions: activeTokens,
-      recent_logins_24h: recentLogins,
+      recent_logins_24h: recentLogins24h,
+      recent_logins_7d: recentLogins7d,
+      login_provider_stats_7d: providerStats7d,
     },
   });
 });

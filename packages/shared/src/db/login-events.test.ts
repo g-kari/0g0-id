@@ -298,3 +298,69 @@ describe('countRecentLoginEvents', () => {
     expect(sql).toContain('created_at >=');
   });
 });
+
+
+describe('getLoginEventProviderStats', () => {
+  it('プロバイダー別のログイン統計を返す', async () => {
+    const mockStats = [
+      { provider: 'google', count: 10 },
+      { provider: 'line', count: 3 },
+      { provider: 'github', count: 1 },
+    ];
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: mockStats }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    // dynamic import to pick up the newly added export
+    const { getLoginEventProviderStats } = await import('./login-events');
+    const result = await getLoginEventProviderStats(db, '2024-01-01T00:00:00.000Z');
+
+    expect(result).toHaveLength(3);
+    expect(result[0]).toEqual({ provider: 'google', count: 10 });
+    expect(result[1]).toEqual({ provider: 'line', count: 3 });
+    expect(result[2]).toEqual({ provider: 'github', count: 1 });
+  });
+
+  it('ログインイベントがない場合は空配列を返す', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const { getLoginEventProviderStats } = await import('./login-events');
+    const result = await getLoginEventProviderStats(db, '2099-01-01T00:00:00.000Z');
+
+    expect(result).toEqual([]);
+  });
+
+  it('sinceIsoをbindパラメータとして渡す', async () => {
+    const since = '2024-06-01T00:00:00.000Z';
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const { getLoginEventProviderStats } = await import('./login-events');
+    await getLoginEventProviderStats(db, since);
+
+    expect(stmt.bind).toHaveBeenCalledWith(since);
+  });
+
+  it('SQLにGROUP BY providerが含まれる', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const { getLoginEventProviderStats } = await import('./login-events');
+    await getLoginEventProviderStats(db, '2024-01-01T00:00:00.000Z');
+
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('GROUP BY provider');
+  });
+});
