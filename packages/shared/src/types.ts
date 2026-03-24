@@ -125,6 +125,8 @@ export interface IdpEnv {
 export interface BffEnv {
   IDP: Fetcher;
   IDP_ORIGIN: string;
+  /** BFF自身のオリジン（例: "https://user.0g0.xyz"）。CORS/CSRF検証に使用。 */
+  SELF_ORIGIN: string;
   /** BFFセッションCookieのAES-GCM暗号化キー */
   SESSION_SECRET: string;
 }

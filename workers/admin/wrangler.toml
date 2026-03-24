@@ -16,6 +16,7 @@ directory = "./public"
 
 [vars]
 IDP_ORIGIN = "https://id.0g0.xyz"
+SELF_ORIGIN = "https://admin.0g0.xyz"
 
 [[services]]
 binding = "IDP"
