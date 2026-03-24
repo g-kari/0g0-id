@@ -130,12 +130,18 @@
         var m = data.data;
         var totalUsersEl = document.getElementById('metric-total-users');
         var adminUsersEl = document.getElementById('metric-admin-users');
+        var bannedUsersEl = document.getElementById('metric-banned-users');
         var totalServicesEl = document.getElementById('metric-total-services');
         var activeSessionsEl = document.getElementById('metric-active-sessions');
+        var recentLogins24hEl = document.getElementById('metric-recent-logins-24h');
+        var recentLogins7dEl = document.getElementById('metric-recent-logins-7d');
         if (totalUsersEl) totalUsersEl.textContent = m.total_users;
         if (adminUsersEl) adminUsersEl.textContent = m.admin_users;
+        if (bannedUsersEl) bannedUsersEl.textContent = m.banned_users;
         if (totalServicesEl) totalServicesEl.textContent = m.total_services;
         if (activeSessionsEl) activeSessionsEl.textContent = m.active_sessions;
+        if (recentLogins24hEl) recentLogins24hEl.textContent = m.recent_logins_24h;
+        if (recentLogins7dEl) recentLogins7dEl.textContent = m.recent_logins_7d;
       })
       .catch(function () { hideProgress(); /* メトリクス取得失敗は無視 */ });
   }
@@ -432,16 +438,20 @@
     const tbody = document.getElementById('users-body');
 
     function showUsersError(msg) {
-      if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--error);">' + escHtml(msg) + '</td></tr>';
+      if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--error);">' + escHtml(msg) + '</td></tr>';
       showToast(msg, 'error');
     }
+
+    var currentBannedFilter = '';
 
     function loadUsers() {
       if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="padding:0;border:none;">' +
         '<div class="loading-center">' + SPINNER_HTML + '<span>読み込み中...</span></div></td></tr>';
 
+      var url = '/api/users';
+      if (currentBannedFilter) url += '?banned=' + currentBannedFilter;
       showProgress();
-      fetch('/api/users', { credentials: 'same-origin' })
+      fetch(url, { credentials: 'same-origin' })
         .then(function (r) {
           if (r.status === 401) {
             hideProgress();
@@ -489,51 +499,7 @@
               '</td>' +
               '</tr>';
           }).join('');
-          if (tbody) tbody.innerHTML = rows || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">ユーザーなし</td></tr>'; style="padding:0;border:none;">' +
-        '<div class="loading-center">' + SPINNER_HTML + '<span>読み込み中...</span></div></td></tr>';
-
-      showProgress();
-      fetch('/api/users', { credentials: 'same-origin' })
-        .then(function (r) {
-          if (r.status === 401) {
-            hideProgress();
-            showUsersError('セッションが無効です。再度ログインしてください。');
-            setTimeout(function () { window.location.href = '/'; }, 1500);
-            return null;
-          }
-          return r.json();
-        })
-        .then(function (data) {
-          hideProgress();
-          if (!data) return;
-          if (data.error) { showUsersError('ユーザーの取得に失敗しました'); return; }
-          if (!data.data) { showUsersError('データの形式が不正です'); return; }
-          const rows = data.data.map(function (u) {
-            const badge = u.role === 'admin'
-              ? '<span class="badge badge-admin">admin</span>'
-              : '<span class="badge badge-user">user</span>';
-            const roleLabel = u.role === 'admin' ? 'userへ変更' : 'adminへ変更';
-            const newRole = u.role === 'admin' ? 'user' : 'admin';
-            return '<tr>' +
-              '<td>' + escHtml(u.name) + '</td>' +
-              '<td>' + escHtml(u.email) + '</td>' +
-              '<td>' + badge + '</td>' +
-              '<td>' + formatDate(u.created_at) + '</td>' +
-              '<td style="white-space:nowrap;">' +
-                '<button class="btn btn-secondary btn-sm mr-1" ' +
-                  'data-detail-id="' + escHtml(u.id) + '" data-detail-name="' + escHtml(u.name) + '">詳細</button>' +
-                '<button class="btn btn-accent btn-sm mr-1" ' +
-                  'data-role-id="' + escHtml(u.id) + '" data-role-new="' + newRole + '" data-role-name="' + escHtml(u.name) + '">' +
-                  roleLabel +
-                '</button>' +
-                '<button class="btn btn-danger btn-sm" data-del-id="' + escHtml(u.id) + '" data-del-name="' + escHtml(u.name) + '">削除</button>' +
-              '</td>' +
-              '</tr>';
-          }).join('');
-          if (tbody) tbody.innerHTML = rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">ユーザーなし</td></tr>';
-
-        })
-        .catch(function () { hideProgress(); showUsersError('通信エラーが発生しました'); });
+          if (tbody) tbody.innerHTML = rows || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">ユーザーなし</td></tr>';
     }
 
     // イベント委譲: tbody への click 1件で全ボタンを処理
@@ -639,6 +605,15 @@
               btn.disabled = false;
             });
         }
+      });
+    }
+
+    // bannedフィルター
+    var bannedFilterEl = document.getElementById('banned-filter');
+    if (bannedFilterEl) {
+      bannedFilterEl.addEventListener('change', function () {
+        currentBannedFilter = bannedFilterEl.value;
+        loadUsers();
       });
     }
 
