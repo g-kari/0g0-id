@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { fetchWithAuth, fetchWithJsonBody, proxyResponse } from '@0g0-id/shared';
+import { fetchWithAuth, fetchWithJsonBody, proxyMutate, proxyResponse } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 import { SESSION_COOKIE } from './auth';
 
@@ -38,27 +38,17 @@ app.patch('/:id', async (c) => {
 
 // DELETE /api/services/:id
 app.delete('/:id', async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/services/${c.req.param('id')}`,
-    { method: 'DELETE', headers: { Origin: c.env.IDP_ORIGIN } }
-  );
-  return proxyResponse(res);
+  return proxyMutate(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/services/${c.req.param('id')}`);
 });
 
 // POST /api/services/:id/rotate-secret — client_secretの再発行
 app.post('/:id/rotate-secret', async (c) => {
-  const res = await fetchWithAuth(
+  return proxyMutate(
     c,
     SESSION_COOKIE,
     `${c.env.IDP_ORIGIN}/api/services/${c.req.param('id')}/rotate-secret`,
-    {
-      method: 'POST',
-      headers: { Origin: c.env.IDP_ORIGIN },
-    }
+    'POST'
   );
-  return proxyResponse(res);
 });
 
 // GET /api/services/:id/redirect-uris
@@ -93,13 +83,11 @@ app.get('/:id/users', async (c) => {
 
 // DELETE /api/services/:id/users/:userId — ユーザーのサービスアクセスを失効
 app.delete('/:id/users/:userId', async (c) => {
-  const res = await fetchWithAuth(
+  return proxyMutate(
     c,
     SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/services/${c.req.param('id')}/users/${c.req.param('userId')}`,
-    { method: 'DELETE', headers: { Origin: c.env.IDP_ORIGIN } }
+    `${c.env.IDP_ORIGIN}/api/services/${c.req.param('id')}/users/${c.req.param('userId')}`
   );
-  return proxyResponse(res);
 });
 
 // PATCH /api/services/:id/owner — サービス所有権の転送
@@ -114,13 +102,11 @@ app.patch('/:id/owner', async (c) => {
 
 // DELETE /api/services/:id/redirect-uris/:uriId
 app.delete('/:id/redirect-uris/:uriId', async (c) => {
-  const res = await fetchWithAuth(
+  return proxyMutate(
     c,
     SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/services/${c.req.param('id')}/redirect-uris/${c.req.param('uriId')}`,
-    { method: 'DELETE', headers: { Origin: c.env.IDP_ORIGIN } }
+    `${c.env.IDP_ORIGIN}/api/services/${c.req.param('id')}/redirect-uris/${c.req.param('uriId')}`
   );
-  return proxyResponse(res);
 });
 
 export default app;

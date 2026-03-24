@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { fetchWithAuth, proxyResponse } from '@0g0-id/shared';
+import { fetchWithAuth, proxyMutate, proxyResponse } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 import { SESSION_COOKIE } from './auth';
 
@@ -17,17 +17,11 @@ app.get('/', async (c) => {
 
 // DELETE /api/connections/:serviceId
 app.delete('/:serviceId', async (c) => {
-  const serviceId = c.req.param('serviceId');
-  const res = await fetchWithAuth(
+  return proxyMutate(
     c,
     SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/users/me/connections/${serviceId}`,
-    {
-      method: 'DELETE',
-      headers: { Origin: c.env.IDP_ORIGIN },
-    }
+    `${c.env.IDP_ORIGIN}/api/users/me/connections/${c.req.param('serviceId')}`
   );
-  return proxyResponse(res);
 });
 
 export default app;

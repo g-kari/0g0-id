@@ -267,3 +267,24 @@ export async function proxyResponse(res: Response): Promise<Response> {
     headers: res.headers,
   });
 }
+
+/**
+ * ボディなし変更リクエスト（DELETE / PATCH / POST）を BFF→IdP へ転送するユーティリティ。
+ * CSRF 対策として Origin ヘッダーを自動付与する。
+ *
+ * @example
+ * // DELETE /api/users/:id/ban
+ * return proxyMutate(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/${id}/ban`, 'DELETE');
+ */
+export async function proxyMutate(
+  c: Context<{ Bindings: BffEnv }>,
+  sessionCookieName: string,
+  url: string,
+  method: 'DELETE' | 'PATCH' | 'POST' = 'DELETE'
+): Promise<Response> {
+  const res = await fetchWithAuth(c, sessionCookieName, url, {
+    method,
+    headers: { Origin: c.env.IDP_ORIGIN },
+  });
+  return proxyResponse(res);
+}
