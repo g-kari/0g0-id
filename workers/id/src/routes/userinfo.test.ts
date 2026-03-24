@@ -6,8 +6,13 @@ vi.mock('@0g0-id/shared', () => ({
   verifyAccessToken: vi.fn(),
 }));
 
+vi.mock('../middleware/rate-limit', () => ({
+  externalApiRateLimitMiddleware: vi.fn((c, next) => next()),
+}));
+
 import { findUserById, verifyAccessToken } from '@0g0-id/shared';
 import type { TokenPayload } from '@0g0-id/shared';
+import { externalApiRateLimitMiddleware } from '../middleware/rate-limit';
 import userInfoRoutes from './userinfo';
 
 const baseUrl = 'https://id.0g0.xyz';
@@ -314,5 +319,39 @@ describe('POST /api/userinfo', () => {
       mockEnv as unknown as Record<string, string>
     );
     expect(res.status).toBe(401);
+  });
+});
+
+describe('レートリミット', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockTokenPayload as never);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(externalApiRateLimitMiddleware).mockImplementation((c, next) => next());
+  });
+
+  it('GETリクエストにexternalApiRateLimitMiddlewareが適用される', async () => {
+    await requestUserInfo(app, 'GET');
+    expect(vi.mocked(externalApiRateLimitMiddleware)).toHaveBeenCalled();
+  });
+
+  it('POSTリクエストにexternalApiRateLimitMiddlewareが適用される', async () => {
+    await requestUserInfo(app, 'POST');
+    expect(vi.mocked(externalApiRateLimitMiddleware)).toHaveBeenCalled();
+  });
+
+  it('レートリミット超過時は429を返す', async () => {
+    vi.mocked(externalApiRateLimitMiddleware).mockImplementationOnce(async (c) => {
+      return c.json(
+        { error: { code: 'TOO_MANY_REQUESTS', message: 'Rate limit exceeded.' } },
+        429
+      ) as unknown as void;
+    });
+    const res = await requestUserInfo(app, 'GET');
+    expect(res.status).toBe(429);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('TOO_MANY_REQUESTS');
   });
 });

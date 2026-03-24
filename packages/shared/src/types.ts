@@ -115,7 +115,7 @@ export interface IdpEnv {
   EXTRA_BFF_ORIGINS?: string;
   /** /auth/login, /auth/callback 向けレートリミッター（IP単位） */
   RATE_LIMITER_AUTH?: RateLimitBinding;
-  /** /api/external/*, /api/token/introspect 向けレートリミッター（client_id単位） */
+  /** /api/external/*, /api/token/introspect, /api/userinfo 向けレートリミッター（client_id単位、未取得時はIP） */
   RATE_LIMITER_EXTERNAL?: RateLimitBinding;
   /** /auth/exchange, /auth/refresh 向けレートリミッター（IP単位） */
   RATE_LIMITER_TOKEN?: RateLimitBinding;
