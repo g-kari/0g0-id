@@ -22,18 +22,20 @@ export async function getLoginEventsByUserId(
   db: D1Database,
   userId: string,
   limit = 20,
-  offset = 0
+  offset = 0,
+  provider?: string
 ): Promise<{ events: LoginEvent[]; total: number }> {
+  const providerClause = provider ? ' AND provider = ?' : '';
   const [eventsResult, countResult] = await Promise.all([
     db
       .prepare(
-        'SELECT * FROM login_events WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?'
+        `SELECT * FROM login_events WHERE user_id = ?${providerClause} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`
       )
-      .bind(userId, limit, offset)
+      .bind(...(provider ? [userId, provider, limit, offset] : [userId, limit, offset]))
       .all<LoginEvent>(),
     db
-      .prepare('SELECT COUNT(*) as count FROM login_events WHERE user_id = ?')
-      .bind(userId)
+      .prepare(`SELECT COUNT(*) as count FROM login_events WHERE user_id = ?${providerClause}`)
+      .bind(...(provider ? [userId, provider] : [userId]))
       .first<{ count: number }>(),
   ]);
   return {

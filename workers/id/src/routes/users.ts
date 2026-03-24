@@ -215,8 +215,9 @@ app.get('/me/login-history', authMiddleware, async (c) => {
     return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
   }
   const { limit, offset } = pagination;
+  const provider = c.req.query('provider') || undefined;
 
-  const { events, total } = await getLoginEventsByUserId(c.env.DB, tokenUser.sub, limit, offset);
+  const { events, total } = await getLoginEventsByUserId(c.env.DB, tokenUser.sub, limit, offset, provider);
   return c.json({ data: events, total });
 });
 
@@ -369,13 +370,14 @@ app.get('/:id/login-history', authMiddleware, adminMiddleware, async (c) => {
     return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
   }
   const { limit, offset } = pagination;
+  const provider = c.req.query('provider') || undefined;
 
   const targetUser = await findUserById(c.env.DB, targetId);
   if (!targetUser) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  const { events, total } = await getLoginEventsByUserId(c.env.DB, targetId, limit, offset);
+  const { events, total } = await getLoginEventsByUserId(c.env.DB, targetId, limit, offset, provider);
   return c.json({ data: events, total });
 });
 

@@ -1058,7 +1058,8 @@ describe('GET /api/users/me/login-history', () => {
       expect.anything(),
       'regular-user-id',
       20,
-      0
+      0,
+      undefined
     );
   });
 
@@ -1075,7 +1076,8 @@ describe('GET /api/users/me/login-history', () => {
       expect.anything(),
       'regular-user-id',
       5,
-      10
+      10,
+      undefined
     );
   });
 
@@ -1092,7 +1094,26 @@ describe('GET /api/users/me/login-history', () => {
       expect.anything(),
       'regular-user-id',
       100,
-      0
+      0,
+      undefined
+    );
+  });
+
+  it('providerクエリパラメータでフィルタリングできる', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users/me/login-history?provider=google`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
+      expect.anything(),
+      'regular-user-id',
+      20,
+      0,
+      'google'
     );
   });
 
@@ -1243,7 +1264,8 @@ describe('GET /api/users/:id/login-history', () => {
       expect.anything(),
       'user-1',
       20,
-      0
+      0,
+      undefined
     );
   });
 
@@ -1260,7 +1282,8 @@ describe('GET /api/users/:id/login-history', () => {
       expect.anything(),
       'user-1',
       10,
-      5
+      5,
+      undefined
     );
   });
 
@@ -1277,7 +1300,26 @@ describe('GET /api/users/:id/login-history', () => {
       expect.anything(),
       'user-1',
       100,
-      0
+      0,
+      undefined
+    );
+  });
+
+  it('providerクエリパラメータでフィルタリングできる', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users/user-1/login-history?provider=line`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
+      expect.anything(),
+      'user-1',
+      20,
+      0,
+      'line'
     );
   });
 });
