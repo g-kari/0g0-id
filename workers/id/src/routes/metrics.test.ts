@@ -95,7 +95,8 @@ describe('GET /api/metrics', () => {
 
   it('管理者トークンでメトリクスデータを返す', async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
-    vi.mocked(countUsers).mockResolvedValue(100);
+    // 1回目: 全ユーザー数, 2回目: BAN済みユーザー数
+    vi.mocked(countUsers).mockResolvedValueOnce(100).mockResolvedValueOnce(3);
     vi.mocked(countAdminUsers).mockResolvedValue(5);
     vi.mocked(countServices).mockResolvedValue(10);
     vi.mocked(countActiveRefreshTokens).mockResolvedValue(42);
@@ -117,6 +118,7 @@ describe('GET /api/metrics', () => {
       data: {
         total_users: number;
         admin_users: number;
+        banned_users: number;
         total_services: number;
         active_sessions: number;
         recent_logins_24h: number;
@@ -126,6 +128,7 @@ describe('GET /api/metrics', () => {
     }>();
     expect(body.data.total_users).toBe(100);
     expect(body.data.admin_users).toBe(5);
+    expect(body.data.banned_users).toBe(3);
     expect(body.data.total_services).toBe(10);
     expect(body.data.active_sessions).toBe(42);
     expect(body.data.recent_logins_24h).toBe(13);
@@ -153,6 +156,7 @@ describe('GET /api/metrics', () => {
     );
 
     expect(vi.mocked(countUsers)).toHaveBeenCalledWith(mockEnv.DB);
+    expect(vi.mocked(countUsers)).toHaveBeenCalledWith(mockEnv.DB, { banned: true });
     expect(vi.mocked(countAdminUsers)).toHaveBeenCalledWith(mockEnv.DB);
     expect(vi.mocked(countServices)).toHaveBeenCalledWith(mockEnv.DB);
     expect(vi.mocked(countActiveRefreshTokens)).toHaveBeenCalledWith(mockEnv.DB);

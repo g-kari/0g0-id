@@ -13,9 +13,11 @@ app.get('/', async (c) => {
   const email = c.req.query('email');
   const role = c.req.query('role');
   const name = c.req.query('name');
+  const banned = c.req.query('banned');
   if (email) url.searchParams.set('email', email);
   if (role) url.searchParams.set('role', role);
   if (name) url.searchParams.set('name', name);
+  if (banned === 'true' || banned === 'false') url.searchParams.set('banned', banned);
 
   const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
   return proxyResponse(res);

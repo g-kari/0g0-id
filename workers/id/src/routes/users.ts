@@ -538,10 +538,13 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
   const emailQuery = c.req.query('email');
   const roleQuery = c.req.query('role');
   const nameQuery = c.req.query('name');
+  const bannedQuery = c.req.query('banned');
 
   if (emailQuery) filter.email = emailQuery;
   if (roleQuery === 'user' || roleQuery === 'admin') filter.role = roleQuery;
   if (nameQuery) filter.name = nameQuery;
+  if (bannedQuery === 'true') filter.banned = true;
+  else if (bannedQuery === 'false') filter.banned = false;
 
   const [users, total] = await Promise.all([
     listUsers(c.env.DB, limit, offset, filter),

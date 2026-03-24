@@ -506,6 +506,25 @@ describe('listUsers', () => {
     const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(sql).not.toContain('WHERE');
   });
+
+  it('banned=trueフィルターでBAN済みユーザーのみ検索する', async () => {
+    const bannedUser = { ...baseUser, banned_at: '2026-03-24T00:00:00Z' };
+    const stmt = { bind: vi.fn().mockReturnThis(), all: vi.fn().mockResolvedValue({ results: [bannedUser] }) };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+    await listUsers(db, 10, 0, { banned: true });
+    const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain('banned_at IS NOT NULL');
+    expect(stmt.bind).toHaveBeenCalledWith(10, 0);
+  });
+
+  it('banned=falseフィルターでBAN済みを除外して検索する', async () => {
+    const stmt = { bind: vi.fn().mockReturnThis(), all: vi.fn().mockResolvedValue({ results: [baseUser] }) };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+    await listUsers(db, 10, 0, { banned: false });
+    const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain('banned_at IS NULL');
+    expect(stmt.bind).toHaveBeenCalledWith(10, 0);
+  });
 });
 
 describe('countUsers', () => {
@@ -542,6 +561,22 @@ describe('countUsers', () => {
     await countUsers(db, {});
     const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(sql).not.toContain('WHERE');
+  });
+
+  it('banned=trueフィルターでBAN済みユーザー数を返す', async () => {
+    const db = makeD1Mock({ count: 3 });
+    const count = await countUsers(db, { banned: true });
+    expect(count).toBe(3);
+    const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain('banned_at IS NOT NULL');
+  });
+
+  it('banned=falseフィルターでBAN済み除外の件数を返す', async () => {
+    const db = makeD1Mock({ count: 97 });
+    const count = await countUsers(db, { banned: false });
+    expect(count).toBe(97);
+    const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain('banned_at IS NULL');
   });
 });
 

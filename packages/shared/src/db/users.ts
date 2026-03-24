@@ -359,6 +359,8 @@ export interface UserFilter {
   email?: string;
   role?: 'user' | 'admin';
   name?: string;
+  /** true: BAN済みのみ / false: BAN済み除外 / undefined: 全件 */
+  banned?: boolean;
 }
 
 function buildUserFilterClause(filter?: UserFilter): { where: string; params: unknown[] } {
@@ -376,6 +378,11 @@ function buildUserFilterClause(filter?: UserFilter): { where: string; params: un
   if (filter?.name) {
     conditions.push('name LIKE ?');
     params.push(`%${filter.name}%`);
+  }
+  if (filter?.banned === true) {
+    conditions.push('banned_at IS NOT NULL');
+  } else if (filter?.banned === false) {
+    conditions.push('banned_at IS NULL');
   }
 
   return {
