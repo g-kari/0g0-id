@@ -1,6 +1,7 @@
 export * from './types';
 export * from './middleware/logger';
 export * from './middleware/security-headers';
+export * from './middleware/bff';
 export * from './lib/jwt';
 export * from './lib/crypto';
 export * from './lib/fetch-retry';

@@ -1,16 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
-import { userCorsMiddleware } from './cors';
+import { bffCorsMiddleware } from '@0g0-id/shared';
 
 function buildApp() {
   const app = new Hono();
-  app.use('/api/*', userCorsMiddleware);
+  app.use('/api/*', bffCorsMiddleware);
   app.get('/api/test', (c) => c.json({ ok: true }));
   app.post('/api/test', (c) => c.json({ ok: true }));
   return app;
 }
 
-describe('userCorsMiddleware', () => {
+describe('bffCorsMiddleware', () => {
   const app = buildApp();
   const baseUrl = 'https://user.0g0.xyz';
 

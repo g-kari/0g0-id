@@ -1,17 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
-import { adminCsrfMiddleware } from './csrf';
+import { bffCsrfMiddleware } from '@0g0-id/shared';
 
 // テスト用のアプリケーション（CSRF保護付き）
 function buildApp() {
   const app = new Hono();
-  app.use('/api/*', adminCsrfMiddleware);
+  app.use('/api/*', bffCsrfMiddleware);
   app.get('/api/test', (c) => c.json({ ok: true }));
   app.post('/api/test', (c) => c.json({ ok: true }));
   return app;
 }
 
-describe('adminCsrfMiddleware', () => {
+describe('bffCsrfMiddleware', () => {
   const app = buildApp();
   const baseUrl = 'https://admin.0g0.xyz';
 
@@ -97,7 +97,7 @@ describe('adminCsrfMiddleware', () => {
   describe('/auth/* ルートはCSRF保護対象外', () => {
     it('authルートはOriginなしでもアクセス可能', async () => {
       const authApp = new Hono();
-      authApp.use('/api/*', adminCsrfMiddleware);
+      authApp.use('/api/*', bffCsrfMiddleware);
       authApp.get('/auth/login', (c) => c.json({ ok: true }));
 
       const req = new Request(`${baseUrl}/auth/login`);
