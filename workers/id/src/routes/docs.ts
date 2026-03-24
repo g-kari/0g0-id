@@ -1496,6 +1496,109 @@ Authorization: Basic <Base64(client_id:client_secret)>
     },
   },
   paths: {
+    '/auth/login': {
+      get: {
+        tags: ['認証フロー'],
+        summary: 'ログイン開始（OAuth 2.0 認可エンドポイント）',
+        description:
+          'ユーザーのログインフローを開始する。外部サービスはこのURLにユーザーをリダイレクトする。\n\n' +
+          '**外部サービスは必ず `client_id` を指定すること。** `client_id` を指定した場合、`redirect_to` は\n' +
+          '管理者が登録したリダイレクトURIリストに対して検証される。\n\n' +
+          '**PKCE（RFC 7636）推奨**: `code_challenge` / `code_challenge_method=S256` を指定することで、\n' +
+          '認可コードの傍受攻撃を防げる。`/auth/exchange` 呼び出し時に対応する `code_verifier` を渡す。\n\n' +
+          '認証が完了すると `redirect_to` にワンタイムコードとともにリダイレクトされる:\n' +
+          '```\nGET {redirect_to}?code=<ワンタイムコード>&state=<state>\n```',
+        parameters: [
+          {
+            name: 'redirect_to',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', format: 'uri', example: 'https://myapp.com/auth/callback' },
+            description:
+              '認証後のリダイレクト先URL。`client_id` 指定時は管理者が登録したURIリストと一致する必要がある。HTTPS必須。',
+          },
+          {
+            name: 'state',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', example: 'random_csrf_state_value' },
+            description: 'CSRF対策用のランダム文字列。コールバック時にそのまま返される（必ず検証すること）。',
+          },
+          {
+            name: 'client_id',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', example: 'my_service_client_id' },
+            description:
+              '外部サービスの `client_id`（サービス登録時に発行）。外部サービスは必ず指定すること。未指定の場合は内部BFF向けの検証ロジックが使用される。',
+          },
+          {
+            name: 'provider',
+            in: 'query',
+            required: false,
+            schema: {
+              type: 'string',
+              enum: ['google', 'line', 'twitch', 'github', 'x'],
+              default: 'google',
+            },
+            description: '使用するOAuthプロバイダー。未指定の場合は `google`。利用可能なプロバイダーはサービス設定により異なる。',
+          },
+          {
+            name: 'scope',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', example: 'openid profile email' },
+            description: 'リクエストするスコープ（スペース区切り）。許可スコープはサービス設定の `allowed_scopes` に制限される。',
+          },
+          {
+            name: 'nonce',
+            in: 'query',
+            required: false,
+            schema: { type: 'string' },
+            description: 'IDトークン検証用のランダム値（OIDC）。IDトークンの `nonce` クレームとして返される。',
+          },
+          {
+            name: 'code_challenge',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', example: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM' },
+            description:
+              'PKCEコードチャレンジ（`code_verifier` をSHA-256でハッシュし、Base64urlエンコードした値）。`code_challenge_method=S256` と一緒に指定する。',
+          },
+          {
+            name: 'code_challenge_method',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', enum: ['S256'] },
+            description: 'PKCEのコードチャレンジメソッド。`S256` のみサポート。`code_challenge` 指定時は必須。',
+          },
+        ],
+        responses: {
+          '302': {
+            description:
+              'OAuthプロバイダーの認可画面へリダイレクト。認証完了後、`{redirect_to}?code=<code>&state=<state>` にリダイレクトされる。',
+          },
+          '400': {
+            description: 'BAD_REQUEST — パラメータ不正（`redirect_to` 未登録・`client_id` 無効・PKCEパラメータ不正など）',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+                example: { error: { code: 'BAD_REQUEST', message: 'Invalid redirect_to' } },
+              },
+            },
+          },
+          '429': {
+            description: 'TOO_MANY_REQUESTS — レートリミット超過',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+                example: { error: { code: 'TOO_MANY_REQUESTS', message: 'Too many requests. Please try again later.' } },
+              },
+            },
+          },
+        },
+      },
+    },
     '/auth/exchange': {
       post: {
         tags: ['認証フロー'],
