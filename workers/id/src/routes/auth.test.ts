@@ -363,6 +363,8 @@ describe('GET /auth/callback', () => {
       name: 'Test User',
       picture: 'https://example.com/pic.jpg',
     } as never);
+    // state比較はtimingSafeEqualを使用するためデフォルトでtrueを返す
+    vi.mocked(timingSafeEqual).mockReturnValue(true);
   });
 
   it('errorパラメータあり → 400を返す', async () => {
@@ -387,6 +389,8 @@ describe('GET /auth/callback', () => {
   });
 
   it('state不一致 → 400を返す', async () => {
+    // state不一致の場合はtimingSafeEqualがfalseを返す
+    vi.mocked(timingSafeEqual).mockReturnValue(false);
     const stateData = buildStateCookie({
       idState: 'correct-state',
       bffState: 'bff-state',
@@ -851,6 +855,7 @@ describe('GET /auth/callback - LINEプロバイダー', () => {
     vi.mocked(upsertLineUser).mockResolvedValue(mockUser);
     vi.mocked(countAdminUsers).mockResolvedValue(1);
     vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
+    vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(exchangeLineCode).mockResolvedValue({ access_token: 'line-at' } as never);
     vi.mocked(fetchLineUserInfo).mockResolvedValue({
       sub: 'line-sub-1',
@@ -946,6 +951,7 @@ describe('GET /auth/callback - GitHubプロバイダー', () => {
     vi.mocked(upsertGithubUser).mockResolvedValue(mockUser);
     vi.mocked(countAdminUsers).mockResolvedValue(1);
     vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
+    vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(exchangeGithubCode).mockResolvedValue({ access_token: 'github-at' } as never);
     vi.mocked(fetchGithubUserInfo).mockResolvedValue({
       id: 12345,
@@ -1063,6 +1069,7 @@ describe('GET /auth/callback - Twitchプロバイダー', () => {
     vi.mocked(upsertTwitchUser).mockResolvedValue(mockUser);
     vi.mocked(countAdminUsers).mockResolvedValue(1);
     vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
+    vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(exchangeTwitchCode).mockResolvedValue({ access_token: 'twitch-at' } as never);
     vi.mocked(fetchTwitchUserInfo).mockResolvedValue({
       sub: 'twitch-sub-1',
@@ -1143,6 +1150,7 @@ describe('GET /auth/callback - Xプロバイダー', () => {
     vi.mocked(upsertXUser).mockResolvedValue(mockUser);
     vi.mocked(countAdminUsers).mockResolvedValue(1);
     vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
+    vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(exchangeXCode).mockResolvedValue({ access_token: 'x-at' } as never);
     vi.mocked(fetchXUserInfo).mockResolvedValue({
       id: 'x-user-id',
@@ -1218,6 +1226,7 @@ describe('GET /auth/callback - プロバイダー連携 (linkUserId)', () => {
     vi.mocked(linkProvider).mockResolvedValue(mockUser);
     vi.mocked(countAdminUsers).mockResolvedValue(1);
     vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
+    vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(exchangeGoogleCode).mockResolvedValue({ access_token: 'google-at' } as never);
     vi.mocked(fetchGoogleUserInfo).mockResolvedValue({
       sub: 'google-sub-1',
@@ -1350,6 +1359,7 @@ describe('GET /auth/callback - ブートストラップ管理者', () => {
     vi.mocked(generateToken).mockReturnValue('mock-auth-code');
     vi.mocked(countAdminUsers).mockResolvedValue(0);
     vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
+    vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(exchangeGoogleCode).mockResolvedValue({ access_token: 'google-at' } as never);
     vi.mocked(fetchGoogleUserInfo).mockResolvedValue({
       sub: 'google-sub-1',

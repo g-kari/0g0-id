@@ -164,7 +164,16 @@ export function isAllowedRedirectTo(
       .split(',')
       .map((o) => o.trim())
       .filter(Boolean);
-    if (extras.some((origin) => redirectTo.startsWith(origin + '/'))) {
+    if (
+      extras.some((extra) => {
+        try {
+          // URLとしてパースしてoriginを正規化比較（プレフィックス文字列比較の脆弱性を回避）
+          return redirectUrl.origin === new URL(extra).origin;
+        } catch {
+          return false;
+        }
+      })
+    ) {
       return true;
     }
   }
@@ -642,8 +651,8 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid state cookie' } }, 400);
   }
 
-  // state検証
-  if (state !== stateData.idState) {
+  // state検証（タイミング攻撃対策のため定数時間比較を使用）
+  if (!timingSafeEqual(state, stateData.idState)) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'State mismatch' } }, 400);
   }
 
