@@ -17,6 +17,7 @@ import {
   getUserProviders,
   unlinkProvider,
   getLoginEventsByUserId,
+  getUserLoginProviderStats,
   banUser,
   unbanUser,
   parsePagination,
@@ -219,6 +220,22 @@ app.get('/me/login-history', authMiddleware, async (c) => {
 
   const { events, total } = await getLoginEventsByUserId(c.env.DB, tokenUser.sub, limit, offset, provider);
   return c.json({ data: events, total });
+});
+
+// GET /api/users/me/login-stats — 自分のプロバイダー別ログイン統計
+app.get('/me/login-stats', authMiddleware, async (c) => {
+  const tokenUser = c.get('user');
+  const daysParam = c.req.query('days');
+  const days = daysParam !== undefined ? parseInt(daysParam, 10) : 30;
+  if (isNaN(days) || days < 1 || days > 90) {
+    return c.json(
+      { error: { code: 'BAD_REQUEST', message: 'days は1〜90の整数で指定してください' } },
+      400
+    );
+  }
+  const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const stats = await getUserLoginProviderStats(c.env.DB, tokenUser.sub, sinceIso);
+  return c.json({ data: stats, days });
 });
 
 // DELETE /api/users/me/providers/:provider — SNSプロバイダー連携解除

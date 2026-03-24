@@ -23,6 +23,15 @@ app.get('/login-history', async (c) => {
   return proxyResponse(res);
 });
 
+// GET /api/me/login-stats — プロバイダー別ログイン統計
+app.get('/login-stats', async (c) => {
+  const url = new URL(`${c.env.IDP_ORIGIN}/api/users/me/login-stats`);
+  const days = c.req.query('days');
+  if (days) url.searchParams.set('days', days);
+  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  return proxyResponse(res);
+});
+
 // GET /api/me/data-export — アカウントデータ一括エクスポート
 app.get('/data-export', async (c) => {
   const res = await fetchWithAuth(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/me/data-export`);
