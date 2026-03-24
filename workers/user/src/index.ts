@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { BffEnv } from '@0g0-id/shared';
-import { logger } from '@0g0-id/shared';
+import { logger, securityHeaders } from '@0g0-id/shared';
 import authRoutes from './routes/auth';
 import { userCorsMiddleware } from './middleware/cors';
 import { userCsrfMiddleware } from './middleware/csrf';
@@ -13,6 +13,7 @@ import sessionsRoutes from './routes/sessions';
 const app = new Hono<{ Bindings: BffEnv }>();
 
 app.use('*', logger());
+app.use('*', securityHeaders());
 
 // ユーザー画面APIへのCORSをユーザー画面自身のドメインのみに制限
 app.use('/api/*', userCorsMiddleware);

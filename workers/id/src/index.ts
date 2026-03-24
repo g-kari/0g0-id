@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
-import { logger } from '@0g0-id/shared';
+import { logger, securityHeaders } from '@0g0-id/shared';
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
 import tokenRoutes from './routes/token';
@@ -16,6 +16,7 @@ type Variables = { user: TokenPayload };
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
 app.use('*', logger());
+app.use('*', securityHeaders());
 
 // ルート登録
 app.route('/auth', authRoutes);

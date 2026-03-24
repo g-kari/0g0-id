@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@0g0-id/shared', () => ({
   logger: () => async (_c: unknown, next: () => Promise<void>) => next(),
+  securityHeaders: () => async (_c: unknown, next: () => Promise<void>) => next(),
   fetchWithAuth: vi.fn(),
   proxyResponse: vi.fn(),
   parseSession: vi.fn(),
