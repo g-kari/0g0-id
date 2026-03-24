@@ -6,10 +6,11 @@ import type { BffEnv } from '../types';
  * BFF共通CORSミドルウェア
  *
  * BFF自身のドメインからのリクエストのみを許可する。
+ * SELF_ORIGIN環境変数で明示的に許可オリジンを指定（動的導出を排除）。
  * user/admin 両 BFF で共有。
  */
 export const bffCorsMiddleware = createMiddleware<{ Bindings: BffEnv }>(async (c, next) => {
-  const appOrigin = new URL(c.req.url).origin;
+  const appOrigin = c.env.SELF_ORIGIN;
   return cors({
     origin: appOrigin,
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -22,7 +23,9 @@ export const bffCorsMiddleware = createMiddleware<{ Bindings: BffEnv }>(async (c
  * BFF共通CSRFミドルウェア
  *
  * 外部サービスからの直接アクセスを防ぐため、
- * Originヘッダーが BFF 自身のドメインと一致することを検証する。
+ * OriginヘッダーがSELF_ORIGIN環境変数と一致することを検証する。
+ * 動的導出ではなく明示的な環境変数を使用することで、
+ * HTTP/HTTPSプロトコル混在によるバイパスリスクを排除。
  * user/admin 両 BFF で共有。
  */
 export const bffCsrfMiddleware = createMiddleware<{ Bindings: BffEnv }>(async (c, next) => {
@@ -32,7 +35,7 @@ export const bffCsrfMiddleware = createMiddleware<{ Bindings: BffEnv }>(async (c
     return c.json({ error: { code: 'FORBIDDEN', message: 'Origin header required' } }, 403);
   }
 
-  const appOrigin = new URL(c.req.url).origin;
+  const appOrigin = c.env.SELF_ORIGIN;
 
   let originBase: string;
   try {
