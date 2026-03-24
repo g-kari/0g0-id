@@ -37,6 +37,11 @@ describe('securityHeaders', () => {
     expect(res.headers.get('Permissions-Policy')).toBe('geolocation=(), microphone=(), camera=()');
   });
 
+  it("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'が設定される", async () => {
+    const res = await app.request('https://example.com/test');
+    expect(res.headers.get('Content-Security-Policy')).toBe("default-src 'none'; frame-ancestors 'none'");
+  });
+
   it('レスポンスボディへの影響なし', async () => {
     const res = await app.request('https://example.com/test');
     expect(res.status).toBe(200);

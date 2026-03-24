@@ -2031,6 +2031,21 @@ Authorization: Basic <Base64(client_id:client_secret)>
 // SRIハッシュはデプロイパイプラインで付与すること
 const SCALAR_CDN = 'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.49.1';
 
+/**
+ * ドキュメントページ（HTML）向けのContent-Security-Policy。
+ * Scalar CDNスクリプト読み込みと同一オリジンへのfetchを許可する。
+ * securityHeaders()が設定するデフォルトCSP（default-src 'none'）をオーバーライドして使用する。
+ */
+const DOCS_CSP =
+  "default-src 'none'; " +
+  `script-src ${SCALAR_CDN}; ` +
+  "connect-src 'self'; " +
+  "style-src 'unsafe-inline'; " +
+  "font-src 'self' data: https:; " +
+  "img-src 'self' data: https:; " +
+  "worker-src blob:; " +
+  "frame-ancestors 'none'";
+
 // ─── Scalar HTML テンプレート ────────────────────────────────────────
 function scalarHtml(specUrl: string, title: string): string {
   return `<!doctype html>
@@ -2049,14 +2064,18 @@ function scalarHtml(specUrl: string, title: string): string {
 
 // ─── ルート定義 ────────────────────────────────────────────────────
 // IdP 開発者向け: 全API（内部利用）
-app.get('/', (c) => c.html(scalarHtml('/docs/openapi.json', '0g0 ID API — IdP 開発者向け')));
+app.get('/', (c) => {
+  c.header('Content-Security-Policy', DOCS_CSP);
+  return c.html(scalarHtml('/docs/openapi.json', '0g0 ID API — IdP 開発者向け'));
+});
 // 内部向け仕様は開発者ネットワーク内での参照を想定。本番では Cloudflare Access 等で保護すること
 app.get('/openapi.json', (c) => c.json(INTERNAL_OPENAPI));
 
 // 外部連携サービス向け: 外部API + 連携フロー
-app.get('/external', (c) =>
-  c.html(scalarHtml('/docs/external/openapi.json', '0g0 ID API — 外部連携サービス向け'))
-);
+app.get('/external', (c) => {
+  c.header('Content-Security-Policy', DOCS_CSP);
+  return c.html(scalarHtml('/docs/external/openapi.json', '0g0 ID API — 外部連携サービス向け'));
+});
 app.get('/external/openapi.json', (c) => c.json(EXTERNAL_OPENAPI));
 
 export default app;
