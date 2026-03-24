@@ -117,43 +117,9 @@ export async function updateServiceFields(
   return service;
 }
 
-export async function updateServiceAllowedScopes(
-  db: D1Database,
-  id: string,
-  allowedScopes: string
-): Promise<Service | null> {
-  const service = await db
-    .prepare(
-      `UPDATE services SET allowed_scopes = ?, updated_at = datetime('now')
-       WHERE id = ?
-       RETURNING *`
-    )
-    .bind(allowedScopes, id)
-    .first<Service>();
 
-  if (service) cachePut(service);
-  else invalidateServiceCache(id);
-  return service;
-}
 
-export async function updateServiceName(
-  db: D1Database,
-  id: string,
-  name: string
-): Promise<Service | null> {
-  const service = await db
-    .prepare(
-      `UPDATE services SET name = ?, updated_at = datetime('now')
-       WHERE id = ?
-       RETURNING *`
-    )
-    .bind(name, id)
-    .first<Service>();
 
-  if (service) cachePut(service);
-  else invalidateServiceCache(id);
-  return service;
-}
 
 export async function deleteService(db: D1Database, id: string): Promise<void> {
   invalidateServiceCache(id);
