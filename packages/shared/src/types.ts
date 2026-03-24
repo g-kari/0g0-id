@@ -81,6 +81,8 @@ export interface TokenPayload {
   role: 'user' | 'admin';
   /** OIDCスコープ（スペース区切り）。サービストークンのみ設定される。BFFセッションはundefined。 */
   scope?: string;
+  /** トークンを発行したサービスのclient_id。サービストークンのみ設定される。BFFセッションはundefined。 */
+  cid?: string;
 }
 
 /**

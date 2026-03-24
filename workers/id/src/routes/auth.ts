@@ -457,12 +457,12 @@ async function issueTokenPair(
   db: D1Database,
   env: IdpEnv,
   user: User,
-  options: { serviceId: string | null; familyId?: string; scope?: string }
+  options: { serviceId: string | null; clientId?: string; familyId?: string; scope?: string }
 ): Promise<{ accessToken: string; refreshToken: string }> {
-  const { serviceId, familyId = crypto.randomUUID(), scope } = options;
+  const { serviceId, clientId, familyId = crypto.randomUUID(), scope } = options;
 
   const accessToken = await signAccessToken(
-    { iss: env.IDP_ORIGIN, sub: user.id, aud: env.IDP_ORIGIN, email: user.email, role: user.role, scope },
+    { iss: env.IDP_ORIGIN, sub: user.id, aud: env.IDP_ORIGIN, email: user.email, role: user.role, scope, cid: clientId },
     env.JWT_PRIVATE_KEY,
     env.JWT_PUBLIC_KEY
   );
@@ -857,6 +857,7 @@ app.post('/exchange', tokenApiRateLimitMiddleware, async (c) => {
   // アクセストークン・リフレッシュトークン発行
   const { accessToken, refreshToken: refreshTokenRaw } = await issueTokenPair(c.env.DB, c.env, user, {
     serviceId,
+    clientId: authCode.service_id !== null ? idTokenAud : undefined,
     scope: serviceScope,
   });
 
@@ -934,10 +935,11 @@ app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
 
   // サービストークンの場合: 元のサービスのスコープを引き継ぐ
   let refreshScope: string | undefined = undefined;
+  let refreshService: Awaited<ReturnType<typeof findServiceById>> | undefined = undefined;
   if (storedToken.service_id !== null) {
-    const service = await findServiceById(c.env.DB, storedToken.service_id);
-    if (service) {
-      const allowedScopes = parseAllowedScopes(service.allowed_scopes);
+    refreshService = await findServiceById(c.env.DB, storedToken.service_id);
+    if (refreshService) {
+      const allowedScopes = parseAllowedScopes(refreshService.allowed_scopes);
       refreshScope = ['openid', ...allowedScopes].join(' ');
     }
   }
@@ -945,6 +947,7 @@ app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
   // 新アクセストークン・リフレッシュトークン発行（ローテーション、同じfamily_id）
   const { accessToken, refreshToken: newRefreshTokenRaw } = await issueTokenPair(c.env.DB, c.env, user, {
     serviceId: storedToken.service_id,
+    clientId: refreshService?.client_id,
     familyId: storedToken.family_id,
     scope: refreshScope,
   });
