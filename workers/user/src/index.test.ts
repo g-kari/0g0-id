@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+vi.mock('./middleware/csrf', () => ({
+  userCsrfMiddleware: async (_c: unknown, next: () => Promise<void>) => next(),
+}));
+
+vi.mock('./middleware/cors', () => ({
+  userCorsMiddleware: async (_c: unknown, next: () => Promise<void>) => next(),
+}));
+
 vi.mock('@0g0-id/shared', () => ({
   logger: () => async (_c: unknown, next: () => Promise<void>) => next(),
   fetchWithAuth: vi.fn(),
