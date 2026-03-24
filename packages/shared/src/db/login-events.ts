@@ -82,3 +82,21 @@ export async function getLoginEventProviderStats(
     .all<LoginProviderStat>();
   return result.results;
 }
+
+export async function getUserLoginProviderStats(
+  db: D1Database,
+  userId: string,
+  sinceIso: string
+): Promise<LoginProviderStat[]> {
+  const result = await db
+    .prepare(
+      `SELECT provider, COUNT(*) as count
+       FROM login_events
+       WHERE user_id = ? AND created_at >= ?
+       GROUP BY provider
+       ORDER BY count DESC`
+    )
+    .bind(userId, sinceIso)
+    .all<LoginProviderStat>();
+  return result.results;
+}
