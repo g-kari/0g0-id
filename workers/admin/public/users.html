@@ -30,6 +30,17 @@
     <main class="main">
       <div class="page-header">
         <h1>ユーザー管理</h1>
+        <button class="btn btn-danger btn-sm" id="logout-btn">ログアウト</button>
+      </div>
+      <div class="card" style="margin-bottom:1rem;">
+        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+          <label for="banned-filter" style="font-size:0.875rem;color:var(--text-muted);white-space:nowrap;">状態フィルター:</label>
+          <select id="banned-filter" style="padding:0.375rem 0.75rem;border:1px solid var(--border);border-radius:0.375rem;font-size:0.875rem;background:var(--surface);color:var(--text);">
+            <option value="">すべて</option>
+            <option value="false">正常のみ</option>
+            <option value="true">停止中のみ</option>
+          </select>
+        </div>
       </div>
       <div class="card">
         <div class="table-wrap">
