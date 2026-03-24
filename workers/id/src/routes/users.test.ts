@@ -19,6 +19,8 @@ vi.mock('@0g0-id/shared', () => ({
   getUserProviders: vi.fn(),
   unlinkProvider: vi.fn(),
   getLoginEventsByUserId: vi.fn(),
+  banUser: vi.fn(),
+  unbanUser: vi.fn(),
   parsePagination: (
     query: { limit?: string; offset?: string },
     options: { defaultLimit: number; maxLimit: number } = { defaultLimit: 20, maxLimit: 100 }
@@ -53,6 +55,8 @@ import {
   getUserProviders,
   unlinkProvider,
   getLoginEventsByUserId,
+  banUser,
+  unbanUser,
   verifyAccessToken,
   type UserFilter,
 } from '@0g0-id/shared';
@@ -105,6 +109,7 @@ const mockUser = {
   phone: '090-0000-0000',
   address: 'Tokyo',
   role: 'user' as const,
+  banned_at: null,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
 };
@@ -1837,5 +1842,112 @@ describe('DELETE /api/users/me', () => {
     });
 
     expect(callOrder).toEqual(['revoke', 'delete']);
+  });
+});
+
+describe('PATCH /api/users/:id/ban — ユーザー停止', () => {
+  let app: ReturnType<typeof buildApp>;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    app = buildApp();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: 'target-user-id' });
+    vi.mocked(banUser).mockResolvedValue({ ...mockUser, id: 'target-user-id', banned_at: '2026-03-24T00:00:00Z' });
+    vi.mocked(revokeUserTokens).mockResolvedValue(undefined);
+  });
+
+  it('対象ユーザーを停止し200を返す', async () => {
+    const res = await sendRequest(app, '/api/users/target-user-id/ban', {
+      method: 'PATCH',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: { banned_at: string } }>();
+    expect(body.data.banned_at).toBe('2026-03-24T00:00:00Z');
+    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), 'target-user-id');
+  });
+
+  it('自分自身を停止しようとした場合 → 403を返す', async () => {
+    const res = await sendRequest(app, `/api/users/${mockAdminPayload.sub}/ban`, {
+      method: 'PATCH',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('管理者ユーザーを停止しようとした場合 → 403を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: 'target-user-id', role: 'admin' });
+    const res = await sendRequest(app, '/api/users/target-user-id/ban', {
+      method: 'PATCH',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('すでに停止済みのユーザーを停止しようとした場合 → 409を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: 'target-user-id', banned_at: '2026-01-01T00:00:00Z' });
+    const res = await sendRequest(app, '/api/users/target-user-id/ban', {
+      method: 'PATCH',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('CONFLICT');
+  });
+
+  it('ユーザーが存在しない場合 → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/not-exist/ban', {
+      method: 'PATCH',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('DELETE /api/users/:id/ban — ユーザー停止解除', () => {
+  let app: ReturnType<typeof buildApp>;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    app = buildApp();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: 'target-user-id', banned_at: '2026-01-01T00:00:00Z' });
+    vi.mocked(unbanUser).mockResolvedValue({ ...mockUser, id: 'target-user-id', banned_at: null });
+  });
+
+  it('停止中ユーザーを解除し200を返す', async () => {
+    const res = await sendRequest(app, '/api/users/target-user-id/ban', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: { banned_at: null } }>();
+    expect(body.data.banned_at).toBeNull();
+  });
+
+  it('停止されていないユーザーを解除しようとした場合 → 409を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: 'target-user-id', banned_at: null });
+    const res = await sendRequest(app, '/api/users/target-user-id/ban', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('CONFLICT');
+  });
+
+  it('ユーザーが存在しない場合 → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/not-exist/ban', {
+      method: 'DELETE',
+      origin: 'https://id.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
   });
 });

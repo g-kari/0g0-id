@@ -17,6 +17,8 @@ import {
   getUserProviders,
   unlinkProvider,
   getLoginEventsByUserId,
+  banUser,
+  unbanUser,
   parsePagination,
   type UserFilter,
 } from '@0g0-id/shared';
@@ -72,6 +74,7 @@ function formatAdminUserDetail(user: User) {
     phone: user.phone,
     address: user.address,
     role: user.role,
+    banned_at: user.banned_at,
     created_at: user.created_at,
     updated_at: user.updated_at,
   };
@@ -85,6 +88,7 @@ function formatAdminUserSummary(user: User) {
     name: user.name,
     picture: user.picture,
     role: user.role,
+    banned_at: user.banned_at,
     created_at: user.created_at,
   };
 }
@@ -402,6 +406,54 @@ app.patch('/:id/role', authMiddleware, adminMiddleware, csrfMiddleware, async (c
   await revokeUserTokens(c.env.DB, targetId);
 
   return c.json({ data: formatAdminUserSummary(user) });
+});
+
+// PATCH /api/users/:id/ban — ユーザーを停止（管理者のみ）
+app.patch('/:id/ban', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+  const targetId = c.req.param('id');
+  const tokenUser = c.get('user');
+
+  // 自分自身を停止不可
+  if (targetId === tokenUser.sub) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Cannot ban yourself' } }, 403);
+  }
+
+  const targetUser = await findUserById(c.env.DB, targetId);
+  if (!targetUser) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+
+  // 管理者を停止不可
+  if (targetUser.role === 'admin') {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Cannot ban an admin user' } }, 403);
+  }
+
+  if (targetUser.banned_at !== null) {
+    return c.json({ error: { code: 'CONFLICT', message: 'User is already banned' } }, 409);
+  }
+
+  const updated = await banUser(c.env.DB, targetId);
+  // 停止と同時に全セッション失効
+  await revokeUserTokens(c.env.DB, targetId);
+
+  return c.json({ data: formatAdminUserSummary(updated) });
+});
+
+// DELETE /api/users/:id/ban — ユーザー停止を解除（管理者のみ）
+app.delete('/:id/ban', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+  const targetId = c.req.param('id');
+
+  const targetUser = await findUserById(c.env.DB, targetId);
+  if (!targetUser) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+
+  if (targetUser.banned_at === null) {
+    return c.json({ error: { code: 'CONFLICT', message: 'User is not banned' } }, 409);
+  }
+
+  const updated = await unbanUser(c.env.DB, targetId);
+  return c.json({ data: formatAdminUserSummary(updated) });
 });
 
 // GET /api/users/:id/tokens — ユーザーのアクティブセッション一覧（管理者のみ）

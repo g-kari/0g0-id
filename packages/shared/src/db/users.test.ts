@@ -12,6 +12,8 @@ import {
   listUsers,
   countUsers,
   countAdminUsers,
+  banUser,
+  unbanUser,
 } from './users';
 import type { User } from '../types';
 
@@ -40,6 +42,7 @@ const baseUser: User = {
   phone: null,
   address: null,
   role: 'admin',
+  banned_at: null,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
 };
@@ -553,5 +556,51 @@ describe('countAdminUsers', () => {
     const db = makeD1Mock(null);
     const count = await countAdminUsers(db);
     expect(count).toBe(0);
+  });
+});
+
+describe('banUser', () => {
+  it('banned_atが設定されたユーザーを返す', async () => {
+    const bannedUser = { ...baseUser, banned_at: '2026-03-24T00:00:00Z' };
+    const db = makeD1Mock(bannedUser);
+    const user = await banUser(db, 'user-1');
+    expect(user.banned_at).toBe('2026-03-24T00:00:00Z');
+    expect(user.id).toBe('user-1');
+  });
+
+  it('ユーザーが見つからない場合はエラーを投げる', async () => {
+    const db = makeD1Mock(null);
+    await expect(banUser(db, 'not-exist')).rejects.toThrow('User not found');
+  });
+
+  it('正しいSQLパラメーターでprepareを呼ぶ', async () => {
+    const bannedUser = { ...baseUser, banned_at: '2026-03-24T00:00:00Z' };
+    const db = makeD1Mock(bannedUser);
+    await banUser(db, 'user-1');
+    expect(db.prepare).toHaveBeenCalledWith(
+      expect.stringContaining("banned_at = datetime('now')")
+    );
+  });
+});
+
+describe('unbanUser', () => {
+  it('banned_atがnullになったユーザーを返す', async () => {
+    const db = makeD1Mock(baseUser);
+    const user = await unbanUser(db, 'user-1');
+    expect(user.banned_at).toBeNull();
+    expect(user.id).toBe('user-1');
+  });
+
+  it('ユーザーが見つからない場合はエラーを投げる', async () => {
+    const db = makeD1Mock(null);
+    await expect(unbanUser(db, 'not-exist')).rejects.toThrow('User not found');
+  });
+
+  it('banned_at = NULL を設定するSQLを呼ぶ', async () => {
+    const db = makeD1Mock(baseUser);
+    await unbanUser(db, 'user-1');
+    expect(db.prepare).toHaveBeenCalledWith(
+      expect.stringContaining('banned_at = NULL')
+    );
   });
 });

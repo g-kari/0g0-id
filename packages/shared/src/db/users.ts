@@ -447,6 +447,24 @@ export async function unlinkProvider(
   if ((result.meta.changes ?? 0) === 0) throw new Error('User not found');
 }
 
+export async function banUser(db: D1Database, userId: string): Promise<User> {
+  const user = await db
+    .prepare(`UPDATE users SET banned_at = datetime('now'), updated_at = datetime('now') WHERE id = ? RETURNING *`)
+    .bind(userId)
+    .first<User>();
+  if (!user) throw new Error('User not found');
+  return user;
+}
+
+export async function unbanUser(db: D1Database, userId: string): Promise<User> {
+  const user = await db
+    .prepare(`UPDATE users SET banned_at = NULL, updated_at = datetime('now') WHERE id = ? RETURNING *`)
+    .bind(userId)
+    .first<User>();
+  if (!user) throw new Error('User not found');
+  return user;
+}
+
 export async function linkProvider(
   db: D1Database,
   userId: string,
