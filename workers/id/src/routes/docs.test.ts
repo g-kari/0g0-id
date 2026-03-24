@@ -109,5 +109,26 @@ describe('GET /docs — ドキュメントルート', () => {
       expect(body.info.title).toBeTruthy();
       expect(body.paths).toBeTruthy();
     });
+
+    it('外部向け仕様に /auth/login エンドポイントが含まれる', async () => {
+      const res = await app.request(new Request(`${baseUrl}/docs/external/openapi.json`));
+      const body = await res.json<{ paths: Record<string, unknown> }>();
+      expect(body.paths).toHaveProperty('/auth/login');
+    });
+
+    it('/auth/login に client_id・code_challenge パラメータが定義される', async () => {
+      const res = await app.request(new Request(`${baseUrl}/docs/external/openapi.json`));
+      const body = await res.json<{
+        paths: { '/auth/login': { get: { parameters: { name: string }[] } } };
+      }>();
+      const params = body.paths['/auth/login'].get.parameters.map((p) => p.name);
+      expect(params).toContain('client_id');
+      expect(params).toContain('redirect_to');
+      expect(params).toContain('state');
+      expect(params).toContain('code_challenge');
+      expect(params).toContain('code_challenge_method');
+      expect(params).toContain('provider');
+    });
   });
 });
+
