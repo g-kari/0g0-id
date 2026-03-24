@@ -119,6 +119,7 @@ const mockUser = {
   phone: '090-0000-0000',
   address: 'Tokyo',
   role: 'user' as const,
+  banned_at: null,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
 };

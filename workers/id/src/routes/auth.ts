@@ -697,6 +697,11 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
     user = await resolved.upsert(c.env.DB, userId);
   }
 
+  // BANされたユーザーのログインを拒否
+  if (user.banned_at !== null) {
+    return c.json({ error: { code: 'ACCOUNT_BANNED', message: 'Your account has been suspended' } }, 403);
+  }
+
   // 管理者ブートストラップ（管理者が0人の場合のみ）
   if (
     c.env.BOOTSTRAP_ADMIN_EMAIL &&
@@ -788,6 +793,11 @@ app.post('/exchange', tokenApiRateLimitMiddleware, async (c) => {
   const user = await findUserById(c.env.DB, authCode.user_id);
   if (!user) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+
+  // BANされたユーザーのトークン発行を拒否
+  if (user.banned_at !== null) {
+    return c.json({ error: { code: 'ACCOUNT_BANNED', message: 'Your account has been suspended' } }, 403);
   }
 
   // サービスOAuthフロー: service_id が設定されている場合はクライアント認証を要求
@@ -931,6 +941,11 @@ app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
   const user = await findUserById(c.env.DB, storedToken.user_id);
   if (!user) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+
+  // BANされたユーザーのトークン更新を拒否
+  if (user.banned_at !== null) {
+    return c.json({ error: { code: 'ACCOUNT_BANNED', message: 'Your account has been suspended' } }, 403);
   }
 
   // サービストークンの場合: 元のサービスのスコープを引き継ぐ

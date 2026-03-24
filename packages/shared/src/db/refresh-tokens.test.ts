@@ -54,6 +54,7 @@ const baseUser: User = {
   phone: null,
   address: null,
   role: 'user',
+  banned_at: null,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
 };

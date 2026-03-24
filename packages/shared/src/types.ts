@@ -12,6 +12,7 @@ export interface User {
   phone: string | null;
   address: string | null;
   role: 'user' | 'admin';
+  banned_at: string | null;
   created_at: string;
   updated_at: string;
 }
