@@ -80,6 +80,20 @@ app.get('/:id/tokens', async (c) => {
   return proxyResponse(res);
 });
 
+// DELETE /api/users/:id/tokens/:tokenId — ユーザーの特定セッションを失効
+app.delete('/:id/tokens/:tokenId', async (c) => {
+  const res = await fetchWithAuth(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/tokens/${c.req.param('tokenId')}`,
+    {
+      method: 'DELETE',
+      headers: { Origin: c.env.IDP_ORIGIN },
+    }
+  );
+  return proxyResponse(res);
+});
+
 // DELETE /api/users/:id/tokens — ユーザーの全セッション無効化
 app.delete('/:id/tokens', async (c) => {
   const res = await fetchWithAuth(

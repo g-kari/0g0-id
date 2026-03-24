@@ -1685,6 +1685,87 @@ describe('DELETE /api/users/:id/tokens', () => {
   });
 });
 
+// ===== DELETE /api/users/:id/tokens/:tokenId（管理者のみ）=====
+describe('DELETE /api/users/:id/tokens/:tokenId', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(revokeTokenByIdForUser).mockResolvedValue(1);
+  });
+
+  it('Authorizationヘッダーなし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/tokens/token-abc', {
+      method: 'DELETE',
+      withAuth: false,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者以外 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/users/user-1/tokens/token-abc', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('Originヘッダーなし（CSRF）→ 403を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/tokens/token-abc', { method: 'DELETE' });
+    expect(res.status).toBe(403);
+  });
+
+  it('対象ユーザーが存在しない → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/nonexistent/tokens/token-abc', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('指定セッションを失効させて204を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/tokens/token-abc', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(204);
+    expect(vi.mocked(revokeTokenByIdForUser)).toHaveBeenCalledWith(
+      expect.anything(),
+      'token-abc',
+      'user-1'
+    );
+  });
+
+  it('存在しないor他ユーザー所属のセッションID → 404を返す', async () => {
+    vi.mocked(revokeTokenByIdForUser).mockResolvedValue(0);
+    const res = await sendRequest(app, '/api/users/user-1/tokens/no-such-token', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('ユーザーIDとトークンIDの両方をrevokeTokenByIdForUserに渡す', async () => {
+    await sendRequest(app, '/api/users/target-user-xyz/tokens/specific-token-id', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(vi.mocked(revokeTokenByIdForUser)).toHaveBeenCalledWith(
+      expect.anything(),
+      'specific-token-id',
+      'target-user-xyz'
+    );
+  });
+});
+
 // ===== DELETE /api/users/me — 自己アカウント削除 =====
 describe('DELETE /api/users/me', () => {
   const app = buildApp();

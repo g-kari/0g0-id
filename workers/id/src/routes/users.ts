@@ -417,6 +417,24 @@ app.get('/:id/tokens', authMiddleware, adminMiddleware, async (c) => {
   return c.json({ data: sessions });
 });
 
+// DELETE /api/users/:id/tokens/:tokenId — ユーザーの特定セッションを失効（管理者のみ）
+app.delete('/:id/tokens/:tokenId', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+  const targetId = c.req.param('id');
+  const tokenId = c.req.param('tokenId');
+
+  const targetUser = await findUserById(c.env.DB, targetId);
+  if (!targetUser) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+
+  const revoked = await revokeTokenByIdForUser(c.env.DB, tokenId, targetId);
+  if (revoked === 0) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Session not found' } }, 404);
+  }
+
+  return c.body(null, 204);
+});
+
 // DELETE /api/users/:id/tokens — ユーザーの全セッション無効化（管理者のみ）
 app.delete('/:id/tokens', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const targetId = c.req.param('id');
