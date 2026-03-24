@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "deploy": "vite build && wrangler deploy",
+    "migrate": "wrangler d1 migrations apply 0g0-id-db",
+    "deploy": "wrangler d1 migrations apply 0g0-id-db && vite build && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
