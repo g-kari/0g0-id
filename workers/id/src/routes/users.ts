@@ -20,7 +20,7 @@ import {
   parsePagination,
   type UserFilter,
 } from '@0g0-id/shared';
-import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
+import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
 import { adminMiddleware } from '../middleware/admin';
 import { csrfMiddleware } from '../middleware/csrf';
@@ -47,6 +47,68 @@ const VALID_PROVIDERS = ['google', 'line', 'twitch', 'github', 'x'] as const;
 
 type Variables = { user: TokenPayload };
 
+// ─── レスポンスシリアライズヘルパー ──────────────────────────────────────────
+
+/** /me 系エンドポイントのユーザープロフィール形式 */
+function formatMyProfile(user: User) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    picture: user.picture,
+    phone: user.phone,
+    address: user.address,
+    role: user.role,
+  };
+}
+
+/** 管理者向けユーザー詳細形式（全フィールド） */
+function formatAdminUserDetail(user: User) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    picture: user.picture,
+    phone: user.phone,
+    address: user.address,
+    role: user.role,
+    created_at: user.created_at,
+    updated_at: user.updated_at,
+  };
+}
+
+/** 管理者向けユーザーサマリー形式（一覧・ロール変更レスポンス用） */
+function formatAdminUserSummary(user: User) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    picture: user.picture,
+    role: user.role,
+    created_at: user.created_at,
+  };
+}
+
+/**
+ * ユーザー削除の共通ロジック（サービス所有権チェック→トークン失効→削除）。
+ * 削除不可の場合は error オブジェクトを返し、成功時は null を返す。
+ */
+async function performUserDeletion(
+  db: D1Database,
+  userId: string
+): Promise<{ code: string; message: string } | null> {
+  const ownedServices = await countServicesByOwner(db, userId);
+  if (ownedServices > 0) {
+    return {
+      code: 'CONFLICT',
+      message: `User owns ${ownedServices} service(s). Transfer ownership before deleting.`,
+    };
+  }
+  await revokeUserTokens(db, userId);
+  await deleteUser(db, userId);
+  return null;
+}
+
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
 // GET /api/users/me
@@ -56,17 +118,7 @@ app.get('/me', authMiddleware, async (c) => {
   if (!user) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
-  return c.json({
-    data: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      picture: user.picture,
-      phone: user.phone,
-      address: user.address,
-      role: user.role,
-    },
-  });
+  return c.json({ data: formatMyProfile(user) });
 });
 
 // GET /api/users/me/data-export — GDPR準拠のアカウントデータ一括エクスポート
@@ -124,24 +176,14 @@ app.patch('/me', authMiddleware, csrfMiddleware, async (c) => {
   if ('phone' in body) profileUpdate.phone = body.phone ? body.phone.trim() || null : null;
   if ('address' in body) profileUpdate.address = body.address ? body.address.trim() || null : null;
 
-  let user: Awaited<ReturnType<typeof findUserById>>;
+  let user: User;
   try {
     user = await updateUserProfile(c.env.DB, tokenUser.sub, profileUpdate);
   } catch {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  return c.json({
-    data: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      picture: user.picture,
-      phone: user.phone,
-      address: user.address,
-      role: user.role,
-    },
-  });
+  return c.json({ data: formatMyProfile(user) });
 });
 
 // GET /api/users/me/connections
@@ -247,23 +289,10 @@ app.delete('/me', authMiddleware, csrfMiddleware, async (c) => {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  // サービスの所有者である場合は削除不可（所有権を先に移譲すること）
-  const ownedServices = await countServicesByOwner(c.env.DB, tokenUser.sub);
-  if (ownedServices > 0) {
-    return c.json(
-      {
-        error: {
-          code: 'CONFLICT',
-          message: `User owns ${ownedServices} service(s). Transfer ownership before deleting.`,
-        },
-      },
-      409
-    );
+  const deleteError = await performUserDeletion(c.env.DB, tokenUser.sub);
+  if (deleteError) {
+    return c.json({ error: deleteError }, 409);
   }
-
-  // 削除前にトークンを失効
-  await revokeUserTokens(c.env.DB, tokenUser.sub);
-  await deleteUser(c.env.DB, tokenUser.sub);
 
   return c.body(null, 204);
 });
@@ -275,19 +304,7 @@ app.get('/:id', authMiddleware, adminMiddleware, async (c) => {
   if (!user) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
-  return c.json({
-    data: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      picture: user.picture,
-      phone: user.phone,
-      address: user.address,
-      role: user.role,
-      created_at: user.created_at,
-      updated_at: user.updated_at,
-    },
-  });
+  return c.json({ data: formatAdminUserDetail(user) });
 });
 
 // GET /api/users/:id/owned-services — ユーザーが所有するサービス一覧（管理者のみ）
@@ -384,16 +401,7 @@ app.patch('/:id/role', authMiddleware, adminMiddleware, csrfMiddleware, async (c
   // ロール変更後、既存トークンを即時失効（権限変更を即反映）
   await revokeUserTokens(c.env.DB, targetId);
 
-  return c.json({
-    data: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      picture: user.picture,
-      role: user.role,
-      created_at: user.created_at,
-    },
-  });
+  return c.json({ data: formatAdminUserSummary(user) });
 });
 
 // GET /api/users/:id/tokens — ユーザーのアクティブセッション一覧（管理者のみ）
@@ -437,23 +445,10 @@ app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  // サービスの所有者である場合は削除不可（所有権を先に移譲すること）
-  const ownedServices = await countServicesByOwner(c.env.DB, targetId);
-  if (ownedServices > 0) {
-    return c.json(
-      {
-        error: {
-          code: 'CONFLICT',
-          message: `User owns ${ownedServices} service(s). Transfer ownership before deleting.`,
-        },
-      },
-      409
-    );
+  const deleteError = await performUserDeletion(c.env.DB, targetId);
+  if (deleteError) {
+    return c.json({ error: deleteError }, 409);
   }
-
-  // 削除前にトークンを失効
-  await revokeUserTokens(c.env.DB, targetId);
-  await deleteUser(c.env.DB, targetId);
 
   return c.body(null, 204);
 });
@@ -482,17 +477,7 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
     listUsers(c.env.DB, limit, offset, filter),
     countUsers(c.env.DB, filter),
   ]);
-  return c.json({
-    data: users.map((u) => ({
-      id: u.id,
-      email: u.email,
-      name: u.name,
-      picture: u.picture,
-      role: u.role,
-      created_at: u.created_at,
-    })),
-    total,
-  });
+  return c.json({ data: users.map(formatAdminUserSummary), total });
 });
 
 export default app;
