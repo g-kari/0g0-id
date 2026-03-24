@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { findUserById } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
+import { externalApiRateLimitMiddleware } from '../middleware/rate-limit';
 
 type Variables = { user: TokenPayload };
 type AppContext = Context<{ Bindings: IdpEnv; Variables: Variables }>;
@@ -53,9 +54,9 @@ async function handleUserInfo(c: AppContext): Promise<Response> {
 }
 
 // GET /api/userinfo — OIDC UserInfo エンドポイント (OpenID Connect Core 1.0 Section 5.3)
-app.get('/', authMiddleware, handleUserInfo);
+app.get('/', externalApiRateLimitMiddleware, authMiddleware, handleUserInfo);
 
 // POST /api/userinfo — OIDC Core 1.0 はGET/POSTの両方に対応することを要求
-app.post('/', authMiddleware, handleUserInfo);
+app.post('/', externalApiRateLimitMiddleware, authMiddleware, handleUserInfo);
 
 export default app;
