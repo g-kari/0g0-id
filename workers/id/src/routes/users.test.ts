@@ -21,6 +21,7 @@ vi.mock('@0g0-id/shared', () => ({
   getLoginEventsByUserId: vi.fn(),
   banUser: vi.fn(),
   unbanUser: vi.fn(),
+  createAdminAuditLog: vi.fn(),
   parsePagination: (
     query: { limit?: string; offset?: string },
     options: { defaultLimit: number; maxLimit: number } = { defaultLimit: 20, maxLimit: 100 }
@@ -57,6 +58,7 @@ import {
   getLoginEventsByUserId,
   banUser,
   unbanUser,
+  createAdminAuditLog,
   verifyAccessToken,
   type UserFilter,
 } from '@0g0-id/shared';
