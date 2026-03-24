@@ -31,6 +31,83 @@ export async function findUserByEmail(db: D1Database, email: string): Promise<Us
   return db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first<User>();
 }
 
+async function upsertProviderUser(
+  db: D1Database,
+  opts: {
+    id: string;
+    providerLabel: string;
+    subColumn: 'google_sub' | 'line_sub' | 'twitch_sub' | 'github_sub' | 'x_sub';
+    subValue: string;
+    findBySub: (db: D1Database, sub: string) => Promise<User | null>;
+    email: string;
+    name: string;
+    picture: string | null;
+    // undefined: プロフィール更新時にemailを更新しない（Google以外）
+    profileEmailUpdate: { email: string; emailVerified: boolean } | undefined;
+    // undefined: メール連携しない（X）/ {}: email_verifiedを更新しない / { emailVerified }: 更新する（Google）
+    emailLink: { emailVerified?: boolean } | undefined;
+    newUserEmailVerified: boolean;
+  }
+): Promise<User> {
+  // 既存ユーザー（同プロバイダー）のプロフィール更新
+  const existingBySub = await opts.findBySub(db, opts.subValue);
+  if (existingBySub) {
+    if (opts.profileEmailUpdate) {
+      const user = await db
+        .prepare(
+          `UPDATE users SET email = ?, email_verified = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
+        )
+        .bind(
+          opts.profileEmailUpdate.email,
+          opts.profileEmailUpdate.emailVerified ? 1 : 0,
+          opts.name,
+          opts.picture,
+          existingBySub.id
+        )
+        .first<User>();
+      if (!user) throw new Error(`Failed to update ${opts.providerLabel} user`);
+      return user;
+    }
+    const user = await db
+      .prepare(
+        `UPDATE users SET name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
+      )
+      .bind(opts.name, opts.picture, existingBySub.id)
+      .first<User>();
+    if (!user) throw new Error(`Failed to update ${opts.providerLabel} user`);
+    return user;
+  }
+
+  // 同メールの既存ユーザーにプロバイダーを連携
+  if (opts.emailLink !== undefined) {
+    const existingByEmail = await findUserByEmail(db, opts.email);
+    if (existingByEmail) {
+      let sql: string;
+      let bindings: unknown[];
+      if (opts.emailLink.emailVerified !== undefined) {
+        sql = `UPDATE users SET ${opts.subColumn} = ?, email_verified = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`;
+        bindings = [opts.subValue, opts.emailLink.emailVerified ? 1 : 0, opts.name, opts.picture, existingByEmail.id];
+      } else {
+        sql = `UPDATE users SET ${opts.subColumn} = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`;
+        bindings = [opts.subValue, opts.name, opts.picture, existingByEmail.id];
+      }
+      const user = await db.prepare(sql).bind(...bindings).first<User>();
+      if (!user) throw new Error(`Failed to link ${opts.providerLabel} account`);
+      return user;
+    }
+  }
+
+  // 新規ユーザー作成
+  const user = await db
+    .prepare(
+      `INSERT INTO users (id, ${opts.subColumn}, email, email_verified, name, picture) VALUES (?, ?, ?, ?, ?, ?) RETURNING *`
+    )
+    .bind(opts.id, opts.subValue, opts.email, opts.newUserEmailVerified ? 1 : 0, opts.name, opts.picture)
+    .first<User>();
+  if (!user) throw new Error(`Failed to create ${opts.providerLabel} user`);
+  return user;
+}
+
 export async function upsertUser(
   db: D1Database,
   params: {
@@ -42,44 +119,19 @@ export async function upsertUser(
     picture: string | null;
   }
 ): Promise<User> {
-  // 既存のGoogleユーザーがいればプロフィールを更新
-  const existingByGoogle = await findUserByGoogleSub(db, params.googleSub);
-  if (existingByGoogle) {
-    const user = await db
-      .prepare(
-        `UPDATE users SET email = ?, email_verified = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
-      )
-      .bind(params.email, params.emailVerified ? 1 : 0, params.name, params.picture, existingByGoogle.id)
-      .first<User>();
-    if (!user) throw new Error('Failed to update Google user');
-    return user;
-  }
-
-  // 同メールで既存ユーザーがいれば Google アカウントを連携
-  // （他プロバイダーで先に登録済みのケース）
-  const existingByEmail = await findUserByEmail(db, params.email);
-  if (existingByEmail) {
-    const user = await db
-      .prepare(
-        `UPDATE users SET google_sub = ?, email_verified = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
-      )
-      .bind(params.googleSub, params.emailVerified ? 1 : 0, params.name, params.picture, existingByEmail.id)
-      .first<User>();
-    if (!user) throw new Error('Failed to link Google account');
-    return user;
-  }
-
-  // 新規ユーザー作成
-  const user = await db
-    .prepare(
-      `INSERT INTO users (id, google_sub, email, email_verified, name, picture)
-       VALUES (?, ?, ?, ?, ?, ?)
-       RETURNING *`
-    )
-    .bind(params.id, params.googleSub, params.email, params.emailVerified ? 1 : 0, params.name, params.picture)
-    .first<User>();
-  if (!user) throw new Error('Failed to create Google user');
-  return user;
+  return upsertProviderUser(db, {
+    id: params.id,
+    providerLabel: 'Google',
+    subColumn: 'google_sub',
+    subValue: params.googleSub,
+    findBySub: findUserByGoogleSub,
+    email: params.email,
+    name: params.name,
+    picture: params.picture,
+    profileEmailUpdate: { email: params.email, emailVerified: params.emailVerified },
+    emailLink: { emailVerified: params.emailVerified },
+    newUserEmailVerified: params.emailVerified,
+  });
 }
 
 export async function upsertLineUser(
@@ -93,52 +145,19 @@ export async function upsertLineUser(
     picture: string | null;
   }
 ): Promise<User> {
-  // 既存のLINEユーザーがいればプロフィールを更新
-  const existing = await findUserByLineSub(db, params.lineSub);
-  if (existing) {
-    const user = await db
-      .prepare(
-        `UPDATE users SET name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
-      )
-      .bind(params.name, params.picture, existing.id)
-      .first<User>();
-    if (!user) throw new Error('Failed to update LINE user');
-    return user;
-  }
-
-  // 仮メール以外であれば既存ユーザーにLINEアカウントを連携
-  if (!params.isPlaceholderEmail) {
-    const existingByEmail = await findUserByEmail(db, params.email);
-    if (existingByEmail) {
-      const user = await db
-        .prepare(
-          `UPDATE users SET line_sub = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
-        )
-        .bind(params.lineSub, params.name, params.picture, existingByEmail.id)
-        .first<User>();
-      if (!user) throw new Error('Failed to link LINE account');
-      return user;
-    }
-  }
-
-  // 新規ユーザー作成（仮メールはemail_verified=0）
-  const user = await db
-    .prepare(
-      `INSERT INTO users (id, line_sub, email, email_verified, name, picture)
-       VALUES (?, ?, ?, ?, ?, ?)
-       RETURNING *`
-    )
-    .bind(
-      params.id,
-      params.lineSub,
-      params.email,
-      params.isPlaceholderEmail ? 0 : 1,
-      params.name,
-      params.picture
-    )
-    .first<User>();
-  if (!user) throw new Error('Failed to create LINE user');
-  return user;
+  return upsertProviderUser(db, {
+    id: params.id,
+    providerLabel: 'LINE',
+    subColumn: 'line_sub',
+    subValue: params.lineSub,
+    findBySub: findUserByLineSub,
+    email: params.email,
+    name: params.name,
+    picture: params.picture,
+    profileEmailUpdate: undefined,
+    emailLink: params.isPlaceholderEmail ? undefined : {},
+    newUserEmailVerified: !params.isPlaceholderEmail,
+  });
 }
 
 export async function upsertTwitchUser(
@@ -153,52 +172,19 @@ export async function upsertTwitchUser(
     picture: string | null;
   }
 ): Promise<User> {
-  // 既存のTwitchユーザーがいればプロフィールを更新
-  const existing = await findUserByTwitchSub(db, params.twitchSub);
-  if (existing) {
-    const user = await db
-      .prepare(
-        `UPDATE users SET name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
-      )
-      .bind(params.name, params.picture, existing.id)
-      .first<User>();
-    if (!user) throw new Error('Failed to update Twitch user');
-    return user;
-  }
-
-  // 仮メール以外であれば既存ユーザーにTwitchアカウントを連携
-  if (!params.isPlaceholderEmail) {
-    const existingByEmail = await findUserByEmail(db, params.email);
-    if (existingByEmail) {
-      const user = await db
-        .prepare(
-          `UPDATE users SET twitch_sub = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
-        )
-        .bind(params.twitchSub, params.name, params.picture, existingByEmail.id)
-        .first<User>();
-      if (!user) throw new Error('Failed to link Twitch account');
-      return user;
-    }
-  }
-
-  // 新規ユーザー作成
-  const user = await db
-    .prepare(
-      `INSERT INTO users (id, twitch_sub, email, email_verified, name, picture)
-       VALUES (?, ?, ?, ?, ?, ?)
-       RETURNING *`
-    )
-    .bind(
-      params.id,
-      params.twitchSub,
-      params.email,
-      params.isPlaceholderEmail ? 0 : params.emailVerified ? 1 : 0,
-      params.name,
-      params.picture
-    )
-    .first<User>();
-  if (!user) throw new Error('Failed to create Twitch user');
-  return user;
+  return upsertProviderUser(db, {
+    id: params.id,
+    providerLabel: 'Twitch',
+    subColumn: 'twitch_sub',
+    subValue: params.twitchSub,
+    findBySub: findUserByTwitchSub,
+    email: params.email,
+    name: params.name,
+    picture: params.picture,
+    profileEmailUpdate: undefined,
+    emailLink: params.isPlaceholderEmail ? undefined : {},
+    newUserEmailVerified: !params.isPlaceholderEmail && params.emailVerified,
+  });
 }
 
 export async function upsertGithubUser(
@@ -212,52 +198,19 @@ export async function upsertGithubUser(
     picture: string | null;
   }
 ): Promise<User> {
-  // 既存のGitHubユーザーがいればプロフィールを更新
-  const existing = await findUserByGithubSub(db, params.githubSub);
-  if (existing) {
-    const user = await db
-      .prepare(
-        `UPDATE users SET name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
-      )
-      .bind(params.name, params.picture, existing.id)
-      .first<User>();
-    if (!user) throw new Error('Failed to update GitHub user');
-    return user;
-  }
-
-  // 仮メール以外であれば既存ユーザーにGitHubアカウントを連携
-  if (!params.isPlaceholderEmail) {
-    const existingByEmail = await findUserByEmail(db, params.email);
-    if (existingByEmail) {
-      const user = await db
-        .prepare(
-          `UPDATE users SET github_sub = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
-        )
-        .bind(params.githubSub, params.name, params.picture, existingByEmail.id)
-        .first<User>();
-      if (!user) throw new Error('Failed to link GitHub account');
-      return user;
-    }
-  }
-
-  // 新規ユーザー作成
-  const user = await db
-    .prepare(
-      `INSERT INTO users (id, github_sub, email, email_verified, name, picture)
-       VALUES (?, ?, ?, ?, ?, ?)
-       RETURNING *`
-    )
-    .bind(
-      params.id,
-      params.githubSub,
-      params.email,
-      params.isPlaceholderEmail ? 0 : 1,
-      params.name,
-      params.picture
-    )
-    .first<User>();
-  if (!user) throw new Error('Failed to create GitHub user');
-  return user;
+  return upsertProviderUser(db, {
+    id: params.id,
+    providerLabel: 'GitHub',
+    subColumn: 'github_sub',
+    subValue: params.githubSub,
+    findBySub: findUserByGithubSub,
+    email: params.email,
+    name: params.name,
+    picture: params.picture,
+    profileEmailUpdate: undefined,
+    emailLink: params.isPlaceholderEmail ? undefined : {},
+    newUserEmailVerified: !params.isPlaceholderEmail,
+  });
 }
 
 export async function upsertXUser(
@@ -270,30 +223,19 @@ export async function upsertXUser(
     picture: string | null;
   }
 ): Promise<User> {
-  // 既存のXユーザーがいればプロフィールを更新
-  const existing = await findUserByXSub(db, params.xSub);
-  if (existing) {
-    const user = await db
-      .prepare(
-        `UPDATE users SET name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
-      )
-      .bind(params.name, params.picture, existing.id)
-      .first<User>();
-    if (!user) throw new Error('Failed to update X user');
-    return user;
-  }
-
-  // 新規ユーザー作成（常に仮メール・email_verified=0）
-  const user = await db
-    .prepare(
-      `INSERT INTO users (id, x_sub, email, email_verified, name, picture)
-       VALUES (?, ?, ?, 0, ?, ?)
-       RETURNING *`
-    )
-    .bind(params.id, params.xSub, params.email, params.name, params.picture)
-    .first<User>();
-  if (!user) throw new Error('Failed to create X user');
-  return user;
+  return upsertProviderUser(db, {
+    id: params.id,
+    providerLabel: 'X',
+    subColumn: 'x_sub',
+    subValue: params.xSub,
+    findBySub: findUserByXSub,
+    email: params.email,
+    name: params.name,
+    picture: params.picture,
+    profileEmailUpdate: undefined,
+    emailLink: undefined,
+    newUserEmailVerified: false,
+  });
 }
 
 export async function updateUserRole(
