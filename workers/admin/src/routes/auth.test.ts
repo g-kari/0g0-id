@@ -130,7 +130,7 @@ describe('admin BFF — /auth', () => {
       expect(res.headers.get('location')).toBe('/?error=exchange_failed');
     });
 
-    it('管理者以外のユーザー → /?error=not_adminにリダイレクト', async () => {
+    it('管理者以外のユーザー → リフレッシュトークンを失効してから/?error=not_adminにリダイレクト', async () => {
       const idpFetch = buildIdpFetch(200, makeExchangeResponse('user'));
       const app = buildApp(idpFetch);
 
@@ -140,6 +140,15 @@ describe('admin BFF — /auth', () => {
 
       expect(res.status).toBe(302);
       expect(res.headers.get('location')).toBe('/?error=not_admin');
+
+      // IdPにlogoutリクエストが送信されてリフレッシュトークンが失効されることを確認
+      expect(idpFetch).toHaveBeenCalledTimes(2);
+      const calls = (idpFetch as ReturnType<typeof vi.fn>).mock.calls as [Request][];
+      const logoutReq = calls[1][0];
+      expect(logoutReq.url).toBe('https://id.0g0.xyz/auth/logout');
+      expect(logoutReq.method).toBe('POST');
+      const logoutBody = await logoutReq.json<{ refresh_token: string }>();
+      expect(logoutBody.refresh_token).toBe('mock-refresh-token');
     });
 
     it('管理者ユーザー → セッションCookieをセットして/dashboard.htmlにリダイレクト', async () => {

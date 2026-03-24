@@ -74,6 +74,18 @@ app.get('/callback', async (c) => {
 
   // 管理者チェック
   if (exchangeData.data.user.role !== 'admin') {
+    // 非管理者ユーザーのリフレッシュトークンを失効させる（孤立トークン防止）
+    try {
+      await c.env.IDP.fetch(
+        new Request(`${c.env.IDP_ORIGIN}/auth/logout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: exchangeData.data.refresh_token }),
+        })
+      );
+    } catch {
+      // 失効に失敗してもリダイレクトは継続
+    }
     return c.redirect('/?error=not_admin');
   }
 
