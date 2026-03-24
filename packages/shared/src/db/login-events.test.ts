@@ -248,6 +248,62 @@ describe('getLoginEventsByUserId', () => {
     expect(result.events[1].id).toBe('event-1');
     expect(result.total).toBe(2);
   });
+
+  it('providerを指定するとSQLにAND provider = ?が含まれる', async () => {
+    const eventsStmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const countStmt = {
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue({ count: 0 }),
+    };
+    const db = {
+      prepare: vi.fn().mockReturnValueOnce(eventsStmt).mockReturnValueOnce(countStmt),
+    } as unknown as D1Database;
+
+    await getLoginEventsByUserId(db, 'user-1', 20, 0, 'google');
+    const eventsSql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const countSql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[1][0];
+    expect(eventsSql).toContain('AND provider = ?');
+    expect(countSql).toContain('AND provider = ?');
+  });
+
+  it('providerを指定するとeventsクエリにproviderをbindする', async () => {
+    const eventsStmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const countStmt = {
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue({ count: 0 }),
+    };
+    const db = {
+      prepare: vi.fn().mockReturnValueOnce(eventsStmt).mockReturnValueOnce(countStmt),
+    } as unknown as D1Database;
+
+    await getLoginEventsByUserId(db, 'user-1', 10, 5, 'github');
+    expect(eventsStmt.bind).toHaveBeenCalledWith('user-1', 'github', 10, 5);
+    expect(countStmt.bind).toHaveBeenCalledWith('user-1', 'github');
+  });
+
+  it('providerなしの場合はproviderをbindしない', async () => {
+    const eventsStmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const countStmt = {
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue({ count: 0 }),
+    };
+    const db = {
+      prepare: vi.fn().mockReturnValueOnce(eventsStmt).mockReturnValueOnce(countStmt),
+    } as unknown as D1Database;
+
+    await getLoginEventsByUserId(db, 'user-1', 20, 0);
+    expect(eventsStmt.bind).toHaveBeenCalledWith('user-1', 20, 0);
+    expect(countStmt.bind).toHaveBeenCalledWith('user-1');
+  });
 });
 
 describe('countRecentLoginEvents', () => {
