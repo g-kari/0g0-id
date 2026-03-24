@@ -1,9 +1,7 @@
 import { Hono } from 'hono';
 import type { BffEnv } from '@0g0-id/shared';
-import { logger, securityHeaders } from '@0g0-id/shared';
+import { logger, securityHeaders, bffCorsMiddleware, bffCsrfMiddleware } from '@0g0-id/shared';
 import authRoutes from './routes/auth';
-import { userCorsMiddleware } from './middleware/cors';
-import { userCsrfMiddleware } from './middleware/csrf';
 import profileRoutes from './routes/profile';
 import connectionsRoutes from './routes/connections';
 import providersRoutes from './routes/providers';
@@ -16,12 +14,12 @@ app.use('*', logger());
 app.use('*', securityHeaders());
 
 // ユーザー画面APIへのCORSをユーザー画面自身のドメインのみに制限
-app.use('/api/*', userCorsMiddleware);
+app.use('/api/*', bffCorsMiddleware);
 
 // 外部サービスからのAPIアクセスを禁止（Originヘッダー検証）
 // /api/* および /auth/logout に適用（強制ログアウトCSRF対策）
-app.use('/api/*', userCsrfMiddleware);
-app.use('/auth/logout', userCsrfMiddleware);
+app.use('/api/*', bffCsrfMiddleware);
+app.use('/auth/logout', bffCsrfMiddleware);
 
 app.route('/auth', authRoutes);
 app.route('/api/me', profileRoutes);
