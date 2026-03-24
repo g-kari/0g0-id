@@ -9,6 +9,7 @@ vi.mock('@0g0-id/shared', () => ({
   revokeRefreshToken: vi.fn(),
   sha256: vi.fn(),
   timingSafeEqual: vi.fn(),
+  verifyAccessToken: vi.fn(),
 }));
 
 import {
@@ -18,6 +19,7 @@ import {
   revokeRefreshToken,
   sha256,
   timingSafeEqual,
+  verifyAccessToken,
 } from '@0g0-id/shared';
 
 import tokenRoutes from './token';
@@ -125,6 +127,8 @@ describe('POST /api/token/introspect', () => {
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(findRefreshTokenByHash).mockResolvedValue(mockRefreshToken as never);
     vi.mocked(findUserById).mockResolvedValue(mockUser);
+    // デフォルトはJWT検証失敗（リフレッシュトークンが見つかった場合はJWT検証は呼ばれない）
+    vi.mocked(verifyAccessToken).mockRejectedValue(new Error('not a JWT'));
   });
 
   it('Authorizationヘッダーなし → { active: false } + 401', async () => {
@@ -324,6 +328,7 @@ describe('POST /api/token/introspect', () => {
 
   it('トークンが存在しない → { active: false }', async () => {
     vi.mocked(findRefreshTokenByHash).mockResolvedValue(null);
+    vi.mocked(verifyAccessToken).mockRejectedValue(new Error('invalid token'));
     const res = await sendRequest(app, '/api/token/introspect', {
       body: { token: 'nonexistent-token' },
       authHeader: makeBasicAuth('test-client-id', 'secret'),
@@ -331,6 +336,105 @@ describe('POST /api/token/introspect', () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ active: boolean }>();
     expect(body.active).toBe(false);
+  });
+
+  // ─── JWTアクセストークンのイントロスペクション ───────────────────────────
+
+  const mockJwtPayload = {
+    iss: 'https://id.0g0.xyz',
+    sub: 'user-1',
+    aud: 'https://id.0g0.xyz',
+    exp: Math.floor(Date.now() / 1000) + 900,
+    iat: Math.floor(Date.now() / 1000),
+    jti: 'jti-1',
+    kid: 'kid-1',
+    email: 'test@example.com',
+    role: 'user' as const,
+    scope: 'openid profile email',
+    cid: 'test-client-id',
+  };
+
+  it('有効なJWTアクセストークン → { active: true } とユーザー情報を返す', async () => {
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(null);
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockJwtPayload);
+    const res = await sendRequest(app, '/api/token/introspect', {
+      body: { token: 'valid-jwt-token' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<Record<string, unknown>>();
+    expect(body.active).toBe(true);
+    expect(body.token_type).toBe('access_token');
+    expect(body.name).toBe('Test User');
+    expect(body.email).toBe('test@example.com');
+    expect(body.email_verified).toBe(true);
+  });
+
+  it('JWTのcidが異なるサービス → { active: false }（サービス間トークン流用防止）', async () => {
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(null);
+    vi.mocked(verifyAccessToken).mockResolvedValue({ ...mockJwtPayload, cid: 'other-client-id' });
+    const res = await sendRequest(app, '/api/token/introspect', {
+      body: { token: 'other-service-jwt' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ active: boolean }>();
+    expect(body.active).toBe(false);
+  });
+
+  it('cidなしJWT（BFFトークン）→ { active: false }（外部サービスはBFFトークンをイントロスペクト不可）', async () => {
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(null);
+    vi.mocked(verifyAccessToken).mockResolvedValue({ ...mockJwtPayload, cid: undefined });
+    const res = await sendRequest(app, '/api/token/introspect', {
+      body: { token: 'bff-session-token' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ active: boolean }>();
+    expect(body.active).toBe(false);
+  });
+
+  it('JWT署名検証失敗（期限切れ等）→ { active: false }', async () => {
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(null);
+    vi.mocked(verifyAccessToken).mockRejectedValue(new Error('JWTExpired'));
+    const res = await sendRequest(app, '/api/token/introspect', {
+      body: { token: 'expired-jwt' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ active: boolean }>();
+    expect(body.active).toBe(false);
+  });
+
+  it('JWTのユーザーが存在しない → { active: false }', async () => {
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(null);
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockJwtPayload);
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/token/introspect', {
+      body: { token: 'valid-jwt-no-user' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ active: boolean }>();
+    expect(body.active).toBe(false);
+  });
+
+  it('JWTイントロスペクション: profileスコープのみ → name/pictureを返すがemailは返さない', async () => {
+    vi.mocked(findServiceByClientId).mockResolvedValue({
+      ...mockService,
+      allowed_scopes: JSON.stringify(['profile']),
+    } as never);
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(null);
+    vi.mocked(verifyAccessToken).mockResolvedValue({ ...mockJwtPayload, scope: 'openid profile' });
+    const res = await sendRequest(app, '/api/token/introspect', {
+      body: { token: 'valid-jwt-profile-only' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<Record<string, unknown>>();
+    expect(body.active).toBe(true);
+    expect(body.name).toBe('Test User');
+    expect(body.email).toBeUndefined();
   });
 
   it('allowed_scopesのJSONが不正 → fail-closedでスコープなし（ユーザーデータ非公開）', async () => {

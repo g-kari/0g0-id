@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { HonoRequest } from 'hono';
-import { findRefreshTokenByHash, findUserById, revokeRefreshToken, sha256 } from '@0g0-id/shared';
+import { findRefreshTokenByHash, findUserById, revokeRefreshToken, sha256, verifyAccessToken } from '@0g0-id/shared';
 import type { IdpEnv } from '@0g0-id/shared';
 import { externalApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authenticateService } from '../utils/service-auth';
@@ -105,7 +105,57 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
     return c.json(response);
   }
 
-  return c.json({ active: false });
+  // JWTアクセストークンのイントロスペクション（RFC 7662）
+  // リフレッシュトークンとして見つからなかった場合、JWTとして検証を試みる
+  try {
+    const payload = await verifyAccessToken(
+      body.token,
+      c.env.JWT_PUBLIC_KEY,
+      c.env.IDP_ORIGIN,
+      c.env.IDP_ORIGIN
+    );
+
+    // BFFセッショントークン（cid未設定）は外部サービスからイントロスペクト不可
+    if (!payload.cid || payload.cid !== service.client_id) {
+      return c.json({ active: false });
+    }
+
+    const tokenUser = await findUserById(c.env.DB, payload.sub);
+    if (!tokenUser) {
+      return c.json({ active: false });
+    }
+
+    const allowedScopes = parseAllowedScopes(service.allowed_scopes);
+    const sub = await sha256(service.client_id + ':' + payload.sub);
+
+    const jwtResponse: Record<string, unknown> = {
+      active: true,
+      sub,
+      exp: payload.exp,
+      scope: payload.scope ?? allowedScopes.join(' '),
+      token_type: 'access_token',
+    };
+
+    if (allowedScopes.includes('profile')) {
+      jwtResponse['name'] = tokenUser.name;
+      jwtResponse['picture'] = tokenUser.picture;
+    }
+    if (allowedScopes.includes('email')) {
+      jwtResponse['email'] = tokenUser.email;
+      jwtResponse['email_verified'] = tokenUser.email_verified === 1;
+    }
+    if (allowedScopes.includes('phone')) {
+      jwtResponse['phone'] = tokenUser.phone;
+    }
+    if (allowedScopes.includes('address')) {
+      jwtResponse['address'] = tokenUser.address;
+    }
+
+    return c.json(jwtResponse);
+  } catch {
+    // JWT検証失敗（期限切れ・署名不正など）
+    return c.json({ active: false });
+  }
 });
 
 // POST /api/token/revoke — RFC 7009 トークン失効

@@ -51,6 +51,7 @@ export async function signAccessToken(
     email: payload.email,
     role: payload.role,
     ...(payload.scope !== undefined ? { scope: payload.scope } : {}),
+    ...(payload.cid !== undefined ? { cid: payload.cid } : {}),
   })
     .setProtectedHeader({ alg: 'ES256', kid })
     .setIssuer(payload.iss)
