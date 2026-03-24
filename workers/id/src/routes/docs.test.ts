@@ -32,6 +32,14 @@ describe('GET /docs — ドキュメントルート', () => {
       const html = await res.text();
       expect(html).toContain('0g0 ID API');
     });
+
+    it('ドキュメント用CSPが設定される（CDNスクリプトを許可）', async () => {
+      const res = await app.request(new Request(`${baseUrl}/docs`));
+      const csp = res.headers.get('Content-Security-Policy');
+      expect(csp).toContain('cdn.jsdelivr.net');
+      expect(csp).toContain("connect-src 'self'");
+      expect(csp).toContain("frame-ancestors 'none'");
+    });
   });
 
   describe('GET /openapi.json — 内部API仕様', () => {
@@ -71,6 +79,14 @@ describe('GET /docs — ドキュメントルート', () => {
       const res = await app.request(new Request(`${baseUrl}/docs/external`));
       const html = await res.text();
       expect(html).toContain('0g0 ID API');
+    });
+
+    it('ドキュメント用CSPが設定される（CDNスクリプトを許可）', async () => {
+      const res = await app.request(new Request(`${baseUrl}/docs/external`));
+      const csp = res.headers.get('Content-Security-Policy');
+      expect(csp).toContain('cdn.jsdelivr.net');
+      expect(csp).toContain("connect-src 'self'");
+      expect(csp).toContain("frame-ancestors 'none'");
     });
   });
 
