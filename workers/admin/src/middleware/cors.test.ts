@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
 import { bffCorsMiddleware } from '@0g0-id/shared';
+import type { BffEnv } from '@0g0-id/shared';
+
+const testEnv = { SELF_ORIGIN: 'https://admin.0g0.xyz' } as unknown as BffEnv;
 
 function buildApp() {
-  const app = new Hono();
+  const app = new Hono<{ Bindings: BffEnv }>();
   app.use('/api/*', bffCorsMiddleware);
   app.get('/api/test', (c) => c.json({ ok: true }));
   app.post('/api/test', (c) => c.json({ ok: true }));
@@ -15,7 +18,7 @@ describe('bffCorsMiddleware', () => {
   const baseUrl = 'https://admin.0g0.xyz';
 
   it('Originなしのリクエスト → 200を返す', async () => {
-    const res = await app.request(`${baseUrl}/api/test`);
+    const res = await app.request(`${baseUrl}/api/test`, undefined, testEnv);
     expect(res.status).toBe(200);
   });
 
@@ -23,7 +26,9 @@ describe('bffCorsMiddleware', () => {
     const res = await app.request(
       new Request(`${baseUrl}/api/test`, {
         headers: { Origin: baseUrl },
-      })
+      }),
+      undefined,
+      testEnv
     );
     expect(res.status).toBe(200);
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe(baseUrl);
@@ -33,7 +38,9 @@ describe('bffCorsMiddleware', () => {
     const res = await app.request(
       new Request(`${baseUrl}/api/test`, {
         headers: { Origin: baseUrl },
-      })
+      }),
+      undefined,
+      testEnv
     );
     expect(res.headers.get('Access-Control-Allow-Credentials')).toBe('true');
   });
@@ -47,7 +54,9 @@ describe('bffCorsMiddleware', () => {
           'Access-Control-Request-Method': 'POST',
           'Access-Control-Request-Headers': 'Content-Type',
         },
-      })
+      }),
+      undefined,
+      testEnv
     );
     expect(res.status).toBe(204);
     const allowMethods = res.headers.get('Access-Control-Allow-Methods') ?? '';
@@ -63,7 +72,9 @@ describe('bffCorsMiddleware', () => {
           Origin: baseUrl,
           'Access-Control-Request-Method': 'DELETE',
         },
-      })
+      }),
+      undefined,
+      testEnv
     );
     const allowMethods = res.headers.get('Access-Control-Allow-Methods') ?? '';
     expect(allowMethods).toContain('GET');
@@ -80,7 +91,9 @@ describe('bffCorsMiddleware', () => {
           'Access-Control-Request-Method': 'POST',
           'Access-Control-Request-Headers': 'Content-Type',
         },
-      })
+      }),
+      undefined,
+      testEnv
     );
     const allowHeaders = res.headers.get('Access-Control-Allow-Headers') ?? '';
     expect(allowHeaders).toContain('Content-Type');

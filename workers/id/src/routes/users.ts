@@ -517,6 +517,7 @@ app.get('/:id/tokens', authMiddleware, adminMiddleware, async (c) => {
 app.delete('/:id/tokens/:tokenId', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const targetId = c.req.param('id');
   const tokenId = c.req.param('tokenId');
+  const tokenUser = c.get('user');
 
   const targetUser = await findUserById(c.env.DB, targetId);
   if (!targetUser) {
@@ -528,12 +529,22 @@ app.delete('/:id/tokens/:tokenId', authMiddleware, adminMiddleware, csrfMiddlewa
     return c.json({ error: { code: 'NOT_FOUND', message: 'Session not found' } }, 404);
   }
 
+  await createAdminAuditLog(c.env.DB, {
+    adminUserId: tokenUser.sub,
+    action: 'user.session_revoked',
+    targetType: 'user',
+    targetId,
+    details: { tokenId },
+    ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
+  });
+
   return c.body(null, 204);
 });
 
 // DELETE /api/users/:id/tokens — ユーザーの全セッション無効化（管理者のみ）
 app.delete('/:id/tokens', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const targetId = c.req.param('id');
+  const tokenUser = c.get('user');
 
   const targetUser = await findUserById(c.env.DB, targetId);
   if (!targetUser) {
@@ -541,6 +552,15 @@ app.delete('/:id/tokens', authMiddleware, adminMiddleware, csrfMiddleware, async
   }
 
   await revokeUserTokens(c.env.DB, targetId);
+
+  await createAdminAuditLog(c.env.DB, {
+    adminUserId: tokenUser.sub,
+    action: 'user.sessions_revoked',
+    targetType: 'user',
+    targetId,
+    ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
+  });
+
   return c.body(null, 204);
 });
 
@@ -563,6 +583,14 @@ app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
   if (deleteError) {
     return c.json({ error: deleteError }, 409);
   }
+
+  await createAdminAuditLog(c.env.DB, {
+    adminUserId: tokenUser.sub,
+    action: 'user.delete',
+    targetType: 'user',
+    targetId,
+    ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
+  });
 
   return c.body(null, 204);
 });
