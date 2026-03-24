@@ -437,7 +437,59 @@
     }
 
     function loadUsers() {
-      if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="padding:0;border:none;">' +
+      if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="padding:0;border:none;">' +
+        '<div class="loading-center">' + SPINNER_HTML + '<span>読み込み中...</span></div></td></tr>';
+
+      showProgress();
+      fetch('/api/users', { credentials: 'same-origin' })
+        .then(function (r) {
+          if (r.status === 401) {
+            hideProgress();
+            showUsersError('セッションが無効です。再度ログインしてください。');
+            setTimeout(function () { window.location.href = '/'; }, 1500);
+            return null;
+          }
+          return r.json();
+        })
+        .then(function (data) {
+          hideProgress();
+          if (!data) return;
+          if (data.error) { showUsersError('ユーザーの取得に失敗しました'); return; }
+          if (!data.data) { showUsersError('データの形式が不正です'); return; }
+          const rows = data.data.map(function (u) {
+            const badge = u.role === 'admin'
+              ? '<span class="badge badge-admin">admin</span>'
+              : '<span class="badge badge-user">user</span>';
+            const roleLabel = u.role === 'admin' ? 'userへ変更' : 'adminへ変更';
+            const newRole = u.role === 'admin' ? 'user' : 'admin';
+            const isBanned = !!u.banned_at;
+            const statusBadge = isBanned
+              ? '<span class="badge badge-danger">停止中</span>'
+              : '<span class="badge" style="background:var(--success,#22c55e);color:#fff;">正常</span>';
+            const banBtnLabel = isBanned ? '解除' : '停止';
+            const banBtnClass = isBanned ? 'btn-accent' : 'btn-warning';
+            return '<tr>' +
+              '<td>' + escHtml(u.name) + '</td>' +
+              '<td>' + escHtml(u.email) + '</td>' +
+              '<td>' + badge + '</td>' +
+              '<td>' + statusBadge + '</td>' +
+              '<td>' + formatDate(u.created_at) + '</td>' +
+              '<td style="white-space:nowrap;">' +
+                '<button class="btn btn-secondary btn-sm mr-1" ' +
+                  'data-detail-id="' + escHtml(u.id) + '" data-detail-name="' + escHtml(u.name) + '">詳細</button>' +
+                '<button class="btn btn-accent btn-sm mr-1" ' +
+                  'data-role-id="' + escHtml(u.id) + '" data-role-new="' + newRole + '" data-role-name="' + escHtml(u.name) + '">' +
+                  roleLabel +
+                '</button>' +
+                '<button class="btn ' + banBtnClass + ' btn-sm mr-1" ' +
+                  'data-ban-id="' + escHtml(u.id) + '" data-ban-name="' + escHtml(u.name) + '" data-ban-action="' + (isBanned ? 'unban' : 'ban') + '">' +
+                  banBtnLabel +
+                '</button>' +
+                '<button class="btn btn-danger btn-sm" data-del-id="' + escHtml(u.id) + '" data-del-name="' + escHtml(u.name) + '">削除</button>' +
+              '</td>' +
+              '</tr>';
+          }).join('');
+          if (tbody) tbody.innerHTML = rows || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">ユーザーなし</td></tr>'; style="padding:0;border:none;">' +
         '<div class="loading-center">' + SPINNER_HTML + '<span>読み込み中...</span></div></td></tr>';
 
       showProgress();
@@ -514,6 +566,40 @@
                 btn.disabled = false;
               } else {
                 showToast('ロールを ' + newRole + ' に変更しました', 'success');
+                loadUsers();
+              }
+            })
+            .catch(function () {
+              hideProgress();
+              showToast('通信エラーが発生しました', 'error');
+              btn.disabled = false;
+            });
+          return;
+        }
+
+        btn = e.target.closest('[data-ban-id]');
+        if (btn) {
+          var banName = btn.dataset.banName;
+          var banAction = btn.dataset.banAction;
+          var banConfirmMsg = banAction === 'ban'
+            ? '「' + banName + '」のアカウントを停止しますか？ログイン不可になります。'
+            : '「' + banName + '」のアカウント停止を解除しますか？';
+          if (!confirm(banConfirmMsg)) return;
+          btn.disabled = true;
+          showProgress();
+          var banMethod = banAction === 'ban' ? 'PATCH' : 'DELETE';
+          fetch('/api/users/' + btn.dataset.banId + '/ban', {
+            method: banMethod,
+            credentials: 'same-origin',
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              hideProgress();
+              if (data.error) {
+                showToast((banAction === 'ban' ? '停止' : '解除') + 'に失敗しました: ' + (data.error.message || ''), 'error');
+                btn.disabled = false;
+              } else {
+                showToast(banAction === 'ban' ? 'アカウントを停止しました' : 'アカウント停止を解除しました', 'success');
                 loadUsers();
               }
             })
@@ -607,11 +693,15 @@
             var roleBadge = u.role === 'admin'
               ? '<span class="badge badge-admin">admin</span>'
               : '<span class="badge badge-user">user</span>';
+            var bannedRow = u.banned_at
+              ? '<div class="detail-row"><span class="detail-label">停止日時</span><span class="detail-value" style="color:var(--error);">' + new Date(u.banned_at).toLocaleString('ja-JP') + ' <span class="badge badge-danger">停止中</span></span></div>'
+              : '';
             panel.innerHTML =
               '<div class="detail-row"><span class="detail-label">内部ID</span><span class="detail-value mono">' + escHtml(u.id) + '</span></div>' +
               '<div class="detail-row"><span class="detail-label">名前</span><span class="detail-value">' + escHtml(u.name || '—') + '</span></div>' +
               '<div class="detail-row"><span class="detail-label">メール</span><span class="detail-value">' + escHtml(u.email) + verifiedBadge + '</span></div>' +
               '<div class="detail-row"><span class="detail-label">ロール</span><span class="detail-value">' + roleBadge + '</span></div>' +
+              bannedRow +
               '<div class="detail-row"><span class="detail-label">登録日時</span><span class="detail-value">' + new Date(u.created_at).toLocaleString('ja-JP') + '</span></div>' +
               '<div class="detail-row"><span class="detail-label">更新日時</span><span class="detail-value">' + new Date(u.updated_at).toLocaleString('ja-JP') + '</span></div>';
           })
