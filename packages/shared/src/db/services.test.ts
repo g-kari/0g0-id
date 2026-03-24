@@ -142,6 +142,29 @@ describe('listServices', () => {
       expect.stringContaining('ORDER BY created_at DESC')
     );
   });
+
+  it('nameフィルターでWHERE句を生成する', async () => {
+    const db = makeD1Mock(null, [baseService]);
+    await listServices(db, { name: 'テスト' });
+    expect(db.prepare).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE name LIKE ?')
+    );
+    expect(db._stmt.bind).toHaveBeenCalledWith('%テスト%', 50, 0);
+  });
+
+  it('limitとoffsetをSQLに渡す', async () => {
+    const db = makeD1Mock(null, [baseService]);
+    await listServices(db, { limit: 10, offset: 20 });
+    expect(db._stmt.bind).toHaveBeenCalledWith(10, 20);
+  });
+
+  it('nameなしの場合はWHERE句なしでクエリを実行する', async () => {
+    const db = makeD1Mock(null, []);
+    await listServices(db, { limit: 10, offset: 0 });
+    const calledSql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(calledSql).not.toContain('WHERE');
+    expect(db._stmt.bind).toHaveBeenCalledWith(10, 0);
+  });
 });
 
 describe('countServicesByOwner', () => {
@@ -169,5 +192,20 @@ describe('countServices', () => {
     const db = makeD1Mock(null);
     const result = await countServices(db);
     expect(result).toBe(0);
+  });
+
+  it('nameフィルターでWHERE句を生成する', async () => {
+    const db = makeD1Mock({ count: 5 });
+    await countServices(db, { name: 'テスト' });
+    const calledSql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(calledSql).toContain('WHERE name LIKE ?');
+    expect(db._stmt.bind).toHaveBeenCalledWith('%テスト%');
+  });
+
+  it('nameなしの場合はWHERE句なしでクエリを実行する', async () => {
+    const db = makeD1Mock({ count: 3 });
+    await countServices(db, {});
+    const calledSql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(calledSql).not.toContain('WHERE');
   });
 });

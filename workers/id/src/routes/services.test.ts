@@ -22,6 +22,7 @@ vi.mock('@0g0-id/shared', () => ({
   listUsersAuthorizedForService: vi.fn(),
   countUsersAuthorizedForService: vi.fn(),
   revokeUserServiceTokens: vi.fn(),
+  countServices: vi.fn(),
   parsePagination: (
     query: { limit?: string; offset?: string },
     options: { defaultLimit: number; maxLimit: number } = { defaultLimit: 20, maxLimit: 100 }
@@ -58,6 +59,7 @@ import {
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
   revokeUserServiceTokens,
+  countServices,
   verifyAccessToken,
 } from '@0g0-id/shared';
 
@@ -161,6 +163,7 @@ describe('GET /api/services', () => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
     vi.mocked(listServices).mockResolvedValue([mockService]);
+    vi.mocked(countServices).mockResolvedValue(1);
   });
 
   it('認証なし → 401を返す', async () => {
@@ -179,8 +182,11 @@ describe('GET /api/services', () => {
   it('サービス一覧を返す', async () => {
     const res = await sendRequest(app, '/api/services');
     expect(res.status).toBe(200);
-    const body = await res.json<{ data: unknown[] }>();
+    const body = await res.json<{ data: unknown[]; total: number; limit: number; offset: number }>();
     expect(body.data).toHaveLength(1);
+    expect(body.total).toBe(1);
+    expect(body.limit).toBe(50);
+    expect(body.offset).toBe(0);
   });
 
   it('client_secret_hashを含まない', async () => {
@@ -191,9 +197,83 @@ describe('GET /api/services', () => {
 
   it('サービスが0件の場合は空配列を返す', async () => {
     vi.mocked(listServices).mockResolvedValue([]);
+    vi.mocked(countServices).mockResolvedValue(0);
     const res = await sendRequest(app, '/api/services');
     const body = await res.json<{ data: unknown[] }>();
     expect(body.data).toHaveLength(0);
+  });
+
+  it('デフォルトのlimit=50/offset=0を使用する', async () => {
+    await sendRequest(app, '/api/services');
+    expect(vi.mocked(listServices)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ limit: 50, offset: 0 })
+    );
+  });
+
+  it('指定したlimitとoffsetをDBに渡す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/services?limit=10&offset=20`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(listServices)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ limit: 10, offset: 20 })
+    );
+  });
+
+  it('limitの上限は100', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/services?limit=999`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(listServices)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ limit: 100 })
+    );
+  });
+
+  it('nameフィルターをDBに渡す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/services?name=test`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(listServices)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ name: 'test' })
+    );
+    expect(vi.mocked(countServices)).toHaveBeenCalledWith(
+      expect.anything(),
+      { name: 'test' }
+    );
+  });
+
+  it('レスポンスにtotal・limit・offsetが含まれる', async () => {
+    vi.mocked(countServices).mockResolvedValue(42);
+    const res = await app.request(
+      new Request(`${baseUrl}/api/services?limit=10&offset=30`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[]; total: number; limit: number; offset: number }>();
+    expect(body.total).toBe(42);
+    expect(body.limit).toBe(10);
+    expect(body.offset).toBe(30);
   });
 });
 

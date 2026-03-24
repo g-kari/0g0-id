@@ -95,6 +95,48 @@ describe('admin BFF — /api/services', () => {
 
       expect(res.status).toBe(500);
     });
+
+    it('デフォルトのページネーションではクエリパラメータなしでIdPにリクエストする', async () => {
+      const idpFetch = mockIdp(200, { data: mockServiceList });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/services', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.has('limit')).toBe(false);
+      expect(url.searchParams.has('offset')).toBe(false);
+      expect(url.searchParams.has('name')).toBe(false);
+    });
+
+    it('指定したlimit/offsetをIdPのURLに転送する', async () => {
+      const idpFetch = mockIdp(200, { data: [] });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/services?limit=10&offset=20', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.get('limit')).toBe('10');
+      expect(url.searchParams.get('offset')).toBe('20');
+    });
+
+    it('nameフィルターをIdPのURLに転送する', async () => {
+      const idpFetch = mockIdp(200, { data: [] });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/services?name=test', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.get('name')).toBe('test');
+    });
   });
 
   describe('GET /:id — サービス取得', () => {
