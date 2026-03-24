@@ -694,6 +694,32 @@ describe('admin BFF — /api/users', () => {
 
       expect(res.status).toBe(404);
     });
+
+    it('providerクエリパラメータをIdPに転送する', async () => {
+      const idpFetch = mockIdp(200, { data: [], total: 0 });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users/user-1/login-history?provider=google', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.get('provider')).toBe('google');
+    });
+
+    it('providerなしのリクエストではproviderパラメータをIdPに送らない', async () => {
+      const idpFetch = mockIdp(200, { data: [], total: 0 });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/users/user-1/login-history', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.has('provider')).toBe(false);
+    });
   });
 
   describe('GET /:id/providers — ユーザーのSNSプロバイダー連携状態', () => {
