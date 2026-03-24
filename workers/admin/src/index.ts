@@ -5,6 +5,7 @@ import authRoutes from './routes/auth';
 import servicesRoutes from './routes/services';
 import usersRoutes from './routes/users';
 import metricsRoutes from './routes/metrics';
+import auditLogsRoutes from './routes/audit-logs';
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
@@ -23,6 +24,7 @@ app.route('/auth', authRoutes);
 app.route('/api/services', servicesRoutes);
 app.route('/api/users', usersRoutes);
 app.route('/api/metrics', metricsRoutes);
+app.route('/api/audit-logs', auditLogsRoutes);
 
 app.get('/api/health', (c) => {
   return c.json({ status: 'ok', worker: 'admin', timestamp: new Date().toISOString() });

@@ -20,6 +20,7 @@ import {
   getUserLoginProviderStats,
   banUser,
   unbanUser,
+  createAdminAuditLog,
   parsePagination,
   type UserFilter,
 } from '@0g0-id/shared';
@@ -423,6 +424,14 @@ app.patch('/:id/role', authMiddleware, adminMiddleware, csrfMiddleware, async (c
   const user = await updateUserRole(c.env.DB, targetId, role);
   // ロール変更後、既存トークンを即時失効（権限変更を即反映）
   await revokeUserTokens(c.env.DB, targetId);
+  await createAdminAuditLog(c.env.DB, {
+    adminUserId: tokenUser.sub,
+    action: 'user.role_change',
+    targetType: 'user',
+    targetId,
+    details: { from: targetUser.role, to: role },
+    ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
+  });
 
   return c.json({ data: formatAdminUserSummary(user) });
 });
@@ -454,6 +463,13 @@ app.patch('/:id/ban', authMiddleware, adminMiddleware, csrfMiddleware, async (c)
   const updated = await banUser(c.env.DB, targetId);
   // 停止と同時に全セッション失効
   await revokeUserTokens(c.env.DB, targetId);
+  await createAdminAuditLog(c.env.DB, {
+    adminUserId: tokenUser.sub,
+    action: 'user.ban',
+    targetType: 'user',
+    targetId,
+    ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
+  });
 
   return c.json({ data: formatAdminUserSummary(updated) });
 });
@@ -461,6 +477,7 @@ app.patch('/:id/ban', authMiddleware, adminMiddleware, csrfMiddleware, async (c)
 // DELETE /api/users/:id/ban — ユーザー停止を解除（管理者のみ）
 app.delete('/:id/ban', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const targetId = c.req.param('id');
+  const tokenUser = c.get('user');
 
   const targetUser = await findUserById(c.env.DB, targetId);
   if (!targetUser) {
@@ -472,6 +489,14 @@ app.delete('/:id/ban', authMiddleware, adminMiddleware, csrfMiddleware, async (c
   }
 
   const updated = await unbanUser(c.env.DB, targetId);
+  await createAdminAuditLog(c.env.DB, {
+    adminUserId: tokenUser.sub,
+    action: 'user.unban',
+    targetType: 'user',
+    targetId,
+    ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
+  });
+
   return c.json({ data: formatAdminUserSummary(updated) });
 });
 

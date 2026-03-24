@@ -70,6 +70,17 @@ export interface RefreshToken {
   created_at: string;
 }
 
+export interface AdminAuditLog {
+  id: string;
+  admin_user_id: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  details: string | null;
+  ip_address: string | null;
+  created_at: string;
+}
+
 export interface TokenPayload {
   iss: string;
   sub: string;

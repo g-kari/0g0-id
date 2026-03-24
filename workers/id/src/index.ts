@@ -8,6 +8,7 @@ import servicesRoutes from './routes/services';
 import metricsRoutes from './routes/metrics';
 import wellKnownRoutes from './routes/well-known';
 import docsRoutes from './routes/docs';
+import adminAuditLogsRoutes from './routes/admin-audit-logs';
 import externalRoutes from './routes/external';
 import userInfoRoutes from './routes/userinfo';
 
@@ -28,6 +29,7 @@ app.route('/api/metrics', metricsRoutes);
 app.route('/api/external', externalRoutes);
 app.route('/api/userinfo', userInfoRoutes);
 app.route('/docs', docsRoutes);
+app.route('/api/admin/audit-logs', adminAuditLogsRoutes);
 
 // ヘルスチェック
 app.get('/api/health', (c) => {
