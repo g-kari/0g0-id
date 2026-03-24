@@ -7,6 +7,7 @@ vi.mock('@0g0-id/shared', () => ({
   countServices: vi.fn(),
   countActiveRefreshTokens: vi.fn(),
   countRecentLoginEvents: vi.fn(),
+  getLoginEventProviderStats: vi.fn(),
   verifyAccessToken: vi.fn(),
 }));
 
@@ -16,6 +17,7 @@ import {
   countServices,
   countActiveRefreshTokens,
   countRecentLoginEvents,
+  getLoginEventProviderStats,
   verifyAccessToken,
 } from '@0g0-id/shared';
 
@@ -97,7 +99,12 @@ describe('GET /api/metrics', () => {
     vi.mocked(countAdminUsers).mockResolvedValue(5);
     vi.mocked(countServices).mockResolvedValue(10);
     vi.mocked(countActiveRefreshTokens).mockResolvedValue(42);
-    vi.mocked(countRecentLoginEvents).mockResolvedValue(13);
+    vi.mocked(countRecentLoginEvents).mockResolvedValueOnce(13).mockResolvedValueOnce(87);
+    vi.mocked(getLoginEventProviderStats).mockResolvedValue([
+      { provider: 'google', count: 60 },
+      { provider: 'line', count: 20 },
+      { provider: 'github', count: 7 },
+    ]);
 
     const res = await app.request(
       makeRequest('/api/metrics', 'admin-token'),
@@ -113,6 +120,8 @@ describe('GET /api/metrics', () => {
         total_services: number;
         active_sessions: number;
         recent_logins_24h: number;
+        recent_logins_7d: number;
+        login_provider_stats_7d: { provider: string; count: number }[];
       };
     }>();
     expect(body.data.total_users).toBe(100);
@@ -120,6 +129,12 @@ describe('GET /api/metrics', () => {
     expect(body.data.total_services).toBe(10);
     expect(body.data.active_sessions).toBe(42);
     expect(body.data.recent_logins_24h).toBe(13);
+    expect(body.data.recent_logins_7d).toBe(87);
+    expect(body.data.login_provider_stats_7d).toEqual([
+      { provider: 'google', count: 60 },
+      { provider: 'line', count: 20 },
+      { provider: 'github', count: 7 },
+    ]);
   });
 
   it('管理者トークンでDBへの各カウント関数が呼ばれる', async () => {
@@ -129,6 +144,7 @@ describe('GET /api/metrics', () => {
     vi.mocked(countServices).mockResolvedValue(0);
     vi.mocked(countActiveRefreshTokens).mockResolvedValue(0);
     vi.mocked(countRecentLoginEvents).mockResolvedValue(0);
+    vi.mocked(getLoginEventProviderStats).mockResolvedValue([]);
 
     await app.request(
       makeRequest('/api/metrics', 'admin-token'),
@@ -140,19 +156,21 @@ describe('GET /api/metrics', () => {
     expect(vi.mocked(countAdminUsers)).toHaveBeenCalledWith(mockEnv.DB);
     expect(vi.mocked(countServices)).toHaveBeenCalledWith(mockEnv.DB);
     expect(vi.mocked(countActiveRefreshTokens)).toHaveBeenCalledWith(mockEnv.DB);
-    expect(vi.mocked(countRecentLoginEvents)).toHaveBeenCalledWith(
+    expect(vi.mocked(countRecentLoginEvents)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(getLoginEventProviderStats)).toHaveBeenCalledWith(
       mockEnv.DB,
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/)
     );
   });
 
-  it('countRecentLoginEventsには過去24時間以内のISO日時が渡される', async () => {
+  it('countRecentLoginEventsには24h・7d両方の日時が渡される', async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
     vi.mocked(countUsers).mockResolvedValue(0);
     vi.mocked(countAdminUsers).mockResolvedValue(0);
     vi.mocked(countServices).mockResolvedValue(0);
     vi.mocked(countActiveRefreshTokens).mockResolvedValue(0);
     vi.mocked(countRecentLoginEvents).mockResolvedValue(0);
+    vi.mocked(getLoginEventProviderStats).mockResolvedValue([]);
 
     const before = Date.now();
     await app.request(
@@ -162,12 +180,61 @@ describe('GET /api/metrics', () => {
     );
     const after = Date.now();
 
-    const calledSince = vi.mocked(countRecentLoginEvents).mock.calls[0][1];
+    const calls = vi.mocked(countRecentLoginEvents).mock.calls;
+    expect(calls).toHaveLength(2);
+
+    // 1回目: 24h前
+    const since24hMs = new Date(calls[0][1]).getTime();
+    expect(since24hMs).toBeGreaterThanOrEqual(before - 24 * 60 * 60 * 1000);
+    expect(since24hMs).toBeLessThanOrEqual(after - 24 * 60 * 60 * 1000);
+
+    // 2回目: 7d前
+    const since7dMs = new Date(calls[1][1]).getTime();
+    expect(since7dMs).toBeGreaterThanOrEqual(before - 7 * 24 * 60 * 60 * 1000);
+    expect(since7dMs).toBeLessThanOrEqual(after - 7 * 24 * 60 * 60 * 1000);
+  });
+
+  it('getLoginEventProviderStatsには7d前の日時が渡される', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(countUsers).mockResolvedValue(0);
+    vi.mocked(countAdminUsers).mockResolvedValue(0);
+    vi.mocked(countServices).mockResolvedValue(0);
+    vi.mocked(countActiveRefreshTokens).mockResolvedValue(0);
+    vi.mocked(countRecentLoginEvents).mockResolvedValue(0);
+    vi.mocked(getLoginEventProviderStats).mockResolvedValue([]);
+
+    const before = Date.now();
+    await app.request(
+      makeRequest('/api/metrics', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    const after = Date.now();
+
+    const calledSince = vi.mocked(getLoginEventProviderStats).mock.calls[0][1];
     const calledSinceMs = new Date(calledSince).getTime();
-    const expectedMin = before - 24 * 60 * 60 * 1000;
-    const expectedMax = after - 24 * 60 * 60 * 1000;
-    expect(calledSinceMs).toBeGreaterThanOrEqual(expectedMin);
-    expect(calledSinceMs).toBeLessThanOrEqual(expectedMax);
+    expect(calledSinceMs).toBeGreaterThanOrEqual(before - 7 * 24 * 60 * 60 * 1000);
+    expect(calledSinceMs).toBeLessThanOrEqual(after - 7 * 24 * 60 * 60 * 1000);
+  });
+
+  it('プロバイダー統計が空の場合も正常に返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(countUsers).mockResolvedValue(0);
+    vi.mocked(countAdminUsers).mockResolvedValue(0);
+    vi.mocked(countServices).mockResolvedValue(0);
+    vi.mocked(countActiveRefreshTokens).mockResolvedValue(0);
+    vi.mocked(countRecentLoginEvents).mockResolvedValue(0);
+    vi.mocked(getLoginEventProviderStats).mockResolvedValue([]);
+
+    const res = await app.request(
+      makeRequest('/api/metrics', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: { login_provider_stats_7d: unknown[] } }>();
+    expect(body.data.login_provider_stats_7d).toEqual([]);
   });
 
   it('無効なトークンで401を返す', async () => {
