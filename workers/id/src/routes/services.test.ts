@@ -8,8 +8,7 @@ vi.mock('@0g0-id/shared', () => ({
   findUserById: vi.fn(),
   createService: vi.fn(),
   updateServiceFields: vi.fn(),
-  updateServiceAllowedScopes: vi.fn(),
-  updateServiceName: vi.fn(),
+  
   deleteService: vi.fn(),
   listRedirectUris: vi.fn(),
   addRedirectUri: vi.fn(),
@@ -46,8 +45,6 @@ import {
   findUserById,
   createService,
   updateServiceFields,
-  updateServiceAllowedScopes,
-  updateServiceName,
   deleteService,
   listRedirectUris,
   addRedirectUri,
