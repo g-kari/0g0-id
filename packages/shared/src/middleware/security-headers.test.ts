@@ -43,4 +43,11 @@ describe('securityHeaders', () => {
     const body = await res.json<{ ok: boolean }>();
     expect(body.ok).toBe(true);
   });
+
+  it('Strict-Transport-Security: max-age=31536000; includeSubDomainsが設定される', async () => {
+    const res = await app.request('https://example.com/test');
+    expect(res.headers.get('Strict-Transport-Security')).toBe(
+      'max-age=31536000; includeSubDomains',
+    );
+  });
 });

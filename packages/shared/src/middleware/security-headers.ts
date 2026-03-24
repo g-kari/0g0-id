@@ -9,9 +9,11 @@ import type { MiddlewareHandler } from 'hono';
  * - Referrer-Policy: strict-origin-when-cross-origin — リファラー情報の最小化
  * - X-Permitted-Cross-Domain-Policies: none — Flash/Silverlight等のクロスドメインポリシー制限
  * - Permissions-Policy                   — カメラ・マイク・位置情報APIの無効化
+ * - Strict-Transport-Security            — HTTPSの強制（HSTS、1年間、サブドメイン含む）                   — カメラ・マイク・位置情報APIの無効化
  */
 export const securityHeaders = (): MiddlewareHandler => {
   return async (c, next) => {
+    c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     c.header('X-Frame-Options', 'SAMEORIGIN');
     c.header('X-Content-Type-Options', 'nosniff');
     c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
