@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { HonoRequest } from 'hono';
 import { findRefreshTokenByHash, findUserById, revokeRefreshToken, sha256, verifyAccessToken } from '@0g0-id/shared';
-import type { IdpEnv } from '@0g0-id/shared';
+import type { IdpEnv, User } from '@0g0-id/shared';
 import { externalApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authenticateService } from '../utils/service-auth';
 import { parseAllowedScopes } from '../utils/scopes';
@@ -28,6 +28,31 @@ async function parseTokenBody(
     return await req.json<{ token?: string; token_type_hint?: string }>();
   } catch {
     return null;
+  }
+}
+
+/**
+ * スコープに基づいてイントロスペクションレスポンスへユーザークレームを付与する。
+ * refresh_token / access_token の両ブランチで共通利用。
+ */
+function applyUserClaims(
+  claims: Record<string, unknown>,
+  user: User,
+  scopes: string[]
+): void {
+  if (scopes.includes('profile')) {
+    claims['name'] = user.name;
+    claims['picture'] = user.picture;
+  }
+  if (scopes.includes('email')) {
+    claims['email'] = user.email;
+    claims['email_verified'] = user.email_verified === 1;
+  }
+  if (scopes.includes('phone')) {
+    claims['phone'] = user.phone;
+  }
+  if (scopes.includes('address')) {
+    claims['address'] = user.address;
   }
 }
 
@@ -86,21 +111,7 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
       scope: allowedScopes.join(' '),
     };
 
-    // scopeに応じてユーザー情報を付与
-    if (allowedScopes.includes('profile')) {
-      response['name'] = user.name;
-      response['picture'] = user.picture;
-    }
-    if (allowedScopes.includes('email')) {
-      response['email'] = user.email;
-      response['email_verified'] = user.email_verified === 1;
-    }
-    if (allowedScopes.includes('phone')) {
-      response['phone'] = user.phone;
-    }
-    if (allowedScopes.includes('address')) {
-      response['address'] = user.address;
-    }
+    applyUserClaims(response, user, allowedScopes);
 
     return c.json(response);
   }
@@ -136,20 +147,7 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
       token_type: 'access_token',
     };
 
-    if (allowedScopes.includes('profile')) {
-      jwtResponse['name'] = tokenUser.name;
-      jwtResponse['picture'] = tokenUser.picture;
-    }
-    if (allowedScopes.includes('email')) {
-      jwtResponse['email'] = tokenUser.email;
-      jwtResponse['email_verified'] = tokenUser.email_verified === 1;
-    }
-    if (allowedScopes.includes('phone')) {
-      jwtResponse['phone'] = tokenUser.phone;
-    }
-    if (allowedScopes.includes('address')) {
-      jwtResponse['address'] = tokenUser.address;
-    }
+    applyUserClaims(jwtResponse, tokenUser, allowedScopes);
 
     return c.json(jwtResponse);
   } catch {
