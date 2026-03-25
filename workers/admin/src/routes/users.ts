@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { fetchWithAuth, fetchWithJsonBody, proxyMutate, proxyResponse } from '@0g0-id/shared';
+import { fetchWithAuth, fetchWithJsonBody, parsePagination, proxyMutate, proxyResponse } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 import { SESSION_COOKIE } from './auth';
 
@@ -7,9 +7,16 @@ const app = new Hono<{ Bindings: BffEnv }>();
 
 // GET /api/users
 app.get('/', async (c) => {
+  const pagination = parsePagination(
+    { limit: c.req.query('limit'), offset: c.req.query('offset') },
+    { defaultLimit: 50, maxLimit: 100 }
+  );
+  if ('error' in pagination) {
+    return c.json({ error: pagination.error }, 400);
+  }
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users`);
-  url.searchParams.set('limit', c.req.query('limit') ?? '50');
-  url.searchParams.set('offset', c.req.query('offset') ?? '0');
+  url.searchParams.set('limit', String(pagination.limit));
+  url.searchParams.set('offset', String(pagination.offset));
   const email = c.req.query('email');
   const role = c.req.query('role');
   const name = c.req.query('name');
@@ -65,9 +72,16 @@ app.get('/:id/providers', async (c) => {
 
 // GET /api/users/:id/login-history
 app.get('/:id/login-history', async (c) => {
+  const pagination = parsePagination(
+    { limit: c.req.query('limit'), offset: c.req.query('offset') },
+    { defaultLimit: 20, maxLimit: 100 }
+  );
+  if ('error' in pagination) {
+    return c.json({ error: pagination.error }, 400);
+  }
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/login-history`);
-  url.searchParams.set('limit', c.req.query('limit') ?? '20');
-  url.searchParams.set('offset', c.req.query('offset') ?? '0');
+  url.searchParams.set('limit', String(pagination.limit));
+  url.searchParams.set('offset', String(pagination.offset));
   const provider = c.req.query('provider');
   if (provider) url.searchParams.set('provider', provider);
   const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());

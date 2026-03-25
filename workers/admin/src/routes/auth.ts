@@ -111,8 +111,9 @@ app.post('/logout', async (c) => {
           body: JSON.stringify({ refresh_token: sessionData.refresh_token }),
         })
       );
-    } catch {
-      // ignore
+    } catch (err) {
+      // IdP側のトークン失効に失敗してもCookie削除は継続するが、ログに記録する
+      console.error('[logout] IdP revoke request failed:', err);
     }
   }
 
