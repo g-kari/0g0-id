@@ -22,6 +22,7 @@ const baseLoginEvent: LoginEvent = {
   provider: 'google',
   ip_address: '1.2.3.4',
   user_agent: 'Mozilla/5.0',
+  country: null,
   created_at: '2024-01-01T00:00:00Z',
 };
 
@@ -42,7 +43,8 @@ describe('insertLoginEvent', () => {
       'user-1',
       'google',
       '1.2.3.4',
-      'Mozilla/5.0'
+      'Mozilla/5.0',
+      null
     );
     expect(stmt.run).toHaveBeenCalled();
   });
@@ -62,7 +64,8 @@ describe('insertLoginEvent', () => {
       'user-1',
       'github',
       null,
-      'Chrome/120'
+      'Chrome/120',
+      null
     );
   });
 
@@ -81,6 +84,7 @@ describe('insertLoginEvent', () => {
       'user-1',
       'line',
       '10.0.0.1',
+      null,
       null
     );
   });
@@ -98,8 +102,44 @@ describe('insertLoginEvent', () => {
       'user-1',
       'twitch',
       null,
+      null,
       null
     );
+  });
+
+  it('countryを指定した場合はbindに渡される', async () => {
+    const db = makeD1Mock();
+    await insertLoginEvent(db, {
+      userId: 'user-1',
+      provider: 'google',
+      ipAddress: '1.2.3.4',
+      userAgent: 'Mozilla/5.0',
+      country: 'JP',
+    });
+
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith(
+      expect.any(String),
+      'user-1',
+      'google',
+      '1.2.3.4',
+      'Mozilla/5.0',
+      'JP'
+    );
+  });
+
+  it('countryが省略された場合はnullでbindする', async () => {
+    const db = makeD1Mock();
+    await insertLoginEvent(db, {
+      userId: 'user-1',
+      provider: 'google',
+      ipAddress: '1.2.3.4',
+      userAgent: 'Mozilla/5.0',
+    });
+
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const bindArgs = (stmt.bind as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(bindArgs[5]).toBeNull();
   });
 
   it('idにUUIDを使用する', async () => {

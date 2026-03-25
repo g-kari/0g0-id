@@ -229,6 +229,7 @@ describe('GET /api/users/me/data-export', () => {
       provider: 'google',
       ip_address: '1.2.3.4',
       user_agent: 'Mozilla/5.0',
+      country: null,
       created_at: '2024-01-01T00:00:00Z',
     },
   ];
@@ -322,6 +323,7 @@ describe('GET /api/users/me/security-summary', () => {
     provider: 'google',
     ip_address: '1.2.3.4',
     user_agent: 'Mozilla/5.0',
+    country: null,
     created_at: '2024-01-15T10:00:00Z',
   };
 
@@ -1126,6 +1128,7 @@ describe('GET /api/users/me/login-history', () => {
       provider: 'google',
       ip_address: '127.0.0.1',
       user_agent: 'Mozilla/5.0',
+      country: null,
       created_at: '2024-01-01T00:00:00Z',
     },
   ];
@@ -1307,6 +1310,7 @@ describe('GET /api/users/:id/login-history', () => {
       provider: 'google',
       ip_address: '192.168.0.1',
       user_agent: 'Chrome/120',
+      country: null,
       created_at: '2024-02-01T00:00:00Z',
     },
     {
@@ -1315,6 +1319,7 @@ describe('GET /api/users/:id/login-history', () => {
       provider: 'github',
       ip_address: '192.168.0.2',
       user_agent: 'Firefox/120',
+      country: null,
       created_at: '2024-01-01T00:00:00Z',
     },
   ];

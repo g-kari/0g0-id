@@ -747,11 +747,13 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
       c.req.header('cf-connecting-ip') ??
       (c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? null);
     const userAgent = c.req.header('user-agent') ?? null;
+    const country = c.req.header('cf-ipcountry') ?? null;
     await insertLoginEvent(c.env.DB, {
       userId: user.id,
       provider,
       ipAddress,
       userAgent,
+      country,
     });
   } catch (err) {
     console.error('[login-event] Failed to record login event:', err);

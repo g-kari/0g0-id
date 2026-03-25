@@ -52,12 +52,12 @@ describe('bffCsrfMiddleware', () => {
       expect(res.status).toBe(200);
     });
 
-    it('Refererヘッダーを使った場合も通過する', async () => {
+    it('Refererのみ（Originなし）の場合は403を返す', async () => {
       const req = new Request(`${baseUrl}/api/test`, {
         headers: { Referer: `${baseUrl}/profile.html` },
       });
       const res = await app.request(req, undefined, testEnv);
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(403);
     });
   });
 
