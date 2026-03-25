@@ -6,6 +6,7 @@ import {
   countActiveRefreshTokens,
   countRecentLoginEvents,
   getLoginEventProviderStats,
+  getDailyLoginTrends,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
@@ -44,7 +45,19 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
       recent_logins_7d: recentLogins7d,
       login_provider_stats_7d: providerStats7d,
     },
-  });
+    });
 });
+
+// GET /api/metrics/login-trends?days=30
+app.get('/login-trends', authMiddleware, adminMiddleware, async (c) => {
+  const daysStr = c.req.query('days');
+  const parsed = daysStr !== undefined ? parseInt(daysStr, 10) : NaN;
+  const days = Math.min(Math.max(Number.isNaN(parsed) ? 30 : parsed, 1), 90);
+
+  const trends = await getDailyLoginTrends(c.env.DB, days);
+
+  return c.json({ data: trends, days });
+});
+
 
 export default app;

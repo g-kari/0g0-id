@@ -484,3 +484,90 @@ describe('getUserLoginProviderStats', () => {
     expect(sql).toContain('GROUP BY provider');
   });
 });
+
+describe('getDailyLoginTrends', () => {
+  it('日別ログイン統計を日付昇順で返す', async () => {
+    const mockStats = [
+      { date: '2024-01-01', count: 5 },
+      { date: '2024-01-02', count: 8 },
+      { date: '2024-01-03', count: 3 },
+    ];
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: mockStats }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const { getDailyLoginTrends } = await import('./login-events');
+    const result = await getDailyLoginTrends(db, 30);
+
+    expect(result).toHaveLength(3);
+    expect(result[0]).toEqual({ date: '2024-01-01', count: 5 });
+    expect(result[2]).toEqual({ date: '2024-01-03', count: 3 });
+  });
+
+  it('ログインイベントがない場合は空配列を返す', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const { getDailyLoginTrends } = await import('./login-events');
+    const result = await getDailyLoginTrends(db, 7);
+
+    expect(result).toEqual([]);
+  });
+
+  it('デフォルトdays=30でsinceIsoをbindする', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const before = Date.now();
+    const { getDailyLoginTrends } = await import('./login-events');
+    await getDailyLoginTrends(db);
+    const after = Date.now();
+
+    const boundSince: string = (stmt.bind as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const boundMs = new Date(boundSince).getTime();
+    expect(boundMs).toBeGreaterThanOrEqual(before - 30 * 24 * 60 * 60 * 1000);
+    expect(boundMs).toBeLessThanOrEqual(after - 30 * 24 * 60 * 60 * 1000);
+  });
+
+  it('days=7を指定すると7日前のsinceIsoをbindする', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const before = Date.now();
+    const { getDailyLoginTrends } = await import('./login-events');
+    await getDailyLoginTrends(db, 7);
+    const after = Date.now();
+
+    const boundSince: string = (stmt.bind as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const boundMs = new Date(boundSince).getTime();
+    expect(boundMs).toBeGreaterThanOrEqual(before - 7 * 24 * 60 * 60 * 1000);
+    expect(boundMs).toBeLessThanOrEqual(after - 7 * 24 * 60 * 60 * 1000);
+  });
+
+  it('SQLにstrftime・GROUP BY date・ORDER BY date ASCが含まれる', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const { getDailyLoginTrends } = await import('./login-events');
+    await getDailyLoginTrends(db, 30);
+
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain("strftime('%Y-%m-%d'");
+    expect(sql).toContain('GROUP BY date');
+    expect(sql).toContain('ORDER BY date ASC');
+  });
+});
