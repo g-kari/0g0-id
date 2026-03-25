@@ -111,4 +111,70 @@ describe('admin BFF — /api/metrics', () => {
       expect(res.status).toBe(500);
     });
   });
+
+  describe('GET /login-trends — 日別ログイントレンド', () => {
+    const mockTrends = [
+      { date: '2024-01-01', count: 10 },
+      { date: '2024-01-02', count: 15 },
+    ];
+
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/metrics/login-trends');
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('管理者セッションでIdPへプロキシしてトレンドデータを返す', async () => {
+      const idpFetch = mockIdp(200, { data: mockTrends, days: 30 });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/metrics/login-trends', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof mockTrends; days: number }>();
+      expect(body.data).toHaveLength(2);
+      expect(body.data[0].count).toBe(10);
+      expect(idpFetch).toHaveBeenCalledOnce();
+    });
+
+    it('IdP への呼び出しURLに /api/metrics/login-trends が含まれる', async () => {
+      const idpFetch = mockIdp(200, { data: mockTrends, days: 30 });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/metrics/login-trends', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const calledUrl = vi.mocked(idpFetch).mock.calls[0][0].url;
+      expect(calledUrl).toContain('/api/metrics/login-trends');
+    });
+
+    it('daysクエリパラメータをIdPに転送する', async () => {
+      const idpFetch = mockIdp(200, { data: mockTrends, days: 7 });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/metrics/login-trends?days=7', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const calledUrl = new URL(vi.mocked(idpFetch).mock.calls[0][0].url);
+      expect(calledUrl.searchParams.get('days')).toBe('7');
+    });
+
+    it('IdP が500を返した場合は500をプロキシする', async () => {
+      const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR', message: 'Server error' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/metrics/login-trends', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(500);
+    });
+  });
 });
