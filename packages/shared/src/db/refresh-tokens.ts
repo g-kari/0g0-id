@@ -10,6 +10,26 @@ export async function findRefreshTokenByHash(
     .first<RefreshToken>();
 }
 
+/**
+ * アトミックにリフレッシュトークンを失効させる（TOCTOU競合状態防止）。
+ * 失効前に有効だったトークンを返す。トークンが存在しないか既に失効済みの場合は null を返す。
+ */
+export async function findAndRevokeRefreshToken(
+  db: D1Database,
+  tokenHash: string
+): Promise<RefreshToken | null> {
+  return db
+    .prepare(
+      `UPDATE refresh_tokens
+       SET revoked_at = datetime('now')
+       WHERE token_hash = ?
+         AND revoked_at IS NULL
+       RETURNING *`
+    )
+    .bind(tokenHash)
+    .first<RefreshToken>();
+}
+
 export async function createRefreshToken(
   db: D1Database,
   params: {

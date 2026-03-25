@@ -28,6 +28,7 @@ vi.mock('@0g0-id/shared', () => ({
   signIdToken: vi.fn(),
   createRefreshToken: vi.fn(),
   findRefreshTokenByHash: vi.fn(),
+  findAndRevokeRefreshToken: vi.fn(),
   findUserById: vi.fn(),
   revokeRefreshToken: vi.fn(),
   revokeTokenFamily: vi.fn(),
@@ -77,6 +78,7 @@ import {
   signIdToken,
   createRefreshToken,
   findRefreshTokenByHash,
+  findAndRevokeRefreshToken,
   findUserById,
   revokeRefreshToken,
   revokeTokenFamily,
@@ -613,10 +615,9 @@ describe('POST /auth/refresh', () => {
     vi.resetAllMocks();
     vi.mocked(sha256).mockResolvedValue('hashed-token');
     vi.mocked(generateToken).mockReturnValue('new-refresh-token-raw');
-    vi.mocked(findRefreshTokenByHash).mockResolvedValue(mockRefreshToken as never);
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(mockRefreshToken as never);
     vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(signAccessToken).mockResolvedValue('new-access-token');
-    vi.mocked(revokeRefreshToken).mockResolvedValue(undefined as never);
     vi.mocked(createRefreshToken).mockResolvedValue(undefined as never);
   });
 
@@ -646,6 +647,7 @@ describe('POST /auth/refresh', () => {
   });
 
   it('トークンが存在しない → 401を返す', async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(null);
     vi.mocked(findRefreshTokenByHash).mockResolvedValue(null);
     const res = await sendRequest(app, '/auth/refresh', {
       method: 'POST',
@@ -657,6 +659,7 @@ describe('POST /auth/refresh', () => {
   });
 
   it('失効済みトークン（リプレイ攻撃）→ family全失効 + 401を返す', async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(null);
     vi.mocked(findRefreshTokenByHash).mockResolvedValue({
       ...mockRefreshToken,
       revoked_at: '2024-01-01T00:00:00Z',
@@ -677,7 +680,7 @@ describe('POST /auth/refresh', () => {
   });
 
   it('期限切れトークン → 401を返す', async () => {
-    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue({
       ...mockRefreshToken,
       expires_at: new Date(Date.now() - 1000).toISOString(),
     } as never);
@@ -692,6 +695,7 @@ describe('POST /auth/refresh', () => {
   });
 
   it('ユーザー不存在 → 404を返す', async () => {
+    // findAndRevokeRefreshToken はデフォルトで mockRefreshToken を返す（beforeEach設定済み）
     vi.mocked(findUserById).mockResolvedValue(null);
     const res = await sendRequest(app, '/auth/refresh', {
       method: 'POST',
@@ -715,8 +719,8 @@ describe('POST /auth/refresh', () => {
     expect(body.data.token_type).toBe('Bearer');
     expect(body.data.expires_in).toBe(900);
     expect(body.data.refresh_token).toBeTruthy();
-    // 旧トークンを失効させることを確認
-    expect(vi.mocked(revokeRefreshToken)).toHaveBeenCalledWith(mockEnv.DB, 'rt-id');
+    // findAndRevokeRefreshToken が atomically 失効させるため revokeRefreshToken は呼ばれない
+    expect(vi.mocked(revokeRefreshToken)).not.toHaveBeenCalled();
     // 新トークンを同じfamily_idで発行することを確認
     expect(vi.mocked(createRefreshToken)).toHaveBeenCalledWith(
       mockEnv.DB,
@@ -744,7 +748,7 @@ describe('POST /auth/logout', () => {
     vi.resetAllMocks();
     vi.mocked(sha256).mockResolvedValue('hashed-token');
     vi.mocked(findRefreshTokenByHash).mockResolvedValue(mockRefreshToken as never);
-    vi.mocked(revokeTokenFamily).mockResolvedValue(undefined as never);
+    vi.mocked(revokeRefreshToken).mockResolvedValue(undefined as never);
   });
 
   it('JSONボディが不正 → 400を返す', async () => {
@@ -770,10 +774,10 @@ describe('POST /auth/logout', () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ data: { success: boolean } }>();
     expect(body.data.success).toBe(true);
-    expect(vi.mocked(revokeTokenFamily)).not.toHaveBeenCalled();
+    expect(vi.mocked(revokeRefreshToken)).not.toHaveBeenCalled();
   });
 
-  it('有効なrefresh_token → family全失効 + successを返す', async () => {
+  it('有効なrefresh_token → 単一トークン失効 + successを返す', async () => {
     const res = await sendRequest(app, '/auth/logout', {
       method: 'POST',
       body: { refresh_token: 'valid-token' },
@@ -781,7 +785,7 @@ describe('POST /auth/logout', () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ data: { success: boolean } }>();
     expect(body.data.success).toBe(true);
-    expect(vi.mocked(revokeTokenFamily)).toHaveBeenCalledWith(mockEnv.DB, 'family-1');
+    expect(vi.mocked(revokeRefreshToken)).toHaveBeenCalledWith(mockEnv.DB, 'rt-id');
   });
 
   it('存在しないrefresh_token → エラーなくsuccessを返す', async () => {
