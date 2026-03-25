@@ -26,7 +26,8 @@ async function parseTokenBody(
       };
     }
     return await req.json<{ token?: string; token_type_hint?: string }>();
-  } catch {
+  } catch (err) {
+    console.error('[token] Failed to parse request body:', err);
     return null;
   }
 }
@@ -62,7 +63,8 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
   let service: Awaited<ReturnType<typeof authenticateService>>;
   try {
     service = await authenticateService(c.env.DB, c.req.header('Authorization'));
-  } catch {
+  } catch (err) {
+    console.error('[token-introspect] Service authentication failed:', err);
     return c.json({ active: false }, 500);
   }
   if (!service) {
@@ -150,8 +152,9 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
     applyUserClaims(jwtResponse, tokenUser, allowedScopes);
 
     return c.json(jwtResponse);
-  } catch {
+  } catch (err) {
     // JWT検証失敗（期限切れ・署名不正など）
+    console.warn('[token-introspect] JWT verification failed:', err);
     return c.json({ active: false });
   }
 });
@@ -162,7 +165,8 @@ app.post('/revoke', externalApiRateLimitMiddleware, async (c) => {
   let service: Awaited<ReturnType<typeof authenticateService>>;
   try {
     service = await authenticateService(c.env.DB, c.req.header('Authorization'));
-  } catch {
+  } catch (err) {
+    console.error('[token-revoke] Service authentication failed:', err);
     return c.json({ error: 'invalid_client' }, 500);
   }
   if (!service) {

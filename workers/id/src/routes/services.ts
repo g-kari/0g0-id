@@ -222,7 +222,8 @@ app.post('/:id/redirect-uris', authMiddleware, adminMiddleware, csrfMiddleware, 
       uri: normalized,
     });
     return c.json({ data: uri }, 201);
-  } catch {
+  } catch (err) {
+    console.error('[services] Failed to add redirect URI (possibly duplicate):', err);
     return c.json({ error: { code: 'CONFLICT', message: 'Redirect URI already exists' } }, 409);
   }
 });
