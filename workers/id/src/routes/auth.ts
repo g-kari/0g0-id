@@ -28,6 +28,7 @@ import {
   signIdToken,
   createRefreshToken,
   findRefreshTokenByHash,
+  findAndRevokeRefreshToken,
   findUserById,
   revokeRefreshToken,
   revokeTokenFamily,
@@ -569,7 +570,8 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
   const scope = c.req.query('scope');
 
   // code_challenge が指定された場合は S256 のみ許可（OAuth 2.1 / RFC 7636）
-  if (codeChallenge && codeChallengeMethod !== undefined && codeChallengeMethod !== 'S256') {
+  // code_challenge_method が省略された場合も拒否（デフォルトplainとの混同防止）
+  if (codeChallenge && codeChallengeMethod !== 'S256') {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Only S256 code_challenge_method is supported' } }, 400);
   }
   if (!codeChallenge && codeChallengeMethod !== undefined) {
@@ -943,25 +945,25 @@ app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
   if (!result.ok) return result.response;
 
   const tokenHash = await sha256(result.data.refresh_token);
-  const storedToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
+
+  // アトミックに失効させる（TOCTOU競合状態防止: RFC 6819 §5.2.2.3）
+  const storedToken = await findAndRevokeRefreshToken(c.env.DB, tokenHash);
 
   if (!storedToken) {
+    // null の場合: 存在しないか既に失効済み → reuse detection チェック
+    const existingToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
+    if (existingToken) {
+      // 既に失効済み → family全失効（リプレイ攻撃検知）
+      await revokeTokenFamily(c.env.DB, existingToken.family_id);
+      return c.json({ error: { code: 'TOKEN_REUSE', message: 'Token reuse detected' } }, 401);
+    }
     return c.json({ error: { code: 'INVALID_TOKEN', message: 'Token not found' } }, 401);
   }
 
-  // reuse detection: 既に失効済み → family全失効（リプレイ攻撃）
-  if (storedToken.revoked_at !== null) {
-    await revokeTokenFamily(c.env.DB, storedToken.family_id);
-    return c.json({ error: { code: 'TOKEN_REUSE', message: 'Token reuse detected' } }, 401);
-  }
-
-  // 有効期限チェック
+  // 有効期限チェック（既に失効済みだが期限切れの場合）
   if (new Date(storedToken.expires_at) < new Date()) {
     return c.json({ error: { code: 'TOKEN_EXPIRED', message: 'Refresh token expired' } }, 401);
   }
-
-  // 旧トークンを失効
-  await revokeRefreshToken(c.env.DB, storedToken.id);
 
   // ユーザー情報取得
   const user = await findUserById(c.env.DB, storedToken.user_id);
@@ -1040,7 +1042,7 @@ app.post('/logout', tokenApiRateLimitMiddleware, async (c) => {
     const tokenHash = await sha256(refreshToken);
     const storedToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
     if (storedToken) {
-      await revokeTokenFamily(c.env.DB, storedToken.family_id);
+      await revokeRefreshToken(c.env.DB, storedToken.id);
     }
   }
 
