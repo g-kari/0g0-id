@@ -1,4 +1,5 @@
 import type { User } from '../types';
+import { type OAuthProvider, PROVIDER_COLUMN, ALL_PROVIDERS } from '../lib/providers';
 
 export async function findUserById(db: D1Database, id: string): Promise<User | null> {
   return db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<User>();
@@ -358,25 +359,15 @@ export async function countUsers(db: D1Database, filter?: UserFilter): Promise<n
 
 // SNSプロバイダー管理
 
-type OAuthProviderKey = 'google' | 'line' | 'twitch' | 'github' | 'x';
-
-const PROVIDER_COLUMN: Record<OAuthProviderKey, string> = {
-  google: 'google_sub',
-  line: 'line_sub',
-  twitch: 'twitch_sub',
-  github: 'github_sub',
-  x: 'x_sub',
-};
-
 export interface ProviderStatus {
-  provider: OAuthProviderKey;
+  provider: OAuthProvider;
   connected: boolean;
 }
 
 export async function getUserProviders(db: D1Database, userId: string): Promise<ProviderStatus[]> {
   const user = await findUserById(db, userId);
   if (!user) throw new Error('User not found');
-  const providers: OAuthProviderKey[] = ['google', 'line', 'twitch', 'github', 'x'];
+  const providers = ALL_PROVIDERS;
   return providers.map((p) => ({
     provider: p,
     connected: user[PROVIDER_COLUMN[p] as keyof User] !== null,
@@ -386,7 +377,7 @@ export async function getUserProviders(db: D1Database, userId: string): Promise<
 export async function unlinkProvider(
   db: D1Database,
   userId: string,
-  provider: OAuthProviderKey
+  provider: OAuthProvider
 ): Promise<void> {
   const col = PROVIDER_COLUMN[provider];
   const result = await db
@@ -417,12 +408,12 @@ export async function unbanUser(db: D1Database, userId: string): Promise<User> {
 export async function linkProvider(
   db: D1Database,
   userId: string,
-  provider: OAuthProviderKey,
+  provider: OAuthProvider,
   sub: string
 ): Promise<User> {
   // 他ユーザーが同サブIDを使用中か確認
   const findBySubFns: Record<
-    OAuthProviderKey,
+    OAuthProvider,
     (db: D1Database, sub: string) => Promise<User | null>
   > = {
     google: findUserByGoogleSub,

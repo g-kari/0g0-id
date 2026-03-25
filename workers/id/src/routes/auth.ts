@@ -49,6 +49,7 @@ import {
   insertLoginEvent,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
+import { type OAuthProvider, PROVIDER_DISPLAY_NAMES } from '@0g0-id/shared';
 import { authRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authMiddleware } from '../middleware/auth';
 import { parseAllowedScopes } from '../utils/scopes';
@@ -95,8 +96,6 @@ const OAUTH_ERROR_MAP: Record<string, string> = {
 const STATE_COOKIE = '__Host-oauth-state';
 const PKCE_COOKIE = '__Host-oauth-pkce';
 
-type OAuthProvider = 'google' | 'line' | 'twitch' | 'github' | 'x';
-
 // Google以外のプロバイダーの資格情報キー（オプション設定）
 const OPTIONAL_PROVIDER_CREDENTIALS = {
   line: { id: 'LINE_CLIENT_ID' as const, secret: 'LINE_CLIENT_SECRET' as const, name: 'LINE' },
@@ -104,14 +103,6 @@ const OPTIONAL_PROVIDER_CREDENTIALS = {
   github: { id: 'GITHUB_CLIENT_ID' as const, secret: 'GITHUB_CLIENT_SECRET' as const, name: 'GitHub' },
   x: { id: 'X_CLIENT_ID' as const, secret: 'X_CLIENT_SECRET' as const, name: 'X' },
 } satisfies Record<Exclude<OAuthProvider, 'google'>, { id: keyof IdpEnv; secret: keyof IdpEnv; name: string }>;
-
-const PROVIDER_DISPLAY_NAMES: Record<OAuthProvider, string> = {
-  google: 'Google',
-  line: 'LINE',
-  twitch: 'Twitch',
-  github: 'GitHub',
-  x: 'X',
-};
 
 /** プロバイダー認証の解決結果 */
 type ProviderResolution =
