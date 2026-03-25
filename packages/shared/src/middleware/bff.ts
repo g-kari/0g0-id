@@ -29,7 +29,7 @@ export const bffCorsMiddleware = createMiddleware<{ Bindings: BffEnv }>(async (c
  * user/admin 両 BFF で共有。
  */
 export const bffCsrfMiddleware = createMiddleware<{ Bindings: BffEnv }>(async (c, next) => {
-  const origin = c.req.header('Origin') ?? c.req.header('Referer');
+  const origin = c.req.header('Origin');
 
   if (!origin) {
     return c.json({ error: { code: 'FORBIDDEN', message: 'Origin header required' } }, 403);

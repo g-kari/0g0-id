@@ -351,6 +351,10 @@ async function resolveTwitchProvider(
   const isPlaceholderEmail = !userInfo.email;
   const email = userInfo.email ?? `twitch_${userInfo.sub}@twitch.placeholder`;
 
+  if (!isPlaceholderEmail && !(userInfo.email_verified ?? false)) {
+    return oauthError(c, 'Email not verified', 'UNVERIFIED_EMAIL');
+  }
+
   return {
     ok: true,
     sub: userInfo.sub,

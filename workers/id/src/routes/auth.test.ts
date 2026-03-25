@@ -1139,6 +1139,34 @@ describe('GET /auth/callback - Twitchプロバイダー', () => {
       })
     );
   });
+
+  it('Twitch: メール未確認 → 400を返す', async () => {
+    vi.mocked(fetchTwitchUserInfo).mockResolvedValue({
+      sub: 'twitch-sub-1',
+      preferred_username: 'twitchuser',
+      email: 'twitch@example.com',
+      email_verified: false,
+      picture: null,
+    } as never);
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'twitch',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('UNVERIFIED_EMAIL');
+  });
 });
 
 // ===== GET /auth/callback - Xプロバイダー =====
