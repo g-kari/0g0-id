@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { fetchWithAuth, fetchWithJsonBody, proxyMutate, proxyResponse } from '@0g0-id/shared';
+import { fetchWithAuth, fetchWithJsonBody, parsePagination, proxyMutate, proxyResponse } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 import { SESSION_COOKIE } from './auth';
 
@@ -7,10 +7,17 @@ const app = new Hono<{ Bindings: BffEnv }>();
 
 // GET /api/services
 app.get('/', async (c) => {
+  const pagination = parsePagination(
+    { limit: c.req.query('limit'), offset: c.req.query('offset') },
+    { defaultLimit: 50, maxLimit: 100 }
+  );
+  if ('error' in pagination) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
+  }
   const url = new URL(`${c.env.IDP_ORIGIN}/api/services`);
-  const { limit, offset, name } = c.req.query();
-  if (limit) url.searchParams.set('limit', limit);
-  if (offset) url.searchParams.set('offset', offset);
+  url.searchParams.set('limit', String(pagination.limit));
+  url.searchParams.set('offset', String(pagination.offset));
+  const name = c.req.query('name');
   if (name) url.searchParams.set('name', name);
   const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
   return proxyResponse(res);
