@@ -12,7 +12,7 @@ app.get('/', async (c) => {
     { defaultLimit: 50, maxLimit: 100 }
   );
   if ('error' in pagination) {
-    return c.json({ error: pagination.error }, 400);
+    return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
   }
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users`);
   url.searchParams.set('limit', String(pagination.limit));
@@ -77,7 +77,7 @@ app.get('/:id/login-history', async (c) => {
     { defaultLimit: 20, maxLimit: 100 }
   );
   if ('error' in pagination) {
-    return c.json({ error: pagination.error }, 400);
+    return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
   }
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/login-history`);
   url.searchParams.set('limit', String(pagination.limit));
