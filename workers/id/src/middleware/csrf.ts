@@ -2,7 +2,7 @@ import { createMiddleware } from 'hono/factory';
 import type { IdpEnv } from '@0g0-id/shared';
 
 export const csrfMiddleware = createMiddleware<{ Bindings: IdpEnv }>(async (c, next) => {
-  const origin = c.req.header('Origin') ?? c.req.header('Referer');
+  const origin = c.req.header('Origin');
   if (!origin) {
     return c.json({ error: { code: 'FORBIDDEN', message: 'Origin header required' } }, 403);
   }
