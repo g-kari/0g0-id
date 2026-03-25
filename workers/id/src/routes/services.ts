@@ -61,12 +61,15 @@ const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
 // GET /api/services
 app.get('/', authMiddleware, adminMiddleware, async (c) => {
-  const limitStr = c.req.query('limit') ?? '50';
-  const offsetStr = c.req.query('offset') ?? '0';
   const name = c.req.query('name');
-
-  const limit = Math.min(Math.max(parseInt(limitStr, 10) || 50, 1), 100);
-  const offset = Math.max(parseInt(offsetStr, 10) || 0, 0);
+  const pagination = parsePagination(
+    { limit: c.req.query('limit'), offset: c.req.query('offset') },
+    { defaultLimit: 50, maxLimit: 100 }
+  );
+  if ('error' in pagination) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
+  }
+  const { limit, offset } = pagination;
 
   const [services, total] = await Promise.all([
     listServices(c.env.DB, { name, limit, offset }),
