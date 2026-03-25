@@ -1,11 +1,13 @@
 import { Hono } from 'hono';
 import type { BffEnv } from '@0g0-id/shared';
-import { logger, securityHeaders, bffCorsMiddleware, bffCsrfMiddleware } from '@0g0-id/shared';
+import { logger, securityHeaders, bffCorsMiddleware, bffCsrfMiddleware, createLogger } from '@0g0-id/shared';
 import authRoutes from './routes/auth';
 import servicesRoutes from './routes/services';
 import usersRoutes from './routes/users';
 import metricsRoutes from './routes/metrics';
 import auditLogsRoutes from './routes/audit-logs';
+
+const appLogger = createLogger('admin');
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
@@ -31,7 +33,7 @@ app.get('/api/health', (c) => {
 });
 
 app.onError((err, c) => {
-  console.error(err);
+  appLogger.error('Unhandled error', err);
   return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
 });
 
