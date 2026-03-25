@@ -8,6 +8,7 @@ vi.mock('@0g0-id/shared', () => ({
   countActiveRefreshTokens: vi.fn(),
   countRecentLoginEvents: vi.fn(),
   getLoginEventProviderStats: vi.fn(),
+  getDailyLoginTrends: vi.fn(),
   verifyAccessToken: vi.fn(),
 }));
 
@@ -18,6 +19,7 @@ import {
   countActiveRefreshTokens,
   countRecentLoginEvents,
   getLoginEventProviderStats,
+  getDailyLoginTrends,
   verifyAccessToken,
 } from '@0g0-id/shared';
 
@@ -250,5 +252,123 @@ describe('GET /api/metrics', () => {
       mockEnv as unknown as Record<string, string>
     );
     expect(res.status).toBe(401);
+  });
+});
+
+describe('GET /api/metrics/login-trends', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('Authorizationヘッダーなしで401を返す', async () => {
+    const res = await app.request(
+      makeRequest('/api/metrics/login-trends'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('一般ユーザーのトークンで403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+
+    const res = await app.request(
+      makeRequest('/api/metrics/login-trends', 'user-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it('管理者トークンで日別ログイントレンドを返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getDailyLoginTrends).mockResolvedValue([
+      { date: '2026-03-20', count: 12 },
+      { date: '2026-03-21', count: 8 },
+      { date: '2026-03-22', count: 15 },
+    ]);
+
+    const res = await app.request(
+      makeRequest('/api/metrics/login-trends', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: { date: string; count: number }[]; days: number }>();
+    expect(body.data).toHaveLength(3);
+    expect(body.data[0]).toEqual({ date: '2026-03-20', count: 12 });
+    expect(body.days).toBe(30);
+  });
+
+  it('daysパラメーターが指定された場合getDailyLoginTrendsに渡される', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getDailyLoginTrends).mockResolvedValue([]);
+
+    await app.request(
+      makeRequest('/api/metrics/login-trends?days=7', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+
+    expect(vi.mocked(getDailyLoginTrends)).toHaveBeenCalledWith(mockEnv.DB, 7);
+  });
+
+  it('daysが90を超える場合は90にクランプされる', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getDailyLoginTrends).mockResolvedValue([]);
+
+    await app.request(
+      makeRequest('/api/metrics/login-trends?days=200', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+
+    expect(vi.mocked(getDailyLoginTrends)).toHaveBeenCalledWith(mockEnv.DB, 90);
+  });
+
+  it('daysが1未満の場合は1にクランプされる', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getDailyLoginTrends).mockResolvedValue([]);
+
+    await app.request(
+      makeRequest('/api/metrics/login-trends?days=0', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+
+    expect(vi.mocked(getDailyLoginTrends)).toHaveBeenCalledWith(mockEnv.DB, 1);
+  });
+
+  it('daysが未指定の場合はデフォルト30が使われる', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getDailyLoginTrends).mockResolvedValue([]);
+
+    const res = await app.request(
+      makeRequest('/api/metrics/login-trends', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+
+    expect(vi.mocked(getDailyLoginTrends)).toHaveBeenCalledWith(mockEnv.DB, 30);
+    const body = await res.json<{ days: number }>();
+    expect(body.days).toBe(30);
+  });
+
+  it('データが空の場合も200で空配列を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getDailyLoginTrends).mockResolvedValue([]);
+
+    const res = await app.request(
+      makeRequest('/api/metrics/login-trends', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[] }>();
+    expect(body.data).toEqual([]);
   });
 });
