@@ -83,8 +83,9 @@ app.get('/callback', async (c) => {
           body: JSON.stringify({ refresh_token: exchangeData.data.refresh_token }),
         })
       );
-    } catch {
+    } catch (err) {
       // 失効に失敗してもリダイレクトは継続
+      console.warn('[admin-callback] IdP logout request failed for non-admin user:', err);
     }
     return c.redirect('/?error=not_admin');
   }

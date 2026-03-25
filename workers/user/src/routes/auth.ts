@@ -141,7 +141,8 @@ app.get('/link', async (c) => {
     }
     const data = await res.json<{ data: { link_token: string } }>();
     linkToken = data.data.link_token;
-  } catch {
+  } catch (err) {
+    console.error('[link] Failed to obtain link token from IdP:', err);
     return c.redirect('/profile.html?error=link_failed');
   }
 

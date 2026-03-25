@@ -242,14 +242,16 @@ async function resolveGoogleProvider(
       redirectUri: callbackUri,
       codeVerifier: pkceVerifier,
     });
-  } catch {
+  } catch (err) {
+    console.error('[oauth-google] Failed to exchange code:', err);
     return oauthError(c, 'Failed to exchange code');
   }
 
   let userInfo;
   try {
     userInfo = await fetchGoogleUserInfo(googleTokens.access_token);
-  } catch {
+  } catch (err) {
+    console.error('[oauth-google] Failed to fetch user info:', err);
     return oauthError(c, 'Failed to fetch user info');
   }
 
@@ -287,14 +289,16 @@ async function resolveLineProvider(
       redirectUri: callbackUri,
       codeVerifier: pkceVerifier,
     });
-  } catch {
+  } catch (err) {
+    console.error('[oauth-line] Failed to exchange code:', err);
     return oauthError(c, 'Failed to exchange LINE code');
   }
 
   let userInfo;
   try {
     userInfo = await fetchLineUserInfo(lineTokens.access_token);
-  } catch {
+  } catch (err) {
+    console.error('[oauth-line] Failed to fetch user info:', err);
     return oauthError(c, 'Failed to fetch LINE user info');
   }
 
@@ -331,14 +335,16 @@ async function resolveTwitchProvider(
       redirectUri: callbackUri,
       codeVerifier: pkceVerifier,
     });
-  } catch {
+  } catch (err) {
+    console.error('[oauth-twitch] Failed to exchange code:', err);
     return oauthError(c, 'Failed to exchange Twitch code');
   }
 
   let userInfo;
   try {
     userInfo = await fetchTwitchUserInfo(twitchTokens.access_token);
-  } catch {
+  } catch (err) {
+    console.error('[oauth-twitch] Failed to fetch user info:', err);
     return oauthError(c, 'Failed to fetch Twitch user info');
   }
 
@@ -376,14 +382,16 @@ async function resolveGithubProvider(
       redirectUri: callbackUri,
       codeVerifier: pkceVerifier,
     });
-  } catch {
+  } catch (err) {
+    console.error('[oauth-github] Failed to exchange code:', err);
     return oauthError(c, 'Failed to exchange GitHub code');
   }
 
   let githubUser;
   try {
     githubUser = await fetchGithubUserInfo(githubTokens.access_token);
-  } catch {
+  } catch (err) {
+    console.error('[oauth-github] Failed to fetch user info:', err);
     return oauthError(c, 'Failed to fetch GitHub user info');
   }
 
@@ -425,14 +433,16 @@ async function resolveXProvider(
       redirectUri: callbackUri,
       codeVerifier: pkceVerifier,
     });
-  } catch {
+  } catch (err) {
+    console.error('[oauth-x] Failed to exchange code:', err);
     return oauthError(c, 'Failed to exchange X code');
   }
 
   let xUser;
   try {
     xUser = await fetchXUserInfo(xTokens.access_token);
-  } catch {
+  } catch (err) {
+    console.error('[oauth-x] Failed to fetch user info:', err);
     return oauthError(c, 'Failed to fetch X user info');
   }
 
@@ -647,7 +657,8 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
   };
   try {
     stateData = JSON.parse(decodeURIComponent(atob(stateCookieRaw)));
-  } catch {
+  } catch (err) {
+    console.error('[oauth-callback] Failed to parse state cookie:', err);
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid state cookie' } }, 400);
   }
 
