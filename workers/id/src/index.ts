@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { logger, securityHeaders, createLogger } from '@0g0-id/shared';
+import { validateEnv } from './utils/env-validation';
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
 import tokenRoutes from './routes/token';
@@ -17,6 +18,19 @@ const appLogger = createLogger('id');
 type Variables = { user: TokenPayload };
 
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
+
+// 環境変数バリデーション（設定ミスを早期検知）
+app.use('*', async (c, next) => {
+  const validation = validateEnv(c.env);
+  if (!validation.ok) {
+    appLogger.error('環境変数バリデーションエラー', { errors: validation.errors });
+    return c.json(
+      { error: { code: 'MISCONFIGURATION', message: 'Server misconfiguration' } },
+      500,
+    );
+  }
+  await next();
+});
 
 app.use('*', logger());
 app.use('*', securityHeaders());

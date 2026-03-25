@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@0g0-id/shared', () => ({
+  createLogger: vi.fn().mockReturnValue({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
   logger: () => async (_c: unknown, next: () => Promise<void>) => next(),
   securityHeaders: () => async (_c: unknown, next: () => Promise<void>) => next(),
   verifyAccessToken: vi.fn(),
@@ -102,5 +103,53 @@ describe('notFound ハンドラ', () => {
     const body = await res.json<{ error: { code: string; message: string } }>();
     expect(body.error.code).toBe('NOT_FOUND');
     expect(body.error.message).toBe('Not found');
+  });
+});
+
+describe('環境変数バリデーション ミドルウェア', () => {
+  it('必須環境変数が欠けている場合に500とMISCONFIGURATIONを返す', async () => {
+    const incompleteEnv = {
+      DB: {} as D1Database,
+      // GOOGLE_CLIENT_ID を意図的に省略
+      GOOGLE_CLIENT_SECRET: 'google-secret',
+      JWT_PRIVATE_KEY: 'mock-private-key',
+      JWT_PUBLIC_KEY: 'mock-public-key',
+      IDP_ORIGIN: 'https://id.0g0.xyz',
+      USER_ORIGIN: 'https://user.0g0.xyz',
+      ADMIN_ORIGIN: 'https://admin.0g0.xyz',
+    };
+    const res = await app.request(
+      'https://id.0g0.xyz/api/health',
+      undefined,
+      incompleteEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe('MISCONFIGURATION');
+    expect(body.error.message).toBe('Server misconfiguration');
+  });
+
+  it('必須環境変数が空文字の場合に500とMISCONFIGURATIONを返す', async () => {
+    const emptyKeyEnv = {
+      ...mockEnv,
+      JWT_PRIVATE_KEY: '',
+    };
+    const res = await app.request(
+      'https://id.0g0.xyz/api/health',
+      undefined,
+      emptyKeyEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe('MISCONFIGURATION');
+  });
+
+  it('全ての必須環境変数が揃っている場合は通常のレスポンスを返す', async () => {
+    const res = await app.request(
+      'https://id.0g0.xyz/api/health',
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
   });
 });
