@@ -370,4 +370,89 @@ describe('user BFF — /api/me', () => {
       expect(res.status).toBe(500);
     });
   });
+
+  describe('GET /security-summary — セキュリティ概要取得', () => {
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/security-summary');
+
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('セッションありでIdPへプロキシしてセキュリティ概要を返す', async () => {
+      const summaryData = {
+        data: {
+          active_sessions_count: 2,
+          connected_services_count: 1,
+          linked_providers: ['google'],
+          last_login: {
+            provider: 'google',
+            ip_address: '192.168.1.1',
+            created_at: '2024-01-01T00:00:00Z',
+          },
+          account_created_at: '2023-01-01T00:00:00Z',
+        },
+      };
+      const idpFetch = mockIdp(200, summaryData);
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/security-summary', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<typeof summaryData>();
+      expect(body.data.active_sessions_count).toBe(2);
+      expect(body.data.linked_providers).toEqual(['google']);
+    });
+
+    it('IdPの /api/users/me/security-summary エンドポイントを呼び出す', async () => {
+      const idpFetch = mockIdp(200, { data: {} });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/me/security-summary', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/users/me/security-summary');
+      expect(calledReq.headers.get('Authorization')).toBe('Bearer mock-access-token');
+    });
+
+    it('last_loginがnullの場合も正常にレスポンスを返す', async () => {
+      const summaryData = {
+        data: {
+          active_sessions_count: 0,
+          connected_services_count: 0,
+          linked_providers: ['github'],
+          last_login: null,
+          account_created_at: '2023-06-15T12:00:00Z',
+        },
+      };
+      const idpFetch = mockIdp(200, summaryData);
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/security-summary', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<typeof summaryData>();
+      expect(body.data.last_login).toBeNull();
+    });
+
+    it('IdPが500を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/security-summary', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(500);
+    });
+  });
 });
