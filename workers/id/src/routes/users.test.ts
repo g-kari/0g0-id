@@ -285,6 +285,101 @@ describe('GET /api/users/me/data-export', () => {
   });
 });
 
+// ===== GET /api/users/me/security-summary =====
+describe('GET /api/users/me/security-summary', () => {
+  const app = buildApp();
+
+  const mockSessions = [
+    {
+      id: 'token-1',
+      service_id: null,
+      service_name: null,
+      created_at: '2024-01-01T00:00:00Z',
+      expires_at: '2024-02-01T00:00:00Z',
+    },
+    {
+      id: 'token-2',
+      service_id: null,
+      service_name: null,
+      created_at: '2024-01-02T00:00:00Z',
+      expires_at: '2024-02-02T00:00:00Z',
+    },
+  ];
+
+  const mockConnections = [
+    {
+      service_id: 'svc-1',
+      service_name: 'My App',
+      client_id: 'client-1',
+      first_authorized_at: '2024-01-01T00:00:00Z',
+      last_authorized_at: '2024-01-02T00:00:00Z',
+    },
+  ];
+
+  const mockLastLogin = {
+    id: 'event-1',
+    user_id: 'regular-user-id',
+    provider: 'google',
+    ip_address: '1.2.3.4',
+    user_agent: 'Mozilla/5.0',
+    created_at: '2024-01-15T10:00:00Z',
+  };
+
+  const mockProviders: ProviderStatus[] = [
+    { provider: 'google', connected: true },
+    { provider: 'line', connected: false },
+    { provider: 'twitch', connected: false },
+    { provider: 'github', connected: false },
+    { provider: 'x', connected: false },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(listActiveSessionsByUserId).mockResolvedValue(mockSessions);
+    vi.mocked(listUserConnections).mockResolvedValue(mockConnections);
+    vi.mocked(getLoginEventsByUserId).mockResolvedValue({ events: [mockLastLogin], total: 1 });
+    vi.mocked(getUserProviders).mockResolvedValue(mockProviders);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+  });
+
+  it('セキュリティ概要を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/security-summary');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.active_sessions_count).toBe(2);
+    expect(body.data.connected_services_count).toBe(1);
+    expect(body.data.linked_providers).toEqual(['google']);
+    expect(body.data.last_login).toMatchObject({
+      provider: 'google',
+      ip_address: '1.2.3.4',
+      created_at: '2024-01-15T10:00:00Z',
+    });
+    expect(body.data.account_created_at).toBe(mockUser.created_at);
+  });
+
+  it('ログイン履歴がない場合はlast_loginがnullを返す', async () => {
+    vi.mocked(getLoginEventsByUserId).mockResolvedValue({ events: [], total: 0 });
+    const res = await sendRequest(app, '/api/users/me/security-summary');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.last_login).toBeNull();
+  });
+
+  it('ユーザーが存在しない場合404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/me/security-summary');
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('認証なしで401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/security-summary', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+});
+
 // ===== PATCH /api/users/me =====
 describe('PATCH /api/users/me', () => {
   const app = buildApp();

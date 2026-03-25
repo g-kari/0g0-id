@@ -239,6 +239,43 @@ app.get('/me/login-stats', authMiddleware, async (c) => {
   return c.json({ data: stats, days });
 });
 
+// GET /api/users/me/security-summary — セキュリティ概要
+app.get('/me/security-summary', authMiddleware, async (c) => {
+  const tokenUser = c.get('user');
+  const userId = tokenUser.sub;
+
+  const [sessions, connections, loginHistory, providers, user] = await Promise.all([
+    listActiveSessionsByUserId(c.env.DB, userId),
+    listUserConnections(c.env.DB, userId),
+    getLoginEventsByUserId(c.env.DB, userId, 1, 0),
+    getUserProviders(c.env.DB, userId),
+    findUserById(c.env.DB, userId),
+  ]);
+
+  if (!user) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+
+  const linkedProviders = providers.filter((p) => p.connected).map((p) => p.provider);
+  const lastLoginEvent = loginHistory.events[0] ?? null;
+
+  return c.json({
+    data: {
+      active_sessions_count: sessions.length,
+      connected_services_count: connections.length,
+      linked_providers: linkedProviders,
+      last_login: lastLoginEvent
+        ? {
+            provider: lastLoginEvent.provider,
+            ip_address: lastLoginEvent.ip_address,
+            created_at: lastLoginEvent.created_at,
+          }
+        : null,
+      account_created_at: user.created_at,
+    },
+  });
+});
+
 // DELETE /api/users/me/providers/:provider — SNSプロバイダー連携解除
 app.delete('/me/providers/:provider', authMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
