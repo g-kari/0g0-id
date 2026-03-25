@@ -38,6 +38,12 @@ app.get('/data-export', async (c) => {
   return proxyResponse(res);
 });
 
+// GET /api/me/security-summary — セキュリティ概要（セッション数・連携サービス数・リンク済みプロバイダー等）
+app.get('/security-summary', async (c) => {
+  const res = await fetchWithAuth(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/me/security-summary`);
+  return proxyResponse(res);
+});
+
 // PATCH /api/me
 app.patch('/', async (c) => {
   return fetchWithJsonBody(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/me`, 'PATCH');
