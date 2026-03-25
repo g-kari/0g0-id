@@ -1,10 +1,12 @@
 import { Hono } from 'hono';
 import type { HonoRequest } from 'hono';
-import { findRefreshTokenByHash, findUserById, revokeRefreshToken, sha256, verifyAccessToken } from '@0g0-id/shared';
+import { findRefreshTokenByHash, findUserById, revokeRefreshToken, sha256, verifyAccessToken, createLogger } from '@0g0-id/shared';
 import type { IdpEnv, User } from '@0g0-id/shared';
 import { externalApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authenticateService } from '../utils/service-auth';
 import { parseAllowedScopes } from '../utils/scopes';
+
+const tokenLogger = createLogger('token');
 
 const app = new Hono<{ Bindings: IdpEnv }>();
 
@@ -27,7 +29,7 @@ async function parseTokenBody(
     }
     return await req.json<{ token?: string; token_type_hint?: string }>();
   } catch (err) {
-    console.error('[token] Failed to parse request body:', err);
+    tokenLogger.error('Failed to parse request body', err);
     return null;
   }
 }
@@ -64,7 +66,7 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
   try {
     service = await authenticateService(c.env.DB, c.req.header('Authorization'));
   } catch (err) {
-    console.error('[token-introspect] Service authentication failed:', err);
+    tokenLogger.error('Introspect: service authentication failed', err);
     return c.json({ active: false }, 500);
   }
   if (!service) {
@@ -154,7 +156,7 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
     return c.json(jwtResponse);
   } catch (err) {
     // JWT検証失敗（期限切れ・署名不正など）
-    console.warn('[token-introspect] JWT verification failed:', err);
+    tokenLogger.warn('Introspect: JWT verification failed', err);
     return c.json({ active: false });
   }
 });
@@ -166,7 +168,7 @@ app.post('/revoke', externalApiRateLimitMiddleware, async (c) => {
   try {
     service = await authenticateService(c.env.DB, c.req.header('Authorization'));
   } catch (err) {
-    console.error('[token-revoke] Service authentication failed:', err);
+    tokenLogger.error('Revoke: service authentication failed', err);
     return c.json({ error: 'invalid_client' }, 500);
   }
   if (!service) {

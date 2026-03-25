@@ -12,6 +12,7 @@ export * from './lib/github';
 export * from './lib/x';
 export * from './lib/bff';
 export * from './lib/pagination';
+export * from './lib/logger';
 export * from './db/users';
 export * from './db/services';
 export * from './db/service-redirect-uris';

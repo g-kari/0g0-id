@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
-import { logger, securityHeaders } from '@0g0-id/shared';
+import { logger, securityHeaders, createLogger } from '@0g0-id/shared';
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
 import tokenRoutes from './routes/token';
@@ -11,6 +11,8 @@ import docsRoutes from './routes/docs';
 import adminAuditLogsRoutes from './routes/admin-audit-logs';
 import externalRoutes from './routes/external';
 import userInfoRoutes from './routes/userinfo';
+
+const appLogger = createLogger('id');
 
 type Variables = { user: TokenPayload };
 
@@ -38,7 +40,7 @@ app.get('/api/health', (c) => {
 
 // エラーハンドリング
 app.onError((err, c) => {
-  console.error(err);
+  appLogger.error('Unhandled error', err);
   return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
 });
 
