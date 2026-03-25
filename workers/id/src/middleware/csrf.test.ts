@@ -65,7 +65,7 @@ describe('csrfMiddleware (id worker)', () => {
     expect(res.status).toBe(200);
   });
 
-  it('Refererヘッダーでも許可オリジン → 200を返す', async () => {
+  it('Refererのみ（Originなし）→ 403を返す', async () => {
     const res = await app.request(
       new Request(`${baseUrl}/api/test`, {
         headers: { Referer: 'https://user.0g0.xyz/profile' },
@@ -73,7 +73,9 @@ describe('csrfMiddleware (id worker)', () => {
       undefined,
       mockEnv as unknown as Record<string, string>
     );
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('FORBIDDEN');
   });
 
   it('外部ドメインからのOrigin → 403を返す', async () => {
