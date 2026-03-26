@@ -85,10 +85,16 @@ app.post('/:id/redirect-uris', async (c) => {
 
 // GET /api/services/:id/users — サービスを認可済みのユーザー一覧
 app.get('/:id/users', async (c) => {
+  const pagination = parsePagination(
+    { limit: c.req.query('limit'), offset: c.req.query('offset') },
+    { defaultLimit: 50, maxLimit: 100 }
+  );
+  if ('error' in pagination) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
+  }
   const url = new URL(`${c.env.IDP_ORIGIN}/api/services/${c.req.param('id')}/users`);
-  url.searchParams.set('limit', c.req.query('limit') ?? '50');
-  url.searchParams.set('offset', c.req.query('offset') ?? '0');
-
+  url.searchParams.set('limit', String(pagination.limit));
+  url.searchParams.set('offset', String(pagination.offset));
   const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
   return proxyResponse(res);
 });

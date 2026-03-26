@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { deleteCookie } from 'hono/cookie';
-import { fetchWithAuth, fetchWithJsonBody, proxyResponse } from '@0g0-id/shared';
+import { fetchWithAuth, fetchWithJsonBody, parsePagination, proxyResponse } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 import { SESSION_COOKIE } from './auth';
 
@@ -14,9 +14,16 @@ app.get('/', async (c) => {
 
 // GET /api/me/login-history
 app.get('/login-history', async (c) => {
+  const pagination = parsePagination(
+    { limit: c.req.query('limit'), offset: c.req.query('offset') },
+    { defaultLimit: 20, maxLimit: 100 }
+  );
+  if ('error' in pagination) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
+  }
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/me/login-history`);
-  url.searchParams.set('limit', c.req.query('limit') ?? '20');
-  url.searchParams.set('offset', c.req.query('offset') ?? '0');
+  url.searchParams.set('limit', String(pagination.limit));
+  url.searchParams.set('offset', String(pagination.offset));
   const provider = c.req.query('provider');
   if (provider) url.searchParams.set('provider', provider);
   const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
@@ -26,8 +33,17 @@ app.get('/login-history', async (c) => {
 // GET /api/me/login-stats — プロバイダー別ログイン統計
 app.get('/login-stats', async (c) => {
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/me/login-stats`);
-  const days = c.req.query('days');
-  if (days) url.searchParams.set('days', days);
+  const daysStr = c.req.query('days');
+  if (daysStr !== undefined) {
+    const days = Number(daysStr);
+    if (!Number.isInteger(days) || days < 1 || days > 365) {
+      return c.json(
+        { error: { code: 'BAD_REQUEST', message: 'days must be an integer between 1 and 365' } },
+        400
+      );
+    }
+    url.searchParams.set('days', String(days));
+  }
   const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
   return proxyResponse(res);
 });
