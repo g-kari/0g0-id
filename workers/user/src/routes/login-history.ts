@@ -17,7 +17,8 @@ app.get('/', async (c) => {
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/me/login-history`);
   url.searchParams.set('limit', String(pagination.limit));
   url.searchParams.set('offset', String(pagination.offset));
-
+  const provider = c.req.query('provider');
+  if (provider) url.searchParams.set('provider', provider);
   const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
   return proxyResponse(res);
 });
