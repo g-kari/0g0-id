@@ -138,13 +138,24 @@ export function isAllowedRedirectTo(
   // IDP_ORIGIN から親ドメインを導出して *.parentDomain を許可
   try {
     const idpUrl = new URL(idpOrigin);
-    const parts = idpUrl.hostname.split('.');
-    // ラベルが3つ以上 (e.g. id.0g0.xyz) なら第1ラベルを除いた親ドメインを使用
-    // ラベルが2つ以下 (e.g. 0g0.xyz) ならそのまま使用
-    const parentDomain = parts.length > 2 ? parts.slice(1).join('.') : parts.join('.');
-    const host = redirectUrl.hostname;
-    if (host === parentDomain || host.endsWith('.' + parentDomain)) {
-      return true;
+    const idpHostname = idpUrl.hostname;
+
+    // IPアドレス（IPv4 / IPv6）の場合は親ドメイン導出をスキップ
+    // 例: 127.0.0.1 → '0.0.1' のような不正なドメインマッチを防ぐ
+    // 開発環境でIPを使う場合は EXTRA_BFF_ORIGINS を使用すること
+    const isIp =
+      /^\d+\.\d+\.\d+\.\d+$/.test(idpHostname) || // IPv4
+      (idpHostname.startsWith('[') && idpHostname.endsWith(']')); // IPv6 (URL仕様上 [] で囲まれる)
+
+    if (!isIp) {
+      const parts = idpHostname.split('.');
+      // ラベルが3つ以上 (e.g. id.0g0.xyz) なら第1ラベルを除いた親ドメインを使用
+      // ラベルが2つ以下 (e.g. 0g0.xyz) ならそのまま使用
+      const parentDomain = parts.length > 2 ? parts.slice(1).join('.') : parts.join('.');
+      const host = redirectUrl.hostname;
+      if (host === parentDomain || host.endsWith('.' + parentDomain)) {
+        return true;
+      }
     }
   } catch {
     // ignore — fallthrough to EXTRA_BFF_ORIGINS
