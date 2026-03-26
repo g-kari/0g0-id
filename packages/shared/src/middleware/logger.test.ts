@@ -9,6 +9,17 @@ function buildApp(handler?: (c: import('hono').Context) => Response | Promise<Re
   return app;
 }
 
+function parseLogEntry(
+  logLine: string,
+): { level: string; ctx: string; msg: string; data: Record<string, unknown> } {
+  return JSON.parse(logLine) as {
+    level: string;
+    ctx: string;
+    msg: string;
+    data: Record<string, unknown>;
+  };
+}
+
 describe('logger middleware', () => {
   let consoleSpy: ReturnType<typeof vi.spyOn>;
 
@@ -25,15 +36,21 @@ describe('logger middleware', () => {
     const res = await app.request('https://id.0g0.xyz/test');
     expect(res.status).toBe(200);
     expect(consoleSpy).toHaveBeenCalledOnce();
-    const logLine = consoleSpy.mock.calls[0][0] as string;
-    expect(logLine).toMatch(/^GET \/test 200 \d+ms$/);
+    const entry = parseLogEntry(consoleSpy.mock.calls[0][0] as string);
+    expect(entry.level).toBe('info');
+    expect(entry.ctx).toBe('http');
+    expect(entry.msg).toBe('request');
+    expect(entry.data.method).toBe('GET');
+    expect(entry.data.path).toBe('/test');
+    expect(entry.data.status).toBe(200);
+    expect(typeof entry.data.elapsed_ms).toBe('number');
   });
 
   it('クエリパラメータを含むURLをログ出力する', async () => {
     const app = buildApp();
     await app.request('https://id.0g0.xyz/test?foo=bar&baz=qux');
-    const logLine = consoleSpy.mock.calls[0][0] as string;
-    expect(logLine).toMatch(/^GET \/test\?foo=bar&baz=qux 200 \d+ms$/);
+    const entry = parseLogEntry(consoleSpy.mock.calls[0][0] as string);
+    expect(entry.data.path).toBe('/test?foo=bar&baz=qux');
   });
 
   describe('機密パラメータのマスク', () => {
@@ -51,40 +68,43 @@ describe('logger middleware', () => {
       it(`${param} パラメータを [REDACTED] でマスクする`, async () => {
         const app = buildApp();
         await app.request(`https://id.0g0.xyz/test?${param}=secret-value`);
-        const logLine = consoleSpy.mock.calls[0][0] as string;
-        expect(logLine).not.toContain('secret-value');
-        expect(logLine).toContain(`${param}=[REDACTED]`);
+        const entry = parseLogEntry(consoleSpy.mock.calls[0][0] as string);
+        const path = entry.data.path as string;
+        expect(path).not.toContain('secret-value');
+        expect(path).toContain(`${param}=[REDACTED]`);
       });
     }
 
     it('機密パラメータと通常パラメータが混在している場合、機密のみマスクする', async () => {
       const app = buildApp();
       await app.request(
-        'https://id.0g0.xyz/test?foo=visible&code=secret&bar=also-visible&state=hidden'
+        'https://id.0g0.xyz/test?foo=visible&code=secret&bar=also-visible&state=hidden',
       );
-      const logLine = consoleSpy.mock.calls[0][0] as string;
-      expect(logLine).toContain('foo=visible');
-      expect(logLine).toContain('bar=also-visible');
-      expect(logLine).toContain('code=[REDACTED]');
-      expect(logLine).toContain('state=[REDACTED]');
-      expect(logLine).not.toContain('secret');
-      expect(logLine).not.toContain('hidden');
+      const entry = parseLogEntry(consoleSpy.mock.calls[0][0] as string);
+      const path = entry.data.path as string;
+      expect(path).toContain('foo=visible');
+      expect(path).toContain('bar=also-visible');
+      expect(path).toContain('code=[REDACTED]');
+      expect(path).toContain('state=[REDACTED]');
+      expect(path).not.toContain('secret');
+      expect(path).not.toContain('hidden');
     });
 
     it('クエリパラメータがない場合はそのままログ出力する', async () => {
       const app = buildApp();
       await app.request('https://id.0g0.xyz/test');
-      const logLine = consoleSpy.mock.calls[0][0] as string;
-      expect(logLine).toMatch(/^GET \/test 200 \d+ms$/);
+      const entry = parseLogEntry(consoleSpy.mock.calls[0][0] as string);
+      expect(entry.data.path).toBe('/test');
     });
 
     it('スキームなしのURLでも機密パラメータをマスクする', async () => {
       // Honoは内部的にURLを組み立てるが、念のためURLフォーマットを確認
       const app = buildApp();
       await app.request('https://id.0g0.xyz/test?token=my-secret-token&page=1');
-      const logLine = consoleSpy.mock.calls[0][0] as string;
-      expect(logLine).toContain('token=[REDACTED]');
-      expect(logLine).toContain('page=1');
+      const entry = parseLogEntry(consoleSpy.mock.calls[0][0] as string);
+      const path = entry.data.path as string;
+      expect(path).toContain('token=[REDACTED]');
+      expect(path).toContain('page=1');
     });
   });
 
@@ -95,11 +115,10 @@ describe('logger middleware', () => {
       return c.json({ ok: true });
     });
     await app.request('https://id.0g0.xyz/test');
-    const logLine = consoleSpy.mock.calls[0][0] as string;
-    const match = logLine.match(/(\d+)ms$/);
-    expect(match).not.toBeNull();
+    const entry = parseLogEntry(consoleSpy.mock.calls[0][0] as string);
+    expect(typeof entry.data.elapsed_ms).toBe('number');
     // 5ms の遅延があるため、記録された経過時間は1ms以上であること
-    expect(Number(match![1])).toBeGreaterThanOrEqual(1);
+    expect(entry.data.elapsed_ms as number).toBeGreaterThanOrEqual(1);
   });
 
   it('異なるHTTPメソッドをログ出力する', async () => {
@@ -108,7 +127,9 @@ describe('logger middleware', () => {
     app.post('/test', (c) => c.json({ created: true }, 201));
 
     await app.request('https://id.0g0.xyz/test', { method: 'POST' });
-    const logLine = consoleSpy.mock.calls[0][0] as string;
-    expect(logLine).toMatch(/^POST \/test 201 \d+ms$/);
+    const entry = parseLogEntry(consoleSpy.mock.calls[0][0] as string);
+    expect(entry.data.method).toBe('POST');
+    expect(entry.data.path).toBe('/test');
+    expect(entry.data.status).toBe(201);
   });
 });
