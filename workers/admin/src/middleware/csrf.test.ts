@@ -19,12 +19,10 @@ describe('bffCsrfMiddleware', () => {
   const baseUrl = 'https://admin.0g0.xyz';
 
   describe('Originヘッダーなし', () => {
-    it('GETリクエストでOriginなし → 403を返す', async () => {
+    it('GETリクエストでOriginなし → 安全メソッドのためCSRFスキップで200を返す', async () => {
       const req = new Request(`${baseUrl}/api/test`);
       const res = await app.request(req, undefined, testEnv);
-      expect(res.status).toBe(403);
-      const body = await res.json<{ error: { code: string } }>();
-      expect(body.error.code).toBe('FORBIDDEN');
+      expect(res.status).toBe(200);
     });
 
     it('POSTリクエストでOriginなし → 403を返す', async () => {
@@ -62,8 +60,9 @@ describe('bffCsrfMiddleware', () => {
   });
 
   describe('外部サービスからのアクセス', () => {
-    it('外部ドメインからのOrigin → 403を返す', async () => {
+    it('外部ドメインからのOrigin（POST）→ 403を返す', async () => {
       const req = new Request(`${baseUrl}/api/test`, {
+        method: 'POST',
         headers: { Origin: 'https://external-service.example.com' },
       });
       const res = await app.request(req, undefined, testEnv);
@@ -72,24 +71,27 @@ describe('bffCsrfMiddleware', () => {
       expect(body.error.code).toBe('FORBIDDEN');
     });
 
-    it('idドメインからのOrigin（内部サービスでも管理画面APIは拒否） → 403を返す', async () => {
+    it('idドメインからのOrigin（POST・内部サービスでも管理画面APIは拒否）→ 403を返す', async () => {
       const req = new Request(`${baseUrl}/api/test`, {
+        method: 'POST',
         headers: { Origin: 'https://id.0g0.xyz' },
       });
       const res = await app.request(req, undefined, testEnv);
       expect(res.status).toBe(403);
     });
 
-    it('userドメインからのOrigin → 403を返す', async () => {
+    it('userドメインからのOrigin（POST）→ 403を返す', async () => {
       const req = new Request(`${baseUrl}/api/test`, {
+        method: 'POST',
         headers: { Origin: 'https://user.0g0.xyz' },
       });
       const res = await app.request(req, undefined, testEnv);
       expect(res.status).toBe(403);
     });
 
-    it('不正な形式のOriginヘッダー → 403を返す', async () => {
+    it('不正な形式のOriginヘッダー（POST）→ 403を返す', async () => {
       const req = new Request(`${baseUrl}/api/test`, {
+        method: 'POST',
         headers: { Origin: 'not-a-valid-url' },
       });
       const res = await app.request(req, undefined, testEnv);
