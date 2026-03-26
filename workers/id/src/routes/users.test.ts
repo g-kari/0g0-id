@@ -14,6 +14,7 @@ vi.mock('@0g0-id/shared', () => ({
   revokeUserServiceTokens: vi.fn(),
   revokeUserTokens: vi.fn(),
   revokeTokenByIdForUser: vi.fn(),
+  revokeOtherUserTokens: vi.fn(),
   listActiveSessionsByUserId: vi.fn(),
   countServicesByOwner: vi.fn(),
   listServicesByOwner: vi.fn(),
@@ -51,6 +52,7 @@ import {
   revokeUserServiceTokens,
   revokeUserTokens,
   revokeTokenByIdForUser,
+  revokeOtherUserTokens,
   listActiveSessionsByUserId,
   countServicesByOwner,
   listServicesByOwner,
@@ -1713,6 +1715,83 @@ describe('DELETE /api/users/me/tokens/:tokenId', () => {
       origin: 'https://user.0g0.xyz',
     });
     expect(res.status).toBe(404);
+  });
+});
+
+// ===== DELETE /api/users/me/tokens/others =====
+describe('DELETE /api/users/me/tokens/others', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(revokeOtherUserTokens).mockResolvedValue(2);
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/tokens/others', {
+      method: 'DELETE',
+      withAuth: false,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('Originなし（CSRF） → 403を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/tokens/others', {
+      method: 'DELETE',
+      body: { token_hash: 'abc123hash' },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('現在のセッション以外を全て失効させてrevoked_countを返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/tokens/others', {
+      method: 'DELETE',
+      body: { token_hash: 'abc123hash' },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: { revoked_count: number } }>();
+    expect(body.data.revoked_count).toBe(2);
+    expect(vi.mocked(revokeOtherUserTokens)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      mockUserPayload.sub,
+      'abc123hash'
+    );
+  });
+
+  it('token_hashがない場合 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/tokens/others', {
+      method: 'DELETE',
+      body: {},
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('token_hashが空文字の場合 → 400を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/tokens/others', {
+      method: 'DELETE',
+      body: { token_hash: '' },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('該当セッションがない場合はrevoked_count: 0を返す', async () => {
+    vi.mocked(revokeOtherUserTokens).mockResolvedValue(0);
+    const res = await sendRequest(app, '/api/users/me/tokens/others', {
+      method: 'DELETE',
+      body: { token_hash: 'only-session-hash' },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: { revoked_count: number } }>();
+    expect(body.data.revoked_count).toBe(0);
   });
 });
 

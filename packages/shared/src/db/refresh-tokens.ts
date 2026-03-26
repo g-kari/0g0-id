@@ -284,6 +284,25 @@ export async function revokeUserServiceTokens(
 }
 
 /**
+ * 指定した token_hash 以外のユーザートークンを全て失効させる（他デバイスからのログアウト）。
+ * 失効したトークン数を返す。
+ */
+export async function revokeOtherUserTokens(
+  db: D1Database,
+  userId: string,
+  excludeTokenHash: string
+): Promise<number> {
+  const result = await db
+    .prepare(
+      `UPDATE refresh_tokens SET revoked_at = datetime('now')
+       WHERE user_id = ? AND token_hash != ? AND revoked_at IS NULL`
+    )
+    .bind(userId, excludeTokenHash)
+    .run();
+  return result.meta.changes ?? 0;
+}
+
+/**
  * 特定のリフレッシュトークン（セッション）をユーザー所有権チェック付きで失効させる。
  * 対象トークンが存在しない・既に失効済み・別ユーザー所有の場合は 0 を返す。
  */

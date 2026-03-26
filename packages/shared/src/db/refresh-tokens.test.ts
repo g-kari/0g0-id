@@ -12,6 +12,7 @@ import {
   countUsersAuthorizedForService,
   revokeUserServiceTokens,
   listActiveSessionsByUserId,
+  revokeOtherUserTokens,
 } from './refresh-tokens';
 import type { RefreshToken, User } from '../types';
 import { makeD1Mock } from './test-helpers';
@@ -309,5 +310,35 @@ describe('listActiveSessionsByUserId', () => {
     expect(sql).toContain('LEFT JOIN services');
     expect(sql).toContain('service_name');
     expect(sql).toContain('revoked_at IS NULL');
+  });
+});
+
+describe('revokeOtherUserTokens', () => {
+  it('指定hash以外のトークンを全て失効させ、失効数を返す', async () => {
+    const db = makeD1Mock(null, [], 2);
+    const result = await revokeOtherUserTokens(db, 'user-1', 'current-hash');
+    expect(result).toBe(2);
+  });
+
+  it('対象がない場合は0を返す', async () => {
+    const db = makeD1Mock(null, [], 0);
+    const result = await revokeOtherUserTokens(db, 'user-1', 'current-hash');
+    expect(result).toBe(0);
+  });
+
+  it('userId・excludeTokenHashでbindを呼ぶ', async () => {
+    const db = makeD1Mock(null, [], 1);
+    await revokeOtherUserTokens(db, 'user-1', 'current-hash');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('user-1', 'current-hash');
+  });
+
+  it('SQLにtoken_hash != ?とrevoked_at IS NULLが含まれる', async () => {
+    const db = makeD1Mock(null, [], 1);
+    await revokeOtherUserTokens(db, 'user-1', 'current-hash');
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('token_hash != ?');
+    expect(sql).toContain('revoked_at IS NULL');
+    expect(sql).toContain('user_id = ?');
   });
 });
