@@ -16,17 +16,7 @@ import {
   unbanUser,
 } from './users';
 import type { User } from '../types';
-
-// D1Database のモック
-function makeD1Mock(firstResult: unknown, changes = 1): D1Database {
-  const stmt = {
-    bind: vi.fn().mockReturnThis(),
-    first: vi.fn().mockResolvedValue(firstResult),
-    run: vi.fn().mockResolvedValue({ meta: { changes } }),
-    all: vi.fn().mockResolvedValue({ results: [] }),
-  };
-  return { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
-}
+import { makeD1Mock } from './test-helpers';
 
 const baseUser: User = {
   id: 'user-1',
@@ -129,19 +119,19 @@ describe('updateUserProfile', () => {
 
 describe('deleteUser', () => {
   it('削除成功時にtrueを返す', async () => {
-    const db = makeD1Mock(null, 1);
+    const db = makeD1Mock(null, [], 1);
     const result = await deleteUser(db, 'user-1');
     expect(result).toBe(true);
   });
 
   it('対象ユーザーが存在しない場合はfalseを返す', async () => {
-    const db = makeD1Mock(null, 0);
+    const db = makeD1Mock(null, [], 0);
     const result = await deleteUser(db, 'not-exist');
     expect(result).toBe(false);
   });
 
   it('正しいSQLでDELETEを実行する', async () => {
-    const db = makeD1Mock(null, 1);
+    const db = makeD1Mock(null, [], 1);
     await deleteUser(db, 'user-1');
     expect(db.prepare).toHaveBeenCalledWith('DELETE FROM users WHERE id = ?');
   });
@@ -204,17 +194,17 @@ describe('getUserProviders', () => {
 
 describe('unlinkProvider', () => {
   it('正常にプロバイダーの連携を解除できる', async () => {
-    const db = makeD1Mock(null, 1);
+    const db = makeD1Mock(null, [], 1);
     await expect(unlinkProvider(db, 'user-1', 'google')).resolves.toBeUndefined();
   });
 
   it('ユーザーが存在しない場合（0 changes）はエラーを投げる', async () => {
-    const db = makeD1Mock(null, 0);
+    const db = makeD1Mock(null, [], 0);
     await expect(unlinkProvider(db, 'not-exist', 'google')).rejects.toThrow('User not found');
   });
 
   it('対象プロバイダーのカラムをNULLに更新するSQLを実行する', async () => {
-    const db = makeD1Mock(null, 1);
+    const db = makeD1Mock(null, [], 1);
     await unlinkProvider(db, 'user-1', 'line');
     const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(sql).toContain('line_sub = NULL');

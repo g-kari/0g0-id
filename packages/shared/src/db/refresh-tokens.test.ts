@@ -14,20 +14,7 @@ import {
   listActiveSessionsByUserId,
 } from './refresh-tokens';
 import type { RefreshToken, User } from '../types';
-
-function makeD1Mock(
-  firstResult: unknown = null,
-  allResults: unknown[] = [],
-  changes = 1
-): D1Database {
-  const stmt = {
-    bind: vi.fn().mockReturnThis(),
-    first: vi.fn().mockResolvedValue(firstResult),
-    run: vi.fn().mockResolvedValue({ meta: { changes } }),
-    all: vi.fn().mockResolvedValue({ results: allResults }),
-  };
-  return { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
-}
+import { makeD1Mock } from './test-helpers';
 
 const baseToken: RefreshToken = {
   id: 'token-id-1',

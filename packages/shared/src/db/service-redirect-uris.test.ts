@@ -6,21 +6,7 @@ import {
   isValidRedirectUri,
 } from './service-redirect-uris';
 import type { ServiceRedirectUri } from '../types';
-
-function makeD1Mock(
-  firstResult: unknown = null,
-  allResults: unknown[] = [],
-  changes = 1
-): D1Database & { _stmt: ReturnType<typeof vi.fn> } {
-  const stmt = {
-    bind: vi.fn().mockReturnThis(),
-    first: vi.fn().mockResolvedValue(firstResult),
-    run: vi.fn().mockResolvedValue({ meta: { changes } }),
-    all: vi.fn().mockResolvedValue({ results: allResults }),
-  };
-  const db = { prepare: vi.fn().mockReturnValue(stmt), _stmt: stmt };
-  return db as unknown as D1Database & { _stmt: ReturnType<typeof vi.fn> };
-}
+import { makeD1Mock } from './test-helpers';
 
 const baseUri: ServiceRedirectUri = {
   id: 'uri-1',
