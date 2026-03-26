@@ -6,6 +6,7 @@ import {
   countActiveRefreshTokens,
   countRecentLoginEvents,
   getLoginEventProviderStats,
+  getLoginEventCountryStats,
   getDailyLoginTrends,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
@@ -22,17 +23,27 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
   const since24h = new Date(now - 24 * 60 * 60 * 1000).toISOString();
   const since7d = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [totalUsers, adminUsers, bannedUsers, totalServices, activeTokens, recentLogins24h, recentLogins7d, providerStats7d] =
-    await Promise.all([
-      countUsers(c.env.DB),
-      countAdminUsers(c.env.DB),
-      countUsers(c.env.DB, { banned: true }),
-      countServices(c.env.DB),
-      countActiveRefreshTokens(c.env.DB),
-      countRecentLoginEvents(c.env.DB, since24h),
-      countRecentLoginEvents(c.env.DB, since7d),
-      getLoginEventProviderStats(c.env.DB, since7d),
-    ]);
+  const [
+    totalUsers,
+    adminUsers,
+    bannedUsers,
+    totalServices,
+    activeTokens,
+    recentLogins24h,
+    recentLogins7d,
+    providerStats7d,
+    countryStats7d,
+  ] = await Promise.all([
+    countUsers(c.env.DB),
+    countAdminUsers(c.env.DB),
+    countUsers(c.env.DB, { banned: true }),
+    countServices(c.env.DB),
+    countActiveRefreshTokens(c.env.DB),
+    countRecentLoginEvents(c.env.DB, since24h),
+    countRecentLoginEvents(c.env.DB, since7d),
+    getLoginEventProviderStats(c.env.DB, since7d),
+    getLoginEventCountryStats(c.env.DB, since7d),
+  ]);
 
   return c.json({
     data: {
@@ -44,8 +55,9 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
       recent_logins_24h: recentLogins24h,
       recent_logins_7d: recentLogins7d,
       login_provider_stats_7d: providerStats7d,
+      login_country_stats_7d: countryStats7d,
     },
-    });
+  });
 });
 
 // GET /api/metrics/login-trends?days=30
@@ -58,6 +70,5 @@ app.get('/login-trends', authMiddleware, adminMiddleware, async (c) => {
 
   return c.json({ data: trends, days });
 });
-
 
 export default app;

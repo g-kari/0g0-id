@@ -8,6 +8,7 @@ vi.mock('@0g0-id/shared', () => ({
   countActiveRefreshTokens: vi.fn(),
   countRecentLoginEvents: vi.fn(),
   getLoginEventProviderStats: vi.fn(),
+  getLoginEventCountryStats: vi.fn(),
   getDailyLoginTrends: vi.fn(),
   verifyAccessToken: vi.fn(),
 }));
@@ -19,6 +20,7 @@ import {
   countActiveRefreshTokens,
   countRecentLoginEvents,
   getLoginEventProviderStats,
+  getLoginEventCountryStats,
   getDailyLoginTrends,
   verifyAccessToken,
 } from '@0g0-id/shared';
@@ -108,6 +110,10 @@ describe('GET /api/metrics', () => {
       { provider: 'line', count: 20 },
       { provider: 'github', count: 7 },
     ]);
+    vi.mocked(getLoginEventCountryStats).mockResolvedValue([
+      { country: 'JP', count: 50 },
+      { country: 'US', count: 30 },
+    ]);
 
     const res = await app.request(
       makeRequest('/api/metrics', 'admin-token'),
@@ -126,6 +132,7 @@ describe('GET /api/metrics', () => {
         recent_logins_24h: number;
         recent_logins_7d: number;
         login_provider_stats_7d: { provider: string; count: number }[];
+        login_country_stats_7d: { country: string; count: number }[];
       };
     }>();
     expect(body.data.total_users).toBe(100);
@@ -140,6 +147,10 @@ describe('GET /api/metrics', () => {
       { provider: 'line', count: 20 },
       { provider: 'github', count: 7 },
     ]);
+    expect(body.data.login_country_stats_7d).toEqual([
+      { country: 'JP', count: 50 },
+      { country: 'US', count: 30 },
+    ]);
   });
 
   it('管理者トークンでDBへの各カウント関数が呼ばれる', async () => {
@@ -150,6 +161,7 @@ describe('GET /api/metrics', () => {
     vi.mocked(countActiveRefreshTokens).mockResolvedValue(0);
     vi.mocked(countRecentLoginEvents).mockResolvedValue(0);
     vi.mocked(getLoginEventProviderStats).mockResolvedValue([]);
+    vi.mocked(getLoginEventCountryStats).mockResolvedValue([]);
 
     await app.request(
       makeRequest('/api/metrics', 'admin-token'),
@@ -167,6 +179,10 @@ describe('GET /api/metrics', () => {
       mockEnv.DB,
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/)
     );
+    expect(vi.mocked(getLoginEventCountryStats)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/)
+    );
   });
 
   it('countRecentLoginEventsには24h・7d両方の日時が渡される', async () => {
@@ -177,6 +193,7 @@ describe('GET /api/metrics', () => {
     vi.mocked(countActiveRefreshTokens).mockResolvedValue(0);
     vi.mocked(countRecentLoginEvents).mockResolvedValue(0);
     vi.mocked(getLoginEventProviderStats).mockResolvedValue([]);
+    vi.mocked(getLoginEventCountryStats).mockResolvedValue([]);
 
     const before = Date.now();
     await app.request(
@@ -208,6 +225,7 @@ describe('GET /api/metrics', () => {
     vi.mocked(countActiveRefreshTokens).mockResolvedValue(0);
     vi.mocked(countRecentLoginEvents).mockResolvedValue(0);
     vi.mocked(getLoginEventProviderStats).mockResolvedValue([]);
+    vi.mocked(getLoginEventCountryStats).mockResolvedValue([]);
 
     const before = Date.now();
     await app.request(
@@ -231,6 +249,7 @@ describe('GET /api/metrics', () => {
     vi.mocked(countActiveRefreshTokens).mockResolvedValue(0);
     vi.mocked(countRecentLoginEvents).mockResolvedValue(0);
     vi.mocked(getLoginEventProviderStats).mockResolvedValue([]);
+    vi.mocked(getLoginEventCountryStats).mockResolvedValue([]);
 
     const res = await app.request(
       makeRequest('/api/metrics', 'admin-token'),
@@ -370,5 +389,76 @@ describe('GET /api/metrics/login-trends', () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ data: unknown[] }>();
     expect(body.data).toEqual([]);
+  });
+});
+
+describe('GET /api/metrics - 国別ログイン統計', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    // 共通のデフォルトモック
+    vi.mocked(countUsers).mockResolvedValue(0);
+    vi.mocked(countAdminUsers).mockResolvedValue(0);
+    vi.mocked(countServices).mockResolvedValue(0);
+    vi.mocked(countActiveRefreshTokens).mockResolvedValue(0);
+    vi.mocked(countRecentLoginEvents).mockResolvedValue(0);
+    vi.mocked(getLoginEventProviderStats).mockResolvedValue([]);
+  });
+
+  it('login_country_stats_7dが国別統計を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getLoginEventCountryStats).mockResolvedValue([
+      { country: 'JP', count: 80 },
+      { country: 'US', count: 15 },
+      { country: 'unknown', count: 5 },
+    ]);
+
+    const res = await app.request(
+      makeRequest('/api/metrics', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: { login_country_stats_7d: { country: string; count: number }[] } }>();
+    expect(body.data.login_country_stats_7d).toEqual([
+      { country: 'JP', count: 80 },
+      { country: 'US', count: 15 },
+      { country: 'unknown', count: 5 },
+    ]);
+  });
+
+  it('getLoginEventCountryStatsには7d前の日時が渡される', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getLoginEventCountryStats).mockResolvedValue([]);
+
+    const before = Date.now();
+    await app.request(
+      makeRequest('/api/metrics', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    const after = Date.now();
+
+    const calledSince = vi.mocked(getLoginEventCountryStats).mock.calls[0][1];
+    const calledSinceMs = new Date(calledSince).getTime();
+    expect(calledSinceMs).toBeGreaterThanOrEqual(before - 7 * 24 * 60 * 60 * 1000);
+    expect(calledSinceMs).toBeLessThanOrEqual(after - 7 * 24 * 60 * 60 * 1000);
+  });
+
+  it('国別統計が空の場合も正常に返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getLoginEventCountryStats).mockResolvedValue([]);
+
+    const res = await app.request(
+      makeRequest('/api/metrics', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: { login_country_stats_7d: unknown[] } }>();
+    expect(body.data.login_country_stats_7d).toEqual([]);
   });
 });
