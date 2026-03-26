@@ -12,6 +12,7 @@ import type { MiddlewareHandler } from 'hono';
  * - Strict-Transport-Security            — HTTPSの強制（HSTS、1年間、サブドメイン含む、preload）
  * - Content-Security-Policy              — デフォルト厳格ポリシー（HTMLページは必要に応じてオーバーライド）
  * - Cross-Origin-Opener-Policy           — クロスオリジンウィンドウからのwindowオブジェクトアクセス防止
+ * - Cache-Control: no-store             — レスポンスのキャッシュ禁止（RFC 6749 OAuth 2.0 必須要件）
  */
 export const securityHeaders = (): MiddlewareHandler => {
   return async (c, next) => {
@@ -26,6 +27,9 @@ export const securityHeaders = (): MiddlewareHandler => {
     );
     c.header('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
     c.header('Cross-Origin-Opener-Policy', 'same-origin');
+    // RFC 6749 Section 5.1 / RFC 6819 準拠: トークン・ユーザー情報等の機密レスポンスをキャッシュ禁止
+    // /.well-known/* 等の公開エンドポイントは個別に Cache-Control をオーバーライド可能
+    c.header('Cache-Control', 'no-store');
     await next();
   };
 };
