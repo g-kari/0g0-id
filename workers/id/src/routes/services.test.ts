@@ -24,6 +24,7 @@ vi.mock('@0g0-id/shared', () => ({
   countUsersAuthorizedForService: vi.fn(),
   revokeUserServiceTokens: vi.fn(),
   countServices: vi.fn(),
+  createAdminAuditLog: vi.fn(),
   parsePagination: (
     query: { limit?: string; offset?: string },
     options: { defaultLimit: number; maxLimit: number } = { defaultLimit: 20, maxLimit: 100 }
@@ -61,6 +62,7 @@ import {
   countUsersAuthorizedForService,
   revokeUserServiceTokens,
   countServices,
+  createAdminAuditLog,
   verifyAccessToken,
 } from '@0g0-id/shared';
 
@@ -340,6 +342,7 @@ describe('POST /api/services', () => {
       ...mockService,
       client_id: 'generated-client-id',
     });
+    vi.mocked(createAdminAuditLog).mockResolvedValue(undefined);
   });
 
   it('管理者でない場合 → 403を返す', async () => {
@@ -484,6 +487,22 @@ describe('POST /api/services', () => {
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('BAD_REQUEST');
   });
+
+  it('サービス作成時に監査ログが記録される', async () => {
+    await sendRequest(app, '/api/services', {
+      method: 'POST',
+      body: { name: 'New Service' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        adminUserId: 'admin-user-id',
+        action: 'service.create',
+        targetType: 'service',
+      })
+    );
+  });
 });
 
 // ===== PATCH /api/services/:id（管理者のみ）=====
@@ -497,6 +516,7 @@ describe('PATCH /api/services/:id', () => {
       ...mockService,
       allowed_scopes: JSON.stringify(['profile', 'email', 'phone']),
     });
+    vi.mocked(createAdminAuditLog).mockResolvedValue(undefined);
   });
 
   it('管理者でない場合 → 403を返す', async () => {
@@ -635,6 +655,23 @@ describe('PATCH /api/services/:id', () => {
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('NOT_FOUND');
   });
+
+  it('サービス更新時に監査ログが記録される', async () => {
+    await sendRequest(app, '/api/services/service-1', {
+      method: 'PATCH',
+      body: { name: '新しい名前' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        adminUserId: 'admin-user-id',
+        action: 'service.update',
+        targetType: 'service',
+        targetId: 'service-1',
+      })
+    );
+  });
 });
 
 // ===== DELETE /api/services/:id（管理者のみ）=====
@@ -646,6 +683,7 @@ describe('DELETE /api/services/:id', () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
     vi.mocked(findServiceById).mockResolvedValue(mockService);
     vi.mocked(deleteService).mockResolvedValue();
+    vi.mocked(createAdminAuditLog).mockResolvedValue(undefined);
   });
 
   it('管理者でない場合 → 403を返す', async () => {
@@ -672,6 +710,23 @@ describe('DELETE /api/services/:id', () => {
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('サービス削除時に監査ログが記録される', async () => {
+    await sendRequest(app, '/api/services/service-1', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        adminUserId: 'admin-user-id',
+        action: 'service.delete',
+        targetType: 'service',
+        targetId: 'service-1',
+        details: { name: 'Test Service' },
+      })
+    );
   });
 });
 
@@ -719,6 +774,7 @@ describe('POST /api/services/:id/redirect-uris', () => {
     vi.mocked(findServiceById).mockResolvedValue(mockService);
     vi.mocked(normalizeRedirectUri).mockReturnValue('https://app.example.com/callback');
     vi.mocked(addRedirectUri).mockResolvedValue(mockRedirectUri);
+    vi.mocked(createAdminAuditLog).mockResolvedValue(undefined);
   });
 
   it('管理者でない場合 → 403を返す', async () => {
@@ -785,6 +841,34 @@ describe('POST /api/services/:id/redirect-uris', () => {
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('CONFLICT');
   });
+
+  it('リダイレクトURI追加時に監査ログが記録される', async () => {
+    await sendRequest(app, '/api/services/service-1/redirect-uris', {
+      method: 'POST',
+      body: { uri: 'https://app.example.com/callback' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        adminUserId: 'admin-user-id',
+        action: 'service.redirect_uri_added',
+        targetType: 'service',
+        targetId: 'service-1',
+        details: { uri: 'https://app.example.com/callback' },
+      })
+    );
+  });
+
+  it('URI追加が重複エラーの場合は監査ログが記録されない', async () => {
+    vi.mocked(addRedirectUri).mockRejectedValue(new Error('UNIQUE constraint failed'));
+    await sendRequest(app, '/api/services/service-1/redirect-uris', {
+      method: 'POST',
+      body: { uri: 'https://app.example.com/callback' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(vi.mocked(createAdminAuditLog)).not.toHaveBeenCalled();
+  });
 });
 
 // ===== POST /api/services/:id/rotate-secret（管理者のみ）=====
@@ -802,6 +886,7 @@ describe('POST /api/services/:id/rotate-secret', () => {
       client_secret_hash: 'new-secret-hash',
       updated_at: '2024-06-01T00:00:00Z',
     });
+    vi.mocked(createAdminAuditLog).mockResolvedValue(undefined);
   });
 
   it('認証なし → 401を返す', async () => {
@@ -863,6 +948,22 @@ describe('POST /api/services/:id/rotate-secret', () => {
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('NOT_FOUND');
   });
+
+  it('シークレットローテーション時に監査ログが記録される', async () => {
+    await sendRequest(app, '/api/services/service-1/rotate-secret', {
+      method: 'POST',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        adminUserId: 'admin-user-id',
+        action: 'service.secret_rotated',
+        targetType: 'service',
+        targetId: 'service-1',
+      })
+    );
+  });
 });
 
 // ===== PATCH /api/services/:id/owner（管理者のみ）=====
@@ -898,6 +999,7 @@ describe('PATCH /api/services/:id/owner', () => {
       owner_user_id: 'new-owner-id',
       updated_at: '2024-06-01T00:00:00Z',
     });
+    vi.mocked(createAdminAuditLog).mockResolvedValue(undefined);
   });
 
   it('認証なし → 401を返す', async () => {
@@ -1004,6 +1106,24 @@ describe('PATCH /api/services/:id/owner', () => {
       mockEnv as unknown as Record<string, string>
     );
     expect(res.status).toBe(400);
+  });
+
+  it('所有権転送時に監査ログが記録される', async () => {
+    await sendRequest(app, '/api/services/service-1/owner', {
+      method: 'PATCH',
+      body: { new_owner_user_id: 'new-owner-id' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        adminUserId: 'admin-user-id',
+        action: 'service.owner_transferred',
+        targetType: 'service',
+        targetId: 'service-1',
+        details: { from: 'admin-user-id', to: 'new-owner-id' },
+      })
+    );
   });
 });
 
@@ -1151,6 +1271,7 @@ describe('DELETE /api/services/:id/users/:userId', () => {
     vi.mocked(findServiceById).mockResolvedValue(mockService);
     vi.mocked(findUserById).mockResolvedValue(mockTargetUser);
     vi.mocked(revokeUserServiceTokens).mockResolvedValue(2);
+    vi.mocked(createAdminAuditLog).mockResolvedValue(undefined);
   });
 
   it('認証なし → 401を返す', async () => {
@@ -1224,6 +1345,23 @@ describe('DELETE /api/services/:id/users/:userId', () => {
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('NOT_FOUND');
   });
+
+  it('ユーザーアクセス失効時に監査ログが記録される', async () => {
+    await sendRequest(app, '/api/services/service-1/users/target-user-id', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        adminUserId: 'admin-user-id',
+        action: 'service.user_access_revoked',
+        targetType: 'service',
+        targetId: 'service-1',
+        details: { user_id: 'target-user-id' },
+      })
+    );
+  });
 });
 
 // ===== DELETE /api/services/:id/redirect-uris/:uriId（管理者のみ）=====
@@ -1235,6 +1373,7 @@ describe('DELETE /api/services/:id/redirect-uris/:uriId', () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
     vi.mocked(findServiceById).mockResolvedValue(mockService);
     vi.mocked(deleteRedirectUri).mockResolvedValue();
+    vi.mocked(createAdminAuditLog).mockResolvedValue(undefined);
   });
 
   it('管理者でない場合 → 403を返す', async () => {
@@ -1267,5 +1406,22 @@ describe('DELETE /api/services/:id/redirect-uris/:uriId', () => {
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('リダイレクトURI削除時に監査ログが記録される', async () => {
+    await sendRequest(app, '/api/services/service-1/redirect-uris/uri-1', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        adminUserId: 'admin-user-id',
+        action: 'service.redirect_uri_deleted',
+        targetType: 'service',
+        targetId: 'service-1',
+        details: { uri_id: 'uri-1' },
+      })
+    );
   });
 });

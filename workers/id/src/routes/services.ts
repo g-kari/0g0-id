@@ -20,6 +20,7 @@ import {
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
   revokeUserServiceTokens,
+  createAdminAuditLog,
   parsePagination,
   createLogger,
 } from '@0g0-id/shared';
@@ -136,6 +137,15 @@ app.post('/', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
     ownerUserId: tokenUser.sub,
   });
 
+  await createAdminAuditLog(c.env.DB, {
+    adminUserId: tokenUser.sub,
+    action: 'service.create',
+    targetType: 'service',
+    targetId: service.id,
+    details: { name: service.name, allowed_scopes: body.allowed_scopes ?? ['profile', 'email'] },
+    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+  });
+
   // client_secretは作成時のみ返却
   return c.json(
     {
@@ -169,6 +179,19 @@ app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => 
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
 
+  const tokenUser = c.get('user');
+  await createAdminAuditLog(c.env.DB, {
+    adminUserId: tokenUser.sub,
+    action: 'service.update',
+    targetType: 'service',
+    targetId: serviceId,
+    details: {
+      ...(name !== undefined ? { name } : {}),
+      ...(allowed_scopes !== undefined ? { allowed_scopes } : {}),
+    },
+    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+  });
+
   return c.json({
     data: {
       id: updated.id,
@@ -189,7 +212,22 @@ app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
 
+  const tokenUser = c.get('user');
   await deleteService(c.env.DB, serviceId);
+
+  try {
+    await createAdminAuditLog(c.env.DB, {
+      adminUserId: tokenUser.sub,
+      action: 'service.delete',
+      targetType: 'service',
+      targetId: serviceId,
+      details: { name: service.name },
+      ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+    });
+  } catch (err) {
+    servicesLogger.error('[services] Failed to create audit log for service.delete', err);
+  }
+
   return c.body(null, 204);
 });
 
@@ -221,17 +259,29 @@ app.post('/:id/redirect-uris', authMiddleware, adminMiddleware, csrfMiddleware, 
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid redirect URI' } }, 400);
   }
 
+  let uri;
   try {
-    const uri = await addRedirectUri(c.env.DB, {
+    uri = await addRedirectUri(c.env.DB, {
       id: crypto.randomUUID(),
       serviceId,
       uri: normalized,
     });
-    return c.json({ data: uri }, 201);
   } catch (err) {
     servicesLogger.error('[services] Failed to add redirect URI (possibly duplicate)', err);
     return c.json({ error: { code: 'CONFLICT', message: 'Redirect URI already exists' } }, 409);
   }
+
+  const tokenUser = c.get('user');
+  await createAdminAuditLog(c.env.DB, {
+    adminUserId: tokenUser.sub,
+    action: 'service.redirect_uri_added',
+    targetType: 'service',
+    targetId: serviceId,
+    details: { uri: normalized },
+    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+  });
+
+  return c.json({ data: uri }, 201);
 });
 
 // POST /api/services/:id/rotate-secret — client_secretの再発行
@@ -249,6 +299,15 @@ app.post('/:id/rotate-secret', authMiddleware, adminMiddleware, csrfMiddleware, 
   if (!updated) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
+
+  const tokenUser = c.get('user');
+  await createAdminAuditLog(c.env.DB, {
+    adminUserId: tokenUser.sub,
+    action: 'service.secret_rotated',
+    targetType: 'service',
+    targetId: serviceId,
+    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+  });
 
   return c.json({
     data: {
@@ -282,6 +341,16 @@ app.patch('/:id/owner', authMiddleware, adminMiddleware, csrfMiddleware, async (
   if (!updated) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
+
+  const tokenUser = c.get('user');
+  await createAdminAuditLog(c.env.DB, {
+    adminUserId: tokenUser.sub,
+    action: 'service.owner_transferred',
+    targetType: 'service',
+    targetId: serviceId,
+    details: { from: service.owner_user_id, to: new_owner_user_id },
+    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+  });
 
   return c.json({
     data: {
@@ -352,6 +421,16 @@ app.delete('/:id/users/:userId', authMiddleware, adminMiddleware, csrfMiddleware
     );
   }
 
+  const tokenUser = c.get('user');
+  await createAdminAuditLog(c.env.DB, {
+    adminUserId: tokenUser.sub,
+    action: 'service.user_access_revoked',
+    targetType: 'service',
+    targetId: serviceId,
+    details: { user_id: userId },
+    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+  });
+
   return c.body(null, 204);
 });
 
@@ -365,7 +444,22 @@ app.delete('/:id/redirect-uris/:uriId', authMiddleware, adminMiddleware, csrfMid
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
 
+  const tokenUser = c.get('user');
   await deleteRedirectUri(c.env.DB, uriId, serviceId);
+
+  try {
+    await createAdminAuditLog(c.env.DB, {
+      adminUserId: tokenUser.sub,
+      action: 'service.redirect_uri_deleted',
+      targetType: 'service',
+      targetId: serviceId,
+      details: { uri_id: uriId },
+      ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+    });
+  } catch (err) {
+    servicesLogger.error('[services] Failed to create audit log for service.redirect_uri_deleted', err);
+  }
+
   return c.body(null, 204);
 });
 
