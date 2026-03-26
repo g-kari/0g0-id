@@ -34,7 +34,10 @@ describe('securityHeaders', () => {
 
   it('Permissions-Policyが設定される', async () => {
     const res = await app.request('https://example.com/test');
-    expect(res.headers.get('Permissions-Policy')).toBe('geolocation=(), microphone=(), camera=()');
+    const permissionsPolicy = res.headers.get('Permissions-Policy') ?? '';
+    expect(permissionsPolicy).toContain('geolocation=()');
+    expect(permissionsPolicy).toContain('microphone=()');
+    expect(permissionsPolicy).toContain('camera=()');
   });
 
   it("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'が設定される", async () => {
@@ -52,7 +55,29 @@ describe('securityHeaders', () => {
   it('Strict-Transport-Security: max-age=31536000; includeSubDomainsが設定される', async () => {
     const res = await app.request('https://example.com/test');
     expect(res.headers.get('Strict-Transport-Security')).toBe(
-      'max-age=31536000; includeSubDomains',
+      'max-age=31536000; includeSubDomains; preload',
     );
+  });
+
+  it('Strict-Transport-SecurityにpreloadディレクティブがつくVersion2', async () => {
+    const res = await app.request('https://example.com/test');
+    expect(res.headers.get('Strict-Transport-Security')).toBe(
+      'max-age=31536000; includeSubDomains; preload',
+    );
+  });
+
+  it('Permissions-Policyにpayment, usb等の追加APIが無効化される', async () => {
+    const res = await app.request('https://example.com/test');
+    const permissionsPolicy = res.headers.get('Permissions-Policy') ?? '';
+    expect(permissionsPolicy).toContain('payment=()');
+    expect(permissionsPolicy).toContain('usb=()');
+    expect(permissionsPolicy).toContain('bluetooth=()');
+    expect(permissionsPolicy).toContain('display-capture=()');
+    expect(permissionsPolicy).toContain('screen-wake-lock=()');
+  });
+
+  it('Cross-Origin-Opener-Policy: same-originが設定される', async () => {
+    const res = await app.request('https://example.com/test');
+    expect(res.headers.get('Cross-Origin-Opener-Policy')).toBe('same-origin');
   });
 });
