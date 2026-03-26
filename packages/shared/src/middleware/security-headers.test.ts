@@ -80,4 +80,19 @@ describe('securityHeaders', () => {
     const res = await app.request('https://example.com/test');
     expect(res.headers.get('Cross-Origin-Opener-Policy')).toBe('same-origin');
   });
+
+  it('Cache-Control: no-storeが設定される（RFC 6749 OAuth 2.0 必須要件）', async () => {
+    const res = await app.request('https://example.com/test');
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+  });
+
+  it('c.json() で明示的に Cache-Control を指定した場合はオーバーライドされる', async () => {
+    const overrideApp = new Hono();
+    overrideApp.use('*', securityHeaders());
+    overrideApp.get('/cacheable', (c) =>
+      c.json({ ok: true }, 200, { 'Cache-Control': 'public, max-age=3600' })
+    );
+    const res = await overrideApp.request('https://example.com/cacheable');
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=3600');
+  });
 });
