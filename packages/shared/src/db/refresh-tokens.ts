@@ -320,3 +320,32 @@ export async function revokeTokenByIdForUser(
     .run();
   return result.meta.changes ?? 0;
 }
+
+export interface ServiceTokenStat {
+  service_id: string;
+  service_name: string;
+  authorized_user_count: number;
+  active_token_count: number;
+}
+
+/**
+ * 全サービスのアクティブトークン統計を返す。
+ * 各サービスについて、アクティブなリフレッシュトークンを持つユニークユーザー数と
+ * アクティブトークン総数を集計する。
+ */
+export async function getServiceTokenStats(db: D1Database): Promise<ServiceTokenStat[]> {
+  const result = await db
+    .prepare(
+      `SELECT s.id as service_id, s.name as service_name,
+              COUNT(DISTINCT rt.user_id) as authorized_user_count,
+              COUNT(rt.id) as active_token_count
+       FROM services s
+       LEFT JOIN refresh_tokens rt ON rt.service_id = s.id
+         AND rt.revoked_at IS NULL
+         AND datetime(rt.expires_at) > datetime('now')
+       GROUP BY s.id, s.name
+       ORDER BY authorized_user_count DESC`
+    )
+    .all<ServiceTokenStat>();
+  return result.results;
+}

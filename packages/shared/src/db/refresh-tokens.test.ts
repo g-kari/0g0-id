@@ -13,7 +13,9 @@ import {
   revokeUserServiceTokens,
   listActiveSessionsByUserId,
   revokeOtherUserTokens,
+  getServiceTokenStats,
 } from './refresh-tokens';
+import type { ServiceTokenStat } from './refresh-tokens';
 import type { RefreshToken, User } from '../types';
 import { makeD1Mock } from './test-helpers';
 
@@ -340,5 +342,34 @@ describe('revokeOtherUserTokens', () => {
     expect(sql).toContain('token_hash != ?');
     expect(sql).toContain('revoked_at IS NULL');
     expect(sql).toContain('user_id = ?');
+
+describe('getServiceTokenStats', () => {
+  it('全サービスのトークン統計を返す', async () => {
+    const mockStats: ServiceTokenStat[] = [
+      {
+        service_id: 'svc-1',
+        service_name: 'Service A',
+        authorized_user_count: 5,
+        active_token_count: 8,
+      },
+      {
+        service_id: 'svc-2',
+        service_name: 'Service B',
+        authorized_user_count: 2,
+        active_token_count: 2,
+      },
+    ];
+    const db = makeD1Mock(null, mockStats);
+    const result = await getServiceTokenStats(db);
+    expect(result).toEqual(mockStats);
+    expect(db.prepare).toHaveBeenCalledOnce();
+  });
+
+  it('サービスが存在しない場合は空配列を返す', async () => {
+    const db = makeD1Mock(null, []);
+    const result = await getServiceTokenStats(db);
+    expect(result).toEqual([]);
+  });
+});
   });
 });

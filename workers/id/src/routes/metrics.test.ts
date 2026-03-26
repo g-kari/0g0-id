@@ -11,6 +11,7 @@ vi.mock('@0g0-id/shared', () => ({
   getLoginEventCountryStats: vi.fn(),
   getDailyLoginTrends: vi.fn(),
   verifyAccessToken: vi.fn(),
+  getServiceTokenStats: vi.fn(),
 }));
 
 import {
@@ -23,6 +24,7 @@ import {
   getLoginEventCountryStats,
   getDailyLoginTrends,
   verifyAccessToken,
+  getServiceTokenStats,
 } from '@0g0-id/shared';
 
 import metricsRoutes from './metrics';
@@ -460,5 +462,49 @@ describe('GET /api/metrics - 国別ログイン統計', () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ data: { login_country_stats_7d: unknown[] } }>();
     expect(body.data.login_country_stats_7d).toEqual([]);
+  });
+});
+
+describe('GET /api/metrics/services', () => {
+  it('認証なしで 401 を返す', async () => {
+    const app = buildApp();
+    const res = await app.request(makeRequest('/api/metrics/services'), undefined, mockEnv);
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者以外で 403 を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockUserPayload);
+    const app = buildApp();
+    const res = await app.request(makeRequest('/api/metrics/services', 'user-token'), undefined, mockEnv);
+    expect(res.status).toBe(403);
+  });
+
+  it('サービス別トークン統計を返す', async () => {
+    const mockStats = [
+      {
+        service_id: 'svc-1',
+        service_name: 'Service A',
+        authorized_user_count: 5,
+        active_token_count: 8,
+      },
+    ];
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getServiceTokenStats).mockResolvedValueOnce(mockStats);
+    const app = buildApp();
+    const res = await app.request(makeRequest('/api/metrics/services', 'admin-token'), undefined, mockEnv);
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: typeof mockStats }>();
+    expect(body.data).toEqual(mockStats);
+    expect(getServiceTokenStats).toHaveBeenCalledWith(mockEnv.DB);
+  });
+
+  it('サービスが存在しない場合は空配列を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getServiceTokenStats).mockResolvedValueOnce([]);
+    const app = buildApp();
+    const res = await app.request(makeRequest('/api/metrics/services', 'admin-token'), undefined, mockEnv);
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: [] }>();
+    expect(body.data).toEqual([]);
   });
 });

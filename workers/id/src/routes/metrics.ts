@@ -8,6 +8,7 @@ import {
   getLoginEventProviderStats,
   getLoginEventCountryStats,
   getDailyLoginTrends,
+  getServiceTokenStats,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
@@ -69,6 +70,12 @@ app.get('/login-trends', authMiddleware, adminMiddleware, async (c) => {
   const trends = await getDailyLoginTrends(c.env.DB, days);
 
   return c.json({ data: trends, days });
+});
+
+// GET /api/metrics/services — サービス別アクティブトークン統計
+app.get('/services', authMiddleware, adminMiddleware, async (c) => {
+  const stats = await getServiceTokenStats(c.env.DB);
+  return c.json({ data: stats });
 });
 
 export default app;
