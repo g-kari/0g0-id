@@ -18,6 +18,7 @@ import {
   unlinkProvider,
   getLoginEventsByUserId,
   getUserLoginProviderStats,
+  getUserDailyLoginTrends,
   banUser,
   unbanUser,
   createAdminAuditLog,
@@ -240,6 +241,21 @@ app.get('/me/login-stats', authMiddleware, async (c) => {
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   const stats = await getUserLoginProviderStats(c.env.DB, tokenUser.sub, sinceIso);
   return c.json({ data: stats, days });
+});
+
+// GET /api/users/me/login-trends — 自分の日別ログイントレンド
+app.get('/me/login-trends', authMiddleware, async (c) => {
+  const tokenUser = c.get('user');
+  const daysParam = c.req.query('days');
+  const days = daysParam !== undefined ? parseInt(daysParam, 10) : 30;
+  if (isNaN(days) || days < 1 || days > 90) {
+    return c.json(
+      { error: { code: 'BAD_REQUEST', message: 'days は1〜90の整数で指定してください' } },
+      400
+    );
+  }
+  const trends = await getUserDailyLoginTrends(c.env.DB, tokenUser.sub, days);
+  return c.json({ data: trends, days });
 });
 
 // GET /api/users/me/security-summary — セキュリティ概要
