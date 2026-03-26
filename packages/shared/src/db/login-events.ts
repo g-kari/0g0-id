@@ -129,3 +129,26 @@ export async function getDailyLoginTrends(
     .all<DailyLoginStat>();
   return result.results;
 }
+
+/**
+ * 指定ユーザーの指定日数分の日別ログイン件数を日付昇順で返す。
+ * ログインが0件の日は結果に含まれない。
+ */
+export async function getUserDailyLoginTrends(
+  db: D1Database,
+  userId: string,
+  days: number = 30
+): Promise<DailyLoginStat[]> {
+  const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const result = await db
+    .prepare(
+      `SELECT strftime('%Y-%m-%d', created_at) as date, COUNT(*) as count
+       FROM login_events
+       WHERE user_id = ? AND created_at >= ?
+       GROUP BY date
+       ORDER BY date ASC`
+    )
+    .bind(userId, sinceIso)
+    .all<DailyLoginStat>();
+  return result.results;
+}
