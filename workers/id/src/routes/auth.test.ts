@@ -1523,6 +1523,27 @@ describe('isAllowedRedirectTo', () => {
     expect(isAllowedRedirectTo('https://b.example.com/cb', IDP, extras)).toBe(true);
     expect(isAllowedRedirectTo('https://c.example.com/cb', IDP, extras)).toBe(false);
   });
+
+  it('IDP_ORIGIN が IPv4アドレスの場合、IPアドレスに基づく不正なドメイン派生を防ぐ', () => {
+    // 127.0.0.1 → parentDomain が '0.0.1' になることを防ぐ
+    const IDP_IP = 'https://127.0.0.1:8787';
+    // '.0.0.1' で終わるドメインへのリダイレクトは拒否されるべき
+    expect(isAllowedRedirectTo('https://evil.0.0.1/callback', IDP_IP)).toBe(false);
+    expect(isAllowedRedirectTo('https://0.0.1/callback', IDP_IP)).toBe(false);
+    // EXTRA_BFF_ORIGINS での明示指定はOK
+    expect(
+      isAllowedRedirectTo('https://localhost:5173/callback', IDP_IP, 'https://localhost:5173')
+    ).toBe(true);
+  });
+
+  it('IDP_ORIGIN が IPv6アドレスの場合も不正なドメイン派生を防ぐ', () => {
+    const IDP_IPV6 = 'https://[::1]:8787';
+    expect(isAllowedRedirectTo('https://evil.example.com/callback', IDP_IPV6)).toBe(false);
+    // EXTRA_BFF_ORIGINS での明示指定はOK
+    expect(
+      isAllowedRedirectTo('https://localhost:5173/callback', IDP_IPV6, 'https://localhost:5173')
+    ).toBe(true);
+  });
 });
 
 // ===== POST /auth/exchange — サービスOAuthフロー =====
