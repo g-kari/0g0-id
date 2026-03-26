@@ -33,7 +33,7 @@ export async function sha256(input: string): Promise<string> {
  */
 export function generateToken(byteLength: number = 32): string {
   const bytes = crypto.getRandomValues(new Uint8Array(byteLength));
-  return btoa(String.fromCharCode(...bytes))
+  return btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''))
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=/g, '');
@@ -52,7 +52,7 @@ export function generateCodeVerifier(): string {
 export async function generateCodeChallenge(verifier: string): Promise<string> {
   const data = new TextEncoder().encode(verifier);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  return btoa(String.fromCharCode(...new Uint8Array(hashBuffer)))
+  return btoa(Array.from(new Uint8Array(hashBuffer), (b) => String.fromCharCode(b)).join(''))
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=/g, '');
