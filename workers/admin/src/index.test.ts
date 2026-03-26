@@ -7,8 +7,13 @@ vi.mock('@0g0-id/shared', () => ({
   bffCsrfMiddleware: async (_c: unknown, next: () => Promise<void>) => next(),
   fetchWithAuth: vi.fn(),
   proxyResponse: vi.fn(),
-  parseSession: vi.fn(),
+  parseSession: vi.fn().mockResolvedValue({
+    access_token: 'mock-access-token',
+    refresh_token: 'mock-refresh-token',
+    user: { id: 'admin-123', email: 'admin@example.com', name: 'Admin', role: 'admin' },
+  }),
   verifyAccessToken: vi.fn(),
+  createLogger: vi.fn().mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
 vi.mock('./middleware/csrf', () => ({
@@ -19,7 +24,7 @@ vi.mock('./middleware/cors', () => ({
   adminCorsMiddleware: async (_c: unknown, next: () => Promise<void>) => next(),
 }));
 
-import { fetchWithAuth } from '@0g0-id/shared';
+import { fetchWithAuth, parseSession } from '@0g0-id/shared';
 import app from './index';
 
 const mockEnv = {
@@ -50,6 +55,11 @@ describe('onError ハンドラ', () => {
 
   it('未処理の例外で500とINTERNAL_ERRORを返す', async () => {
     // fetchWithAuth をスローさせて /api/metrics 経由で app.onError を通過させる
+    vi.mocked(parseSession).mockResolvedValue({
+      access_token: 'mock-access-token',
+      refresh_token: 'mock-refresh-token',
+      user: { id: 'admin-123', email: 'admin@example.com', name: 'Admin', role: 'admin' },
+    });
     vi.mocked(fetchWithAuth).mockRejectedValue(new Error('unexpected network error'));
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});

@@ -16,6 +16,7 @@ vi.mock('@0g0-id/shared', () => ({
   fetchWithAuth: vi.fn(),
   proxyResponse: vi.fn(),
   parseSession: vi.fn(),
+  createLogger: vi.fn().mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
 import { fetchWithAuth } from '@0g0-id/shared';
