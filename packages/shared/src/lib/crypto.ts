@@ -60,15 +60,28 @@ export async function generateCodeChallenge(verifier: string): Promise<string> {
 
 /**
  * 定数時間比較（タイミング攻撃対策）
+ * Cloudflare Workers 環境では crypto.subtle.timingSafeEqual（WebCrypto 非標準拡張）を使用し、
+ * JITコンパイルによる最適化に左右されない真の定数時間比較を保証する。
+ * それ以外の環境（Vitest 等）では TextEncoder でバイト列化した上で
+ * XOR ループによる定数時間比較にフォールバックする。
  */
 export function timingSafeEqual(a: string, b: string): boolean {
-  // 長さの差をXORして結果に含める（早期リターンによる長さリークを防ぐ）
-  let result = a.length ^ b.length;
-  const len = Math.max(a.length, b.length);
-  for (let i = 0; i < len; i++) {
-    const ca = i < a.length ? a.charCodeAt(i) : 0;
-    const cb = i < b.length ? b.charCodeAt(i) : 0;
-    result |= ca ^ cb;
+  const encoder = new TextEncoder();
+  const aBytes = encoder.encode(a);
+  const bBytes = encoder.encode(b);
+  if (aBytes.length !== bBytes.length) {
+    return false;
+  }
+  // crypto.subtle.timingSafeEqual は Cloudflare Workers / Node.js 19+ で利用可能
+  type SubtleCryptoWithTimingSafeEqual = SubtleCrypto & { timingSafeEqual(a: ArrayBuffer, b: ArrayBuffer): boolean };
+  const subtleCrypto = crypto.subtle as unknown as SubtleCryptoWithTimingSafeEqual;
+  if (typeof subtleCrypto.timingSafeEqual === 'function') {
+    return subtleCrypto.timingSafeEqual(aBytes.buffer as ArrayBuffer, bBytes.buffer as ArrayBuffer);
+  }
+  // フォールバック: バイト列に対するXORループ定数時間比較
+  let result = 0;
+  for (let i = 0; i < aBytes.length; i++) {
+    result |= aBytes[i] ^ bBytes[i];
   }
   return result === 0;
 }
