@@ -486,7 +486,7 @@ app.patch('/:id/role', authMiddleware, adminMiddleware, csrfMiddleware, async (c
     targetType: 'user',
     targetId,
     details: { from: targetUser.role, to: role },
-    ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
+    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
   });
 
   return c.json({ data: formatAdminUserSummary(user) });
@@ -531,7 +531,7 @@ app.patch('/:id/ban', authMiddleware, adminMiddleware, csrfMiddleware, async (c)
       action: 'user.ban',
       targetType: 'user',
       targetId,
-      ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
+      ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
     });
   } catch (err) {
     usersLogger.error('Failed to create audit log for user.ban', err);
@@ -560,7 +560,7 @@ app.delete('/:id/ban', authMiddleware, adminMiddleware, csrfMiddleware, async (c
     action: 'user.unban',
     targetType: 'user',
     targetId,
-    ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
+    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
   });
 
   return c.json({ data: formatAdminUserSummary(updated) });
@@ -601,7 +601,7 @@ app.delete('/:id/tokens/:tokenId', authMiddleware, adminMiddleware, csrfMiddlewa
     targetType: 'user',
     targetId,
     details: { tokenId },
-    ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
+    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
   });
 
   return c.body(null, 204);
@@ -624,7 +624,7 @@ app.delete('/:id/tokens', authMiddleware, adminMiddleware, csrfMiddleware, async
     action: 'user.sessions_revoked',
     targetType: 'user',
     targetId,
-    ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
+    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
   });
 
   return c.body(null, 204);
@@ -656,7 +656,7 @@ app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
       action: 'user.delete',
       targetType: 'user',
       targetId,
-      ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
+      ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
     });
   } catch (err) {
     usersLogger.error('Failed to create audit log for user.delete', err);

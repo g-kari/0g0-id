@@ -108,7 +108,7 @@ export async function encodeSession(session: BffSession, secret: string): Promis
   const combined = new Uint8Array(iv.length + ciphertext.byteLength);
   combined.set(iv);
   combined.set(new Uint8Array(ciphertext), iv.length);
-  return btoa(String.fromCharCode(...combined))
+  return btoa(Array.from(combined, (b) => String.fromCharCode(b)).join(''))
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=/g, '');

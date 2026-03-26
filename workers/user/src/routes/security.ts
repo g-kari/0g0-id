@@ -18,8 +18,14 @@ app.get('/summary', async (c) => {
 // GET /api/me/security/login-stats — プロバイダー別ログイン統計（days: 1〜90、デフォルト30）
 app.get('/login-stats', async (c) => {
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/me/login-stats`);
-  const days = c.req.query('days');
-  if (days) url.searchParams.set('days', days);
+  const daysParam = c.req.query('days');
+  if (daysParam !== undefined) {
+    const days = parseInt(daysParam, 10);
+    if (!Number.isInteger(days) || days < 1 || days > 90) {
+      return c.json({ error: { code: 'INVALID_PARAMETER', message: 'days must be an integer between 1 and 90' } }, 400);
+    }
+    url.searchParams.set('days', String(days));
+  }
   const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
   return proxyResponse(res);
 });
@@ -27,8 +33,14 @@ app.get('/login-stats', async (c) => {
 // GET /api/me/security/login-trends — 日別ログイントレンド（days: 1〜90、デフォルト30）
 app.get('/login-trends', async (c) => {
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/me/login-trends`);
-  const days = c.req.query('days');
-  if (days) url.searchParams.set('days', days);
+  const daysParam = c.req.query('days');
+  if (daysParam !== undefined) {
+    const days = parseInt(daysParam, 10);
+    if (!Number.isInteger(days) || days < 1 || days > 90) {
+      return c.json({ error: { code: 'INVALID_PARAMETER', message: 'days must be an integer between 1 and 90' } }, 400);
+    }
+    url.searchParams.set('days', String(days));
+  }
   const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
   return proxyResponse(res);
 });
