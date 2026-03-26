@@ -7,6 +7,9 @@ import type { IdpEnv } from '@0g0-id/shared';
  * 必須: DB, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
  *       JWT_PRIVATE_KEY, JWT_PUBLIC_KEY,
  *       IDP_ORIGIN, USER_ORIGIN, ADMIN_ORIGIN
+ *
+ * オプション: LINE/Twitch/GitHub/X の CLIENT_ID と CLIENT_SECRET は
+ *             両方設定するか、両方未設定にすること（片方だけは不可）
  */
 const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().min(1, 'GOOGLE_CLIENT_ID は必須です'),
@@ -28,9 +31,29 @@ type EnvValidationResult =
  */
 export function validateEnv(env: IdpEnv): EnvValidationResult {
   const result = envSchema.safeParse(env);
-  if (result.success) {
-    return { ok: true };
+  const errors: string[] = result.success
+    ? []
+    : result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`);
+
+  // オプションプロバイダーの認証情報は片方だけ設定されていてはならない（設定ミスの早期検知）
+  const optionalProviderPairs = [
+    { id: 'LINE_CLIENT_ID' as const, secret: 'LINE_CLIENT_SECRET' as const, name: 'LINE' },
+    { id: 'TWITCH_CLIENT_ID' as const, secret: 'TWITCH_CLIENT_SECRET' as const, name: 'Twitch' },
+    { id: 'GITHUB_CLIENT_ID' as const, secret: 'GITHUB_CLIENT_SECRET' as const, name: 'GitHub' },
+    { id: 'X_CLIENT_ID' as const, secret: 'X_CLIENT_SECRET' as const, name: 'X' },
+  ];
+
+  for (const pair of optionalProviderPairs) {
+    const hasId = !!env[pair.id];
+    const hasSecret = !!env[pair.secret];
+    if (hasId !== hasSecret) {
+      const missing = hasId ? pair.secret : pair.id;
+      errors.push(`${missing}: ${pair.name} の CLIENT_ID と CLIENT_SECRET は両方設定してください`);
+    }
   }
-  const errors = result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`);
-  return { ok: false, errors };
+
+  if (errors.length > 0) {
+    return { ok: false, errors };
+  }
+  return { ok: true };
 }
