@@ -20,4 +20,11 @@ app.get('/login-trends', async (c) => {
   return proxyResponse(res);
 });
 
+
+// GET /api/metrics/services — サービス別アクティブトークン統計
+app.get('/services', async (c) => {
+  const res = await fetchWithAuth(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/metrics/services`);
+  return proxyResponse(res);
+});
+
 export default app;

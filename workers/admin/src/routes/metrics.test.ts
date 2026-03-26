@@ -177,4 +177,44 @@ describe('admin BFF — /api/metrics', () => {
       expect(res.status).toBe(500);
     });
   });
+
+  describe('GET /services — サービス別統計', () => {
+    it('セッションなしで 401 を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/services');
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('IdP にリクエストをプロキシする', async () => {
+      const mockStats = [
+        {
+          service_id: 'svc-1',
+          service_name: 'Service A',
+          authorized_user_count: 3,
+          active_token_count: 5,
+        },
+      ];
+      const idpFetch = mockIdp(200, { data: mockStats });
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/services', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof mockStats }>();
+      expect(body.data).toEqual(mockStats);
+      const calledUrl = vi.mocked(idpFetch).mock.calls[0][0].url;
+      expect(calledUrl).toContain('/api/metrics/services');
+    });
+
+    it('IdP エラーをそのまま転送する', async () => {
+      const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR' } });
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/services', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(500);
+    });
+  });
 });
