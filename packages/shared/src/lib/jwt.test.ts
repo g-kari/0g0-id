@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { signAccessToken, signIdToken, verifyAccessToken, getJWTKeys, getJWKS } from './jwt';
+import { decodeBase64Url } from './base64url';
 
 // テスト用 ES256 鍵ペア（固定値）
 const TEST_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
@@ -53,7 +54,7 @@ describe('signAccessToken', () => {
 
   it('ヘッダーにES256アルゴリズムとkidが含まれる', async () => {
     const token = await signAccessToken(basePayload, TEST_PRIVATE_KEY, TEST_PUBLIC_KEY);
-    const header = JSON.parse(atob(token.split('.')[0].replace(/-/g, '+').replace(/_/g, '/')));
+    const header = JSON.parse(decodeBase64Url(token.split('.')[0]));
     expect(header.alg).toBe('ES256');
     expect(typeof header.kid).toBe('string');
   });
@@ -61,9 +62,7 @@ describe('signAccessToken', () => {
   it('ペイロードにissuer・subject・audienceが含まれる', async () => {
     const token = await signAccessToken(basePayload, TEST_PRIVATE_KEY, TEST_PUBLIC_KEY);
     const raw = token.split('.')[1];
-    // base64url → base64 → JSON
-    const padded = raw + '='.repeat((4 - (raw.length % 4)) % 4);
-    const payload = JSON.parse(atob(padded.replace(/-/g, '+').replace(/_/g, '/')));
+    const payload = JSON.parse(decodeBase64Url(raw));
     expect(payload.iss).toBe('https://id.0g0.xyz');
     expect(payload.sub).toBe('user-id-123');
     expect(payload.aud).toBe('https://id.0g0.xyz');
@@ -75,8 +74,7 @@ describe('signAccessToken', () => {
     const before = Math.floor(Date.now() / 1000);
     const token = await signAccessToken(basePayload, TEST_PRIVATE_KEY, TEST_PUBLIC_KEY);
     const raw = token.split('.')[1];
-    const padded = raw + '='.repeat((4 - (raw.length % 4)) % 4);
-    const payload = JSON.parse(atob(padded.replace(/-/g, '+').replace(/_/g, '/')));
+    const payload = JSON.parse(decodeBase64Url(raw));
     // 15分 = 900秒
     expect(payload.exp).toBeGreaterThan(before + 800);
     expect(payload.exp).toBeLessThan(before + 1000);
@@ -103,7 +101,7 @@ describe('signIdToken', () => {
 
   it('ヘッダーにES256アルゴリズムとkidが含まれる', async () => {
     const token = await signIdToken(idPayload, TEST_PRIVATE_KEY, TEST_PUBLIC_KEY);
-    const header = JSON.parse(atob(token.split('.')[0].replace(/-/g, '+').replace(/_/g, '/')));
+    const header = JSON.parse(decodeBase64Url(token.split('.')[0]));
     expect(header.alg).toBe('ES256');
     expect(typeof header.kid).toBe('string');
   });
@@ -111,8 +109,7 @@ describe('signIdToken', () => {
   it('ペイロードにOIDC必須クレームが含まれる', async () => {
     const token = await signIdToken(idPayload, TEST_PRIVATE_KEY, TEST_PUBLIC_KEY);
     const raw = token.split('.')[1];
-    const padded = raw + '='.repeat((4 - (raw.length % 4)) % 4);
-    const payload = JSON.parse(atob(padded.replace(/-/g, '+').replace(/_/g, '/')));
+    const payload = JSON.parse(decodeBase64Url(raw));
     expect(payload.iss).toBe('https://id.0g0.xyz');
     expect(payload.sub).toBe('user-id-123');
     expect(payload.aud).toBe('https://id.0g0.xyz');
@@ -127,8 +124,7 @@ describe('signIdToken', () => {
     const before = Math.floor(Date.now() / 1000);
     const token = await signIdToken(idPayload, TEST_PRIVATE_KEY, TEST_PUBLIC_KEY);
     const raw = token.split('.')[1];
-    const padded = raw + '='.repeat((4 - (raw.length % 4)) % 4);
-    const payload = JSON.parse(atob(padded.replace(/-/g, '+').replace(/_/g, '/')));
+    const payload = JSON.parse(decodeBase64Url(raw));
     // 1時間 = 3600秒
     expect(payload.exp).toBeGreaterThan(before + 3500);
     expect(payload.exp).toBeLessThan(before + 3700);
@@ -141,8 +137,7 @@ describe('signIdToken', () => {
       TEST_PUBLIC_KEY
     );
     const raw = token.split('.')[1];
-    const padded = raw + '='.repeat((4 - (raw.length % 4)) % 4);
-    const payload = JSON.parse(atob(padded.replace(/-/g, '+').replace(/_/g, '/')));
+    const payload = JSON.parse(decodeBase64Url(raw));
     expect(payload.picture).toBeUndefined();
   });
 });

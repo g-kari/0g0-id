@@ -3,6 +3,7 @@ export * from './middleware/logger';
 export * from './middleware/security-headers';
 export * from './middleware/bff';
 export * from './lib/jwt';
+export * from './lib/base64url';
 export * from './lib/crypto';
 export * from './lib/fetch-retry';
 export * from './lib/google';

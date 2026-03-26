@@ -1,6 +1,7 @@
 import { type Context } from 'hono';
 import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
 import type { BffEnv } from '../types';
+import { decodeBase64Url } from './base64url';
 
 export interface BffSession {
   access_token: string;
@@ -64,9 +65,7 @@ export async function parseSession(
   if (!cookie) return null;
   try {
     // base64url → Uint8Array
-    const b64 = cookie.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
-    const combined = Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+    const combined = Uint8Array.from(decodeBase64Url(cookie), (c) => c.charCodeAt(0));
 
     if (combined.length < 13) return null; // 12バイトIV + 最低1バイト暗号文
 
