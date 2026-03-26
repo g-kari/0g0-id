@@ -51,6 +51,30 @@ paths:
 |------|----------|------|------|
 | /api/health | GET | Public | ヘルスチェック |
 | /auth/login | GET | Public | Google認可へリダイレクト |
+
+### /auth/login クエリパラメータ
+
+| パラメータ | 必須/任意 | 説明 |
+|---|---|---|
+| `redirect_to` | 必須 | 認証後のリダイレクト先 URI |
+| `state` | 推奨 | CSRF 防止用の不透明な文字列 |
+| `client_id` | **外部サービスでは必須** | 登録済みサービスの client_id |
+| `code_challenge` | PKCE 使用時 | S256 コードチャレンジ |
+| `code_challenge_method` | PKCE 使用時 | `S256` 固定 |
+
+#### client_id の扱い
+
+- **BFF オリジン**（`user.0g0.xyz`, `admin.0g0.xyz`, `EXTRA_BFF_ORIGINS`）: `client_id` は省略可
+- **外部サービス**（非 BFF オリジン、例: `rss.0g0.xyz`）: `client_id` は**必須**
+
+`client_id` なしで外部オリジンから呼び出した場合:
+- `400 Bad Request` — `{ "error": { "code": "BAD_REQUEST", "message": "client_id is required for external services" } }`
+- ユーザーとサービスの紐付けが記録されないため `/api/users/me/connections` に表示されない
+
+外部サービスのログイン URL 形式:
+```
+https://id.0g0.xyz/auth/login?client_id=<CLIENT_ID>&redirect_to=<登録済みURI>&state=<STATE>
+```
 | /auth/callback | GET | Public | Googleコールバック |
 | /auth/exchange | POST | Service Bindings | ワンタイムコード交換 |
 | /auth/logout | POST | Service Bindings | ログアウト |

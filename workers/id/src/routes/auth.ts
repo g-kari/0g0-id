@@ -173,7 +173,63 @@ export function isAllowedRedirectTo(
   return false;
 }
 
+/**
+ * redirect_to が既知のBFFオリジン（USER_ORIGIN / ADMIN_ORIGIN / EXTRA_BFF_ORIGINS）と
+ * 完全一致するかを検証する。
+ * isAllowedRedirectTo と異なり、*.0g0.xyz のようなワイルドカードマッチは行わない。
+ */
+export function isBffOrigin(
+  redirectTo: string,
+  userOrigin: string,
+  adminOrigin: string,
+  extraBffOrigins?: string
+): boolean {
+  let redirectUrl: URL;
+  try {
+    redirectUrl = new URL(redirectTo);
+  } catch {
+    return false;
+  }
+
+  // HTTPS のみ許可
+  if (redirectUrl.protocol !== 'https:') return false;
+
+  // USER_ORIGIN / ADMIN_ORIGIN と origin 単位で完全一致比較
+  const bffOrigins = [userOrigin, adminOrigin];
+  if (bffOrigins.some((o) => {
+    try {
+      return redirectUrl.origin === new URL(o).origin;
+    } catch {
+      return false;
+    }
+  })) {
+    return true;
+  }
+
+  // EXTRA_BFF_ORIGINS による追加オリジン（外部ドメイン向け）
+  if (extraBffOrigins) {
+    const extras = extraBffOrigins
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean);
+    if (
+      extras.some((extra) => {
+        try {
+          return redirectUrl.origin === new URL(extra).origin;
+        } catch {
+          return false;
+        }
+      })
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function setSecureCookie(
+
   c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
   name: string,
   value: string,
@@ -548,8 +604,18 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
     }
     serviceId = service.id;
   } else {
-    const allowed = isAllowedRedirectTo(redirectTo, c.env.IDP_ORIGIN, c.env.EXTRA_BFF_ORIGINS);
-    if (!allowed) {
+    // client_id なしは BFF オリジン（USER_ORIGIN / ADMIN_ORIGIN / EXTRA_BFF_ORIGINS）のみ許可
+    const isBff = isBffOrigin(redirectTo, c.env.USER_ORIGIN, c.env.ADMIN_ORIGIN, c.env.EXTRA_BFF_ORIGINS);
+    if (!isBff) {
+      // redirect_to が *.0g0.xyz など同一ベースドメインに属していても、
+      // client_id なしでの外部サービスフローは拒否する
+      const isKnownDomain = isAllowedRedirectTo(redirectTo, c.env.IDP_ORIGIN, c.env.EXTRA_BFF_ORIGINS);
+      if (isKnownDomain) {
+        return c.json(
+          { error: { code: 'BAD_REQUEST', message: 'client_id is required for external services' } },
+          400
+        );
+      }
       return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid redirect_to' } }, 400);
     }
   }
