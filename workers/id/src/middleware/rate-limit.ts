@@ -2,6 +2,12 @@ import { createMiddleware } from 'hono/factory';
 import type { Context } from 'hono';
 import type { IdpEnv, RateLimitBinding } from '@0g0-id/shared';
 
+/**
+ * バインディング未設定の警告を1ワーカーインスタンスにつき1回だけ出力するための追跡Set。
+ * wrangler.toml の設定漏れを本番デプロイ直後のログで即座に検知できる。
+ */
+const warnedBindings = new Set<string>();
+
 /** リクエスト元IPアドレスを取得する（Cloudflare → x-forwarded-for の順にフォールバック） */
 function getClientIp(req: Request): string {
   return (
@@ -29,28 +35,42 @@ type IdpContext = Context<{ Bindings: IdpEnv }>;
  * レートリミットミドルウェアのファクトリ関数。
  * バインディングの取得・キー抽出・エラーメッセージを差し込むことで
  * 各エンドポイント向けのミドルウェアを生成する。
+ *
+ * バインディングが未設定の場合は最初のリクエスト時に1度だけ警告ログを出力し、
+ * レートリミットをスキップする（ローカル開発・テスト時を想定）。
+ * 本番環境でバインディング名を typo したままデプロイした場合でも
+ * ログで即座に検知できる。
  */
 function createRateLimitMiddleware(
+  bindingName: string,
   getBinding: (env: IdpEnv) => RateLimitBinding | undefined,
   getKey: (c: IdpContext) => string,
   errorMessage: string,
 ) {
   return createMiddleware<{ Bindings: IdpEnv }>(async (c, next) => {
     const binding = getBinding(c.env);
-    if (binding) {
-      const key = getKey(c);
-      const { success } = await binding.limit({ key });
-      if (!success) {
-        return c.json(
-          {
-            error: {
-              code: 'TOO_MANY_REQUESTS',
-              message: errorMessage,
-            },
-          },
-          429
+    if (!binding) {
+      if (!warnedBindings.has(bindingName)) {
+        warnedBindings.add(bindingName);
+        console.warn(
+          `[rate-limit] ${bindingName} binding is not configured — rate limiting is DISABLED. ` +
+            'Configure this binding in wrangler.toml for production deployments.'
         );
       }
+      return next();
+    }
+    const key = getKey(c);
+    const { success } = await binding.limit({ key });
+    if (!success) {
+      return c.json(
+        {
+          error: {
+            code: 'TOO_MANY_REQUESTS',
+            message: errorMessage,
+          },
+        },
+        429
+      );
     }
     await next();
   });
@@ -63,6 +83,7 @@ function createRateLimitMiddleware(
  * RATE_LIMITER_AUTH バインディングが未設定の場合はスキップ（ローカル開発・テスト時）。
  */
 export const authRateLimitMiddleware = createRateLimitMiddleware(
+  'RATE_LIMITER_AUTH',
   (env) => env.RATE_LIMITER_AUTH,
   (c) => getClientIp(c.req.raw),
   'Too many requests. Please try again later.',
@@ -76,6 +97,7 @@ export const authRateLimitMiddleware = createRateLimitMiddleware(
  * RATE_LIMITER_EXTERNAL バインディングが未設定の場合はスキップ。
  */
 export const externalApiRateLimitMiddleware = createRateLimitMiddleware(
+  'RATE_LIMITER_EXTERNAL',
   (env) => env.RATE_LIMITER_EXTERNAL,
   (c) => extractClientId(c.req.header('Authorization')) ?? getClientIp(c.req.raw),
   'Rate limit exceeded.',
@@ -89,6 +111,7 @@ export const externalApiRateLimitMiddleware = createRateLimitMiddleware(
  * RATE_LIMITER_TOKEN バインディングが未設定の場合はスキップ（ローカル開発・テスト時）。
  */
 export const tokenApiRateLimitMiddleware = createRateLimitMiddleware(
+  'RATE_LIMITER_TOKEN',
   (env) => env.RATE_LIMITER_TOKEN,
   (c) => getClientIp(c.req.raw),
   'Too many requests. Please try again later.',
