@@ -11,6 +11,7 @@ import {
   revokeUserServiceTokens,
   revokeUserTokens,
   revokeTokenByIdForUser,
+  revokeOtherUserTokens,
   listActiveSessionsByUserId,
   countServicesByOwner,
   listServicesByOwner,
@@ -47,6 +48,10 @@ const PatchMeSchema = z.object({
 
 const PatchRoleSchema = z.object({
   role: z.enum(['user', 'admin'], { message: 'role must be "user" or "admin"' }),
+});
+
+const RevokeOthersSchema = z.object({
+  token_hash: z.string().min(1, 'token_hash is required'),
 });
 
 const VALID_PROVIDERS = ['google', 'line', 'twitch', 'github', 'x'] as const;
@@ -339,6 +344,17 @@ app.get('/me/tokens', authMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const sessions = await listActiveSessionsByUserId(c.env.DB, tokenUser.sub);
   return c.json({ data: sessions });
+});
+
+// DELETE /api/users/me/tokens/others — 現在のセッション以外を全て失効（他デバイスからのサインアウト）
+app.delete('/me/tokens/others', authMiddleware, csrfMiddleware, async (c) => {
+  const tokenUser = c.get('user');
+  const result = await parseJsonBody(c, RevokeOthersSchema);
+  if (!result.ok) return result.response;
+  const { token_hash } = result.data;
+
+  const count = await revokeOtherUserTokens(c.env.DB, tokenUser.sub, token_hash);
+  return c.json({ data: { revoked_count: count } });
 });
 
 // DELETE /api/users/me/tokens/:tokenId — 特定セッションのみログアウト（単一リフレッシュトークン無効化）
