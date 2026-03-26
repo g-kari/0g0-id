@@ -110,6 +110,8 @@ BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 
 ## 認証フロー
 
+### BFF フロー（user.0g0.xyz / admin.0g0.xyz）
+
 ```
 ブラウザ → user.0g0.xyz/auth/login
   → state + PKCE 生成 → Cookie 保存
@@ -120,6 +122,31 @@ BOOTSTRAP_ADMIN_EMAIL=admin@example.com
   → id への内部 API（Service Bindings）でコード交換
   → __Host- Cookie にトークン設定
 ```
+
+### 外部サービスフロー（rss.0g0.xyz 等の非 BFF オリジン）
+
+外部サービスが `/auth/login` を呼び出す場合は **`client_id` が必須**です。
+
+```
+ブラウザ → https://id.0g0.xyz/auth/login
+              ?client_id=<CLIENT_ID>
+              &redirect_to=<登録済みリダイレクトURI>
+              &state=<STATE>
+  → Google 認可画面
+  → id.0g0.xyz/auth/callback
+  → 認可コードを redirect_to に付与してリダイレクト
+  → 外部サービスが /auth/exchange でトークン交換
+```
+
+#### client_id の必須ルール
+
+| 呼び出し元 | client_id | 動作 |
+|---|---|---|
+| BFF オリジン（user.0g0.xyz, admin.0g0.xyz, EXTRA_BFF_ORIGINS） | 省略可 | BFF フローで処理 |
+| 外部サービス（非 BFF オリジン） | **必須** | 省略すると 400 エラー |
+
+- `client_id` なしで外部オリジンから呼び出すと `400 Bad Request` — `"client_id is required for external services"`
+- `client_id` なしでログインするとユーザーとサービスの関係が記録されず、`/api/users/me/connections`（連携サービス一覧）に表示されない
 
 ## API
 

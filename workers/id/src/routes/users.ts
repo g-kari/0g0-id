@@ -497,16 +497,26 @@ app.patch('/:id/ban', authMiddleware, adminMiddleware, csrfMiddleware, async (c)
     return c.json({ error: { code: 'CONFLICT', message: 'User is already banned' } }, 409);
   }
 
-  const updated = await banUser(c.env.DB, targetId);
-  // 停止と同時に全セッション失効
-  await revokeUserTokens(c.env.DB, targetId);
-  await createAdminAuditLog(c.env.DB, {
-    adminUserId: tokenUser.sub,
-    action: 'user.ban',
-    targetType: 'user',
-    targetId,
-    ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
-  });
+  let updated;
+  try {
+    updated = await banUser(c.env.DB, targetId);
+    // 停止と同時に全セッション失効
+    await revokeUserTokens(c.env.DB, targetId);
+  } catch {
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to ban user' } }, 500);
+  }
+
+  try {
+    await createAdminAuditLog(c.env.DB, {
+      adminUserId: tokenUser.sub,
+      action: 'user.ban',
+      targetType: 'user',
+      targetId,
+      ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
+    });
+  } catch (err) {
+    console.error('Failed to create audit log for user.ban:', err);
+  }
 
   return c.json({ data: formatAdminUserSummary(updated) });
 });
@@ -621,13 +631,17 @@ app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
     return c.json({ error: deleteError }, 409);
   }
 
-  await createAdminAuditLog(c.env.DB, {
-    adminUserId: tokenUser.sub,
-    action: 'user.delete',
-    targetType: 'user',
-    targetId,
-    ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
-  });
+  try {
+    await createAdminAuditLog(c.env.DB, {
+      adminUserId: tokenUser.sub,
+      action: 'user.delete',
+      targetType: 'user',
+      targetId,
+      ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
+    });
+  } catch (err) {
+    console.error('Failed to create audit log for user.delete:', err);
+  }
 
   return c.body(null, 204);
 });
