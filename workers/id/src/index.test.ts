@@ -152,4 +152,54 @@ describe('環境変数バリデーション ミドルウェア', () => {
     );
     expect(res.status).toBe(200);
   });
+
+  it('LINE_CLIENT_ID のみ設定（SECRET 未設定）の場合に500とMISCONFIGURATIONを返す', async () => {
+    const envWithPartialLine = { ...mockEnv, LINE_CLIENT_ID: 'line-client-id' };
+    const res = await app.request(
+      'https://id.0g0.xyz/api/health',
+      undefined,
+      envWithPartialLine as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('MISCONFIGURATION');
+  });
+
+  it('LINE_CLIENT_SECRET のみ設定（ID 未設定）の場合に500とMISCONFIGURATIONを返す', async () => {
+    const envWithPartialLine = { ...mockEnv, LINE_CLIENT_SECRET: 'line-secret' };
+    const res = await app.request(
+      'https://id.0g0.xyz/api/health',
+      undefined,
+      envWithPartialLine as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('MISCONFIGURATION');
+  });
+
+  it('GITHUB_CLIENT_ID のみ設定（SECRET 未設定）の場合に500とMISCONFIGURATIONを返す', async () => {
+    const envWithPartialGithub = { ...mockEnv, GITHUB_CLIENT_ID: 'github-client-id' };
+    const res = await app.request(
+      'https://id.0g0.xyz/api/health',
+      undefined,
+      envWithPartialGithub as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('MISCONFIGURATION');
+  });
+
+  it('オプションプロバイダーの認証情報が両方揃っている場合は通常のレスポンスを返す', async () => {
+    const envWithLine = {
+      ...mockEnv,
+      LINE_CLIENT_ID: 'line-client-id',
+      LINE_CLIENT_SECRET: 'line-client-secret',
+    };
+    const res = await app.request(
+      'https://id.0g0.xyz/api/health',
+      undefined,
+      envWithLine as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+  });
 });
