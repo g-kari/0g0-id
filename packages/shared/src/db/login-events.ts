@@ -152,3 +152,31 @@ export async function getUserDailyLoginTrends(
     .all<DailyLoginStat>();
   return result.results;
 }
+
+/** 国別ログイン回数の統計エントリ */
+export interface LoginCountryStat {
+  country: string; // ISO 3166-1 alpha-2（nullの場合は "unknown"）
+  count: number;
+}
+
+/**
+ * 指定期間内の国別ログイン統計を返す。
+ * country が NULL のイベントは "unknown" として集計される。
+ * count の降順でソートされる。
+ */
+export async function getLoginEventCountryStats(
+  db: D1Database,
+  sinceIso: string
+): Promise<LoginCountryStat[]> {
+  const result = await db
+    .prepare(
+      `SELECT COALESCE(country, 'unknown') as country, COUNT(*) as count
+       FROM login_events
+       WHERE created_at >= ?
+       GROUP BY country
+       ORDER BY count DESC`
+    )
+    .bind(sinceIso)
+    .all<LoginCountryStat>();
+  return result.results;
+}

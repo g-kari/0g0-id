@@ -598,3 +598,69 @@ describe('getDailyLoginTrends', () => {
     expect(sql).toContain('ORDER BY date ASC');
   });
 });
+
+describe('getLoginEventCountryStats', () => {
+  it('国別のログイン統計を返す', async () => {
+    const mockStats = [
+      { country: 'JP', count: 50 },
+      { country: 'US', count: 20 },
+      { country: 'unknown', count: 5 },
+    ];
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: mockStats }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const { getLoginEventCountryStats } = await import('./login-events');
+    const result = await getLoginEventCountryStats(db, '2024-01-01T00:00:00.000Z');
+
+    expect(result).toHaveLength(3);
+    expect(result[0]).toEqual({ country: 'JP', count: 50 });
+    expect(result[1]).toEqual({ country: 'US', count: 20 });
+    expect(result[2]).toEqual({ country: 'unknown', count: 5 });
+  });
+
+  it('ログインイベントがない場合は空配列を返す', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const { getLoginEventCountryStats } = await import('./login-events');
+    const result = await getLoginEventCountryStats(db, '2099-01-01T00:00:00.000Z');
+
+    expect(result).toEqual([]);
+  });
+
+  it('sinceIsoをbindパラメータとして渡す', async () => {
+    const since = '2024-06-01T00:00:00.000Z';
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const { getLoginEventCountryStats } = await import('./login-events');
+    await getLoginEventCountryStats(db, since);
+
+    expect(stmt.bind).toHaveBeenCalledWith(since);
+  });
+
+  it('SQLにCOALESCE・GROUP BY country・ORDER BY count DESCが含まれる', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const { getLoginEventCountryStats } = await import('./login-events');
+    await getLoginEventCountryStats(db, '2024-01-01T00:00:00.000Z');
+
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('COALESCE(country,');
+    expect(sql).toContain('GROUP BY country');
+    expect(sql).toContain('ORDER BY count DESC');
+  });
+});
