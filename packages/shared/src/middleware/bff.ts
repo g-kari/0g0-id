@@ -19,6 +19,9 @@ export const bffCorsMiddleware = createMiddleware<{ Bindings: BffEnv }>(async (c
   })(c, next);
 });
 
+// CSRF検証が必要な安全でないHTTPメソッド
+const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
 /**
  * BFF共通CSRFミドルウェア
  *
@@ -27,8 +30,17 @@ export const bffCorsMiddleware = createMiddleware<{ Bindings: BffEnv }>(async (c
  * 動的導出ではなく明示的な環境変数を使用することで、
  * HTTP/HTTPSプロトコル混在によるバイパスリスクを排除。
  * user/admin 両 BFF で共有。
+ *
+ * GET/HEAD/OPTIONS はCSRF攻撃の対象外のためスキップする。
+ * ブラウザは同一オリジンのGETリクエストにOriginヘッダーを付けないことがあるため、
+ * 安全なメソッドに対してOriginを要求すると正規リクエストが誤拒否される。
  */
 export const bffCsrfMiddleware = createMiddleware<{ Bindings: BffEnv }>(async (c, next) => {
+  // 安全なメソッド（副作用なし）はCSRF検証をスキップ
+  if (!UNSAFE_METHODS.has(c.req.method)) {
+    return next();
+  }
+
   const origin = c.req.header('Origin');
 
   if (!origin) {
