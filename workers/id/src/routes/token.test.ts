@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 
 // @0g0-id/sharedの全関数をモック
 vi.mock('@0g0-id/shared', () => ({
+  createLogger: vi.fn().mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
   findRefreshTokenByHash: vi.fn(),
   findServiceByClientId: vi.fn(),
   findUserById: vi.fn(),
