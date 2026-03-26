@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import { generateToken, parseSession, setSessionCookie, timingSafeEqual } from '@0g0-id/shared';
+import { generateToken, parseSession, setSessionCookie, timingSafeEqual, createLogger } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 
 const app = new Hono<{ Bindings: BffEnv }>();
+
+const adminAuthLogger = createLogger('admin-auth');
 
 const SESSION_COOKIE = '__Host-admin-session';
 const STATE_COOKIE = '__Host-admin-oauth-state';
@@ -85,7 +87,7 @@ app.get('/callback', async (c) => {
       );
     } catch (err) {
       // 失効に失敗してもリダイレクトは継続
-      console.warn('[admin-callback] IdP logout request failed for non-admin user:', err);
+      adminAuthLogger.warn('[admin-callback] IdP logout request failed for non-admin user', err);
     }
     return c.redirect('/?error=not_admin');
   }
@@ -114,7 +116,7 @@ app.post('/logout', async (c) => {
       );
     } catch (err) {
       // IdP側のトークン失効に失敗してもCookie削除は継続するが、ログに記録する
-      console.error('[logout] IdP revoke request failed:', err);
+      adminAuthLogger.error('[logout] IdP revoke request failed', err);
     }
   }
 

@@ -21,6 +21,7 @@ import {
   countUsersAuthorizedForService,
   revokeUserServiceTokens,
   parsePagination,
+  createLogger,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
@@ -29,6 +30,8 @@ import { csrfMiddleware } from '../middleware/csrf';
 import { parseJsonBody } from '../utils/parse-body';
 
 type Variables = { user: TokenPayload };
+
+const servicesLogger = createLogger('services');
 
 // サポートされているスコープの一覧
 const SUPPORTED_SCOPES = ['profile', 'email', 'phone', 'address'] as const;
@@ -226,7 +229,7 @@ app.post('/:id/redirect-uris', authMiddleware, adminMiddleware, csrfMiddleware, 
     });
     return c.json({ data: uri }, 201);
   } catch (err) {
-    console.error('[services] Failed to add redirect URI (possibly duplicate):', err);
+    servicesLogger.error('[services] Failed to add redirect URI (possibly duplicate)', err);
     return c.json({ error: { code: 'CONFLICT', message: 'Redirect URI already exists' } }, 409);
   }
 });

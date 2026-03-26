@@ -1,12 +1,15 @@
 import { createMiddleware } from 'hono/factory';
 import type { Context } from 'hono';
 import type { IdpEnv, RateLimitBinding } from '@0g0-id/shared';
+import { createLogger } from '@0g0-id/shared';
 
 /**
  * バインディング未設定の警告を1ワーカーインスタンスにつき1回だけ出力するための追跡Set。
  * wrangler.toml の設定漏れを本番デプロイ直後のログで即座に検知できる。
  */
 const warnedBindings = new Set<string>();
+
+const rateLimitLogger = createLogger('rate-limit');
 
 /** リクエスト元IPアドレスを取得する（Cloudflare → x-forwarded-for の順にフォールバック） */
 function getClientIp(req: Request): string {
@@ -52,9 +55,8 @@ function createRateLimitMiddleware(
     if (!binding) {
       if (!warnedBindings.has(bindingName)) {
         warnedBindings.add(bindingName);
-        console.warn(
-          `[rate-limit] ${bindingName} binding is not configured — rate limiting is DISABLED. ` +
-            'Configure this binding in wrangler.toml for production deployments.'
+        rateLimitLogger.warn(
+          `[rate-limit] ${bindingName} binding is not configured — rate limiting is DISABLED. Configure this binding in wrangler.toml for production deployments.`
         );
       }
       return next();

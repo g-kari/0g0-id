@@ -47,6 +47,7 @@ import {
   timingSafeEqual,
   linkProvider,
   insertLoginEvent,
+  createLogger,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
 import { type OAuthProvider, PROVIDER_DISPLAY_NAMES } from '@0g0-id/shared';
@@ -71,6 +72,8 @@ const LogoutSchema = z.object({
 type Variables = { user: TokenPayload };
 
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
+
+const authLogger = createLogger('auth');
 
 const CALLBACK_PATH = '/auth/callback';
 
@@ -302,7 +305,7 @@ async function resolveGoogleProvider(
       codeVerifier: pkceVerifier,
     });
   } catch (err) {
-    console.error('[oauth-google] Failed to exchange code:', err);
+    authLogger.error('[oauth-google] Failed to exchange code', err);
     return oauthError(c, 'Failed to exchange code');
   }
 
@@ -310,7 +313,7 @@ async function resolveGoogleProvider(
   try {
     userInfo = await fetchGoogleUserInfo(googleTokens.access_token);
   } catch (err) {
-    console.error('[oauth-google] Failed to fetch user info:', err);
+    authLogger.error('[oauth-google] Failed to fetch user info', err);
     return oauthError(c, 'Failed to fetch user info');
   }
 
@@ -349,7 +352,7 @@ async function resolveLineProvider(
       codeVerifier: pkceVerifier,
     });
   } catch (err) {
-    console.error('[oauth-line] Failed to exchange code:', err);
+    authLogger.error('[oauth-line] Failed to exchange code', err);
     return oauthError(c, 'Failed to exchange LINE code');
   }
 
@@ -357,7 +360,7 @@ async function resolveLineProvider(
   try {
     userInfo = await fetchLineUserInfo(lineTokens.access_token);
   } catch (err) {
-    console.error('[oauth-line] Failed to fetch user info:', err);
+    authLogger.error('[oauth-line] Failed to fetch user info', err);
     return oauthError(c, 'Failed to fetch LINE user info');
   }
 
@@ -395,7 +398,7 @@ async function resolveTwitchProvider(
       codeVerifier: pkceVerifier,
     });
   } catch (err) {
-    console.error('[oauth-twitch] Failed to exchange code:', err);
+    authLogger.error('[oauth-twitch] Failed to exchange code', err);
     return oauthError(c, 'Failed to exchange Twitch code');
   }
 
@@ -403,7 +406,7 @@ async function resolveTwitchProvider(
   try {
     userInfo = await fetchTwitchUserInfo(twitchTokens.access_token);
   } catch (err) {
-    console.error('[oauth-twitch] Failed to fetch user info:', err);
+    authLogger.error('[oauth-twitch] Failed to fetch user info', err);
     return oauthError(c, 'Failed to fetch Twitch user info');
   }
 
@@ -446,7 +449,7 @@ async function resolveGithubProvider(
       codeVerifier: pkceVerifier,
     });
   } catch (err) {
-    console.error('[oauth-github] Failed to exchange code:', err);
+    authLogger.error('[oauth-github] Failed to exchange code', err);
     return oauthError(c, 'Failed to exchange GitHub code');
   }
 
@@ -454,7 +457,7 @@ async function resolveGithubProvider(
   try {
     githubUser = await fetchGithubUserInfo(githubTokens.access_token);
   } catch (err) {
-    console.error('[oauth-github] Failed to fetch user info:', err);
+    authLogger.error('[oauth-github] Failed to fetch user info', err);
     return oauthError(c, 'Failed to fetch GitHub user info');
   }
 
@@ -497,7 +500,7 @@ async function resolveXProvider(
       codeVerifier: pkceVerifier,
     });
   } catch (err) {
-    console.error('[oauth-x] Failed to exchange code:', err);
+    authLogger.error('[oauth-x] Failed to exchange code', err);
     return oauthError(c, 'Failed to exchange X code');
   }
 
@@ -505,7 +508,7 @@ async function resolveXProvider(
   try {
     xUser = await fetchXUserInfo(xTokens.access_token);
   } catch (err) {
-    console.error('[oauth-x] Failed to fetch user info:', err);
+    authLogger.error('[oauth-x] Failed to fetch user info', err);
     return oauthError(c, 'Failed to fetch X user info');
   }
 
@@ -732,7 +735,7 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
   try {
     stateData = JSON.parse(decodeURIComponent(atob(stateCookieRaw)));
   } catch (err) {
-    console.error('[oauth-callback] Failed to parse state cookie:', err);
+    authLogger.error('[oauth-callback] Failed to parse state cookie', err);
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid state cookie' } }, 400);
   }
 
@@ -807,7 +810,7 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
       await updateUserRole(c.env.DB, user.id, 'admin');
       user.role = 'admin';
     } catch (err) {
-      console.error('[bootstrap] Failed to elevate bootstrap admin:', err);
+      authLogger.error('[bootstrap] Failed to elevate bootstrap admin', err);
     }
   }
 
@@ -826,7 +829,7 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
       country,
     });
   } catch (err) {
-    console.error('[login-event] Failed to record login event:', err);
+    authLogger.error('[login-event] Failed to record login event', err);
   }
 
   // ワンタイム認可コード発行

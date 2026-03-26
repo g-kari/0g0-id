@@ -23,6 +23,7 @@ import {
   createAdminAuditLog,
   parsePagination,
   type UserFilter,
+  createLogger,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
@@ -50,6 +51,8 @@ const PatchRoleSchema = z.object({
 const VALID_PROVIDERS = ['google', 'line', 'twitch', 'github', 'x'] as const;
 
 type Variables = { user: TokenPayload };
+
+const usersLogger = createLogger('users');
 
 // ─── レスポンスシリアライズヘルパー ──────────────────────────────────────────
 
@@ -515,7 +518,7 @@ app.patch('/:id/ban', authMiddleware, adminMiddleware, csrfMiddleware, async (c)
       ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
     });
   } catch (err) {
-    console.error('Failed to create audit log for user.ban:', err);
+    usersLogger.error('Failed to create audit log for user.ban', err);
   }
 
   return c.json({ data: formatAdminUserSummary(updated) });
@@ -640,7 +643,7 @@ app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
       ipAddress: c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For') ?? null,
     });
   } catch (err) {
-    console.error('Failed to create audit log for user.delete:', err);
+    usersLogger.error('Failed to create audit log for user.delete', err);
   }
 
   return c.body(null, 204);

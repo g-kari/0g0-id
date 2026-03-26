@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import { generateToken, parseSession, setSessionCookie, timingSafeEqual } from '@0g0-id/shared';
+import { generateToken, parseSession, setSessionCookie, timingSafeEqual, createLogger } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 
 const app = new Hono<{ Bindings: BffEnv }>();
+
+const userAuthLogger = createLogger('user-auth');
 
 const SESSION_COOKIE = '__Host-user-session';
 const STATE_COOKIE = '__Host-user-oauth-state';
@@ -104,7 +106,7 @@ app.post('/logout', async (c) => {
       );
     } catch (err) {
       // IdP側のトークン失効に失敗してもCookie削除は継続するが、ログに記録する
-      console.error('[logout] IdP revoke request failed:', err);
+      userAuthLogger.error('[logout] IdP revoke request failed', err);
     }
   }
 
@@ -142,7 +144,7 @@ app.get('/link', async (c) => {
     const data = await res.json<{ data: { link_token: string } }>();
     linkToken = data.data.link_token;
   } catch (err) {
-    console.error('[link] Failed to obtain link token from IdP:', err);
+    userAuthLogger.error('[link] Failed to obtain link token from IdP', err);
     return c.redirect('/profile.html?error=link_failed');
   }
 
