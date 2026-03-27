@@ -11,6 +11,9 @@ import {
   getServiceTokenStats,
   getSuspiciousMultiCountryLogins,
   getDailyUserRegistrations,
+  getActiveUserStats,
+  getDailyActiveUsers,
+  parseDays,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
@@ -105,6 +108,23 @@ app.get('/user-registrations', authMiddleware, adminMiddleware, async (c) => {
   const registrations = await getDailyUserRegistrations(c.env.DB, days);
 
   return c.json({ data: registrations, days });
+});
+
+// GET /api/metrics/active-users - DAU/WAU/MAU アクティブユーザー数
+app.get('/active-users', authMiddleware, adminMiddleware, async (c) => {
+  const stats = await getActiveUserStats(c.env.DB);
+  return c.json({ data: stats });
+});
+
+// GET /api/metrics/active-users/daily?days=30 - 日別アクティブユーザー数推移
+app.get('/active-users/daily', authMiddleware, adminMiddleware, async (c) => {
+  const daysResult = parseDays(c.req.query('days'));
+  if (daysResult && 'error' in daysResult) {
+    return c.json({ error: daysResult.error }, 400);
+  }
+  const days = daysResult?.days ?? 30;
+  const data = await getDailyActiveUsers(c.env.DB, days);
+  return c.json({ data, days });
 });
 
 export default app;
