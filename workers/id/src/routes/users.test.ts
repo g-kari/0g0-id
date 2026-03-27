@@ -21,6 +21,8 @@ vi.mock('@0g0-id/shared', () => ({
   getUserProviders: vi.fn(),
   unlinkProvider: vi.fn(),
   getLoginEventsByUserId: vi.fn(),
+  getUserLoginProviderStats: vi.fn(),
+  getUserDailyLoginTrends: vi.fn(),
   banUser: vi.fn(),
   unbanUser: vi.fn(),
   createAdminAuditLog: vi.fn(),
@@ -59,6 +61,8 @@ import {
   getUserProviders,
   unlinkProvider,
   getLoginEventsByUserId,
+  getUserLoginProviderStats,
+  getUserDailyLoginTrends,
   banUser,
   unbanUser,
   createAdminAuditLog,
@@ -2177,5 +2181,162 @@ describe('DELETE /api/users/:id/ban — ユーザー停止解除', () => {
       origin: 'https://id.0g0.xyz',
     });
     expect(res.status).toBe(404);
+  });
+});
+
+// ===== GET /api/users/:id/login-stats（管理者のみ）=====
+describe('GET /api/users/:id/login-stats', () => {
+  let app: ReturnType<typeof buildApp>;
+
+  const mockStats = [
+    { provider: 'google', count: 10 },
+    { provider: 'github', count: 3 },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    app = buildApp();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: 'user-1' });
+    vi.mocked(getUserLoginProviderStats).mockResolvedValue(mockStats);
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/login-stats', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者でない場合 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/users/user-1/login-stats');
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('対象ユーザーが存在しない場合 → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/no-such/login-stats');
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('プロバイダー別統計とdaysを返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/login-stats');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[]; days: number }>();
+    expect(body.data).toHaveLength(2);
+    expect(body.days).toBe(30);
+  });
+
+  it('daysクエリパラメータを受け取る', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users/user-1/login-stats?days=7`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{ days: number }>();
+    expect(body.days).toBe(7);
+    expect(vi.mocked(getUserLoginProviderStats)).toHaveBeenCalledWith(
+      expect.anything(),
+      'user-1',
+      expect.any(String)
+    );
+  });
+
+  it('daysが範囲外の場合 → 400を返す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users/user-1/login-stats?days=0`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+});
+
+// ===== GET /api/users/:id/login-trends（管理者のみ）=====
+describe('GET /api/users/:id/login-trends', () => {
+  let app: ReturnType<typeof buildApp>;
+
+  const mockTrends = [
+    { date: '2026-03-25', count: 5 },
+    { date: '2026-03-26', count: 8 },
+    { date: '2026-03-27', count: 3 },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    app = buildApp();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: 'user-1' });
+    vi.mocked(getUserDailyLoginTrends).mockResolvedValue(mockTrends);
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/login-trends', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者でない場合 → 403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, '/api/users/user-1/login-trends');
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('対象ユーザーが存在しない場合 → 404を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/users/no-such/login-trends');
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('日別ログイントレンドとdaysを返す', async () => {
+    const res = await sendRequest(app, '/api/users/user-1/login-trends');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[]; days: number }>();
+    expect(body.data).toHaveLength(3);
+    expect(body.days).toBe(30);
+  });
+
+  it('daysクエリパラメータを受け取る', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users/user-1/login-trends?days=14`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{ days: number }>();
+    expect(body.days).toBe(14);
+    expect(vi.mocked(getUserDailyLoginTrends)).toHaveBeenCalledWith(
+      expect.anything(),
+      'user-1',
+      14
+    );
+  });
+
+  it('daysが範囲外の場合 → 400を返す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users/user-1/login-trends?days=91`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
   });
 });
