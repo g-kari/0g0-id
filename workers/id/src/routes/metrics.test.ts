@@ -12,6 +12,7 @@ vi.mock('@0g0-id/shared', () => ({
   getDailyLoginTrends: vi.fn(),
   verifyAccessToken: vi.fn(),
   getServiceTokenStats: vi.fn(),
+  getSuspiciousMultiCountryLogins: vi.fn(),
 }));
 
 import {
@@ -25,6 +26,7 @@ import {
   getDailyLoginTrends,
   verifyAccessToken,
   getServiceTokenStats,
+  getSuspiciousMultiCountryLogins,
 } from '@0g0-id/shared';
 
 import metricsRoutes from './metrics';
@@ -505,6 +507,157 @@ describe('GET /api/metrics/services', () => {
     const res = await app.request(makeRequest('/api/metrics/services', 'admin-token'), undefined, mockEnv);
     expect(res.status).toBe(200);
     const body = await res.json<{ data: [] }>();
+    expect(body.data).toEqual([]);
+  });
+});
+
+describe('GET /api/metrics/suspicious-logins', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('認証なしで 401 を返す', async () => {
+    const app = buildApp();
+    const res = await app.request(makeRequest('/api/metrics/suspicious-logins'), undefined, mockEnv);
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者以外で 403 を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockUserPayload);
+    const app = buildApp();
+    const res = await app.request(
+      makeRequest('/api/metrics/suspicious-logins', 'user-token'),
+      undefined,
+      mockEnv
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it('複数国ログインの疑いがあるユーザー一覧を返す', async () => {
+    const mockData = [
+      { user_id: 'user-1', country_count: 3, countries: 'JP,US,DE' },
+      { user_id: 'user-2', country_count: 2, countries: 'JP,KR' },
+    ];
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getSuspiciousMultiCountryLogins).mockResolvedValueOnce(mockData);
+    const app = buildApp();
+    const res = await app.request(
+      makeRequest('/api/metrics/suspicious-logins', 'admin-token'),
+      undefined,
+      mockEnv
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{
+      data: typeof mockData;
+      meta: { hours: number; min_countries: number };
+    }>();
+    expect(body.data).toEqual(mockData);
+    expect(body.meta.hours).toBe(24);
+    expect(body.meta.min_countries).toBe(2);
+  });
+
+  it('デフォルトで hours=24・min_countries=2 が使われる', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getSuspiciousMultiCountryLogins).mockResolvedValueOnce([]);
+    const app = buildApp();
+
+    const before = Date.now();
+    await app.request(
+      makeRequest('/api/metrics/suspicious-logins', 'admin-token'),
+      undefined,
+      mockEnv
+    );
+    const after = Date.now();
+
+    const [, calledSince, calledMin] = vi.mocked(getSuspiciousMultiCountryLogins).mock.calls[0];
+    const calledSinceMs = new Date(calledSince).getTime();
+    expect(calledSinceMs).toBeGreaterThanOrEqual(before - 24 * 60 * 60 * 1000);
+    expect(calledSinceMs).toBeLessThanOrEqual(after - 24 * 60 * 60 * 1000);
+    expect(calledMin).toBe(2);
+  });
+
+  it('hours パラメータを指定できる', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getSuspiciousMultiCountryLogins).mockResolvedValueOnce([]);
+    const app = buildApp();
+
+    const res = await app.request(
+      makeRequest('/api/metrics/suspicious-logins?hours=48', 'admin-token'),
+      undefined,
+      mockEnv
+    );
+    const body = await res.json<{ meta: { hours: number } }>();
+    expect(body.meta.hours).toBe(48);
+  });
+
+  it('hours が 168 を超える場合は 168 にクランプされる', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getSuspiciousMultiCountryLogins).mockResolvedValueOnce([]);
+    const app = buildApp();
+    const res = await app.request(
+      makeRequest('/api/metrics/suspicious-logins?hours=9999', 'admin-token'),
+      undefined,
+      mockEnv
+    );
+    const body = await res.json<{ meta: { hours: number } }>();
+    expect(body.meta.hours).toBe(168);
+  });
+
+  it('hours が 1 未満の場合は 1 にクランプされる', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getSuspiciousMultiCountryLogins).mockResolvedValueOnce([]);
+    const app = buildApp();
+    const res = await app.request(
+      makeRequest('/api/metrics/suspicious-logins?hours=0', 'admin-token'),
+      undefined,
+      mockEnv
+    );
+    const body = await res.json<{ meta: { hours: number } }>();
+    expect(body.meta.hours).toBe(1);
+  });
+
+  it('min_countries パラメータを指定できる', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getSuspiciousMultiCountryLogins).mockResolvedValueOnce([]);
+    const app = buildApp();
+    const res = await app.request(
+      makeRequest('/api/metrics/suspicious-logins?min_countries=3', 'admin-token'),
+      undefined,
+      mockEnv
+    );
+    const body = await res.json<{ meta: { min_countries: number } }>();
+    expect(body.meta.min_countries).toBe(3);
+    expect(getSuspiciousMultiCountryLogins).toHaveBeenCalledWith(
+      mockEnv.DB,
+      expect.any(String),
+      3
+    );
+  });
+
+  it('min_countries が 10 を超える場合は 10 にクランプされる', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getSuspiciousMultiCountryLogins).mockResolvedValueOnce([]);
+    const app = buildApp();
+    const res = await app.request(
+      makeRequest('/api/metrics/suspicious-logins?min_countries=99', 'admin-token'),
+      undefined,
+      mockEnv
+    );
+    const body = await res.json<{ meta: { min_countries: number } }>();
+    expect(body.meta.min_countries).toBe(10);
+  });
+
+  it('該当者がいない場合は空配列を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getSuspiciousMultiCountryLogins).mockResolvedValueOnce([]);
+    const app = buildApp();
+    const res = await app.request(
+      makeRequest('/api/metrics/suspicious-logins', 'admin-token'),
+      undefined,
+      mockEnv
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[] }>();
     expect(body.data).toEqual([]);
   });
 });

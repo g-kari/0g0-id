@@ -180,3 +180,38 @@ export async function getLoginEventCountryStats(
     .all<LoginCountryStat>();
   return result.results;
 }
+
+/** 複数国からの不審なログイン検知エントリ */
+export interface SuspiciousMultiCountryLogin {
+  user_id: string;
+  country_count: number;
+  countries: string; // GROUP_CONCAT によるカンマ区切り国コード
+}
+
+/**
+ * 指定期間内に複数の異なる国からログインしたユーザーを返す（不審ログイン検知）。
+ * minCountries 以上の異なる国からログインしたユーザーのみ返す。
+ * country が NULL のイベントは "unknown" として集計される。
+ * country_count の降順でソートされる。
+ */
+export async function getSuspiciousMultiCountryLogins(
+  db: D1Database,
+  sinceIso: string,
+  minCountries: number = 2
+): Promise<SuspiciousMultiCountryLogin[]> {
+  const result = await db
+    .prepare(
+      `SELECT
+        user_id,
+        COUNT(DISTINCT COALESCE(country, 'unknown')) as country_count,
+        GROUP_CONCAT(DISTINCT COALESCE(country, 'unknown')) as countries
+       FROM login_events
+       WHERE created_at >= ?
+       GROUP BY user_id
+       HAVING country_count >= ?
+       ORDER BY country_count DESC`
+    )
+    .bind(sinceIso, minCountries)
+    .all<SuspiciousMultiCountryLogin>();
+  return result.results;
+}

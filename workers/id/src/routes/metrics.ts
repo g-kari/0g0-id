@@ -9,6 +9,7 @@ import {
   getLoginEventCountryStats,
   getDailyLoginTrends,
   getServiceTokenStats,
+  getSuspiciousMultiCountryLogins,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
@@ -76,6 +77,22 @@ app.get('/login-trends', authMiddleware, adminMiddleware, async (c) => {
 app.get('/services', authMiddleware, adminMiddleware, async (c) => {
   const stats = await getServiceTokenStats(c.env.DB);
   return c.json({ data: stats });
+});
+
+// GET /api/metrics/suspicious-logins?hours=24&min_countries=2
+app.get('/suspicious-logins', authMiddleware, adminMiddleware, async (c) => {
+  const hoursStr = c.req.query('hours');
+  const parsedHours = hoursStr !== undefined ? parseInt(hoursStr, 10) : NaN;
+  const hours = Math.min(Math.max(Number.isNaN(parsedHours) ? 24 : parsedHours, 1), 168); // 1h〜7日
+
+  const minCountriesStr = c.req.query('min_countries');
+  const parsedMin = minCountriesStr !== undefined ? parseInt(minCountriesStr, 10) : NaN;
+  const minCountries = Math.min(Math.max(Number.isNaN(parsedMin) ? 2 : parsedMin, 2), 10);
+
+  const sinceIso = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+  const logins = await getSuspiciousMultiCountryLogins(c.env.DB, sinceIso, minCountries);
+
+  return c.json({ data: logins, meta: { hours, min_countries: minCountries } });
 });
 
 export default app;
