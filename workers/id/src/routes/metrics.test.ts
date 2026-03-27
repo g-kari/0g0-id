@@ -13,6 +13,7 @@ vi.mock('@0g0-id/shared', () => ({
   verifyAccessToken: vi.fn(),
   getServiceTokenStats: vi.fn(),
   getSuspiciousMultiCountryLogins: vi.fn(),
+  getDailyUserRegistrations: vi.fn(),
 }));
 
 import {
@@ -27,6 +28,7 @@ import {
   verifyAccessToken,
   getServiceTokenStats,
   getSuspiciousMultiCountryLogins,
+  getDailyUserRegistrations,
 } from '@0g0-id/shared';
 
 import metricsRoutes from './metrics';
@@ -653,6 +655,113 @@ describe('GET /api/metrics/suspicious-logins', () => {
     const app = buildApp();
     const res = await app.request(
       makeRequest('/api/metrics/suspicious-logins', 'admin-token'),
+      undefined,
+      mockEnv
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[] }>();
+    expect(body.data).toEqual([]);
+  });
+});
+
+describe('GET /api/metrics/user-registrations', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('認証なしで 401 を返す', async () => {
+    const app = buildApp();
+    const res = await app.request(makeRequest('/api/metrics/user-registrations'), undefined, mockEnv);
+    expect(res.status).toBe(401);
+  });
+
+  it('管理者以外で 403 を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockUserPayload);
+    const app = buildApp();
+    const res = await app.request(
+      makeRequest('/api/metrics/user-registrations', 'user-token'),
+      undefined,
+      mockEnv
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it('日別ユーザー登録数を返す', async () => {
+    const mockData = [
+      { date: '2026-03-20', count: 3 },
+      { date: '2026-03-21', count: 7 },
+      { date: '2026-03-22', count: 2 },
+    ];
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getDailyUserRegistrations).mockResolvedValueOnce(mockData);
+    const app = buildApp();
+    const res = await app.request(
+      makeRequest('/api/metrics/user-registrations', 'admin-token'),
+      undefined,
+      mockEnv
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: typeof mockData; days: number }>();
+    expect(body.data).toEqual(mockData);
+    expect(body.days).toBe(30);
+  });
+
+  it('daysパラメーターが指定された場合 getDailyUserRegistrations に渡される', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getDailyUserRegistrations).mockResolvedValueOnce([]);
+    const app = buildApp();
+    await app.request(
+      makeRequest('/api/metrics/user-registrations?days=7', 'admin-token'),
+      undefined,
+      mockEnv
+    );
+    expect(vi.mocked(getDailyUserRegistrations)).toHaveBeenCalledWith(mockEnv.DB, 7);
+  });
+
+  it('days が未指定の場合はデフォルト 30 が使われる', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getDailyUserRegistrations).mockResolvedValueOnce([]);
+    const app = buildApp();
+    const res = await app.request(
+      makeRequest('/api/metrics/user-registrations', 'admin-token'),
+      undefined,
+      mockEnv
+    );
+    expect(vi.mocked(getDailyUserRegistrations)).toHaveBeenCalledWith(mockEnv.DB, 30);
+    const body = await res.json<{ days: number }>();
+    expect(body.days).toBe(30);
+  });
+
+  it('days が 90 を超える場合は 90 にクランプされる', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getDailyUserRegistrations).mockResolvedValueOnce([]);
+    const app = buildApp();
+    await app.request(
+      makeRequest('/api/metrics/user-registrations?days=200', 'admin-token'),
+      undefined,
+      mockEnv
+    );
+    expect(vi.mocked(getDailyUserRegistrations)).toHaveBeenCalledWith(mockEnv.DB, 90);
+  });
+
+  it('days が 1 未満の場合は 1 にクランプされる', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getDailyUserRegistrations).mockResolvedValueOnce([]);
+    const app = buildApp();
+    await app.request(
+      makeRequest('/api/metrics/user-registrations?days=0', 'admin-token'),
+      undefined,
+      mockEnv
+    );
+    expect(vi.mocked(getDailyUserRegistrations)).toHaveBeenCalledWith(mockEnv.DB, 1);
+  });
+
+  it('登録が0件の場合も 200 で空配列を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getDailyUserRegistrations).mockResolvedValueOnce([]);
+    const app = buildApp();
+    const res = await app.request(
+      makeRequest('/api/metrics/user-registrations', 'admin-token'),
       undefined,
       mockEnv
     );

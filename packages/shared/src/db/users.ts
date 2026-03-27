@@ -405,6 +405,34 @@ export async function unbanUser(db: D1Database, userId: string): Promise<User> {
   return user;
 }
 
+/** 日別ユーザー登録数の統計エントリ */
+export interface DailyUserRegistrationStat {
+  date: string; // YYYY-MM-DD
+  count: number;
+}
+
+/**
+ * 指定日数分の日別新規ユーザー登録数を日付昇順で返す。
+ * 登録が0件の日は結果に含まれない。
+ */
+export async function getDailyUserRegistrations(
+  db: D1Database,
+  days: number = 30
+): Promise<DailyUserRegistrationStat[]> {
+  const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const result = await db
+    .prepare(
+      `SELECT strftime('%Y-%m-%d', created_at) as date, COUNT(*) as count
+       FROM users
+       WHERE created_at >= ?
+       GROUP BY date
+       ORDER BY date ASC`
+    )
+    .bind(sinceIso)
+    .all<DailyUserRegistrationStat>();
+  return result.results;
+}
+
 export async function linkProvider(
   db: D1Database,
   userId: string,

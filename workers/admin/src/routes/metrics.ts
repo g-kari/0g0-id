@@ -38,4 +38,13 @@ app.get('/suspicious-logins', async (c) => {
   return proxyResponse(res);
 });
 
+// GET /api/metrics/user-registrations?days=30 — 日別新規ユーザー登録数
+app.get('/user-registrations', async (c) => {
+  const url = new URL(`${c.env.IDP_ORIGIN}/api/metrics/user-registrations`);
+  const days = c.req.query('days');
+  if (days) url.searchParams.set('days', days);
+  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  return proxyResponse(res);
+});
+
 export default app;

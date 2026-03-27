@@ -10,6 +10,7 @@ import {
   getDailyLoginTrends,
   getServiceTokenStats,
   getSuspiciousMultiCountryLogins,
+  getDailyUserRegistrations,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
@@ -93,6 +94,17 @@ app.get('/suspicious-logins', authMiddleware, adminMiddleware, async (c) => {
   const logins = await getSuspiciousMultiCountryLogins(c.env.DB, sinceIso, minCountries);
 
   return c.json({ data: logins, meta: { hours, min_countries: minCountries } });
+});
+
+// GET /api/metrics/user-registrations?days=30 — 日別新規ユーザー登録数
+app.get('/user-registrations', authMiddleware, adminMiddleware, async (c) => {
+  const daysStr = c.req.query('days');
+  const parsed = daysStr !== undefined ? parseInt(daysStr, 10) : NaN;
+  const days = Math.min(Math.max(Number.isNaN(parsed) ? 30 : parsed, 1), 90);
+
+  const registrations = await getDailyUserRegistrations(c.env.DB, days);
+
+  return c.json({ data: registrations, days });
 });
 
 export default app;
