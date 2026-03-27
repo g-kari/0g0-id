@@ -54,6 +54,13 @@ describe('authRateLimitMiddleware', () => {
     expect(body.error.code).toBe('TOO_MANY_REQUESTS');
   });
 
+  it('制限超過のレスポンスに Retry-After ヘッダーが含まれる', async () => {
+    const app = buildApp(makeBaseEnv({ RATE_LIMITER_AUTH: makeRateLimiter(false) }));
+    const res = await app.request('/auth/login');
+    expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBe('60');
+  });
+
   it('バインディング未設定の場合はスキップして通過する', async () => {
     const app = buildApp(makeBaseEnv({ RATE_LIMITER_AUTH: undefined }));
     const res = await app.request('/auth/login');
@@ -119,6 +126,15 @@ describe('externalApiRateLimitMiddleware', () => {
     expect(res.status).toBe(429);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('TOO_MANY_REQUESTS');
+  });
+
+  it('制限超過のレスポンスに Retry-After ヘッダーが含まれる', async () => {
+    const app = buildApp(makeBaseEnv({ RATE_LIMITER_EXTERNAL: makeRateLimiter(false) }));
+    const res = await app.request('/api/external/users', {
+      Authorization: basicAuthHeader('client-abc'),
+    });
+    expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBe('60');
   });
 
   it('バインディング未設定の場合はスキップして通過する', async () => {
@@ -194,6 +210,13 @@ describe('tokenApiRateLimitMiddleware', () => {
     expect(res.status).toBe(429);
     const body = await res.json<{ error: { code: string; message: string } }>();
     expect(body.error.code).toBe('TOO_MANY_REQUESTS');
+  });
+
+  it('制限超過のレスポンスに Retry-After ヘッダーが含まれる', async () => {
+    const app = buildApp(makeBaseEnv({ RATE_LIMITER_TOKEN: makeRateLimiter(false) }));
+    const res = await app.request('/auth/exchange');
+    expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBe('60');
   });
 
   it('バインディング未設定の場合はスキップして通過する', async () => {
