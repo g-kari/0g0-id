@@ -27,7 +27,7 @@ npm run deploy:admin           # admin workerデプロイ
 ```bash
 # 本番DBに適用（push前に必ず実行）
 npm run migrate:id
-# = wrangler d1 migrations apply 0g0-id-db
+# = wrangler d1 migrations apply 0g0-id-db --remote
 
 # ローカルDBに適用（開発時）
 wrangler d1 migrations apply 0g0-id-db --local
@@ -41,15 +41,15 @@ Cloudflare CI でデプロイしている（GitHub Actions は使用しない）
 - **デプロイコマンド**: `npm ci && npm run deploy:id`
 - **ルートディレクトリ**: `/`
 
-`deploy:id` スクリプトは `wrangler d1 migrations apply 0g0-id-db && vite build && wrangler deploy` を実行する。
-wrangler は CI/CD 環境では確認プロンプトを自動スキップするため、**CI では確認なしでマイグレーションが適用される**。
+`deploy:id` スクリプトは `wrangler d1 migrations apply 0g0-id-db --remote && vite build && wrangler deploy` を実行する。
+`--remote` を明示することで、CI・ローカルどちらから実行しても確実に本番DBに適用される。
 
-ただし CI でのマイグレーション適用は「コードと同時」になるため、**push前にローカルから本番DBへ先に適用しておく**のが安全。
+**push前にローカルから本番DBへ先に適用しておく**のが安全（CIと同時適用を避けるため）。
 
 ### マイグレーションファイル追加時のチェックリスト
 
 1. `migrations/XXXX_*.sql` を作成
-2. **本番DBに適用**: `npm run migrate:id`（ローカルマシンから）
+2. **本番DBに適用**: `npm run migrate:id`（ローカルマシンから `--remote` で本番DBへ）
 3. コードを変更（新カラムを使用）
 4. `npm run typecheck` で型チェック
 5. `git push`（CIが自動デプロイ）
