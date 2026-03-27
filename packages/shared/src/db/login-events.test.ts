@@ -664,3 +664,95 @@ describe('getLoginEventCountryStats', () => {
     expect(sql).toContain('ORDER BY count DESC');
   });
 });
+
+describe('getSuspiciousMultiCountryLogins', () => {
+  it('複数国からログインしたユーザーの一覧を返す', async () => {
+    const mockResults = [
+      { user_id: 'user-1', country_count: 3, countries: 'JP,US,DE' },
+      { user_id: 'user-2', country_count: 2, countries: 'JP,KR' },
+    ];
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: mockResults }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const { getSuspiciousMultiCountryLogins } = await import('./login-events');
+    const result = await getSuspiciousMultiCountryLogins(db, '2024-01-01T00:00:00.000Z');
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({ user_id: 'user-1', country_count: 3, countries: 'JP,US,DE' });
+    expect(result[1]).toEqual({ user_id: 'user-2', country_count: 2, countries: 'JP,KR' });
+  });
+
+  it('該当するユーザーがいない場合は空配列を返す', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const { getSuspiciousMultiCountryLogins } = await import('./login-events');
+    const result = await getSuspiciousMultiCountryLogins(db, '2099-01-01T00:00:00.000Z');
+
+    expect(result).toEqual([]);
+  });
+
+  it('sinceIso と minCountries を bind パラメータとして渡す', async () => {
+    const since = '2024-06-01T00:00:00.000Z';
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const { getSuspiciousMultiCountryLogins } = await import('./login-events');
+    await getSuspiciousMultiCountryLogins(db, since, 3);
+
+    expect(stmt.bind).toHaveBeenCalledWith(since, 3);
+  });
+
+  it('minCountries を省略した場合はデフォルト 2 が使われる', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const { getSuspiciousMultiCountryLogins } = await import('./login-events');
+    await getSuspiciousMultiCountryLogins(db, '2024-01-01T00:00:00.000Z');
+
+    expect(stmt.bind).toHaveBeenCalledWith('2024-01-01T00:00:00.000Z', 2);
+  });
+
+  it('SQL に HAVING country_count >= ? が含まれる', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const { getSuspiciousMultiCountryLogins } = await import('./login-events');
+    await getSuspiciousMultiCountryLogins(db, '2024-01-01T00:00:00.000Z');
+
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('HAVING country_count >=');
+    expect(sql).toContain('GROUP BY user_id');
+    expect(sql).toContain('ORDER BY country_count DESC');
+  });
+
+  it('SQL に COUNT(DISTINCT ...) と GROUP_CONCAT(DISTINCT ...) が含まれる', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+
+    const { getSuspiciousMultiCountryLogins } = await import('./login-events');
+    await getSuspiciousMultiCountryLogins(db, '2024-01-01T00:00:00.000Z');
+
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('COUNT(DISTINCT');
+    expect(sql).toContain('GROUP_CONCAT(DISTINCT');
+  });
+});
