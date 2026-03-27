@@ -677,7 +677,8 @@ describe('POST /auth/refresh', () => {
     expect(body.error.code).toBe('TOKEN_REUSE');
     expect(vi.mocked(revokeTokenFamily)).toHaveBeenCalledWith(
       mockEnv.DB,
-      'family-1'
+      'family-1',
+      'reuse_detected'
     );
   });
 
@@ -787,7 +788,7 @@ describe('POST /auth/logout', () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ data: { success: boolean } }>();
     expect(body.data.success).toBe(true);
-    expect(vi.mocked(revokeRefreshToken)).toHaveBeenCalledWith(mockEnv.DB, 'rt-id');
+    expect(vi.mocked(revokeRefreshToken)).toHaveBeenCalledWith(mockEnv.DB, 'rt-id', 'user_logout');
   });
 
   it('存在しないrefresh_token → エラーなくsuccessを返す', async () => {

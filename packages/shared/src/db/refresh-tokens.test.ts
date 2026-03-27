@@ -119,7 +119,15 @@ describe('revokeRefreshToken', () => {
     const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(sql).toContain('revoked_at');
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
-    expect(stmt.bind).toHaveBeenCalledWith('token-id-1');
+    expect(stmt.bind).toHaveBeenCalledWith(null, 'token-id-1');
+  });
+
+  it('reasonを指定した場合はrevoked_reasonに記録する', async () => {
+    const db = makeD1Mock();
+    await revokeRefreshToken(db, 'token-id-1', 'user_logout');
+
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('user_logout', 'token-id-1');
   });
 });
 
@@ -132,7 +140,7 @@ describe('revokeTokenFamily', () => {
     expect(sql).toContain('family_id');
     expect(sql).toContain('revoked_at');
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
-    expect(stmt.bind).toHaveBeenCalledWith('family-1');
+    expect(stmt.bind).toHaveBeenCalledWith(null, 'family-1');
   });
 
   it('既に失効済みのトークンは対象外（revoked_at IS NULL条件）', async () => {
@@ -140,6 +148,14 @@ describe('revokeTokenFamily', () => {
     await revokeTokenFamily(db, 'family-1');
     const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(sql).toContain('revoked_at IS NULL');
+  });
+
+  it('reasonを指定した場合はrevoked_reasonに記録する', async () => {
+    const db = makeD1Mock();
+    await revokeTokenFamily(db, 'family-1', 'reuse_detected');
+
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('reuse_detected', 'family-1');
   });
 });
 
@@ -152,7 +168,15 @@ describe('revokeUserTokens', () => {
     expect(sql).toContain('user_id');
     expect(sql).toContain('revoked_at');
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
-    expect(stmt.bind).toHaveBeenCalledWith('user-1');
+    expect(stmt.bind).toHaveBeenCalledWith(null, 'user-1');
+  });
+
+  it('reasonを指定した場合はrevoked_reasonに記録する', async () => {
+    const db = makeD1Mock();
+    await revokeUserTokens(db, 'user-1', 'user_logout_all');
+
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('user_logout_all', 'user-1');
   });
 });
 
@@ -263,7 +287,14 @@ describe('revokeUserServiceTokens', () => {
     const db = makeD1Mock(null, [], 1);
     await revokeUserServiceTokens(db, 'user-1', 'service-1');
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
-    expect(stmt.bind).toHaveBeenCalledWith('user-1', 'service-1');
+    expect(stmt.bind).toHaveBeenCalledWith(null, 'user-1', 'service-1');
+  });
+
+  it('reasonを指定した場合はrevoked_reasonに記録する', async () => {
+    const db = makeD1Mock(null, [], 1);
+    await revokeUserServiceTokens(db, 'user-1', 'service-1', 'user_logout');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('user_logout', 'user-1', 'service-1');
   });
 });
 
@@ -333,7 +364,14 @@ describe('revokeOtherUserTokens', () => {
     const db = makeD1Mock(null, [], 1);
     await revokeOtherUserTokens(db, 'user-1', 'current-hash');
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
-    expect(stmt.bind).toHaveBeenCalledWith('user-1', 'current-hash');
+    expect(stmt.bind).toHaveBeenCalledWith(null, 'user-1', 'current-hash');
+  });
+
+  it('reasonを指定した場合はrevoked_reasonに記録する', async () => {
+    const db = makeD1Mock(null, [], 1);
+    await revokeOtherUserTokens(db, 'user-1', 'current-hash', 'user_logout_others');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('user_logout_others', 'user-1', 'current-hash');
   });
 
   it('SQLにtoken_hash != ?とrevoked_at IS NULLが含まれる', async () => {
@@ -392,7 +430,7 @@ describe('revokeAllServiceTokens', () => {
     const db = makeD1Mock(null, [], 3);
     await revokeAllServiceTokens(db, 'service-1');
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
-    expect(stmt.bind).toHaveBeenCalledWith('service-1');
+    expect(stmt.bind).toHaveBeenCalledWith(null, 'service-1');
   });
 
   it('SQLにservice_id = ?とrevoked_at IS NULLが含まれる', async () => {
@@ -402,5 +440,12 @@ describe('revokeAllServiceTokens', () => {
     expect(sql).toContain('service_id = ?');
     expect(sql).toContain('revoked_at IS NULL');
     expect(sql).not.toContain('user_id');
+  });
+
+  it('reasonを指定した場合はrevoked_reasonに記録する', async () => {
+    const db = makeD1Mock(null, [], 5);
+    await revokeAllServiceTokens(db, 'service-1', 'service_delete');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('service_delete', 'service-1');
   });
 });

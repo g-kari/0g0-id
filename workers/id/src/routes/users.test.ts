@@ -896,7 +896,7 @@ describe('PATCH /api/users/:id/role', () => {
       body: { role: 'admin' },
       origin: 'https://admin.0g0.xyz',
     });
-    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), 'user-1');
+    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), 'user-1', 'security_event');
   });
 });
 
@@ -974,7 +974,7 @@ describe('DELETE /api/users/:id', () => {
       method: 'DELETE',
       origin: 'https://admin.0g0.xyz',
     });
-    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), 'user-1');
+    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), 'user-1', 'admin_action');
     expect(vi.mocked(deleteUser)).toHaveBeenCalledWith(expect.anything(), 'user-1');
   });
 });
@@ -1655,7 +1655,7 @@ describe('DELETE /api/users/me/tokens', () => {
       origin: 'https://user.0g0.xyz',
     });
     expect(res.status).toBe(204);
-    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), mockUserPayload.sub);
+    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), mockUserPayload.sub, 'user_logout_all');
   });
 });
 
@@ -1693,7 +1693,8 @@ describe('DELETE /api/users/me/tokens/:tokenId', () => {
     expect(vi.mocked(revokeTokenByIdForUser)).toHaveBeenCalledWith(
       expect.anything(),
       'token-abc',
-      mockUserPayload.sub
+      mockUserPayload.sub,
+      'user_logout'
     );
   });
 
@@ -1756,7 +1757,8 @@ describe('DELETE /api/users/me/tokens/others', () => {
     expect(vi.mocked(revokeOtherUserTokens)).toHaveBeenCalledWith(
       mockEnv.DB,
       mockUserPayload.sub,
-      'abc123hash'
+      'abc123hash',
+      'user_logout_others'
     );
   });
 
@@ -1910,7 +1912,7 @@ describe('DELETE /api/users/:id/tokens', () => {
       origin: 'https://admin.0g0.xyz',
     });
     expect(res.status).toBe(204);
-    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), 'user-1');
+    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), 'user-1', 'admin_action');
   });
 });
 
@@ -1967,7 +1969,8 @@ describe('DELETE /api/users/:id/tokens/:tokenId', () => {
     expect(vi.mocked(revokeTokenByIdForUser)).toHaveBeenCalledWith(
       expect.anything(),
       'token-abc',
-      'user-1'
+      'user-1',
+      'admin_action'
     );
   });
 
@@ -1990,7 +1993,8 @@ describe('DELETE /api/users/:id/tokens/:tokenId', () => {
     expect(vi.mocked(revokeTokenByIdForUser)).toHaveBeenCalledWith(
       expect.anything(),
       'specific-token-id',
-      'target-user-xyz'
+      'target-user-xyz',
+      'admin_action'
     );
   });
 });
@@ -2051,7 +2055,7 @@ describe('DELETE /api/users/me', () => {
       origin: 'https://id.0g0.xyz',
     });
     expect(res.status).toBe(204);
-    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), mockUserPayload.sub);
+    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), mockUserPayload.sub, 'admin_action');
     expect(vi.mocked(deleteUser)).toHaveBeenCalledWith(expect.anything(), mockUserPayload.sub);
   });
 
@@ -2089,7 +2093,7 @@ describe('PATCH /api/users/:id/ban — ユーザー停止', () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ data: { banned_at: string } }>();
     expect(body.data.banned_at).toBe('2026-03-24T00:00:00Z');
-    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), 'target-user-id');
+    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(expect.anything(), 'target-user-id', 'security_event');
   });
 
   it('自分自身を停止しようとした場合 → 403を返す', async () => {

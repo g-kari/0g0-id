@@ -216,7 +216,7 @@ app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
   const tokenUser = c.get('user');
 
   // サービス削除前に全ユーザーのアクティブトークンを失効させる
-  const revokedCount = await revokeAllServiceTokens(c.env.DB, serviceId);
+  const revokedCount = await revokeAllServiceTokens(c.env.DB, serviceId, 'service_delete');
   if (revokedCount > 0) {
     servicesLogger.info(`[services] Revoked ${revokedCount} active tokens before deleting service ${serviceId}`);
   }
@@ -421,7 +421,7 @@ app.delete('/:id/users/:userId', authMiddleware, adminMiddleware, csrfMiddleware
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  const revokedCount = await revokeUserServiceTokens(c.env.DB, userId, serviceId);
+  const revokedCount = await revokeUserServiceTokens(c.env.DB, userId, serviceId, 'admin_action');
   if (revokedCount === 0) {
     return c.json(
       { error: { code: 'NOT_FOUND', message: 'User has no active authorization for this service' } },

@@ -590,7 +590,8 @@ describe('POST /api/token/revoke', () => {
     expect(res.status).toBe(200);
     expect(vi.mocked(revokeRefreshToken)).toHaveBeenCalledWith(
       mockEnv.DB,
-      mockRefreshToken.id
+      mockRefreshToken.id,
+      'service_revoke'
     );
   });
 
@@ -646,7 +647,7 @@ describe('POST /api/token/revoke', () => {
       authHeader: makeBasicAuth('test-client-id', 'secret'),
     });
     expect(res.status).toBe(200);
-    expect(vi.mocked(revokeRefreshToken)).toHaveBeenCalledWith(mockEnv.DB, mockRefreshToken.id);
+    expect(vi.mocked(revokeRefreshToken)).toHaveBeenCalledWith(mockEnv.DB, mockRefreshToken.id, 'service_revoke');
   });
 
   it('form-encoded: token_type_hintを指定しても正常動作 → 200', async () => {

@@ -192,7 +192,7 @@ app.post('/revoke', externalApiRateLimitMiddleware, async (c) => {
   // RFC 7009: トークンが存在しない・失効済みでも 200 OK を返す（情報漏洩防止）
   // 自サービスが発行したトークンのみ失効可能
   if (refreshToken && refreshToken.revoked_at === null && refreshToken.service_id === service.id) {
-    await revokeRefreshToken(c.env.DB, refreshToken.id);
+    await revokeRefreshToken(c.env.DB, refreshToken.id, 'service_revoke');
   }
 
   return new Response(null, { status: 200 });
