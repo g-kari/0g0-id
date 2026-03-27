@@ -217,4 +217,93 @@ describe('admin BFF — /api/metrics', () => {
       expect(res.status).toBe(500);
     });
   });
+
+  describe('GET /suspicious-logins — 不審なログイン検知', () => {
+    const mockSuspiciousLogins = [
+      {
+        user_id: 'user-1',
+        email: 'user@example.com',
+        name: 'Test User',
+        country_count: 3,
+        countries: ['JP', 'US', 'DE'],
+        login_count: 5,
+      },
+    ];
+
+    it('セッションなしで 401 を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/suspicious-logins');
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('IdP にリクエストをプロキシする', async () => {
+      const idpFetch = mockIdp(200, {
+        data: mockSuspiciousLogins,
+        meta: { hours: 24, min_countries: 2 },
+      });
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/suspicious-logins', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json<{
+        data: typeof mockSuspiciousLogins;
+        meta: { hours: number; min_countries: number };
+      }>();
+      expect(body.data).toEqual(mockSuspiciousLogins);
+      const calledUrl = vi.mocked(idpFetch).mock.calls[0][0].url;
+      expect(calledUrl).toContain('/api/metrics/suspicious-logins');
+    });
+
+    it('hours クエリパラメータを IdP に転送する', async () => {
+      const idpFetch = mockIdp(200, {
+        data: mockSuspiciousLogins,
+        meta: { hours: 48, min_countries: 2 },
+      });
+      const app = buildApp(idpFetch);
+      await app.request('/api/metrics/suspicious-logins?hours=48', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      const calledUrl = new URL(vi.mocked(idpFetch).mock.calls[0][0].url);
+      expect(calledUrl.searchParams.get('hours')).toBe('48');
+    });
+
+    it('min_countries クエリパラメータを IdP に転送する', async () => {
+      const idpFetch = mockIdp(200, {
+        data: mockSuspiciousLogins,
+        meta: { hours: 24, min_countries: 3 },
+      });
+      const app = buildApp(idpFetch);
+      await app.request('/api/metrics/suspicious-logins?min_countries=3', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      const calledUrl = new URL(vi.mocked(idpFetch).mock.calls[0][0].url);
+      expect(calledUrl.searchParams.get('min_countries')).toBe('3');
+    });
+
+    it('hours と min_countries を同時に転送する', async () => {
+      const idpFetch = mockIdp(200, {
+        data: [],
+        meta: { hours: 72, min_countries: 4 },
+      });
+      const app = buildApp(idpFetch);
+      await app.request('/api/metrics/suspicious-logins?hours=72&min_countries=4', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      const calledUrl = new URL(vi.mocked(idpFetch).mock.calls[0][0].url);
+      expect(calledUrl.searchParams.get('hours')).toBe('72');
+      expect(calledUrl.searchParams.get('min_countries')).toBe('4');
+    });
+
+    it('IdP エラーをそのまま転送する', async () => {
+      const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR' } });
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/suspicious-logins', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(500);
+    });
+  });
 });

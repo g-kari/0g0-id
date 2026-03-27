@@ -27,4 +27,15 @@ app.get('/services', async (c) => {
   return proxyResponse(res);
 });
 
+// GET /api/metrics/suspicious-logins?hours=24&min_countries=2
+app.get('/suspicious-logins', async (c) => {
+  const url = new URL(`${c.env.IDP_ORIGIN}/api/metrics/suspicious-logins`);
+  const hours = c.req.query('hours');
+  const minCountries = c.req.query('min_countries');
+  if (hours) url.searchParams.set('hours', hours);
+  if (minCountries) url.searchParams.set('min_countries', minCountries);
+  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  return proxyResponse(res);
+});
+
 export default app;
