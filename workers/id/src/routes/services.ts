@@ -20,6 +20,7 @@ import {
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
   revokeUserServiceTokens,
+  revokeAllServiceTokens,
   createAdminAuditLog,
   parsePagination,
   createLogger,
@@ -213,6 +214,13 @@ app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
   }
 
   const tokenUser = c.get('user');
+
+  // サービス削除前に全ユーザーのアクティブトークンを失効させる
+  const revokedCount = await revokeAllServiceTokens(c.env.DB, serviceId);
+  if (revokedCount > 0) {
+    servicesLogger.info(`[services] Revoked ${revokedCount} active tokens before deleting service ${serviceId}`);
+  }
+
   await deleteService(c.env.DB, serviceId);
 
   try {
@@ -221,7 +229,7 @@ app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
       action: 'service.delete',
       targetType: 'service',
       targetId: serviceId,
-      details: { name: service.name },
+      details: { name: service.name, revoked_token_count: revokedCount },
       ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
     });
   } catch (err) {

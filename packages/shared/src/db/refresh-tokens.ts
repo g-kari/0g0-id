@@ -284,6 +284,22 @@ export async function revokeUserServiceTokens(
 }
 
 /**
+ * サービスに属する全ユーザーのアクティブトークンを一括失効させる。
+ * サービス削除時に呼び出し、削除されたサービスのトークンが残存しないようにする。
+ * 失効したトークン数を返す。
+ */
+export async function revokeAllServiceTokens(db: D1Database, serviceId: string): Promise<number> {
+  const result = await db
+    .prepare(
+      `UPDATE refresh_tokens SET revoked_at = datetime('now')
+       WHERE service_id = ? AND revoked_at IS NULL AND datetime(expires_at) > datetime('now')`
+    )
+    .bind(serviceId)
+    .run();
+  return result.meta.changes ?? 0;
+}
+
+/**
  * 指定した token_hash 以外のユーザートークンを全て失効させる（他デバイスからのログアウト）。
  * 失効したトークン数を返す。
  */
