@@ -23,6 +23,7 @@ vi.mock('@0g0-id/shared', () => ({
   listUsersAuthorizedForService: vi.fn(),
   countUsersAuthorizedForService: vi.fn(),
   revokeUserServiceTokens: vi.fn(),
+  revokeAllServiceTokens: vi.fn(),
   countServices: vi.fn(),
   createAdminAuditLog: vi.fn(),
   parsePagination: (
