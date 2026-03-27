@@ -82,3 +82,42 @@ export async function listAdminAuditLogs(
     total: countResult?.count ?? 0,
   };
 }
+
+export interface AuditLogStats {
+  action_stats: Array<{ action: string; count: number }>;
+  admin_stats: Array<{ admin_user_id: string; count: number }>;
+  daily_stats: Array<{ date: string; count: number }>;
+}
+
+/**
+ * 管理者操作の監査ログ統計を取得する。
+ * アクション別・管理者別の全期間集計と、日別集計（直近N日）を返す。
+ */
+export async function getAuditLogStats(db: D1Database, days = 30): Promise<AuditLogStats> {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  const [actionResult, adminResult, dailyResult] = await Promise.all([
+    db
+      .prepare(
+        'SELECT action, COUNT(*) as count FROM admin_audit_logs GROUP BY action ORDER BY count DESC'
+      )
+      .all<{ action: string; count: number }>(),
+    db
+      .prepare(
+        'SELECT admin_user_id, COUNT(*) as count FROM admin_audit_logs GROUP BY admin_user_id ORDER BY count DESC'
+      )
+      .all<{ admin_user_id: string; count: number }>(),
+    db
+      .prepare(
+        "SELECT date(created_at) as date, COUNT(*) as count FROM admin_audit_logs WHERE created_at >= ? GROUP BY date(created_at) ORDER BY date DESC"
+      )
+      .bind(since)
+      .all<{ date: string; count: number }>(),
+  ]);
+
+  return {
+    action_stats: actionResult.results,
+    admin_stats: adminResult.results,
+    daily_stats: dailyResult.results,
+  };
+}
