@@ -43,12 +43,16 @@ type IdpContext = Context<{ Bindings: IdpEnv }>;
  * レートリミットをスキップする（ローカル開発・テスト時を想定）。
  * 本番環境でバインディング名を typo したままデプロイした場合でも
  * ログで即座に検知できる。
+ *
+ * @param retryAfterSeconds - RFC 6585 準拠の Retry-After ヘッダーに設定する待機秒数。
+ *   wrangler.toml の rate_limit.period に合わせて設定すること（デフォルト: 60）。
  */
 function createRateLimitMiddleware(
   bindingName: string,
   getBinding: (env: IdpEnv) => RateLimitBinding | undefined,
   getKey: (c: IdpContext) => string,
   errorMessage: string,
+  retryAfterSeconds = 60,
 ) {
   return createMiddleware<{ Bindings: IdpEnv }>(async (c, next) => {
     const binding = getBinding(c.env);
@@ -71,7 +75,8 @@ function createRateLimitMiddleware(
             message: errorMessage,
           },
         },
-        429
+        429,
+        { 'Retry-After': String(retryAfterSeconds) }
       );
     }
     await next();
