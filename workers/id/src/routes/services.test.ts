@@ -1310,7 +1310,8 @@ describe('DELETE /api/services/:id/users/:userId', () => {
     expect(vi.mocked(revokeUserServiceTokens)).toHaveBeenCalledWith(
       expect.anything(),
       'target-user-id',
-      'service-1'
+      'service-1',
+      'admin_action'
     );
   });
 

@@ -1018,14 +1018,14 @@ app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
   const tokenHash = await sha256(result.data.refresh_token);
 
   // アトミックに失効させる（TOCTOU競合状態防止: RFC 6819 §5.2.2.3）
-  const storedToken = await findAndRevokeRefreshToken(c.env.DB, tokenHash);
+  const storedToken = await findAndRevokeRefreshToken(c.env.DB, tokenHash, 'rotation');
 
   if (!storedToken) {
     // null の場合: 存在しないか既に失効済み → reuse detection チェック
     const existingToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
     if (existingToken) {
       // 既に失効済み → family全失効（リプレイ攻撃検知）
-      await revokeTokenFamily(c.env.DB, existingToken.family_id);
+      await revokeTokenFamily(c.env.DB, existingToken.family_id, 'reuse_detected');
       return c.json({ error: { code: 'TOKEN_REUSE', message: 'Token reuse detected' } }, 401);
     }
     return c.json({ error: { code: 'INVALID_TOKEN', message: 'Token not found' } }, 401);
@@ -1113,7 +1113,7 @@ app.post('/logout', tokenApiRateLimitMiddleware, async (c) => {
     const tokenHash = await sha256(refreshToken);
     const storedToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
     if (storedToken) {
-      await revokeRefreshToken(c.env.DB, storedToken.id);
+      await revokeRefreshToken(c.env.DB, storedToken.id, 'user_logout');
     }
   }
 

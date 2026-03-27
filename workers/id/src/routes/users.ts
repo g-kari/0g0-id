@@ -119,7 +119,7 @@ async function performUserDeletion(
       message: `User owns ${ownedServices} service(s). Transfer ownership before deleting.`,
     };
   }
-  await revokeUserTokens(db, userId);
+  await revokeUserTokens(db, userId, 'admin_action');
   await deleteUser(db, userId);
   return null;
 }
@@ -332,7 +332,7 @@ app.delete('/me/providers/:provider', authMiddleware, csrfMiddleware, async (c) 
 app.delete('/me/connections/:serviceId', authMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const serviceId = c.req.param('serviceId');
-  const revoked = await revokeUserServiceTokens(c.env.DB, tokenUser.sub, serviceId);
+  const revoked = await revokeUserServiceTokens(c.env.DB, tokenUser.sub, serviceId, 'user_logout');
   if (revoked === 0) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Connection not found' } }, 404);
   }
@@ -353,7 +353,7 @@ app.delete('/me/tokens/others', authMiddleware, csrfMiddleware, async (c) => {
   if (!result.ok) return result.response;
   const { token_hash } = result.data;
 
-  const count = await revokeOtherUserTokens(c.env.DB, tokenUser.sub, token_hash);
+  const count = await revokeOtherUserTokens(c.env.DB, tokenUser.sub, token_hash, 'user_logout_others');
   return c.json({ data: { revoked_count: count } });
 });
 
@@ -361,7 +361,7 @@ app.delete('/me/tokens/others', authMiddleware, csrfMiddleware, async (c) => {
 app.delete('/me/tokens/:tokenId', authMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const tokenId = c.req.param('tokenId');
-  const revoked = await revokeTokenByIdForUser(c.env.DB, tokenId, tokenUser.sub);
+  const revoked = await revokeTokenByIdForUser(c.env.DB, tokenId, tokenUser.sub, 'user_logout');
   if (revoked === 0) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Session not found' } }, 404);
   }
@@ -371,7 +371,7 @@ app.delete('/me/tokens/:tokenId', authMiddleware, csrfMiddleware, async (c) => {
 // DELETE /api/users/me/tokens — 全デバイスからログアウト（全リフレッシュトークン無効化）
 app.delete('/me/tokens', authMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
-  await revokeUserTokens(c.env.DB, tokenUser.sub);
+  await revokeUserTokens(c.env.DB, tokenUser.sub, 'user_logout_all');
   return c.body(null, 204);
 });
 
@@ -495,7 +495,7 @@ app.patch('/:id/role', authMiddleware, adminMiddleware, csrfMiddleware, async (c
 
   const user = await updateUserRole(c.env.DB, targetId, role);
   // ロール変更後、既存トークンを即時失効（権限変更を即反映）
-  await revokeUserTokens(c.env.DB, targetId);
+  await revokeUserTokens(c.env.DB, targetId, 'security_event');
   await createAdminAuditLog(c.env.DB, {
     adminUserId: tokenUser.sub,
     action: 'user.role_change',
@@ -536,7 +536,7 @@ app.patch('/:id/ban', authMiddleware, adminMiddleware, csrfMiddleware, async (c)
   try {
     updated = await banUser(c.env.DB, targetId);
     // 停止と同時に全セッション失効
-    await revokeUserTokens(c.env.DB, targetId);
+    await revokeUserTokens(c.env.DB, targetId, 'security_event');
   } catch {
     return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to ban user' } }, 500);
   }
@@ -606,7 +606,7 @@ app.delete('/:id/tokens/:tokenId', authMiddleware, adminMiddleware, csrfMiddlewa
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  const revoked = await revokeTokenByIdForUser(c.env.DB, tokenId, targetId);
+  const revoked = await revokeTokenByIdForUser(c.env.DB, tokenId, targetId, 'admin_action');
   if (revoked === 0) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Session not found' } }, 404);
   }
@@ -633,7 +633,7 @@ app.delete('/:id/tokens', authMiddleware, adminMiddleware, csrfMiddleware, async
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  await revokeUserTokens(c.env.DB, targetId);
+  await revokeUserTokens(c.env.DB, targetId, 'admin_action');
 
   await createAdminAuditLog(c.env.DB, {
     adminUserId: tokenUser.sub,

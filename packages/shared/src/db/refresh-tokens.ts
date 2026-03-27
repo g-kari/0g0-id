@@ -1,5 +1,16 @@
 import type { RefreshToken, User } from '../types';
 
+export type RevokeReason =
+  | 'user_logout'
+  | 'user_logout_all'
+  | 'user_logout_others'
+  | 'reuse_detected'
+  | 'service_delete'
+  | 'service_revoke'
+  | 'rotation'
+  | 'security_event'
+  | 'admin_action';
+
 export async function findRefreshTokenByHash(
   db: D1Database,
   tokenHash: string
@@ -16,17 +27,18 @@ export async function findRefreshTokenByHash(
  */
 export async function findAndRevokeRefreshToken(
   db: D1Database,
-  tokenHash: string
+  tokenHash: string,
+  reason?: RevokeReason
 ): Promise<RefreshToken | null> {
   return db
     .prepare(
       `UPDATE refresh_tokens
-       SET revoked_at = datetime('now')
+       SET revoked_at = datetime('now'), revoked_reason = ?
        WHERE token_hash = ?
          AND revoked_at IS NULL
        RETURNING *`
     )
-    .bind(tokenHash)
+    .bind(reason ?? null, tokenHash)
     .first<RefreshToken>();
 }
 
@@ -57,31 +69,31 @@ export async function createRefreshToken(
     .run();
 }
 
-export async function revokeRefreshToken(db: D1Database, id: string): Promise<void> {
+export async function revokeRefreshToken(db: D1Database, id: string, reason?: RevokeReason): Promise<void> {
   await db
-    .prepare(`UPDATE refresh_tokens SET revoked_at = datetime('now') WHERE id = ?`)
-    .bind(id)
+    .prepare(`UPDATE refresh_tokens SET revoked_at = datetime('now'), revoked_reason = ? WHERE id = ?`)
+    .bind(reason ?? null, id)
     .run();
 }
 
 /**
  * reuse detection: family全体を失効させる
  */
-export async function revokeTokenFamily(db: D1Database, familyId: string): Promise<void> {
+export async function revokeTokenFamily(db: D1Database, familyId: string, reason?: RevokeReason): Promise<void> {
   await db
     .prepare(
-      `UPDATE refresh_tokens SET revoked_at = datetime('now') WHERE family_id = ? AND revoked_at IS NULL`
+      `UPDATE refresh_tokens SET revoked_at = datetime('now'), revoked_reason = ? WHERE family_id = ? AND revoked_at IS NULL`
     )
-    .bind(familyId)
+    .bind(reason ?? null, familyId)
     .run();
 }
 
-export async function revokeUserTokens(db: D1Database, userId: string): Promise<void> {
+export async function revokeUserTokens(db: D1Database, userId: string, reason?: RevokeReason): Promise<void> {
   await db
     .prepare(
-      `UPDATE refresh_tokens SET revoked_at = datetime('now') WHERE user_id = ? AND revoked_at IS NULL`
+      `UPDATE refresh_tokens SET revoked_at = datetime('now'), revoked_reason = ? WHERE user_id = ? AND revoked_at IS NULL`
     )
-    .bind(userId)
+    .bind(reason ?? null, userId)
     .run();
 }
 
@@ -271,14 +283,15 @@ export async function countUsersAuthorizedForService(
 export async function revokeUserServiceTokens(
   db: D1Database,
   userId: string,
-  serviceId: string
+  serviceId: string,
+  reason?: RevokeReason
 ): Promise<number> {
   const result = await db
     .prepare(
-      `UPDATE refresh_tokens SET revoked_at = datetime('now')
+      `UPDATE refresh_tokens SET revoked_at = datetime('now'), revoked_reason = ?
        WHERE user_id = ? AND service_id = ? AND revoked_at IS NULL AND datetime(expires_at) > datetime('now')`
     )
-    .bind(userId, serviceId)
+    .bind(reason ?? null, userId, serviceId)
     .run();
   return result.meta.changes ?? 0;
 }
@@ -288,13 +301,13 @@ export async function revokeUserServiceTokens(
  * サービス削除時に呼び出し、削除されたサービスのトークンが残存しないようにする。
  * 失効したトークン数を返す。
  */
-export async function revokeAllServiceTokens(db: D1Database, serviceId: string): Promise<number> {
+export async function revokeAllServiceTokens(db: D1Database, serviceId: string, reason?: RevokeReason): Promise<number> {
   const result = await db
     .prepare(
-      `UPDATE refresh_tokens SET revoked_at = datetime('now')
+      `UPDATE refresh_tokens SET revoked_at = datetime('now'), revoked_reason = ?
        WHERE service_id = ? AND revoked_at IS NULL AND datetime(expires_at) > datetime('now')`
     )
-    .bind(serviceId)
+    .bind(reason ?? null, serviceId)
     .run();
   return result.meta.changes ?? 0;
 }
@@ -306,14 +319,15 @@ export async function revokeAllServiceTokens(db: D1Database, serviceId: string):
 export async function revokeOtherUserTokens(
   db: D1Database,
   userId: string,
-  excludeTokenHash: string
+  excludeTokenHash: string,
+  reason?: RevokeReason
 ): Promise<number> {
   const result = await db
     .prepare(
-      `UPDATE refresh_tokens SET revoked_at = datetime('now')
+      `UPDATE refresh_tokens SET revoked_at = datetime('now'), revoked_reason = ?
        WHERE user_id = ? AND token_hash != ? AND revoked_at IS NULL`
     )
-    .bind(userId, excludeTokenHash)
+    .bind(reason ?? null, userId, excludeTokenHash)
     .run();
   return result.meta.changes ?? 0;
 }
@@ -325,14 +339,15 @@ export async function revokeOtherUserTokens(
 export async function revokeTokenByIdForUser(
   db: D1Database,
   tokenId: string,
-  userId: string
+  userId: string,
+  reason?: RevokeReason
 ): Promise<number> {
   const result = await db
     .prepare(
-      `UPDATE refresh_tokens SET revoked_at = datetime('now')
+      `UPDATE refresh_tokens SET revoked_at = datetime('now'), revoked_reason = ?
        WHERE id = ? AND user_id = ? AND revoked_at IS NULL AND expires_at > datetime('now')`
     )
-    .bind(tokenId, userId)
+    .bind(reason ?? null, tokenId, userId)
     .run();
   return result.meta.changes ?? 0;
 }
