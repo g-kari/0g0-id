@@ -27,10 +27,10 @@ npm run deploy:admin           # admin workerデプロイ
 ```bash
 # 本番DBに適用（push前に必ず実行）
 npm run migrate:id
-# = wrangler d1 migrations apply 0g0-id-db --yes
+# = wrangler d1 migrations apply 0g0-id-db
 
 # ローカルDBに適用（開発時）
-wrangler d1 migrations apply 0g0-id-db --local --yes
+wrangler d1 migrations apply 0g0-id-db --local
 ```
 
 ### デプロイの仕組み
@@ -41,8 +41,10 @@ Cloudflare CI でデプロイしている（GitHub Actions は使用しない）
 - **デプロイコマンド**: `npm ci && npm run deploy:id`
 - **ルートディレクトリ**: `/`
 
-`deploy:id` スクリプトは `wrangler d1 migrations apply 0g0-id-db --yes && vite build && wrangler deploy` を実行する。
-**非インタラクティブ環境（CI）では `--yes` フラグが必須**。このフラグがないと確認プロンプトが応答されず、マイグレーションが適用されないままデプロイが進む恐れがある。
+`deploy:id` スクリプトは `wrangler d1 migrations apply 0g0-id-db && vite build && wrangler deploy` を実行する。
+wrangler は CI/CD 環境では確認プロンプトを自動スキップするため、**CI では確認なしでマイグレーションが適用される**。
+
+ただし CI でのマイグレーション適用は「コードと同時」になるため、**push前にローカルから本番DBへ先に適用しておく**のが安全。
 
 ### マイグレーションファイル追加時のチェックリスト
 
