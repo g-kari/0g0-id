@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { fetchWithAuth, proxyResponse } from '@0g0-id/shared';
+import { fetchWithAuth, parseDays, proxyResponse } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 import { SESSION_COOKIE } from './auth';
 
@@ -18,13 +18,12 @@ app.get('/summary', async (c) => {
 // GET /api/me/security/login-stats — プロバイダー別ログイン統計（days: 1〜90、デフォルト30）
 app.get('/login-stats', async (c) => {
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/me/login-stats`);
-  const daysParam = c.req.query('days');
-  if (daysParam !== undefined) {
-    const days = parseInt(daysParam, 10);
-    if (!Number.isInteger(days) || days < 1 || days > 90) {
-      return c.json({ error: { code: 'INVALID_PARAMETER', message: 'days must be an integer between 1 and 90' } }, 400);
+  const daysResult = parseDays(c.req.query('days'));
+  if (daysResult !== undefined) {
+    if ('error' in daysResult) {
+      return c.json({ error: { code: 'INVALID_PARAMETER', message: daysResult.error } }, 400);
     }
-    url.searchParams.set('days', String(days));
+    url.searchParams.set('days', String(daysResult.days));
   }
   const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
   return proxyResponse(res);
@@ -33,13 +32,12 @@ app.get('/login-stats', async (c) => {
 // GET /api/me/security/login-trends — 日別ログイントレンド（days: 1〜90、デフォルト30）
 app.get('/login-trends', async (c) => {
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/me/login-trends`);
-  const daysParam = c.req.query('days');
-  if (daysParam !== undefined) {
-    const days = parseInt(daysParam, 10);
-    if (!Number.isInteger(days) || days < 1 || days > 90) {
-      return c.json({ error: { code: 'INVALID_PARAMETER', message: 'days must be an integer between 1 and 90' } }, 400);
+  const daysResult = parseDays(c.req.query('days'));
+  if (daysResult !== undefined) {
+    if ('error' in daysResult) {
+      return c.json({ error: { code: 'INVALID_PARAMETER', message: daysResult.error } }, 400);
     }
-    url.searchParams.set('days', String(days));
+    url.searchParams.set('days', String(daysResult.days));
   }
   const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
   return proxyResponse(res);

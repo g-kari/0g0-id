@@ -23,3 +23,23 @@ export function parsePagination(
     offset: offsetRaw,
   };
 }
+
+export type DaysResult = { days: number } | { error: string };
+
+/**
+ * クエリパラメータから days をパースし、バリデーションする。
+ * daysParam が undefined の場合は undefined を返す（未指定）。
+ * 不正値の場合は error プロパティを持つオブジェクトを返す。
+ */
+export function parseDays(
+  daysParam: string | undefined,
+  options: { minDays?: number; maxDays?: number } = {}
+): DaysResult | undefined {
+  if (daysParam === undefined) return undefined;
+  const { minDays = 1, maxDays = 90 } = options;
+  const days = parseInt(daysParam, 10);
+  if (!Number.isInteger(days) || days < minDays || days > maxDays) {
+    return { error: `days must be an integer between ${minDays} and ${maxDays}` };
+  }
+  return { days };
+}

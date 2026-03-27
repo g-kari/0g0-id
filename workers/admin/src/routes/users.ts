@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { fetchWithAuth, fetchWithJsonBody, parsePagination, proxyMutate, proxyResponse } from '@0g0-id/shared';
+import { fetchWithAuth, fetchWithJsonBody, parseDays, parsePagination, proxyMutate, proxyResponse } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 import { SESSION_COOKIE } from './auth';
 
@@ -91,8 +91,13 @@ app.get('/:id/login-history', async (c) => {
 // GET /api/users/:id/login-stats — ユーザーのプロバイダー別ログイン統計
 app.get('/:id/login-stats', async (c) => {
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/login-stats`);
-  const days = c.req.query('days');
-  if (days) url.searchParams.set('days', days);
+  const daysResult = parseDays(c.req.query('days'));
+  if (daysResult !== undefined) {
+    if ('error' in daysResult) {
+      return c.json({ error: { code: 'INVALID_PARAMETER', message: daysResult.error } }, 400);
+    }
+    url.searchParams.set('days', String(daysResult.days));
+  }
   const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
   return proxyResponse(res);
 });
@@ -100,8 +105,13 @@ app.get('/:id/login-stats', async (c) => {
 // GET /api/users/:id/login-trends — ユーザーの日別ログイントレンド
 app.get('/:id/login-trends', async (c) => {
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/login-trends`);
-  const days = c.req.query('days');
-  if (days) url.searchParams.set('days', days);
+  const daysResult = parseDays(c.req.query('days'));
+  if (daysResult !== undefined) {
+    if ('error' in daysResult) {
+      return c.json({ error: { code: 'INVALID_PARAMETER', message: daysResult.error } }, 400);
+    }
+    url.searchParams.set('days', String(daysResult.days));
+  }
   const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
   return proxyResponse(res);
 });
