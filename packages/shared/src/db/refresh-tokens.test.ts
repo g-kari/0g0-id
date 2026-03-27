@@ -11,6 +11,7 @@ import {
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
   revokeUserServiceTokens,
+  revokeAllServiceTokens,
   listActiveSessionsByUserId,
   revokeOtherUserTokens,
   getServiceTokenStats,
@@ -371,5 +372,35 @@ describe('getServiceTokenStats', () => {
     expect(result).toEqual([]);
   });
 });
+  });
+});
+
+describe('revokeAllServiceTokens', () => {
+  it('失効したトークン数を返す', async () => {
+    const db = makeD1Mock(null, [], 5);
+    const result = await revokeAllServiceTokens(db, 'service-1');
+    expect(result).toBe(5);
+  });
+
+  it('対象がない場合は0を返す', async () => {
+    const db = makeD1Mock(null, [], 0);
+    const result = await revokeAllServiceTokens(db, 'service-1');
+    expect(result).toBe(0);
+  });
+
+  it('serviceIdでbindを呼ぶ', async () => {
+    const db = makeD1Mock(null, [], 3);
+    await revokeAllServiceTokens(db, 'service-1');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('service-1');
+  });
+
+  it('SQLにservice_id = ?とrevoked_at IS NULLが含まれる', async () => {
+    const db = makeD1Mock(null, [], 1);
+    await revokeAllServiceTokens(db, 'service-1');
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('service_id = ?');
+    expect(sql).toContain('revoked_at IS NULL');
+    expect(sql).not.toContain('user_id');
   });
 });
