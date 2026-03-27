@@ -58,7 +58,7 @@ import { parseAllowedScopes } from '../utils/scopes';
 
 const ExchangeSchema = z.object({
   code: z.string().min(1, 'code is required'),
-  redirect_to: z.string().min(1, 'redirect_to is required'),
+  redirect_to: z.string().min(1, 'redirect_to is required').max(2048, 'redirect_to too long'),
   code_verifier: z.string().min(43).max(128).optional(),
 });
 
@@ -568,6 +568,11 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Missing required parameters' } }, 400);
   }
 
+  // state パラメータの長さ制限（Cookie汚染・過大データ保存防止）
+  if (bffState.length > 1024) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'state parameter too long' } }, 400);
+  }
+
   // providerの検証
   const validProviders: OAuthProvider[] = ['google', 'line', 'twitch', 'github', 'x'];
   if (!validProviders.includes(providerParam as OAuthProvider)) {
@@ -620,6 +625,11 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
   // OIDCオプションパラメータ
   const nonce = c.req.query('nonce');
   const codeChallenge = c.req.query('code_challenge');
+
+  // nonce の長さ制限（RFC 7636 に準じて 128 文字まで）
+  if (nonce !== undefined && nonce.length > 128) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'nonce too long' } }, 400);
+  }
   const codeChallengeMethod = c.req.query('code_challenge_method');
   const scope = c.req.query('scope');
 
@@ -802,7 +812,8 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
     const ipAddress =
       c.req.header('cf-connecting-ip') ??
       (c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? null);
-    const userAgent = c.req.header('user-agent') ?? null;
+    // user-agent は任意長の文字列のため 512 文字に切り詰め（ストレージ DoS 防止）
+    const userAgent = c.req.header('user-agent')?.slice(0, 512) ?? null;
     const country = c.req.header('cf-ipcountry') ?? null;
     await insertLoginEvent(c.env.DB, {
       userId: user.id,
