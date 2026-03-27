@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { z } from 'zod';
 import { parseJsonBody } from '../utils/parse-body';
+import { authenticateService } from '../utils/service-auth';
 
 import {
   buildGoogleAuthUrl,
@@ -123,6 +124,25 @@ type ProviderResolution =
  *
  * ❌ http:// は拒否（HTTPS必須）
  */
+/**
+ * EXTRA_BFF_ORIGINS（カンマ区切り文字列）をパースし、
+ * redirectUrl のオリジンがそのいずれかと一致するか確認する。
+ */
+function matchesExtraBffOrigins(redirectUrl: URL, extraBffOrigins?: string): boolean {
+  if (!extraBffOrigins) return false;
+  return extraBffOrigins
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean)
+    .some((extra) => {
+      try {
+        return redirectUrl.origin === new URL(extra).origin;
+      } catch {
+        return false;
+      }
+    });
+}
+
 export function isAllowedRedirectTo(
   redirectTo: string,
   idpOrigin: string,
@@ -165,26 +185,7 @@ export function isAllowedRedirectTo(
   }
 
   // EXTRA_BFF_ORIGINS による追加オリジン（外部ドメイン向け）
-  if (extraBffOrigins) {
-    const extras = extraBffOrigins
-      .split(',')
-      .map((o) => o.trim())
-      .filter(Boolean);
-    if (
-      extras.some((extra) => {
-        try {
-          // URLとしてパースしてoriginを正規化比較（プレフィックス文字列比較の脆弱性を回避）
-          return redirectUrl.origin === new URL(extra).origin;
-        } catch {
-          return false;
-        }
-      })
-    ) {
-      return true;
-    }
-  }
-
-  return false;
+  return matchesExtraBffOrigins(redirectUrl, extraBffOrigins);
 }
 
 /**
@@ -221,25 +222,7 @@ export function isBffOrigin(
   }
 
   // EXTRA_BFF_ORIGINS による追加オリジン（外部ドメイン向け）
-  if (extraBffOrigins) {
-    const extras = extraBffOrigins
-      .split(',')
-      .map((o) => o.trim())
-      .filter(Boolean);
-    if (
-      extras.some((extra) => {
-        try {
-          return redirectUrl.origin === new URL(extra).origin;
-        } catch {
-          return false;
-        }
-      })
-    ) {
-      return true;
-    }
-  }
-
-  return false;
+  return matchesExtraBffOrigins(redirectUrl, extraBffOrigins);
 }
 
 function setSecureCookie(
@@ -907,40 +890,17 @@ app.post('/exchange', tokenApiRateLimitMiddleware, async (c) => {
 
   if (authCode.service_id !== null) {
     // Authorization: Basic <base64(client_id:client_secret)> を検証
-    const authHeader = c.req.header('Authorization');
-    if (!authHeader || !authHeader.startsWith('Basic ')) {
-      return c.json(
-        { error: { code: 'UNAUTHORIZED', message: 'Service authentication required' } },
-        401
-      );
-    }
-
-    let clientId: string;
-    let clientSecret: string;
+    let service: Awaited<ReturnType<typeof authenticateService>>;
     try {
-      const decoded = atob(authHeader.slice(6));
-      const colonIdx = decoded.indexOf(':');
-      if (colonIdx === -1) throw new Error('missing colon');
-      clientId = decoded.slice(0, colonIdx);
-      clientSecret = decoded.slice(colonIdx + 1);
+      service = await authenticateService(c.env.DB, c.req.header('Authorization'));
     } catch {
       return c.json(
-        { error: { code: 'UNAUTHORIZED', message: 'Invalid Authorization header' } },
-        401
+        { error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } },
+        500
       );
     }
-
-    const service = await findServiceByClientId(c.env.DB, clientId);
     // service_id の一致確認（認可コードが別サービス向けであれば拒否）
     if (!service || service.id !== authCode.service_id) {
-      return c.json(
-        { error: { code: 'UNAUTHORIZED', message: 'Invalid client credentials' } },
-        401
-      );
-    }
-
-    const secretHash = await sha256(clientSecret);
-    if (!timingSafeEqual(secretHash, service.client_secret_hash)) {
       return c.json(
         { error: { code: 'UNAUTHORIZED', message: 'Invalid client credentials' } },
         401
