@@ -471,6 +471,49 @@ app.get('/:id/login-history', authMiddleware, adminMiddleware, async (c) => {
   return c.json({ data: events, total });
 });
 
+// GET /api/users/:id/login-stats — ユーザーのプロバイダー別ログイン統計（管理者のみ）
+app.get('/:id/login-stats', authMiddleware, adminMiddleware, async (c) => {
+  const targetId = c.req.param('id');
+  const daysParam = c.req.query('days');
+  const days = daysParam !== undefined ? parseInt(daysParam, 10) : 30;
+  if (isNaN(days) || days < 1 || days > 90) {
+    return c.json(
+      { error: { code: 'BAD_REQUEST', message: 'days は1〜90の整数で指定してください' } },
+      400
+    );
+  }
+
+  const targetUser = await findUserById(c.env.DB, targetId);
+  if (!targetUser) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+
+  const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const stats = await getUserLoginProviderStats(c.env.DB, targetId, sinceIso);
+  return c.json({ data: stats, days });
+});
+
+// GET /api/users/:id/login-trends — ユーザーの日別ログイントレンド（管理者のみ）
+app.get('/:id/login-trends', authMiddleware, adminMiddleware, async (c) => {
+  const targetId = c.req.param('id');
+  const daysParam = c.req.query('days');
+  const days = daysParam !== undefined ? parseInt(daysParam, 10) : 30;
+  if (isNaN(days) || days < 1 || days > 90) {
+    return c.json(
+      { error: { code: 'BAD_REQUEST', message: 'days は1〜90の整数で指定してください' } },
+      400
+    );
+  }
+
+  const targetUser = await findUserById(c.env.DB, targetId);
+  if (!targetUser) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+
+  const trends = await getUserDailyLoginTrends(c.env.DB, targetId, days);
+  return c.json({ data: trends, days });
+});
+
 // PATCH /api/users/:id/role（管理者のみ）
 app.patch('/:id/role', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const targetId = c.req.param('id');

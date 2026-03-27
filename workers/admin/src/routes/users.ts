@@ -88,6 +88,24 @@ app.get('/:id/login-history', async (c) => {
   return proxyResponse(res);
 });
 
+// GET /api/users/:id/login-stats — ユーザーのプロバイダー別ログイン統計
+app.get('/:id/login-stats', async (c) => {
+  const url = new URL(`${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/login-stats`);
+  const days = c.req.query('days');
+  if (days) url.searchParams.set('days', days);
+  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  return proxyResponse(res);
+});
+
+// GET /api/users/:id/login-trends — ユーザーの日別ログイントレンド
+app.get('/:id/login-trends', async (c) => {
+  const url = new URL(`${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/login-trends`);
+  const days = c.req.query('days');
+  if (days) url.searchParams.set('days', days);
+  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  return proxyResponse(res);
+});
+
 // GET /api/users/:id/tokens — ユーザーのアクティブセッション一覧
 app.get('/:id/tokens', async (c) => {
   const res = await fetchWithAuth(

@@ -1033,3 +1033,110 @@ describe('admin BFF — /api/users', () => {
     });
   });
 });
+
+describe('GET /api/users/:id/login-stats — プロバイダー別ログイン統計', () => {
+  const mockStats = [
+    { provider: 'google', count: 10 },
+    { provider: 'github', count: 3 },
+  ];
+
+  it('セッションなしで401を返す', async () => {
+    const idpFetch = vi.fn();
+    const app = buildApp(idpFetch);
+
+    const res = await app.request('/api/users/user-1/login-stats');
+    expect(res.status).toBe(401);
+    expect(idpFetch).not.toHaveBeenCalled();
+  });
+
+  it('管理者セッションでIdPへプロキシして統計を返す', async () => {
+    const idpFetch = mockIdp(200, { data: mockStats, days: 30 });
+    const app = buildApp(idpFetch);
+
+    const res = await app.request('/api/users/user-1/login-stats', {
+      headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[]; days: number }>();
+    expect(body.data).toHaveLength(2);
+    expect(body.days).toBe(30);
+  });
+
+  it('daysクエリパラメータをIdPへ転送する', async () => {
+    const idpFetch = mockIdp(200, { data: mockStats, days: 7 });
+    const app = buildApp(idpFetch);
+
+    await app.request('/api/users/user-1/login-stats?days=7', {
+      headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+    });
+
+    const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+    expect(new URL(calledReq.url).searchParams.get('days')).toBe('7');
+  });
+
+  it('IdPが404を返した場合はそのまま伝播する', async () => {
+    const idpFetch = mockIdp(404, { error: { code: 'NOT_FOUND' } });
+    const app = buildApp(idpFetch);
+
+    const res = await app.request('/api/users/no-such/login-stats', {
+      headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+    });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('GET /api/users/:id/login-trends — 日別ログイントレンド', () => {
+  const mockTrends = [
+    { date: '2026-03-25', count: 5 },
+    { date: '2026-03-26', count: 8 },
+    { date: '2026-03-27', count: 3 },
+  ];
+
+  it('セッションなしで401を返す', async () => {
+    const idpFetch = vi.fn();
+    const app = buildApp(idpFetch);
+
+    const res = await app.request('/api/users/user-1/login-trends');
+    expect(res.status).toBe(401);
+    expect(idpFetch).not.toHaveBeenCalled();
+  });
+
+  it('管理者セッションでIdPへプロキシしてトレンドを返す', async () => {
+    const idpFetch = mockIdp(200, { data: mockTrends, days: 30 });
+    const app = buildApp(idpFetch);
+
+    const res = await app.request('/api/users/user-1/login-trends', {
+      headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[]; days: number }>();
+    expect(body.data).toHaveLength(3);
+    expect(body.days).toBe(30);
+  });
+
+  it('daysクエリパラメータをIdPへ転送する', async () => {
+    const idpFetch = mockIdp(200, { data: mockTrends, days: 14 });
+    const app = buildApp(idpFetch);
+
+    await app.request('/api/users/user-1/login-trends?days=14', {
+      headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+    });
+
+    const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+    expect(new URL(calledReq.url).searchParams.get('days')).toBe('14');
+  });
+
+  it('IdPが404を返した場合はそのまま伝播する', async () => {
+    const idpFetch = mockIdp(404, { error: { code: 'NOT_FOUND' } });
+    const app = buildApp(idpFetch);
+
+    const res = await app.request('/api/users/no-such/login-trends', {
+      headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+    });
+
+    expect(res.status).toBe(404);
+  });
+});
