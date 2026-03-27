@@ -19,12 +19,38 @@ npm run deploy:admin           # admin workerデプロイ
 ```
 
 ## マイグレーション
+
+### ⚠️ 必須ルール: 新しいマイグレーションファイルを追加したら必ずローカルで本番DBに適用してからpushすること
+
+マイグレーションを適用せずにデプロイすると、新カラムを参照するコードが本番で `D1_ERROR: no such column` を起こす。
+
 ```bash
-# ローカル
-wrangler d1 execute 0g0-id-db --local --file=migrations/0001_initial.sql
-# 本番
-wrangler d1 execute 0g0-id-db --file=migrations/0001_initial.sql
+# 本番DBに適用（push前に必ず実行）
+npm run migrate:id
+# = wrangler d1 migrations apply 0g0-id-db --yes
+
+# ローカルDBに適用（開発時）
+wrangler d1 migrations apply 0g0-id-db --local --yes
 ```
+
+### デプロイの仕組み
+
+Cloudflare CI でデプロイしている（GitHub Actions は使用しない）。
+
+- **ビルドコマンド**: なし
+- **デプロイコマンド**: `npm ci && npm run deploy:id`
+- **ルートディレクトリ**: `/`
+
+`deploy:id` スクリプトは `wrangler d1 migrations apply 0g0-id-db --yes && vite build && wrangler deploy` を実行する。
+**非インタラクティブ環境（CI）では `--yes` フラグが必須**。このフラグがないと確認プロンプトが応答されず、マイグレーションが適用されないままデプロイが進む恐れがある。
+
+### マイグレーションファイル追加時のチェックリスト
+
+1. `migrations/XXXX_*.sql` を作成
+2. **本番DBに適用**: `npm run migrate:id`（ローカルマシンから）
+3. コードを変更（新カラムを使用）
+4. `npm run typecheck` で型チェック
+5. `git push`（CIが自動デプロイ）
 
 ## シークレット管理
 `.dev.vars`（gitignore済み）をworkers/id/に配置:
