@@ -215,3 +215,72 @@ export async function getSuspiciousMultiCountryLogins(
     .all<SuspiciousMultiCountryLogin>();
   return result.results;
 }
+
+/** アクティブユーザー数の統計 */
+export interface ActiveUserStats {
+  dau: number; // 日次アクティブユーザー数（24時間以内にログインしたユニークユーザー）
+  wau: number; // 週次アクティブユーザー数（7日以内にログインしたユニークユーザー）
+  mau: number; // 月次アクティブユーザー数（30日以内にログインしたユニークユーザー）
+}
+
+/**
+ * DAU/WAU/MAU（アクティブユーザー数）を並列で取得する。
+ * ログインイベントテーブルのユニークuser_idを期間別に集計する。
+ */
+export async function getActiveUserStats(
+  db: D1Database
+): Promise<ActiveUserStats> {
+  const now = Date.now();
+  const dauSince = new Date(now - 1 * 24 * 60 * 60 * 1000).toISOString();
+  const wauSince = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const mauSince = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [dauResult, wauResult, mauResult] = await Promise.all([
+    db
+      .prepare('SELECT COUNT(DISTINCT user_id) as count FROM login_events WHERE created_at >= ?')
+      .bind(dauSince)
+      .first<{ count: number }>(),
+    db
+      .prepare('SELECT COUNT(DISTINCT user_id) as count FROM login_events WHERE created_at >= ?')
+      .bind(wauSince)
+      .first<{ count: number }>(),
+    db
+      .prepare('SELECT COUNT(DISTINCT user_id) as count FROM login_events WHERE created_at >= ?')
+      .bind(mauSince)
+      .first<{ count: number }>(),
+  ]);
+
+  return {
+    dau: dauResult?.count ?? 0,
+    wau: wauResult?.count ?? 0,
+    mau: mauResult?.count ?? 0,
+  };
+}
+
+/** 日別アクティブユーザー数の統計エントリ */
+export interface DailyActiveUserStat {
+  date: string; // YYYY-MM-DD
+  count: number; // その日にログインしたユニークユーザー数
+}
+
+/**
+ * 指定日数分の日別アクティブユーザー数（ユニークユーザー）を日付昇順で返す。
+ * ログインが0件の日は結果に含まれない。
+ */
+export async function getDailyActiveUsers(
+  db: D1Database,
+  days: number = 30
+): Promise<DailyActiveUserStat[]> {
+  const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const result = await db
+    .prepare(
+      `SELECT strftime('%Y-%m-%d', created_at) as date, COUNT(DISTINCT user_id) as count
+       FROM login_events
+       WHERE created_at >= ?
+       GROUP BY date
+       ORDER BY date ASC`
+    )
+    .bind(sinceIso)
+    .all<DailyActiveUserStat>();
+  return result.results;
+}
