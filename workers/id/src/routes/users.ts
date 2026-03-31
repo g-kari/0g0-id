@@ -23,6 +23,7 @@ import {
   banUser,
   unbanUser,
   createAdminAuditLog,
+  parseDays,
   parsePagination,
   type UserFilter,
   createLogger,
@@ -235,14 +236,11 @@ app.get('/me/login-history', authMiddleware, async (c) => {
 // GET /api/users/me/login-stats — 自分のプロバイダー別ログイン統計
 app.get('/me/login-stats', authMiddleware, async (c) => {
   const tokenUser = c.get('user');
-  const daysParam = c.req.query('days');
-  const days = daysParam !== undefined ? parseInt(daysParam, 10) : 30;
-  if (isNaN(days) || days < 1 || days > 90) {
-    return c.json(
-      { error: { code: 'BAD_REQUEST', message: 'days は1〜90の整数で指定してください' } },
-      400
-    );
+  const daysResult = parseDays(c.req.query('days'));
+  if (daysResult && 'error' in daysResult) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: daysResult.error } }, 400);
   }
+  const days = daysResult?.days ?? 30;
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   const stats = await getUserLoginProviderStats(c.env.DB, tokenUser.sub, sinceIso);
   return c.json({ data: stats, days });
@@ -251,14 +249,11 @@ app.get('/me/login-stats', authMiddleware, async (c) => {
 // GET /api/users/me/login-trends — 自分の日別ログイントレンド
 app.get('/me/login-trends', authMiddleware, async (c) => {
   const tokenUser = c.get('user');
-  const daysParam = c.req.query('days');
-  const days = daysParam !== undefined ? parseInt(daysParam, 10) : 30;
-  if (isNaN(days) || days < 1 || days > 90) {
-    return c.json(
-      { error: { code: 'BAD_REQUEST', message: 'days は1〜90の整数で指定してください' } },
-      400
-    );
+  const daysResult = parseDays(c.req.query('days'));
+  if (daysResult && 'error' in daysResult) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: daysResult.error } }, 400);
   }
+  const days = daysResult?.days ?? 30;
   const trends = await getUserDailyLoginTrends(c.env.DB, tokenUser.sub, days);
   return c.json({ data: trends, days });
 });
@@ -474,14 +469,11 @@ app.get('/:id/login-history', authMiddleware, adminMiddleware, async (c) => {
 // GET /api/users/:id/login-stats — ユーザーのプロバイダー別ログイン統計（管理者のみ）
 app.get('/:id/login-stats', authMiddleware, adminMiddleware, async (c) => {
   const targetId = c.req.param('id');
-  const daysParam = c.req.query('days');
-  const days = daysParam !== undefined ? parseInt(daysParam, 10) : 30;
-  if (isNaN(days) || days < 1 || days > 90) {
-    return c.json(
-      { error: { code: 'BAD_REQUEST', message: 'days は1〜90の整数で指定してください' } },
-      400
-    );
+  const daysResult = parseDays(c.req.query('days'));
+  if (daysResult && 'error' in daysResult) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: daysResult.error } }, 400);
   }
+  const days = daysResult?.days ?? 30;
 
   const targetUser = await findUserById(c.env.DB, targetId);
   if (!targetUser) {
@@ -496,14 +488,11 @@ app.get('/:id/login-stats', authMiddleware, adminMiddleware, async (c) => {
 // GET /api/users/:id/login-trends — ユーザーの日別ログイントレンド（管理者のみ）
 app.get('/:id/login-trends', authMiddleware, adminMiddleware, async (c) => {
   const targetId = c.req.param('id');
-  const daysParam = c.req.query('days');
-  const days = daysParam !== undefined ? parseInt(daysParam, 10) : 30;
-  if (isNaN(days) || days < 1 || days > 90) {
-    return c.json(
-      { error: { code: 'BAD_REQUEST', message: 'days は1〜90の整数で指定してください' } },
-      400
-    );
+  const daysResult = parseDays(c.req.query('days'));
+  if (daysResult && 'error' in daysResult) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: daysResult.error } }, 400);
   }
+  const days = daysResult?.days ?? 30;
 
   const targetUser = await findUserById(c.env.DB, targetId);
   if (!targetUser) {
