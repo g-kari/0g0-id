@@ -38,8 +38,7 @@ import {
   upsertTwitchUser,
   upsertGithubUser,
   upsertXUser,
-  updateUserRole,
-  countAdminUsers,
+  tryBootstrapAdmin,
   createAuthCode,
   findAndConsumeAuthCode,
   findServiceByClientId,
@@ -792,16 +791,11 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
     return c.json({ error: { code: 'ACCOUNT_BANNED', message: 'Your account has been suspended' } }, 403);
   }
 
-  // 管理者ブートストラップ（管理者が0人の場合のみ）
-  if (
-    c.env.BOOTSTRAP_ADMIN_EMAIL &&
-    user.email === c.env.BOOTSTRAP_ADMIN_EMAIL &&
-    user.role !== 'admin' &&
-    (await countAdminUsers(c.env.DB)) === 0
-  ) {
+  // 管理者ブートストラップ（管理者が0人の場合のみ・原子的操作）
+  if (c.env.BOOTSTRAP_ADMIN_EMAIL && user.email === c.env.BOOTSTRAP_ADMIN_EMAIL && user.role !== 'admin') {
     try {
-      await updateUserRole(c.env.DB, user.id, 'admin');
-      user.role = 'admin';
+      const elevated = await tryBootstrapAdmin(c.env.DB, user.id);
+      if (elevated) user.role = 'admin';
     } catch (err) {
       authLogger.error('[bootstrap] Failed to elevate bootstrap admin', err);
     }
