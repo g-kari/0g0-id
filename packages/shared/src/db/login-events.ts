@@ -1,4 +1,5 @@
 import type { LoginEvent } from '../types';
+import { daysAgoIso } from './helpers';
 
 export async function insertLoginEvent(
   db: D1Database,
@@ -116,7 +117,7 @@ export async function getDailyLoginTrends(
   db: D1Database,
   days: number = 30
 ): Promise<DailyLoginStat[]> {
-  const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const sinceIso = daysAgoIso(days);
   const result = await db
     .prepare(
       `SELECT strftime('%Y-%m-%d', created_at) as date, COUNT(*) as count
@@ -139,7 +140,7 @@ export async function getUserDailyLoginTrends(
   userId: string,
   days: number = 30
 ): Promise<DailyLoginStat[]> {
-  const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const sinceIso = daysAgoIso(days);
   const result = await db
     .prepare(
       `SELECT strftime('%Y-%m-%d', created_at) as date, COUNT(*) as count
@@ -271,7 +272,7 @@ export async function getDailyActiveUsers(
   db: D1Database,
   days: number = 30
 ): Promise<DailyActiveUserStat[]> {
-  const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const sinceIso = daysAgoIso(days);
   const result = await db
     .prepare(
       `SELECT strftime('%Y-%m-%d', created_at) as date, COUNT(DISTINCT user_id) as count

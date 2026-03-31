@@ -1,4 +1,5 @@
 import type { AdminAuditLog } from '../types';
+import { daysAgoIso } from './helpers';
 
 /**
  * 管理者操作の監査ログを記録する。
@@ -39,17 +40,17 @@ export async function createAdminAuditLog(
  * 管理者操作の監査ログを一覧取得する（降順）。
  * adminUserId・targetId・action でフィルタリング可能。
  */
-export async function listAdminAuditLogs(
-  db: D1Database,
-  limit = 50,
-  offset = 0,
-  filters?: {
-    adminUserId?: string;
-    targetId?: string;
-    action?: string;
-    status?: 'success' | 'failure';
-  }
-): Promise<{ logs: AdminAuditLog[]; total: number }> {
+export interface AuditLogFilter {
+  adminUserId?: string;
+  targetId?: string;
+  action?: string;
+  status?: 'success' | 'failure';
+}
+
+function buildAuditLogFilterClause(filters?: AuditLogFilter): {
+  where: string;
+  params: (string | number)[];
+} {
   const conditions: string[] = [];
   const params: (string | number)[] = [];
 
@@ -70,7 +71,19 @@ export async function listAdminAuditLogs(
     params.push(filters.status);
   }
 
-  const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
+  return {
+    where: conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '',
+    params,
+  };
+}
+
+export async function listAdminAuditLogs(
+  db: D1Database,
+  limit = 50,
+  offset = 0,
+  filters?: AuditLogFilter
+): Promise<{ logs: AdminAuditLog[]; total: number }> {
+  const { where: whereClause, params } = buildAuditLogFilterClause(filters);
 
   const [logsResult, countResult] = await Promise.all([
     db
@@ -102,7 +115,7 @@ export interface AuditLogStats {
  * アクション別・管理者別の全期間集計と、日別集計（直近N日）を返す。
  */
 export async function getAuditLogStats(db: D1Database, days = 30): Promise<AuditLogStats> {
-  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const since = daysAgoIso(days);
 
   const [actionResult, adminResult, dailyResult] = await Promise.all([
     db
