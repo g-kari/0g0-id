@@ -1,5 +1,5 @@
 import type { User } from '../types';
-import { type OAuthProvider, PROVIDER_COLUMN, ALL_PROVIDERS } from '../lib/providers';
+import { type OAuthProvider, PROVIDER_COLUMN, PROVIDER_DISPLAY_NAMES, ALL_PROVIDERS } from '../lib/providers';
 
 export async function findUserById(db: D1Database, id: string): Promise<User | null> {
   return db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<User>();
@@ -36,8 +36,7 @@ async function upsertProviderUser(
   db: D1Database,
   opts: {
     id: string;
-    providerLabel: string;
-    subColumn: 'google_sub' | 'line_sub' | 'twitch_sub' | 'github_sub' | 'x_sub';
+    provider: OAuthProvider;
     subValue: string;
     findBySub: (db: D1Database, sub: string) => Promise<User | null>;
     email: string;
@@ -50,6 +49,8 @@ async function upsertProviderUser(
     newUserEmailVerified: boolean;
   }
 ): Promise<User> {
+  const subColumn = PROVIDER_COLUMN[opts.provider];
+  const providerLabel = PROVIDER_DISPLAY_NAMES[opts.provider];
   // 既存ユーザー（同プロバイダー）のプロフィール更新
   const existingBySub = await opts.findBySub(db, opts.subValue);
   if (existingBySub) {
@@ -66,7 +67,7 @@ async function upsertProviderUser(
           existingBySub.id
         )
         .first<User>();
-      if (!user) throw new Error(`Failed to update ${opts.providerLabel} user`);
+      if (!user) throw new Error(`Failed to update ${providerLabel} user`);
       return user;
     }
     const user = await db
@@ -75,7 +76,7 @@ async function upsertProviderUser(
       )
       .bind(opts.name, opts.picture, existingBySub.id)
       .first<User>();
-    if (!user) throw new Error(`Failed to update ${opts.providerLabel} user`);
+    if (!user) throw new Error(`Failed to update ${providerLabel} user`);
     return user;
   }
 
@@ -86,14 +87,14 @@ async function upsertProviderUser(
       let sql: string;
       let bindings: unknown[];
       if (opts.emailLink.emailVerified !== undefined) {
-        sql = `UPDATE users SET ${opts.subColumn} = ?, email_verified = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`;
+        sql = `UPDATE users SET ${subColumn} = ?, email_verified = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`;
         bindings = [opts.subValue, opts.emailLink.emailVerified ? 1 : 0, opts.name, opts.picture, existingByEmail.id];
       } else {
-        sql = `UPDATE users SET ${opts.subColumn} = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`;
+        sql = `UPDATE users SET ${subColumn} = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`;
         bindings = [opts.subValue, opts.name, opts.picture, existingByEmail.id];
       }
       const user = await db.prepare(sql).bind(...bindings).first<User>();
-      if (!user) throw new Error(`Failed to link ${opts.providerLabel} account`);
+      if (!user) throw new Error(`Failed to link ${providerLabel} account`);
       return user;
     }
   }
@@ -101,11 +102,11 @@ async function upsertProviderUser(
   // 新規ユーザー作成
   const user = await db
     .prepare(
-      `INSERT INTO users (id, ${opts.subColumn}, email, email_verified, name, picture) VALUES (?, ?, ?, ?, ?, ?) RETURNING *`
+      `INSERT INTO users (id, ${subColumn}, email, email_verified, name, picture) VALUES (?, ?, ?, ?, ?, ?) RETURNING *`
     )
     .bind(opts.id, opts.subValue, opts.email, opts.newUserEmailVerified ? 1 : 0, opts.name, opts.picture)
     .first<User>();
-  if (!user) throw new Error(`Failed to create ${opts.providerLabel} user`);
+  if (!user) throw new Error(`Failed to create ${providerLabel} user`);
   return user;
 }
 
@@ -122,8 +123,7 @@ export async function upsertUser(
 ): Promise<User> {
   return upsertProviderUser(db, {
     id: params.id,
-    providerLabel: 'Google',
-    subColumn: 'google_sub',
+    provider: 'google',
     subValue: params.googleSub,
     findBySub: findUserByGoogleSub,
     email: params.email,
@@ -148,8 +148,7 @@ export async function upsertLineUser(
 ): Promise<User> {
   return upsertProviderUser(db, {
     id: params.id,
-    providerLabel: 'LINE',
-    subColumn: 'line_sub',
+    provider: 'line',
     subValue: params.lineSub,
     findBySub: findUserByLineSub,
     email: params.email,
@@ -175,8 +174,7 @@ export async function upsertTwitchUser(
 ): Promise<User> {
   return upsertProviderUser(db, {
     id: params.id,
-    providerLabel: 'Twitch',
-    subColumn: 'twitch_sub',
+    provider: 'twitch',
     subValue: params.twitchSub,
     findBySub: findUserByTwitchSub,
     email: params.email,
@@ -201,8 +199,7 @@ export async function upsertGithubUser(
 ): Promise<User> {
   return upsertProviderUser(db, {
     id: params.id,
-    providerLabel: 'GitHub',
-    subColumn: 'github_sub',
+    provider: 'github',
     subValue: params.githubSub,
     findBySub: findUserByGithubSub,
     email: params.email,
@@ -226,8 +223,7 @@ export async function upsertXUser(
 ): Promise<User> {
   return upsertProviderUser(db, {
     id: params.id,
-    providerLabel: 'X',
-    subColumn: 'x_sub',
+    provider: 'x',
     subValue: params.xSub,
     findBySub: findUserByXSub,
     email: params.email,
