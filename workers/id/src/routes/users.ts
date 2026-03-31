@@ -33,6 +33,7 @@ import { authMiddleware } from '../middleware/auth';
 import { adminMiddleware } from '../middleware/admin';
 import { csrfMiddleware } from '../middleware/csrf';
 import { parseJsonBody } from '../utils/parse-body';
+import { getClientIp } from '../utils/ip';
 
 const PatchMeSchema = z.object({
   name: z.string().min(1, 'name is required').max(100, 'name must be 100 characters or less'),
@@ -525,7 +526,7 @@ app.patch('/:id/role', authMiddleware, adminMiddleware, csrfMiddleware, async (c
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  const ipAddress = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null;
+  const ipAddress = getClientIp(c.req.raw);
   let user;
   try {
     user = await updateUserRole(c.env.DB, targetId, role);
@@ -582,7 +583,7 @@ app.patch('/:id/ban', authMiddleware, adminMiddleware, csrfMiddleware, async (c)
     return c.json({ error: { code: 'CONFLICT', message: 'User is already banned' } }, 409);
   }
 
-  const ipAddress = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null;
+  const ipAddress = getClientIp(c.req.raw);
   let updated;
   try {
     updated = await banUser(c.env.DB, targetId);
@@ -633,7 +634,7 @@ app.delete('/:id/ban', authMiddleware, adminMiddleware, csrfMiddleware, async (c
     return c.json({ error: { code: 'CONFLICT', message: 'User is not banned' } }, 409);
   }
 
-  const ipAddress = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null;
+  const ipAddress = getClientIp(c.req.raw);
   let updated;
   try {
     updated = await unbanUser(c.env.DB, targetId);
@@ -687,7 +688,7 @@ app.delete('/:id/tokens/:tokenId', authMiddleware, adminMiddleware, csrfMiddlewa
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  const ipAddress = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null;
+  const ipAddress = getClientIp(c.req.raw);
   let revoked;
   try {
     revoked = await revokeTokenByIdForUser(c.env.DB, tokenId, targetId, 'admin_action');
@@ -733,7 +734,7 @@ app.delete('/:id/tokens', authMiddleware, adminMiddleware, csrfMiddleware, async
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  const ipAddress = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null;
+  const ipAddress = getClientIp(c.req.raw);
   try {
     await revokeUserTokens(c.env.DB, targetId, 'admin_action');
     await createAdminAuditLog(c.env.DB, {
@@ -788,7 +789,7 @@ app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
       action: 'user.delete',
       targetType: 'user',
       targetId,
-      ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+      ipAddress: getClientIp(c.req.raw),
       status: 'success',
     });
   } catch (err) {

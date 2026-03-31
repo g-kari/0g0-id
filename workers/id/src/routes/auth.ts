@@ -3,6 +3,7 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { z } from 'zod';
 import { parseJsonBody } from '../utils/parse-body';
 import { authenticateService } from '../utils/service-auth';
+import { getClientIp } from '../utils/ip';
 
 import {
   buildGoogleAuthUrl,
@@ -803,9 +804,7 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
 
   // ログインイベント記録（エラーがあってもログインフローは継続）
   try {
-    const ipAddress =
-      c.req.header('cf-connecting-ip') ??
-      (c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? null);
+    const ipAddress = getClientIp(c.req.raw);
     // user-agent は任意長の文字列のため 512 文字に切り詰め（ストレージ DoS 防止）
     const userAgent = c.req.header('user-agent')?.slice(0, 512) ?? null;
     const country = c.req.header('cf-ipcountry') ?? null;

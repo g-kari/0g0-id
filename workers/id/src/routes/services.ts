@@ -30,6 +30,7 @@ import { authMiddleware } from '../middleware/auth';
 import { adminMiddleware } from '../middleware/admin';
 import { csrfMiddleware } from '../middleware/csrf';
 import { parseJsonBody } from '../utils/parse-body';
+import { getClientIp } from '../utils/ip';
 
 type Variables = { user: TokenPayload };
 
@@ -144,7 +145,7 @@ app.post('/', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
     targetType: 'service',
     targetId: service.id,
     details: { name: service.name, allowed_scopes: body.allowed_scopes ?? ['profile', 'email'] },
-    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+    ipAddress: getClientIp(c.req.raw),
     status: 'success',
   });
 
@@ -191,7 +192,7 @@ app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => 
       ...(name !== undefined ? { name } : {}),
       ...(allowed_scopes !== undefined ? { allowed_scopes } : {}),
     },
-    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+    ipAddress: getClientIp(c.req.raw),
     status: 'success',
   });
 
@@ -232,7 +233,7 @@ app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
       targetType: 'service',
       targetId: serviceId,
       details: { name: service.name, revoked_token_count: revokedCount },
-      ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+      ipAddress: getClientIp(c.req.raw),
       status: 'success',
     });
   } catch (err) {
@@ -289,7 +290,7 @@ app.post('/:id/redirect-uris', authMiddleware, adminMiddleware, csrfMiddleware, 
     targetType: 'service',
     targetId: serviceId,
     details: { uri: normalized },
-    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+    ipAddress: getClientIp(c.req.raw),
   });
 
   return c.json({ data: uri }, 201);
@@ -317,7 +318,7 @@ app.post('/:id/rotate-secret', authMiddleware, adminMiddleware, csrfMiddleware, 
     action: 'service.secret_rotated',
     targetType: 'service',
     targetId: serviceId,
-    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+    ipAddress: getClientIp(c.req.raw),
     status: 'success',
   });
 
@@ -361,7 +362,7 @@ app.patch('/:id/owner', authMiddleware, adminMiddleware, csrfMiddleware, async (
     targetType: 'service',
     targetId: serviceId,
     details: { from: service.owner_user_id, to: new_owner_user_id },
-    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+    ipAddress: getClientIp(c.req.raw),
     status: 'success',
   });
 
@@ -441,7 +442,7 @@ app.delete('/:id/users/:userId', authMiddleware, adminMiddleware, csrfMiddleware
     targetType: 'service',
     targetId: serviceId,
     details: { user_id: userId },
-    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+    ipAddress: getClientIp(c.req.raw),
   });
 
   return c.body(null, 204);
@@ -467,7 +468,7 @@ app.delete('/:id/redirect-uris/:uriId', authMiddleware, adminMiddleware, csrfMid
       targetType: 'service',
       targetId: serviceId,
       details: { uri_id: uriId },
-      ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+      ipAddress: getClientIp(c.req.raw),
     });
   } catch (err) {
     servicesLogger.error('[services] Failed to create audit log for service.redirect_uri_deleted', err);
