@@ -2,6 +2,7 @@ import { createMiddleware } from 'hono/factory';
 import type { Context } from 'hono';
 import type { IdpEnv, RateLimitBinding } from '@0g0-id/shared';
 import { createLogger } from '@0g0-id/shared';
+import { getClientIp } from '../utils/ip';
 
 /**
  * バインディング未設定の警告を1ワーカーインスタンスにつき1回だけ出力するための追跡Set。
@@ -10,15 +11,6 @@ import { createLogger } from '@0g0-id/shared';
 const warnedBindings = new Set<string>();
 
 const rateLimitLogger = createLogger('rate-limit');
-
-/** リクエスト元IPアドレスを取得する（Cloudflare → x-forwarded-for の順にフォールバック） */
-function getClientIp(req: Request): string {
-  return (
-    req.headers.get('cf-connecting-ip') ??
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    'unknown'
-  );
-}
 
 /** Basic認証ヘッダーから client_id を抽出する。取得できない場合は null を返す */
 function extractClientId(authHeader: string | undefined): string | null {
@@ -92,7 +84,7 @@ function createRateLimitMiddleware(
 export const authRateLimitMiddleware = createRateLimitMiddleware(
   'RATE_LIMITER_AUTH',
   (env) => env.RATE_LIMITER_AUTH,
-  (c) => getClientIp(c.req.raw),
+  (c) => getClientIp(c.req.raw) ?? 'unknown',
   'Too many requests. Please try again later.',
 );
 
@@ -106,7 +98,7 @@ export const authRateLimitMiddleware = createRateLimitMiddleware(
 export const externalApiRateLimitMiddleware = createRateLimitMiddleware(
   'RATE_LIMITER_EXTERNAL',
   (env) => env.RATE_LIMITER_EXTERNAL,
-  (c) => extractClientId(c.req.header('Authorization')) ?? getClientIp(c.req.raw),
+  (c) => extractClientId(c.req.header('Authorization')) ?? getClientIp(c.req.raw) ?? 'unknown',
   'Rate limit exceeded.',
 );
 
@@ -120,6 +112,6 @@ export const externalApiRateLimitMiddleware = createRateLimitMiddleware(
 export const tokenApiRateLimitMiddleware = createRateLimitMiddleware(
   'RATE_LIMITER_TOKEN',
   (env) => env.RATE_LIMITER_TOKEN,
-  (c) => getClientIp(c.req.raw),
+  (c) => getClientIp(c.req.raw) ?? 'unknown',
   'Too many requests. Please try again later.',
 );
