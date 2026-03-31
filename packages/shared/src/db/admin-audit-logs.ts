@@ -13,12 +13,14 @@ export async function createAdminAuditLog(
     targetId: string;
     details?: Record<string, unknown> | null;
     ipAddress?: string | null;
+    status?: 'success' | 'failure';
   }
 ): Promise<void> {
   const id = crypto.randomUUID();
+  const status = data.status ?? 'success';
   await db
     .prepare(
-      'INSERT INTO admin_audit_logs (id, admin_user_id, action, target_type, target_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO admin_audit_logs (id, admin_user_id, action, target_type, target_id, details, ip_address, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     )
     .bind(
       id,
@@ -27,7 +29,8 @@ export async function createAdminAuditLog(
       data.targetType,
       data.targetId,
       data.details != null ? JSON.stringify(data.details) : null,
-      data.ipAddress ?? null
+      data.ipAddress ?? null,
+      status
     )
     .run();
 }
@@ -44,6 +47,7 @@ export async function listAdminAuditLogs(
     adminUserId?: string;
     targetId?: string;
     action?: string;
+    status?: 'success' | 'failure';
   }
 ): Promise<{ logs: AdminAuditLog[]; total: number }> {
   const conditions: string[] = [];
@@ -60,6 +64,10 @@ export async function listAdminAuditLogs(
   if (filters?.action) {
     conditions.push('action = ?');
     params.push(filters.action);
+  }
+  if (filters?.status) {
+    conditions.push('status = ?');
+    params.push(filters.status);
   }
 
   const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';

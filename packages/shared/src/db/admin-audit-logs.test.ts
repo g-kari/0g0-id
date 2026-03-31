@@ -11,6 +11,7 @@ const baseLog: AdminAuditLog = {
   target_id: 'user-42',
   details: null,
   ip_address: '1.2.3.4',
+  status: 'success',
   created_at: '2024-01-01T00:00:00Z',
 };
 
@@ -61,8 +62,9 @@ describe('createAdminAuditLog', () => {
       'role.change',
       'user',
       'user-99',
-      null, // details省略 → null
-      null  // ipAddress省略 → null
+      null,       // details省略 → null
+      null,       // ipAddress省略 → null
+      'success'   // status省略 → 'success'
     );
   });
 

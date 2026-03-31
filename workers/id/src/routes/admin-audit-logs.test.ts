@@ -81,6 +81,7 @@ const mockLog: AdminAuditLog = {
   target_id: 'target-user-id',
   details: JSON.stringify({ reason: 'spam' }),
   ip_address: '127.0.0.1',
+  status: 'success',
   created_at: '2026-03-27T00:00:00.000Z',
 };
 
