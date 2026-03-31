@@ -1,4 +1,5 @@
 import type { User } from '../types';
+import { daysAgoIso } from './helpers';
 import { type OAuthProvider, PROVIDER_COLUMN, PROVIDER_DISPLAY_NAMES, ALL_PROVIDERS } from '../lib/providers';
 
 export async function findUserById(db: D1Database, id: string): Promise<User | null> {
@@ -395,7 +396,7 @@ export async function getDailyUserRegistrations(
   db: D1Database,
   days: number = 30
 ): Promise<DailyUserRegistrationStat[]> {
-  const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const sinceIso = daysAgoIso(days);
   const result = await db
     .prepare(
       `SELECT strftime('%Y-%m-%d', created_at) as date, COUNT(*) as count
