@@ -236,6 +236,28 @@ export async function deleteUser(db: D1Database, userId: string): Promise<boolea
 
 
 
+/**
+ * 管理者が0人の場合のみ、指定ユーザーを管理者に昇格する（原子的操作）
+ * NOT EXISTS サブクエリにより countAdminUsers→updateUserRole の TOCTOU を排除。
+ * @returns 昇格が行われた場合は true、既に管理者が存在する or 既に admin ロールの場合は false
+ */
+export async function tryBootstrapAdmin(
+  db: D1Database,
+  userId: string
+): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `UPDATE users
+         SET role = 'admin', updated_at = datetime('now')
+       WHERE id = ?
+         AND role != 'admin'
+         AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin')`
+    )
+    .bind(userId)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
 export async function updateUserProfile(
   db: D1Database,
   userId: string,

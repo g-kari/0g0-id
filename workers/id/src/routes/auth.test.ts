@@ -39,8 +39,7 @@ vi.mock('@0g0-id/shared', () => ({
   upsertTwitchUser: vi.fn(),
   upsertGithubUser: vi.fn(),
   upsertXUser: vi.fn(),
-  updateUserRole: vi.fn(),
-  countAdminUsers: vi.fn(),
+  tryBootstrapAdmin: vi.fn(),
   createAuthCode: vi.fn(),
   findAndConsumeAuthCode: vi.fn(),
   findServiceByClientId: vi.fn(),
@@ -71,7 +70,7 @@ import {
   fetchTwitchUserInfo,
   upsertTwitchUser,
   linkProvider,
-  updateUserRole,
+  tryBootstrapAdmin,
   generateCodeVerifier,
   generateCodeChallenge,
   generateToken,
@@ -85,7 +84,6 @@ import {
   revokeRefreshToken,
   revokeTokenFamily,
   upsertUser,
-  countAdminUsers,
   createAuthCode,
   findAndConsumeAuthCode,
   findServiceByClientId,
@@ -357,7 +355,7 @@ describe('GET /auth/callback', () => {
     vi.mocked(sha256).mockResolvedValue('hashed-value');
     vi.mocked(generateToken).mockReturnValue('mock-auth-code');
     vi.mocked(upsertUser).mockResolvedValue(mockUser);
-    vi.mocked(countAdminUsers).mockResolvedValue(1);
+    vi.mocked(tryBootstrapAdmin).mockResolvedValue(false);
     vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
     vi.mocked(exchangeGoogleCode).mockResolvedValue({ access_token: 'google-at' } as never);
     vi.mocked(fetchGoogleUserInfo).mockResolvedValue({
@@ -860,7 +858,7 @@ describe('GET /auth/callback - LINEプロバイダー', () => {
     vi.mocked(sha256).mockResolvedValue('hashed-value');
     vi.mocked(generateToken).mockReturnValue('mock-auth-code');
     vi.mocked(upsertLineUser).mockResolvedValue(mockUser);
-    vi.mocked(countAdminUsers).mockResolvedValue(1);
+    vi.mocked(tryBootstrapAdmin).mockResolvedValue(false);
     vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(exchangeLineCode).mockResolvedValue({ access_token: 'line-at' } as never);
@@ -956,7 +954,7 @@ describe('GET /auth/callback - GitHubプロバイダー', () => {
     vi.mocked(sha256).mockResolvedValue('hashed-value');
     vi.mocked(generateToken).mockReturnValue('mock-auth-code');
     vi.mocked(upsertGithubUser).mockResolvedValue(mockUser);
-    vi.mocked(countAdminUsers).mockResolvedValue(1);
+    vi.mocked(tryBootstrapAdmin).mockResolvedValue(false);
     vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(exchangeGithubCode).mockResolvedValue({ access_token: 'github-at' } as never);
@@ -1074,7 +1072,7 @@ describe('GET /auth/callback - Twitchプロバイダー', () => {
     vi.mocked(sha256).mockResolvedValue('hashed-value');
     vi.mocked(generateToken).mockReturnValue('mock-auth-code');
     vi.mocked(upsertTwitchUser).mockResolvedValue(mockUser);
-    vi.mocked(countAdminUsers).mockResolvedValue(1);
+    vi.mocked(tryBootstrapAdmin).mockResolvedValue(false);
     vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(exchangeTwitchCode).mockResolvedValue({ access_token: 'twitch-at' } as never);
@@ -1183,7 +1181,7 @@ describe('GET /auth/callback - Xプロバイダー', () => {
     vi.mocked(sha256).mockResolvedValue('hashed-value');
     vi.mocked(generateToken).mockReturnValue('mock-auth-code');
     vi.mocked(upsertXUser).mockResolvedValue(mockUser);
-    vi.mocked(countAdminUsers).mockResolvedValue(1);
+    vi.mocked(tryBootstrapAdmin).mockResolvedValue(false);
     vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(exchangeXCode).mockResolvedValue({ access_token: 'x-at' } as never);
@@ -1259,7 +1257,7 @@ describe('GET /auth/callback - プロバイダー連携 (linkUserId)', () => {
     vi.mocked(sha256).mockResolvedValue('hashed-value');
     vi.mocked(generateToken).mockReturnValue('mock-auth-code');
     vi.mocked(linkProvider).mockResolvedValue(mockUser);
-    vi.mocked(countAdminUsers).mockResolvedValue(1);
+    vi.mocked(tryBootstrapAdmin).mockResolvedValue(false);
     vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(exchangeGoogleCode).mockResolvedValue({ access_token: 'google-at' } as never);
@@ -1392,7 +1390,7 @@ describe('GET /auth/callback - ブートストラップ管理者', () => {
     vi.resetAllMocks();
     vi.mocked(sha256).mockResolvedValue('hashed-value');
     vi.mocked(generateToken).mockReturnValue('mock-auth-code');
-    vi.mocked(countAdminUsers).mockResolvedValue(0);
+    vi.mocked(tryBootstrapAdmin).mockResolvedValue(true);
     vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(exchangeGoogleCode).mockResolvedValue({ access_token: 'google-at' } as never);
@@ -1408,14 +1406,9 @@ describe('GET /auth/callback - ブートストラップ管理者', () => {
       email: 'admin@example.com',
       role: 'user',
     });
-    vi.mocked(updateUserRole).mockResolvedValue({
-      ...mockUser,
-      email: 'admin@example.com',
-      role: 'admin',
-    });
   });
 
-  it('BOOTSTRAP_ADMIN_EMAIL一致・管理者0人 → updateUserRoleを呼び出してadminに昇格', async () => {
+  it('BOOTSTRAP_ADMIN_EMAIL一致・管理者0人 → tryBootstrapAdminを呼び出してadminに昇格', async () => {
     const envWithBootstrap = { ...mockEnv, BOOTSTRAP_ADMIN_EMAIL: 'admin@example.com' };
     const stateData = buildStateCookie({
       idState: 'correct-state',
@@ -1433,11 +1426,11 @@ describe('GET /auth/callback - ブートストラップ管理者', () => {
       envWithBootstrap as unknown as Record<string, string>
     );
     expect(res.status).toBe(302);
-    expect(vi.mocked(updateUserRole)).toHaveBeenCalledWith(expect.anything(), 'user-1', 'admin');
+    expect(vi.mocked(tryBootstrapAdmin)).toHaveBeenCalledWith(expect.anything(), 'user-1');
   });
 
-  it('BOOTSTRAP_ADMIN_EMAIL一致・既に管理者あり → 昇格しない', async () => {
-    vi.mocked(countAdminUsers).mockResolvedValue(1);
+  it('BOOTSTRAP_ADMIN_EMAIL一致・既に管理者あり → 昇格しない（tryBootstrapAdminがfalseを返す）', async () => {
+    vi.mocked(tryBootstrapAdmin).mockResolvedValue(false);
     const envWithBootstrap = { ...mockEnv, BOOTSTRAP_ADMIN_EMAIL: 'admin@example.com' };
     const stateData = buildStateCookie({
       idState: 'correct-state',
@@ -1455,10 +1448,9 @@ describe('GET /auth/callback - ブートストラップ管理者', () => {
       envWithBootstrap as unknown as Record<string, string>
     );
     expect(res.status).toBe(302);
-    expect(vi.mocked(updateUserRole)).not.toHaveBeenCalled();
   });
 
-  it('BOOTSTRAP_ADMIN_EMAILと不一致 → 昇格しない', async () => {
+  it('BOOTSTRAP_ADMIN_EMAILと不一致 → tryBootstrapAdminを呼ばない', async () => {
     const envWithBootstrap = { ...mockEnv, BOOTSTRAP_ADMIN_EMAIL: 'other@example.com' };
     const stateData = buildStateCookie({
       idState: 'correct-state',
@@ -1476,7 +1468,7 @@ describe('GET /auth/callback - ブートストラップ管理者', () => {
       envWithBootstrap as unknown as Record<string, string>
     );
     expect(res.status).toBe(302);
-    expect(vi.mocked(updateUserRole)).not.toHaveBeenCalled();
+    expect(vi.mocked(tryBootstrapAdmin)).not.toHaveBeenCalled();
   });
 });
 

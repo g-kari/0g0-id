@@ -12,6 +12,7 @@ import {
   listUsers,
   countUsers,
   countAdminUsers,
+  tryBootstrapAdmin,
   banUser,
   unbanUser,
 } from './users';
@@ -581,6 +582,27 @@ describe('countAdminUsers', () => {
     const db = makeD1Mock(null);
     const count = await countAdminUsers(db);
     expect(count).toBe(0);
+  });
+});
+
+describe('tryBootstrapAdmin', () => {
+  it('昇格が行われた場合はtrueを返す', async () => {
+    const db = makeD1Mock(null, [], 1);
+    const result = await tryBootstrapAdmin(db, 'user-1');
+    expect(result).toBe(true);
+  });
+
+  it('既に管理者が存在する場合はfalseを返す（changesが0）', async () => {
+    const db = makeD1Mock(null, [], 0);
+    const result = await tryBootstrapAdmin(db, 'user-1');
+    expect(result).toBe(false);
+  });
+
+  it('正しいuserIdでprepareを呼ぶ', async () => {
+    const db = makeD1Mock(null, [], 1);
+    await tryBootstrapAdmin(db, 'user-42');
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('UPDATE users'));
+    expect((db as unknown as { _stmt: { bind: ReturnType<typeof vi.fn> } })._stmt.bind).toHaveBeenCalledWith('user-42');
   });
 });
 
