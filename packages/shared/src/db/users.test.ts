@@ -252,7 +252,7 @@ describe('upsertUser', () => {
   const googleUser = { ...baseUser, google_sub: 'google-sub-1' };
 
   it('既存Googleユーザーが見つかった場合はプロフィールを更新する', async () => {
-    // findUserByGoogleSub → existing, UPDATE → updated
+    // findUserBySub(google) → existing, UPDATE → updated
     const db = makeMultiD1Mock({ first: googleUser }, { first: googleUser });
     const user = await upsertUser(db, {
       id: 'user-new',
@@ -266,7 +266,7 @@ describe('upsertUser', () => {
   });
 
   it('google_sub未登録・同メールの既存ユーザーがいれば Google アカウントを連携する', async () => {
-    // findUserByGoogleSub → null, findUserByEmail → existing, UPDATE → linked
+    // findUserBySub(google) → null, findUserByEmail → existing, UPDATE → linked
     const emailUser = { ...baseUser, google_sub: null };
     const linked = { ...baseUser, google_sub: 'google-sub-new' };
     const db = makeMultiD1Mock({ first: null }, { first: emailUser }, { first: linked });
@@ -282,7 +282,7 @@ describe('upsertUser', () => {
   });
 
   it('新規ユーザーを作成する', async () => {
-    // findUserByGoogleSub → null, findUserByEmail → null, INSERT → new
+    // findUserBySub(google) → null, findUserByEmail → null, INSERT → new
     const db = makeMultiD1Mock({ first: null }, { first: null }, { first: googleUser });
     const user = await upsertUser(db, {
       id: 'user-1',
@@ -330,7 +330,7 @@ describe('upsertLineUser', () => {
   const lineUser = { ...baseUser, line_sub: 'line-sub-1', google_sub: null };
 
   it('既存LINEユーザーが見つかった場合はプロフィールを更新する', async () => {
-    // findUserByLineSub → existing, UPDATE → updated
+    // findUserBySub(line) → existing, UPDATE → updated
     const db = makeMultiD1Mock({ first: lineUser }, { first: lineUser });
     const user = await upsertLineUser(db, {
       id: 'user-new',
@@ -344,7 +344,7 @@ describe('upsertLineUser', () => {
   });
 
   it('仮メールでないユーザーのメール一致で既存アカウントにLINEを連携する', async () => {
-    // findUserByLineSub → null, findUserByEmail → existing email user, UPDATE → linked
+    // findUserBySub(line) → null, findUserByEmail → existing email user, UPDATE → linked
     const emailUser = { ...baseUser, line_sub: null };
     const db = makeMultiD1Mock(
       { first: null },
@@ -363,7 +363,7 @@ describe('upsertLineUser', () => {
   });
 
   it('仮メールの新規ユーザーを作成する', async () => {
-    // findUserByLineSub → null, INSERT → newUser
+    // findUserBySub(line) → null, INSERT → newUser
     const newUser = { ...baseUser, line_sub: 'line-sub-new', google_sub: null };
     const db = makeMultiD1Mock({ first: null }, { first: newUser });
     const user = await upsertLineUser(db, {
@@ -396,7 +396,7 @@ describe('upsertXUser', () => {
   const xUser = { ...baseUser, x_sub: 'x-sub-1', google_sub: null };
 
   it('既存Xユーザーが見つかった場合はプロフィールを更新する', async () => {
-    // findUserByXSub → existing, UPDATE → updated
+    // findUserBySub(x) → existing, UPDATE → updated
     const db = makeMultiD1Mock({ first: xUser }, { first: xUser });
     const user = await upsertXUser(db, {
       id: 'user-new',
@@ -409,7 +409,7 @@ describe('upsertXUser', () => {
   });
 
   it('新規Xユーザーを作成する', async () => {
-    // findUserByXSub → null, INSERT → newUser
+    // findUserBySub(x) → null, INSERT → newUser
     const db = makeMultiD1Mock({ first: null }, { first: xUser });
     const user = await upsertXUser(db, {
       id: 'user-new',

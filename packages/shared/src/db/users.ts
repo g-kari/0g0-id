@@ -5,27 +5,13 @@ export async function findUserById(db: D1Database, id: string): Promise<User | n
   return db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<User>();
 }
 
-export async function findUserByGoogleSub(db: D1Database, googleSub: string): Promise<User | null> {
-  return db.prepare('SELECT * FROM users WHERE google_sub = ?').bind(googleSub).first<User>();
-}
-
-export async function findUserByLineSub(db: D1Database, lineSub: string): Promise<User | null> {
-  return db.prepare('SELECT * FROM users WHERE line_sub = ?').bind(lineSub).first<User>();
-}
-
-export async function findUserByTwitchSub(db: D1Database, twitchSub: string): Promise<User | null> {
-  return db.prepare('SELECT * FROM users WHERE twitch_sub = ?').bind(twitchSub).first<User>();
-}
-
-export async function findUserByGithubSub(
+export async function findUserBySub(
   db: D1Database,
-  githubSub: string
+  provider: OAuthProvider,
+  sub: string
 ): Promise<User | null> {
-  return db.prepare('SELECT * FROM users WHERE github_sub = ?').bind(githubSub).first<User>();
-}
-
-export async function findUserByXSub(db: D1Database, xSub: string): Promise<User | null> {
-  return db.prepare('SELECT * FROM users WHERE x_sub = ?').bind(xSub).first<User>();
+  const col = PROVIDER_COLUMN[provider];
+  return db.prepare(`SELECT * FROM users WHERE ${col} = ?`).bind(sub).first<User>();
 }
 
 export async function findUserByEmail(db: D1Database, email: string): Promise<User | null> {
@@ -38,7 +24,6 @@ async function upsertProviderUser(
     id: string;
     provider: OAuthProvider;
     subValue: string;
-    findBySub: (db: D1Database, sub: string) => Promise<User | null>;
     email: string;
     name: string;
     picture: string | null;
@@ -52,7 +37,7 @@ async function upsertProviderUser(
   const subColumn = PROVIDER_COLUMN[opts.provider];
   const providerLabel = PROVIDER_DISPLAY_NAMES[opts.provider];
   // 既存ユーザー（同プロバイダー）のプロフィール更新
-  const existingBySub = await opts.findBySub(db, opts.subValue);
+  const existingBySub = await findUserBySub(db, opts.provider, opts.subValue);
   if (existingBySub) {
     if (opts.profileEmailUpdate) {
       const user = await db
@@ -125,7 +110,6 @@ export async function upsertUser(
     id: params.id,
     provider: 'google',
     subValue: params.googleSub,
-    findBySub: findUserByGoogleSub,
     email: params.email,
     name: params.name,
     picture: params.picture,
@@ -150,7 +134,6 @@ export async function upsertLineUser(
     id: params.id,
     provider: 'line',
     subValue: params.lineSub,
-    findBySub: findUserByLineSub,
     email: params.email,
     name: params.name,
     picture: params.picture,
@@ -176,7 +159,6 @@ export async function upsertTwitchUser(
     id: params.id,
     provider: 'twitch',
     subValue: params.twitchSub,
-    findBySub: findUserByTwitchSub,
     email: params.email,
     name: params.name,
     picture: params.picture,
@@ -201,7 +183,6 @@ export async function upsertGithubUser(
     id: params.id,
     provider: 'github',
     subValue: params.githubSub,
-    findBySub: findUserByGithubSub,
     email: params.email,
     name: params.name,
     picture: params.picture,
@@ -225,7 +206,6 @@ export async function upsertXUser(
     id: params.id,
     provider: 'x',
     subValue: params.xSub,
-    findBySub: findUserByXSub,
     email: params.email,
     name: params.name,
     picture: params.picture,
@@ -436,17 +416,7 @@ export async function linkProvider(
   sub: string
 ): Promise<User> {
   // 他ユーザーが同サブIDを使用中か確認
-  const findBySubFns: Record<
-    OAuthProvider,
-    (db: D1Database, sub: string) => Promise<User | null>
-  > = {
-    google: findUserByGoogleSub,
-    line: findUserByLineSub,
-    twitch: findUserByTwitchSub,
-    github: findUserByGithubSub,
-    x: findUserByXSub,
-  };
-  const existing = await findBySubFns[provider](db, sub);
+  const existing = await findUserBySub(db, provider, sub);
   if (existing && existing.id !== userId) {
     throw new Error('PROVIDER_ALREADY_LINKED');
   }
