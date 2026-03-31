@@ -5,6 +5,15 @@ vi.mock('@0g0-id/shared', () => ({
   createLogger: vi.fn().mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
   listAdminAuditLogs: vi.fn(),
   getAuditLogStats: vi.fn(),
+  parseDays: (daysParam: string | undefined, options: { minDays?: number; maxDays?: number } = {}) => {
+    if (daysParam === undefined) return undefined;
+    const { minDays = 1, maxDays = 90 } = options;
+    const days = parseInt(daysParam, 10);
+    if (!Number.isInteger(days) || days < minDays || days > maxDays) {
+      return { error: `days must be an integer between ${minDays} and ${maxDays}` };
+    }
+    return { days };
+  },
   parsePagination: (
     query: { limit?: string; offset?: string },
     options: { defaultLimit: number; maxLimit: number } = { defaultLimit: 50, maxLimit: 100 }
@@ -246,43 +255,34 @@ describe('GET /api/admin/audit-logs/stats', () => {
     expect(getAuditLogStats).toHaveBeenCalledWith(mockEnv.DB, 7);
   });
 
-  it('days は最大90日にクランプされる', async () => {
+  it('days が範囲外（999）の場合は 400 を返す', async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
-    vi.mocked(getAuditLogStats).mockResolvedValue(mockStats);
 
     const app = createApp();
     const res = await app.request(makeRequest('/api/admin/audit-logs/stats?days=999'), undefined, mockEnv);
 
-    expect(res.status).toBe(200);
-    const body = await res.json() as { data: typeof mockStats; days: number };
-    expect(body.days).toBe(90);
-    expect(getAuditLogStats).toHaveBeenCalledWith(mockEnv.DB, 90);
+    expect(res.status).toBe(400);
+    expect(getAuditLogStats).not.toHaveBeenCalled();
   });
 
-  it('days は最小1日にクランプされる', async () => {
+  it('days が範囲外（0）の場合は 400 を返す', async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
-    vi.mocked(getAuditLogStats).mockResolvedValue(mockStats);
 
     const app = createApp();
     const res = await app.request(makeRequest('/api/admin/audit-logs/stats?days=0'), undefined, mockEnv);
 
-    expect(res.status).toBe(200);
-    const body = await res.json() as { data: typeof mockStats; days: number };
-    expect(body.days).toBe(1);
-    expect(getAuditLogStats).toHaveBeenCalledWith(mockEnv.DB, 1);
+    expect(res.status).toBe(400);
+    expect(getAuditLogStats).not.toHaveBeenCalled();
   });
 
-  it('不正な days は30日として扱われる', async () => {
+  it('不正な days（文字列）の場合は 400 を返す', async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
-    vi.mocked(getAuditLogStats).mockResolvedValue(mockStats);
 
     const app = createApp();
     const res = await app.request(makeRequest('/api/admin/audit-logs/stats?days=abc'), undefined, mockEnv);
 
-    expect(res.status).toBe(200);
-    const body = await res.json() as { data: typeof mockStats; days: number };
-    expect(body.days).toBe(30);
-    expect(getAuditLogStats).toHaveBeenCalledWith(mockEnv.DB, 30);
+    expect(res.status).toBe(400);
+    expect(getAuditLogStats).not.toHaveBeenCalled();
   });
 
   it('一般ユーザーは 403 を返す', async () => {
