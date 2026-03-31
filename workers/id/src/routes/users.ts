@@ -536,17 +536,35 @@ app.patch('/:id/role', authMiddleware, adminMiddleware, csrfMiddleware, async (c
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  const user = await updateUserRole(c.env.DB, targetId, role);
-  // ロール変更後、既存トークンを即時失効（権限変更を即反映）
-  await revokeUserTokens(c.env.DB, targetId, 'security_event');
-  await createAdminAuditLog(c.env.DB, {
-    adminUserId: tokenUser.sub,
-    action: 'user.role_change',
-    targetType: 'user',
-    targetId,
-    details: { from: targetUser.role, to: role },
-    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
-  });
+  const ipAddress = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null;
+  let user;
+  try {
+    user = await updateUserRole(c.env.DB, targetId, role);
+    // ロール変更後、既存トークンを即時失効（権限変更を即反映）
+    await revokeUserTokens(c.env.DB, targetId, 'security_event');
+    await createAdminAuditLog(c.env.DB, {
+      adminUserId: tokenUser.sub,
+      action: 'user.role_change',
+      targetType: 'user',
+      targetId,
+      details: { from: targetUser.role, to: role },
+      ipAddress,
+      status: 'success',
+    });
+  } catch (err) {
+    try {
+      await createAdminAuditLog(c.env.DB, {
+        adminUserId: tokenUser.sub,
+        action: 'user.role_change',
+        targetType: 'user',
+        targetId,
+        details: { from: targetUser.role, to: role, error: err instanceof Error ? err.message : 'Unknown error' },
+        ipAddress,
+        status: 'failure',
+      });
+    } catch { /* ログ記録エラーは無視 */ }
+    throw err;
+  }
 
   return c.json({ data: formatAdminUserSummary(user) });
 });
@@ -575,12 +593,24 @@ app.patch('/:id/ban', authMiddleware, adminMiddleware, csrfMiddleware, async (c)
     return c.json({ error: { code: 'CONFLICT', message: 'User is already banned' } }, 409);
   }
 
+  const ipAddress = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null;
   let updated;
   try {
     updated = await banUser(c.env.DB, targetId);
     // 停止と同時に全セッション失効
     await revokeUserTokens(c.env.DB, targetId, 'security_event');
-  } catch {
+  } catch (err) {
+    try {
+      await createAdminAuditLog(c.env.DB, {
+        adminUserId: tokenUser.sub,
+        action: 'user.ban',
+        targetType: 'user',
+        targetId,
+        details: { error: err instanceof Error ? err.message : 'Unknown error' },
+        ipAddress,
+        status: 'failure',
+      });
+    } catch { /* ログ記録エラーは無視 */ }
     return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to ban user' } }, 500);
   }
 
@@ -590,7 +620,8 @@ app.patch('/:id/ban', authMiddleware, adminMiddleware, csrfMiddleware, async (c)
       action: 'user.ban',
       targetType: 'user',
       targetId,
-      ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+      ipAddress,
+      status: 'success',
     });
   } catch (err) {
     usersLogger.error('Failed to create audit log for user.ban', err);
@@ -613,14 +644,32 @@ app.delete('/:id/ban', authMiddleware, adminMiddleware, csrfMiddleware, async (c
     return c.json({ error: { code: 'CONFLICT', message: 'User is not banned' } }, 409);
   }
 
-  const updated = await unbanUser(c.env.DB, targetId);
-  await createAdminAuditLog(c.env.DB, {
-    adminUserId: tokenUser.sub,
-    action: 'user.unban',
-    targetType: 'user',
-    targetId,
-    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
-  });
+  const ipAddress = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null;
+  let updated;
+  try {
+    updated = await unbanUser(c.env.DB, targetId);
+    await createAdminAuditLog(c.env.DB, {
+      adminUserId: tokenUser.sub,
+      action: 'user.unban',
+      targetType: 'user',
+      targetId,
+      ipAddress,
+      status: 'success',
+    });
+  } catch (err) {
+    try {
+      await createAdminAuditLog(c.env.DB, {
+        adminUserId: tokenUser.sub,
+        action: 'user.unban',
+        targetType: 'user',
+        targetId,
+        details: { error: err instanceof Error ? err.message : 'Unknown error' },
+        ipAddress,
+        status: 'failure',
+      });
+    } catch { /* ログ記録エラーは無視 */ }
+    throw err;
+  }
 
   return c.json({ data: formatAdminUserSummary(updated) });
 });
@@ -649,7 +698,25 @@ app.delete('/:id/tokens/:tokenId', authMiddleware, adminMiddleware, csrfMiddlewa
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  const revoked = await revokeTokenByIdForUser(c.env.DB, tokenId, targetId, 'admin_action');
+  const ipAddress = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null;
+  let revoked;
+  try {
+    revoked = await revokeTokenByIdForUser(c.env.DB, tokenId, targetId, 'admin_action');
+  } catch (err) {
+    try {
+      await createAdminAuditLog(c.env.DB, {
+        adminUserId: tokenUser.sub,
+        action: 'user.session_revoked',
+        targetType: 'user',
+        targetId,
+        details: { tokenId, error: err instanceof Error ? err.message : 'Unknown error' },
+        ipAddress,
+        status: 'failure',
+      });
+    } catch { /* ログ記録エラーは無視 */ }
+    throw err;
+  }
+
   if (revoked === 0) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Session not found' } }, 404);
   }
@@ -660,7 +727,8 @@ app.delete('/:id/tokens/:tokenId', authMiddleware, adminMiddleware, csrfMiddlewa
     targetType: 'user',
     targetId,
     details: { tokenId },
-    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+    ipAddress,
+    status: 'success',
   });
 
   return c.body(null, 204);
@@ -676,15 +744,31 @@ app.delete('/:id/tokens', authMiddleware, adminMiddleware, csrfMiddleware, async
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  await revokeUserTokens(c.env.DB, targetId, 'admin_action');
-
-  await createAdminAuditLog(c.env.DB, {
-    adminUserId: tokenUser.sub,
-    action: 'user.sessions_revoked',
-    targetType: 'user',
-    targetId,
-    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
-  });
+  const ipAddress = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null;
+  try {
+    await revokeUserTokens(c.env.DB, targetId, 'admin_action');
+    await createAdminAuditLog(c.env.DB, {
+      adminUserId: tokenUser.sub,
+      action: 'user.sessions_revoked',
+      targetType: 'user',
+      targetId,
+      ipAddress,
+      status: 'success',
+    });
+  } catch (err) {
+    try {
+      await createAdminAuditLog(c.env.DB, {
+        adminUserId: tokenUser.sub,
+        action: 'user.sessions_revoked',
+        targetType: 'user',
+        targetId,
+        details: { error: err instanceof Error ? err.message : 'Unknown error' },
+        ipAddress,
+        status: 'failure',
+      });
+    } catch { /* ログ記録エラーは無視 */ }
+    throw err;
+  }
 
   return c.body(null, 204);
 });
@@ -716,6 +800,7 @@ app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
       targetType: 'user',
       targetId,
       ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+      status: 'success',
     });
   } catch (err) {
     usersLogger.error('Failed to create audit log for user.delete', err);

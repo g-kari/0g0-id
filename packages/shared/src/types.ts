@@ -79,6 +79,7 @@ export interface AdminAuditLog {
   target_id: string;
   details: string | null;
   ip_address: string | null;
+  status: 'success' | 'failure';
   created_at: string;
 }
 

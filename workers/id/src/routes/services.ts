@@ -145,6 +145,7 @@ app.post('/', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
     targetId: service.id,
     details: { name: service.name, allowed_scopes: body.allowed_scopes ?? ['profile', 'email'] },
     ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+    status: 'success',
   });
 
   // client_secretは作成時のみ返却
@@ -191,6 +192,7 @@ app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => 
       ...(allowed_scopes !== undefined ? { allowed_scopes } : {}),
     },
     ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+    status: 'success',
   });
 
   return c.json({
@@ -231,6 +233,7 @@ app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
       targetId: serviceId,
       details: { name: service.name, revoked_token_count: revokedCount },
       ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+      status: 'success',
     });
   } catch (err) {
     servicesLogger.error('[services] Failed to create audit log for service.delete', err);
@@ -315,6 +318,7 @@ app.post('/:id/rotate-secret', authMiddleware, adminMiddleware, csrfMiddleware, 
     targetType: 'service',
     targetId: serviceId,
     ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+    status: 'success',
   });
 
   return c.json({
@@ -358,6 +362,7 @@ app.patch('/:id/owner', authMiddleware, adminMiddleware, csrfMiddleware, async (
     targetId: serviceId,
     details: { from: service.owner_user_id, to: new_owner_user_id },
     ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+    status: 'success',
   });
 
   return c.json({
