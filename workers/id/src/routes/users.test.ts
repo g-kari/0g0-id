@@ -26,6 +26,15 @@ vi.mock('@0g0-id/shared', () => ({
   banUser: vi.fn(),
   unbanUser: vi.fn(),
   createAdminAuditLog: vi.fn(),
+  parseDays: (daysParam: string | undefined, options: { minDays?: number; maxDays?: number } = {}) => {
+    if (daysParam === undefined) return undefined;
+    const { minDays = 1, maxDays = 90 } = options;
+    const days = parseInt(daysParam, 10);
+    if (!Number.isInteger(days) || days < minDays || days > maxDays) {
+      return { error: `days must be an integer between ${minDays} and ${maxDays}` };
+    }
+    return { days };
+  },
   parsePagination: (
     query: { limit?: string; offset?: string },
     options: { defaultLimit: number; maxLimit: number } = { defaultLimit: 20, maxLimit: 100 }
