@@ -33,6 +33,11 @@ type EnvValidationResult =
  */
 let cachedResult: EnvValidationResult | null = null;
 
+/** @internal テスト用: キャッシュをリセットする */
+export function _resetValidationCache(): void {
+  cachedResult = null;
+}
+
 export function validateEnv(env: IdpEnv): EnvValidationResult {
   if (cachedResult !== null) return cachedResult;
   const result = envSchema.safeParse(env);

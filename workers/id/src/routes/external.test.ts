@@ -10,7 +10,6 @@ vi.mock('@0g0-id/shared', async (importActual) => {
     findServiceByClientId: vi.fn(),
     sha256: vi.fn(),
     timingSafeEqual: vi.fn(),
-    hasUserAuthorizedService: vi.fn(),
     listUsersAuthorizedForService: vi.fn(),
     countUsersAuthorizedForService: vi.fn(),
   };
@@ -21,7 +20,6 @@ import {
   findServiceByClientId,
   sha256,
   timingSafeEqual,
-  hasUserAuthorizedService,
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
 } from '@0g0-id/shared';
@@ -32,7 +30,6 @@ const mockFindUserById = vi.mocked(findUserById);
 const mockFindServiceByClientId = vi.mocked(findServiceByClientId);
 const mockSha256 = vi.mocked(sha256);
 const mockTimingSafeEqual = vi.mocked(timingSafeEqual);
-const mockHasUserAuthorizedService = vi.mocked(hasUserAuthorizedService);
 const mockListUsersAuthorizedForService = vi.mocked(listUsersAuthorizedForService);
 const mockCountUsersAuthorizedForService = vi.mocked(countUsersAuthorizedForService);
 
@@ -44,8 +41,21 @@ function buildApp() {
 }
 
 const baseUrl = 'https://id.0g0.xyz';
-// Cloudflare Workers Bindingsのモック（DBはsharedモックが肩代わりするためnullで可）
-const mockEnv = { DB: {} as D1Database };
+
+// D1 DB モック（prepare().bind().all() チェーンをサポート）
+function createMockDb(authorizedUserIds: string[] = []) {
+  return {
+    prepare: vi.fn().mockReturnValue({
+      bind: vi.fn().mockReturnValue({
+        all: vi.fn().mockResolvedValue({
+          results: authorizedUserIds.map((id) => ({ user_id: id })),
+        }),
+      }),
+    }),
+  } as unknown as D1Database;
+}
+
+const mockEnv = { DB: createMockDb() };
 
 // Basic認証ヘッダーを生成
 function basicAuth(clientId: string, clientSecret: string): string {
@@ -126,7 +136,7 @@ const mockUser = {
 
 const PAIRWISE_SUB = 'pairwise-sub-hash';
 
-describe('GET /api/external/users/:id', () => {
+describe('GET /api/external/users/:sub', () => {
   const app = buildApp();
 
   beforeEach(() => {
@@ -137,8 +147,9 @@ describe('GET /api/external/users/:id', () => {
     );
     mockTimingSafeEqual.mockReturnValue(true);
     mockFindServiceByClientId.mockResolvedValue(mockService);
-    mockHasUserAuthorizedService.mockResolvedValue(true);
     mockFindUserById.mockResolvedValue(mockUser);
+    // DBモック: 認可済みユーザーを返す（ペアワイズsub検索で使用）
+    mockEnv.DB = createMockDb(['user-1']);
   });
 
   describe('認証', () => {
@@ -173,36 +184,41 @@ describe('GET /api/external/users/:id', () => {
   describe('エラーハンドリング', () => {
     it('DB障害時（findServiceByClientId） → 500を返す', async () => {
       mockFindServiceByClientId.mockRejectedValue(new Error('DB error'));
-      const res = await requestExternalUser(app, 'user-1');
+      const res = await requestExternalUser(app, PAIRWISE_SUB);
       expect(res.status).toBe(500);
     });
 
-    it('DB障害時（hasUserAuthorizedService） → 500を返す', async () => {
-      mockHasUserAuthorizedService.mockRejectedValue(new Error('DB error'));
-      const res = await requestExternalUser(app, 'user-1');
+    it('DB障害時（refresh_tokensクエリ） → 500を返す', async () => {
+      mockEnv.DB = {
+        prepare: vi.fn().mockReturnValue({
+          bind: vi.fn().mockReturnValue({
+            all: vi.fn().mockRejectedValue(new Error('DB error')),
+          }),
+        }),
+      } as unknown as D1Database;
+      const res = await requestExternalUser(app, PAIRWISE_SUB);
       expect(res.status).toBe(500);
     });
   });
 
   describe('認可チェック（IDOR防止）', () => {
-    it('ユーザーがサービスを認可していない場合 → 404を返す', async () => {
-      mockHasUserAuthorizedService.mockResolvedValue(false);
-      const res = await requestExternalUser(app, 'user-1');
+    it('ペアワイズsubに一致する認可済みユーザーがいない場合 → 404を返す', async () => {
+      mockEnv.DB = createMockDb([]);
+      const res = await requestExternalUser(app, PAIRWISE_SUB);
       expect(res.status).toBe(404);
       const body = await res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe('NOT_FOUND');
     });
 
     it('認可済みの場合はユーザー情報を返す', async () => {
-      mockHasUserAuthorizedService.mockResolvedValue(true);
-      const res = await requestExternalUser(app, 'user-1');
+      const res = await requestExternalUser(app, PAIRWISE_SUB);
       expect(res.status).toBe(200);
     });
   });
 
   describe('ユーザー検索', () => {
-    it('存在するユーザーIDで200とユーザー情報を返す', async () => {
-      const res = await requestExternalUser(app, 'user-1');
+    it('存在するペアワイズsubで200とユーザー情報を返す', async () => {
+      const res = await requestExternalUser(app, PAIRWISE_SUB);
       expect(res.status).toBe(200);
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data.sub).toBe(PAIRWISE_SUB);
@@ -212,9 +228,9 @@ describe('GET /api/external/users/:id', () => {
       expect(body.data.picture).toBe('https://example.com/pic.jpg');
     });
 
-    it('存在しないユーザーID → 404を返す', async () => {
+    it('ペアワイズsubが一致してもfindUserByIdがnull → 404を返す', async () => {
       mockFindUserById.mockResolvedValue(null);
-      const res = await requestExternalUser(app, 'no-such-user');
+      const res = await requestExternalUser(app, PAIRWISE_SUB);
       expect(res.status).toBe(404);
       const body = await res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe('NOT_FOUND');
@@ -223,7 +239,7 @@ describe('GET /api/external/users/:id', () => {
 
   describe('スコープフィルタリング', () => {
     it('profile/emailスコープのみ → phone/addressを含まない', async () => {
-      const res = await requestExternalUser(app, 'user-1');
+      const res = await requestExternalUser(app, PAIRWISE_SUB);
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data).not.toHaveProperty('phone');
       expect(body.data).not.toHaveProperty('address');
@@ -234,7 +250,7 @@ describe('GET /api/external/users/:id', () => {
         ...mockService,
         allowed_scopes: JSON.stringify(['profile', 'email', 'phone', 'address']),
       });
-      const res = await requestExternalUser(app, 'user-1');
+      const res = await requestExternalUser(app, PAIRWISE_SUB);
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data.phone).toBe('090-0000-0000');
       expect(body.data.address).toBe('Tokyo');
@@ -245,7 +261,7 @@ describe('GET /api/external/users/:id', () => {
         ...mockService,
         allowed_scopes: JSON.stringify(['email']),
       });
-      const res = await requestExternalUser(app, 'user-1');
+      const res = await requestExternalUser(app, PAIRWISE_SUB);
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data).not.toHaveProperty('name');
       expect(body.data).not.toHaveProperty('picture');
@@ -257,7 +273,7 @@ describe('GET /api/external/users/:id', () => {
         ...mockService,
         allowed_scopes: JSON.stringify(['email']),
       });
-      const res = await requestExternalUser(app, 'user-1');
+      const res = await requestExternalUser(app, PAIRWISE_SUB);
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data.sub).toBe(PAIRWISE_SUB);
     });
@@ -267,7 +283,7 @@ describe('GET /api/external/users/:id', () => {
         ...mockService,
         allowed_scopes: 'invalid-json',
       });
-      const res = await requestExternalUser(app, 'user-1');
+      const res = await requestExternalUser(app, PAIRWISE_SUB);
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data.sub).toBe(PAIRWISE_SUB);
       expect(body.data).not.toHaveProperty('name');
@@ -277,14 +293,14 @@ describe('GET /api/external/users/:id', () => {
 
   describe('セキュリティ: 内部情報の非公開', () => {
     it('内部IDを返さない（subのみ）', async () => {
-      const res = await requestExternalUser(app, 'user-1');
+      const res = await requestExternalUser(app, PAIRWISE_SUB);
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data).not.toHaveProperty('id');
       expect(body.data.sub).toBe(PAIRWISE_SUB);
     });
 
     it('google_sub等の内部IDを返さない', async () => {
-      const res = await requestExternalUser(app, 'user-1');
+      const res = await requestExternalUser(app, PAIRWISE_SUB);
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data).not.toHaveProperty('google_sub');
       expect(body.data).not.toHaveProperty('line_sub');
@@ -294,7 +310,7 @@ describe('GET /api/external/users/:id', () => {
     });
 
     it('roleを返さない', async () => {
-      const res = await requestExternalUser(app, 'user-1');
+      const res = await requestExternalUser(app, PAIRWISE_SUB);
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data).not.toHaveProperty('role');
     });
@@ -314,6 +330,7 @@ describe('GET /api/external/users', () => {
     mockFindServiceByClientId.mockResolvedValue(mockService);
     mockListUsersAuthorizedForService.mockResolvedValue([mockUser]);
     mockCountUsersAuthorizedForService.mockResolvedValue(1);
+    mockEnv.DB = createMockDb();
   });
 
   describe('認証', () => {
@@ -404,16 +421,11 @@ describe('GET /api/external/users', () => {
       expect(body.error.code).toBe('BAD_REQUEST');
     });
 
-    it('limitが整数でない場合（小数点）はparseIntで切り捨てる', async () => {
+    it('limitが整数でない場合（小数点）は400を返す', async () => {
       const res = await requestExternalUserList(app, { limit: '1.5' });
-      expect(res.status).toBe(200);
-      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
-        expect.anything(),
-        'service-1',
-        1,
-        0,
-        {}
-      );
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('BAD_REQUEST');
     });
 
     it('offsetが負の場合は400を返す', async () => {

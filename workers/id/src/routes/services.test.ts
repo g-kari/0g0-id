@@ -24,6 +24,7 @@ vi.mock('@0g0-id/shared', () => ({
   countUsersAuthorizedForService: vi.fn(),
   revokeUserServiceTokens: vi.fn(),
   revokeAllServiceTokens: vi.fn(),
+  findRedirectUriById: vi.fn(),
   countServices: vi.fn(),
   createAdminAuditLog: vi.fn(),
   parsePagination: (
@@ -65,6 +66,7 @@ import {
   countServices,
   createAdminAuditLog,
   verifyAccessToken,
+  findRedirectUriById,
 } from '@0g0-id/shared';
 
 import servicesRoutes from './services';
@@ -1374,6 +1376,7 @@ describe('DELETE /api/services/:id/redirect-uris/:uriId', () => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
     vi.mocked(findServiceById).mockResolvedValue(mockService);
+    vi.mocked(findRedirectUriById).mockResolvedValue({ id: 'uri-1', service_id: 'service-1', uri: 'https://example.com/callback', created_at: '2024-01-01T00:00:00Z' });
     vi.mocked(deleteRedirectUri).mockResolvedValue(1);
     vi.mocked(createAdminAuditLog).mockResolvedValue(undefined);
   });
@@ -1400,7 +1403,7 @@ describe('DELETE /api/services/:id/redirect-uris/:uriId', () => {
   });
 
   it('リダイレクトURIが存在しない場合 → 404を返す', async () => {
-    vi.mocked(deleteRedirectUri).mockResolvedValue(0);
+    vi.mocked(findRedirectUriById).mockResolvedValue(null);
     const res = await sendRequest(app, '/api/services/service-1/redirect-uris/no-such', {
       method: 'DELETE',
       origin: 'https://admin.0g0.xyz',
@@ -1433,7 +1436,7 @@ describe('DELETE /api/services/:id/redirect-uris/:uriId', () => {
         action: 'service.redirect_uri_deleted',
         targetType: 'service',
         targetId: 'service-1',
-        details: { uri_id: 'uri-1' },
+        details: { uri_id: 'uri-1', uri: 'https://example.com/callback' },
       })
     );
   });

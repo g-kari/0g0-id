@@ -41,6 +41,7 @@ vi.mock('@0g0-id/shared', () => ({
 
 import { getJWTKeys } from '@0g0-id/shared';
 import app from './index';
+import { _resetValidationCache } from './utils/env-validation';
 
 const mockEnv = {
   DB: {} as D1Database,
@@ -107,6 +108,10 @@ describe('notFound ハンドラ', () => {
 });
 
 describe('環境変数バリデーション ミドルウェア', () => {
+  beforeEach(() => {
+    _resetValidationCache();
+  });
+
   it('必須環境変数が欠けている場合に500とMISCONFIGURATIONを返す', async () => {
     const incompleteEnv = {
       DB: {} as D1Database,
