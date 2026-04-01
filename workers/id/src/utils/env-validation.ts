@@ -34,7 +34,7 @@ type EnvValidationResult =
 let cachedResult: EnvValidationResult | null = null;
 
 export function validateEnv(env: IdpEnv): EnvValidationResult {
-  if (cachedResult?.ok) return cachedResult;
+  if (cachedResult !== null) return cachedResult;
   const result = envSchema.safeParse(env);
   const errors: string[] = result.success
     ? []

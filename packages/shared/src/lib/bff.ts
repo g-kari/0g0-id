@@ -257,13 +257,17 @@ export async function fetchWithJsonBody(
  * 204 No Content の場合は body なしで返す。
  */
 export async function proxyResponse(res: Response): Promise<Response> {
+  const safeHeaders = new Headers();
+  const contentType = res.headers.get('Content-Type');
+  if (contentType) safeHeaders.set('Content-Type', contentType);
+
   if (res.status === 204) {
-    return new Response(null, { status: 204, headers: res.headers });
+    return new Response(null, { status: 204, headers: safeHeaders });
   }
   const body = await res.text();
   return new Response(body, {
     status: res.status,
-    headers: res.headers,
+    headers: safeHeaders,
   });
 }
 

@@ -995,9 +995,8 @@ app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
     return c.json({ error: { code: 'INVALID_TOKEN', message: 'Token not found' } }, 401);
   }
 
-  // 有効期限チェック（既にrotationとして失効済みだが期限切れの場合、理由を修正）
+  // 有効期限チェック（既にrotationとして失効済みなので再revokeは不要）
   if (new Date(storedToken.expires_at) < new Date()) {
-    await revokeRefreshToken(c.env.DB, storedToken.id, 'expired');
     return c.json({ error: { code: 'TOKEN_EXPIRED', message: 'Refresh token expired' } }, 401);
   }
 
