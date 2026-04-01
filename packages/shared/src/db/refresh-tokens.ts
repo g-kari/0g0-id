@@ -53,7 +53,8 @@ export async function unrevokeRefreshToken(
       `UPDATE refresh_tokens
        SET revoked_at = NULL, revoked_reason = NULL
        WHERE id = ?
-         AND revoked_at IS NOT NULL`
+         AND revoked_at IS NOT NULL
+         AND revoked_reason = 'rotation'`
     )
     .bind(tokenId)
     .run();

@@ -180,7 +180,7 @@ export async function countServices(db: D1Database, filter: { name?: string } = 
 
   if (name) {
     query += ' WHERE name LIKE ?';
-    params.push(`%${name}%`);
+    params.push(`%${escapeLikePattern(name)}%`);
   }
 
   const stmt = db.prepare(query);
