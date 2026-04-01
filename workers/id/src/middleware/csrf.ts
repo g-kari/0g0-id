@@ -12,6 +12,21 @@ export const csrfMiddleware = createMiddleware<{ Bindings: IdpEnv }>(async (c, n
   // モジュールレベルの可変グローバルにキャッシュすると設定変更が反映されないリスクがある
   const allowedOrigins = new Set([c.env.IDP_ORIGIN, c.env.USER_ORIGIN, c.env.ADMIN_ORIGIN]);
 
+    // EXTRA_BFF_ORIGINS（カンマ区切り）を許可オリジンに追加
+    if (c.env.EXTRA_BFF_ORIGINS) {
+      for (const extra of c.env.EXTRA_BFF_ORIGINS.split(',')) {
+        const trimmed = extra.trim();
+        if (trimmed) {
+          try {
+            const url = new URL(trimmed);
+            allowedOrigins.add(url.origin);
+          } catch {
+            // 不正なURLは無視
+          }
+        }
+      }
+    }
+
   let originBase: string;
   try {
     const originUrl = new URL(origin);

@@ -111,4 +111,45 @@ describe('csrfMiddleware (id worker)', () => {
     );
     expect(res.status).toBe(200);
   });
+
+  it('EXTRA_BFF_ORIGINS に含まれるオリジン → 200を返す', async () => {
+    const envWithExtra = {
+      ...mockEnv,
+      EXTRA_BFF_ORIGINS: 'https://external.example.com,https://another.example.com',
+    };
+    const res = await app.request(
+      new Request(`${baseUrl}/api/test`, {
+        headers: { Origin: 'https://external.example.com' },
+      }),
+      undefined,
+      envWithExtra as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it('EXTRA_BFF_ORIGINS に含まれないオリジン → 403を返す', async () => {
+    const envWithExtra = {
+      ...mockEnv,
+      EXTRA_BFF_ORIGINS: 'https://external.example.com',
+    };
+    const res = await app.request(
+      new Request(`${baseUrl}/api/test`, {
+        headers: { Origin: 'https://attacker.example.com' },
+      }),
+      undefined,
+      envWithExtra as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it('EXTRA_BFF_ORIGINS 未設定で外部オリジン → 403を返す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/test`, {
+        headers: { Origin: 'https://external.example.com' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(403);
+  });
 });
