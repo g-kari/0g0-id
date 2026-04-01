@@ -1,4 +1,5 @@
 import type { RefreshToken, User } from '../types';
+import { escapeLikePattern } from '../lib/sql';
 
 export type RevokeReason =
   | 'user_logout'
@@ -232,12 +233,12 @@ export async function listUsersAuthorizedForService(
   const bindings: unknown[] = [serviceId];
 
   if (filter?.name) {
-    conditions.push('AND u.name LIKE ?');
-    bindings.push(`%${filter.name}%`);
+    conditions.push("AND u.name LIKE ? ESCAPE '\\'");
+    bindings.push(`%${escapeLikePattern(filter.name)}%`);
   }
   if (filter?.email) {
-    conditions.push('AND u.email LIKE ?');
-    bindings.push(`%${filter.email}%`);
+    conditions.push("AND u.email LIKE ? ESCAPE '\\'");
+    bindings.push(`%${escapeLikePattern(filter.email)}%`);
   }
 
   const extraConditions = conditions.length > 0 ? '\n       ' + conditions.join('\n       ') : '';
@@ -272,12 +273,12 @@ export async function countUsersAuthorizedForService(
   const bindings: unknown[] = [serviceId];
 
   if (filter?.name) {
-    conditions.push('AND u.name LIKE ?');
-    bindings.push(`%${filter.name}%`);
+    conditions.push("AND u.name LIKE ? ESCAPE '\\'");
+    bindings.push(`%${escapeLikePattern(filter.name)}%`);
   }
   if (filter?.email) {
-    conditions.push('AND u.email LIKE ?');
-    bindings.push(`%${filter.email}%`);
+    conditions.push("AND u.email LIKE ? ESCAPE '\\'");
+    bindings.push(`%${escapeLikePattern(filter.email)}%`);
   }
 
   const extraConditions = conditions.length > 0 ? '\n       ' + conditions.join('\n       ') : '';

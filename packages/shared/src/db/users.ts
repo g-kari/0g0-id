@@ -1,4 +1,5 @@
 import type { User } from '../types';
+import { escapeLikePattern } from '../lib/sql';
 import { daysAgoIso } from './helpers';
 import { type OAuthProvider, PROVIDER_COLUMN, PROVIDER_DISPLAY_NAMES, ALL_PROVIDERS } from '../lib/providers';
 
@@ -310,16 +311,16 @@ function buildUserFilterClause(filter?: UserFilter): { where: string; params: un
   const params: unknown[] = [];
 
   if (filter?.email) {
-    conditions.push('email LIKE ?');
-    params.push(`%${filter.email}%`);
+    conditions.push("email LIKE ? ESCAPE '\\'");
+    params.push(`%${escapeLikePattern(filter.email)}%`);
   }
   if (filter?.role) {
     conditions.push('role = ?');
     params.push(filter.role);
   }
   if (filter?.name) {
-    conditions.push('name LIKE ?');
-    params.push(`%${filter.name}%`);
+    conditions.push("name LIKE ? ESCAPE '\\'");
+    params.push(`%${escapeLikePattern(filter.name)}%`);
   }
   if (filter?.banned === true) {
     conditions.push('banned_at IS NOT NULL');

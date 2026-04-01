@@ -973,11 +973,11 @@ app.post('/exchange', tokenApiRateLimitMiddleware, async (c) => {
       token_type: 'Bearer',
       expires_in: 900, // 15分
       user: {
-        id: user.id,
+        id: idTokenSub,
         email: user.email,
         name: user.name,
         picture: user.picture,
-        role: user.role,
+        ...(serviceId === null ? { role: user.role } : {}),
       },
     },
   });
