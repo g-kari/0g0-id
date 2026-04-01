@@ -998,9 +998,13 @@ app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
     // null の場合: 存在しないか既に失効済み → reuse detection チェック
     const existingToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
     if (existingToken) {
-      // 既に失効済み → family全失効（リプレイ攻撃検知）
-      await revokeTokenFamily(c.env.DB, existingToken.family_id, 'reuse_detected');
-      return c.json({ error: { code: 'TOKEN_REUSE', message: 'Token reuse detected' } }, 401);
+      // rotationで失効済み = 過去に正常ローテーションされたトークンの再利用 → リプレイ攻撃
+      // それ以外の理由（user_logout, admin_revoke等）で失効 → 正当な失効なのでfamily全失効は不要
+      if (existingToken.revoked_reason === 'rotation') {
+        await revokeTokenFamily(c.env.DB, existingToken.family_id, 'reuse_detected');
+        return c.json({ error: { code: 'TOKEN_REUSE', message: 'Token reuse detected' } }, 401);
+      }
+      return c.json({ error: { code: 'INVALID_TOKEN', message: 'Token has been revoked' } }, 401);
     }
     return c.json({ error: { code: 'INVALID_TOKEN', message: 'Token not found' } }, 401);
   }

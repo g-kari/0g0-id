@@ -215,6 +215,8 @@ export async function transferServiceOwnership(
   id: string,
   newOwnerUserId: string
 ): Promise<Service | null> {
+  // オーナー変更: 旧キャッシュを即時破棄してから更新（rotateClientSecretと同じパターン）
+  invalidateServiceCache(id);
   const service = await db
     .prepare(
       `UPDATE services SET owner_user_id = ?, updated_at = datetime('now')

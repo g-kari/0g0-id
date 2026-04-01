@@ -6,6 +6,22 @@ type AuthVariables = {
   user: TokenPayload;
 };
 
+/**
+ * サービストークン（cid付き）を拒否するミドルウェア。
+ * /api/users/me 系のBFFセッション専用エンドポイントで使用する。
+ * サービストークンは /userinfo のみ許可されるべきで、内部ユーザー管理APIへのアクセスは禁止。
+ */
+export const rejectServiceTokenMiddleware = createMiddleware<{
+  Bindings: IdpEnv;
+  Variables: AuthVariables;
+}>(async (c, next) => {
+  const user = c.get('user');
+  if (user.cid) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Service tokens cannot access this endpoint' } }, 403);
+  }
+  await next();
+});
+
 export const authMiddleware = createMiddleware<{
   Bindings: IdpEnv;
   Variables: AuthVariables;

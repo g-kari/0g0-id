@@ -671,11 +671,12 @@ describe('POST /auth/refresh', () => {
     expect(body.error.code).toBe('INVALID_TOKEN');
   });
 
-  it('失効済みトークン（リプレイ攻撃）→ family全失効 + 401を返す', async () => {
+  it('失効済みトークン（rotation後の再利用＝リプレイ攻撃）→ family全失効 + 401を返す', async () => {
     vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(null);
     vi.mocked(findRefreshTokenByHash).mockResolvedValue({
       ...mockRefreshToken,
       revoked_at: '2024-01-01T00:00:00Z',
+      revoked_reason: 'rotation',
     } as never);
     vi.mocked(revokeTokenFamily).mockResolvedValue(undefined as never);
 
@@ -691,6 +692,24 @@ describe('POST /auth/refresh', () => {
       'family-1',
       'reuse_detected'
     );
+  });
+
+  it('user_logoutで失効済みトークン → family全失効せずINVALID_TOKENを返す', async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(null);
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      revoked_at: '2024-01-01T00:00:00Z',
+      revoked_reason: 'user_logout',
+    } as never);
+
+    const res = await sendRequest(app, '/auth/refresh', {
+      method: 'POST',
+      body: { refresh_token: 'logged-out-token' },
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INVALID_TOKEN');
+    expect(vi.mocked(revokeTokenFamily)).not.toHaveBeenCalled();
   });
 
   it('期限切れトークン → 401を返す', async () => {

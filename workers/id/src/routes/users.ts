@@ -29,7 +29,7 @@ import {
   createLogger,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
-import { authMiddleware } from '../middleware/auth';
+import { authMiddleware, rejectServiceTokenMiddleware } from '../middleware/auth';
 import { adminMiddleware } from '../middleware/admin';
 import { csrfMiddleware } from '../middleware/csrf';
 import { parseJsonBody } from '../utils/parse-body';
@@ -129,7 +129,7 @@ async function performUserDeletion(
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
 // GET /api/users/me
-app.get('/me', authMiddleware, async (c) => {
+app.get('/me', authMiddleware, rejectServiceTokenMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const user = await findUserById(c.env.DB, tokenUser.sub);
   if (!user) {
@@ -139,7 +139,7 @@ app.get('/me', authMiddleware, async (c) => {
 });
 
 // GET /api/users/me/data-export — GDPR準拠のアカウントデータ一括エクスポート
-app.get('/me/data-export', authMiddleware, async (c) => {
+app.get('/me/data-export', authMiddleware, rejectServiceTokenMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const userId = tokenUser.sub;
 
@@ -179,7 +179,7 @@ app.get('/me/data-export', authMiddleware, async (c) => {
 });
 
 // PATCH /api/users/me
-app.patch('/me', authMiddleware, csrfMiddleware, async (c) => {
+app.patch('/me', authMiddleware, rejectServiceTokenMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
 
   const result = await parseJsonBody(c, PatchMeSchema);
@@ -207,21 +207,21 @@ app.patch('/me', authMiddleware, csrfMiddleware, async (c) => {
 });
 
 // GET /api/users/me/connections
-app.get('/me/connections', authMiddleware, async (c) => {
+app.get('/me/connections', authMiddleware, rejectServiceTokenMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const connections = await listUserConnections(c.env.DB, tokenUser.sub);
   return c.json({ data: connections });
 });
 
 // GET /api/users/me/providers — 連携済みSNSプロバイダー一覧
-app.get('/me/providers', authMiddleware, async (c) => {
+app.get('/me/providers', authMiddleware, rejectServiceTokenMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const providers = await getUserProviders(c.env.DB, tokenUser.sub);
   return c.json({ data: providers });
 });
 
 // GET /api/users/me/login-history — 自分のログイン履歴取得
-app.get('/me/login-history', authMiddleware, async (c) => {
+app.get('/me/login-history', authMiddleware, rejectServiceTokenMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const pagination = parsePagination(
     { limit: c.req.query('limit'), offset: c.req.query('offset') },
@@ -238,7 +238,7 @@ app.get('/me/login-history', authMiddleware, async (c) => {
 });
 
 // GET /api/users/me/login-stats — 自分のプロバイダー別ログイン統計
-app.get('/me/login-stats', authMiddleware, async (c) => {
+app.get('/me/login-stats', authMiddleware, rejectServiceTokenMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const daysResult = parseDays(c.req.query('days'));
   if (daysResult && 'error' in daysResult) {
@@ -251,7 +251,7 @@ app.get('/me/login-stats', authMiddleware, async (c) => {
 });
 
 // GET /api/users/me/login-trends — 自分の日別ログイントレンド
-app.get('/me/login-trends', authMiddleware, async (c) => {
+app.get('/me/login-trends', authMiddleware, rejectServiceTokenMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const daysResult = parseDays(c.req.query('days'));
   if (daysResult && 'error' in daysResult) {
@@ -263,7 +263,7 @@ app.get('/me/login-trends', authMiddleware, async (c) => {
 });
 
 // GET /api/users/me/security-summary — セキュリティ概要
-app.get('/me/security-summary', authMiddleware, async (c) => {
+app.get('/me/security-summary', authMiddleware, rejectServiceTokenMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const userId = tokenUser.sub;
 
@@ -300,7 +300,7 @@ app.get('/me/security-summary', authMiddleware, async (c) => {
 });
 
 // DELETE /api/users/me/providers/:provider — SNSプロバイダー連携解除
-app.delete('/me/providers/:provider', authMiddleware, csrfMiddleware, async (c) => {
+app.delete('/me/providers/:provider', authMiddleware, rejectServiceTokenMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const providerParam = c.req.param('provider');
   if (!VALID_PROVIDERS.includes(providerParam as (typeof VALID_PROVIDERS)[number])) {
@@ -328,7 +328,7 @@ app.delete('/me/providers/:provider', authMiddleware, csrfMiddleware, async (c) 
 });
 
 // DELETE /api/users/me/connections/:serviceId
-app.delete('/me/connections/:serviceId', authMiddleware, csrfMiddleware, async (c) => {
+app.delete('/me/connections/:serviceId', authMiddleware, rejectServiceTokenMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const serviceId = c.req.param('serviceId');
   const revoked = await revokeUserServiceTokens(c.env.DB, tokenUser.sub, serviceId, 'user_logout');
@@ -339,14 +339,14 @@ app.delete('/me/connections/:serviceId', authMiddleware, csrfMiddleware, async (
 });
 
 // GET /api/users/me/tokens — アクティブセッション一覧
-app.get('/me/tokens', authMiddleware, async (c) => {
+app.get('/me/tokens', authMiddleware, rejectServiceTokenMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const sessions = await listActiveSessionsByUserId(c.env.DB, tokenUser.sub);
   return c.json({ data: sessions });
 });
 
 // DELETE /api/users/me/tokens/others — 現在のセッション以外を全て失効（他デバイスからのサインアウト）
-app.delete('/me/tokens/others', authMiddleware, csrfMiddleware, async (c) => {
+app.delete('/me/tokens/others', authMiddleware, rejectServiceTokenMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const result = await parseJsonBody(c, RevokeOthersSchema);
   if (!result.ok) return result.response;
@@ -357,7 +357,7 @@ app.delete('/me/tokens/others', authMiddleware, csrfMiddleware, async (c) => {
 });
 
 // DELETE /api/users/me/tokens/:tokenId — 特定セッションのみログアウト（単一リフレッシュトークン無効化）
-app.delete('/me/tokens/:tokenId', authMiddleware, csrfMiddleware, async (c) => {
+app.delete('/me/tokens/:tokenId', authMiddleware, rejectServiceTokenMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const tokenId = c.req.param('tokenId');
   const revoked = await revokeTokenByIdForUser(c.env.DB, tokenId, tokenUser.sub, 'user_logout');
@@ -368,14 +368,14 @@ app.delete('/me/tokens/:tokenId', authMiddleware, csrfMiddleware, async (c) => {
 });
 
 // DELETE /api/users/me/tokens — 全デバイスからログアウト（全リフレッシュトークン無効化）
-app.delete('/me/tokens', authMiddleware, csrfMiddleware, async (c) => {
+app.delete('/me/tokens', authMiddleware, rejectServiceTokenMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
   await revokeUserTokens(c.env.DB, tokenUser.sub, 'user_logout_all');
   return c.body(null, 204);
 });
 
 // DELETE /api/users/me — 自分のアカウントを削除
-app.delete('/me', authMiddleware, csrfMiddleware, async (c) => {
+app.delete('/me', authMiddleware, rejectServiceTokenMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
 
   const targetUser = await findUserById(c.env.DB, tokenUser.sub);

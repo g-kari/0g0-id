@@ -20,7 +20,7 @@ app.get('/login', async (c) => {
 
   const state = generateToken(16);
 
-  const callbackUrl = `${new URL(c.req.url).origin}/auth/callback`;
+  const callbackUrl = `${c.env.SELF_ORIGIN}/auth/callback`;
 
   setCookie(c, STATE_COOKIE, state, {
     httpOnly: true,
@@ -61,7 +61,7 @@ app.get('/callback', async (c) => {
   deleteCookie(c, STATE_COOKIE, { path: '/', secure: true });
 
   // id worker にコード交換リクエスト（Service Bindings使用）
-  const callbackUrl = `${new URL(c.req.url).origin}/auth/callback`;
+  const callbackUrl = `${c.env.SELF_ORIGIN}/auth/callback`;
   const exchangeRes = await c.env.IDP.fetch(
     new Request(`${c.env.IDP_ORIGIN}/auth/exchange`, {
       method: 'POST',
@@ -149,7 +149,7 @@ app.get('/link', async (c) => {
   }
 
   const state = generateToken(16);
-  const callbackUrl = `${new URL(c.req.url).origin}/auth/callback`;
+  const callbackUrl = `${c.env.SELF_ORIGIN}/auth/callback`;
 
   setCookie(c, STATE_COOKIE, state, {
     httpOnly: true,
