@@ -37,8 +37,11 @@ export function parseDays(
 ): DaysResult | undefined {
   if (daysParam === undefined) return undefined;
   const { minDays = 1, maxDays = 90 } = options;
+  if (!/^\d+$/.test(daysParam)) {
+    return { error: `days must be an integer between ${minDays} and ${maxDays}` };
+  }
   const days = parseInt(daysParam, 10);
-  if (!Number.isInteger(days) || days < minDays || days > maxDays) {
+  if (days < minDays || days > maxDays) {
     return { error: `days must be an integer between ${minDays} and ${maxDays}` };
   }
   return { days };

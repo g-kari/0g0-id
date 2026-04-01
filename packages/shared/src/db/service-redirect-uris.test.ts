@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   listRedirectUris,
   addRedirectUri,
+  findRedirectUriById,
   deleteRedirectUri,
   isValidRedirectUri,
 } from './service-redirect-uris';
@@ -81,6 +82,21 @@ describe('addRedirectUri', () => {
   });
 });
 
+describe('findRedirectUriById', () => {
+  it('指定したidとservice_idでSELECTを実行しURIを返す', async () => {
+    const db = makeD1Mock(baseUri);
+    const result = await findRedirectUriById(db, 'uri-1', 'service-1');
+    expect(result).toEqual(baseUri);
+    expect(db._stmt.bind).toHaveBeenCalledWith('uri-1', 'service-1');
+  });
+
+  it('存在しない場合はnullを返す', async () => {
+    const db = makeD1Mock(null);
+    const result = await findRedirectUriById(db, 'non-existent', 'service-1');
+    expect(result).toBeNull();
+  });
+});
+
 describe('deleteRedirectUri', () => {
   it('指定したidとservice_idでDELETEを実行する', async () => {
     const db = makeD1Mock(null, [], 1);
@@ -93,7 +109,7 @@ describe('deleteRedirectUri', () => {
 
   it('削除対象が存在しない場合も正常終了する（changes=0）', async () => {
     const db = makeD1Mock(null, [], 0);
-    await expect(deleteRedirectUri(db, 'non-existent', 'service-1')).resolves.toBeUndefined();
+    await expect(deleteRedirectUri(db, 'non-existent', 'service-1')).resolves.toBe(0);
   });
 });
 

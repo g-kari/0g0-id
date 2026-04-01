@@ -9,6 +9,7 @@ import {
   deleteService,
   listRedirectUris,
   addRedirectUri,
+  findRedirectUriById,
   deleteRedirectUri,
   generateClientId,
   generateClientSecret,
@@ -460,11 +461,13 @@ app.delete('/:id/redirect-uris/:uriId', authMiddleware, adminMiddleware, csrfMid
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
 
-  const tokenUser = c.get('user');
-  const deleted = await deleteRedirectUri(c.env.DB, uriId, serviceId);
-  if (deleted === 0) {
+  const redirectUri = await findRedirectUriById(c.env.DB, uriId, serviceId);
+  if (!redirectUri) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Redirect URI not found' } }, 404);
   }
+
+  const tokenUser = c.get('user');
+  await deleteRedirectUri(c.env.DB, uriId, serviceId);
 
   try {
     await createAdminAuditLog(c.env.DB, {
@@ -472,7 +475,7 @@ app.delete('/:id/redirect-uris/:uriId', authMiddleware, adminMiddleware, csrfMid
       action: 'service.redirect_uri_deleted',
       targetType: 'service',
       targetId: serviceId,
-      details: { uri_id: uriId },
+      details: { uri_id: uriId, uri: redirectUri.uri },
       ipAddress: getClientIp(c.req.raw),
       status: 'success',
     });

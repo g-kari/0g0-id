@@ -72,8 +72,10 @@ describe('parseDays', () => {
     expect('error' in result!).toBe(true);
   });
 
-  it('parseInt で切り捨てられる "1.5" は有効', () => {
-    expect(parseDays('1.5')).toEqual({ days: 1 });
+  it('"1.5" のようなfloat文字列は拒否される', () => {
+    const result = parseDays('1.5');
+    expect(result).toBeDefined();
+    expect('error' in result!).toBe(true);
   });
 
   it('カスタム minDays / maxDays を尊重する', () => {

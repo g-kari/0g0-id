@@ -25,6 +25,17 @@ export async function addRedirectUri(
   return uri;
 }
 
+export async function findRedirectUriById(
+  db: D1Database,
+  id: string,
+  serviceId: string
+): Promise<ServiceRedirectUri | null> {
+  return db
+    .prepare('SELECT * FROM service_redirect_uris WHERE id = ? AND service_id = ?')
+    .bind(id, serviceId)
+    .first<ServiceRedirectUri>();
+}
+
 export async function deleteRedirectUri(
   db: D1Database,
   id: string,
