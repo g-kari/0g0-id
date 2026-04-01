@@ -63,8 +63,8 @@ export function validateEnv(env: IdpEnv): EnvValidationResult {
   }
 
   if (errors.length > 0) {
-    cachedResult = { ok: false, errors };
-    return cachedResult;
+    // 検証失敗時はキャッシュしない（環境変数修正後にisolate再起動なしで回復できるようにする）
+    return { ok: false, errors };
   }
   cachedResult = { ok: true };
   return cachedResult;

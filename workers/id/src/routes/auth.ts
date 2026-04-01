@@ -539,6 +539,9 @@ async function issueTokenPair(
   const tokenHash = await sha256(refreshToken);
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
 
+  // サービス連携時はペアワイズsubを事前計算して保存（外部API逆引き用）
+  const pairwiseSub = clientId ? await sha256(`${clientId}:${user.id}`) : null;
+
   await createRefreshToken(db, {
     id: crypto.randomUUID(),
     userId: user.id,
@@ -546,6 +549,7 @@ async function issueTokenPair(
     tokenHash,
     familyId,
     expiresAt,
+    pairwiseSub,
   });
 
   return { accessToken, refreshToken };

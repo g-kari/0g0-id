@@ -52,12 +52,13 @@ export async function createRefreshToken(
     tokenHash: string;
     familyId: string;
     expiresAt: string;
+    pairwiseSub?: string | null;
   }
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO refresh_tokens (id, user_id, service_id, token_hash, family_id, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO refresh_tokens (id, user_id, service_id, token_hash, family_id, expires_at, pairwise_sub)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       params.id,
@@ -65,9 +66,28 @@ export async function createRefreshToken(
       params.serviceId,
       params.tokenHash,
       params.familyId,
-      params.expiresAt
+      params.expiresAt,
+      params.pairwiseSub ?? null
     )
     .run();
+}
+
+/** ペアワイズsubからユーザーIDを逆引きする（外部API用） */
+export async function findUserIdByPairwiseSub(
+  db: D1Database,
+  serviceId: string,
+  pairwiseSub: string
+): Promise<string | null> {
+  const row = await db
+    .prepare(
+      `SELECT DISTINCT user_id FROM refresh_tokens
+       WHERE service_id = ? AND pairwise_sub = ?
+         AND revoked_at IS NULL AND datetime(expires_at) > datetime('now')
+       LIMIT 1`
+    )
+    .bind(serviceId, pairwiseSub)
+    .first<{ user_id: string }>();
+  return row?.user_id ?? null;
 }
 
 export async function revokeRefreshToken(db: D1Database, id: string, reason?: RevokeReason): Promise<void> {

@@ -89,7 +89,7 @@ describe('createRefreshToken', () => {
     expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO refresh_tokens'));
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
     expect(stmt.bind).toHaveBeenCalledWith(
-      'token-id-1', 'user-1', 'service-1', 'hash-abc', 'family-1', '2025-12-31T23:59:59Z'
+      'token-id-1', 'user-1', 'service-1', 'hash-abc', 'family-1', '2025-12-31T23:59:59Z', null
     );
     expect(stmt.run).toHaveBeenCalled();
   });
@@ -106,7 +106,7 @@ describe('createRefreshToken', () => {
     });
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
     expect(stmt.bind).toHaveBeenCalledWith(
-      'token-id-2', 'user-1', null, 'hash-xyz', 'family-2', '2025-12-31T23:59:59Z'
+      'token-id-2', 'user-1', null, 'hash-xyz', 'family-2', '2025-12-31T23:59:59Z', null
     );
   });
 });
