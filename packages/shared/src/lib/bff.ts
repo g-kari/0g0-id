@@ -1,5 +1,6 @@
 import { type Context } from 'hono';
 import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
+import { decodeJwt } from 'jose';
 import type { BffEnv } from '../types';
 import { decodeBase64Url } from './base64url';
 
@@ -194,11 +195,17 @@ export async function fetchWithAuth(
         data: { access_token: string; refresh_token: string };
       }>();
 
-      // セッションCookieを新トークンで更新
+      // セッションCookieを新トークンで更新（JWTペイロードからrole/emailも反映）
+      const claims = decodeJwt(refreshData.data.access_token);
       const newSession: BffSession = {
         ...session,
         access_token: refreshData.data.access_token,
         refresh_token: refreshData.data.refresh_token,
+        user: {
+          ...session.user,
+          ...(typeof claims['email'] === 'string' ? { email: claims['email'] } : {}),
+          ...(claims['role'] === 'user' || claims['role'] === 'admin' ? { role: claims['role'] } : {}),
+        },
       };
       await setSessionCookie(c, sessionCookieName, newSession);
 
