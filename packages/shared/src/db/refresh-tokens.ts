@@ -305,7 +305,7 @@ export async function revokeAllServiceTokens(db: D1Database, serviceId: string, 
   const result = await db
     .prepare(
       `UPDATE refresh_tokens SET revoked_at = datetime('now'), revoked_reason = ?
-       WHERE service_id = ? AND revoked_at IS NULL AND datetime(expires_at) > datetime('now')`
+       WHERE service_id = ? AND revoked_at IS NULL`
     )
     .bind(reason ?? null, serviceId)
     .run();
@@ -345,7 +345,7 @@ export async function revokeTokenByIdForUser(
   const result = await db
     .prepare(
       `UPDATE refresh_tokens SET revoked_at = datetime('now'), revoked_reason = ?
-       WHERE id = ? AND user_id = ? AND revoked_at IS NULL AND expires_at > datetime('now')`
+       WHERE id = ? AND user_id = ? AND revoked_at IS NULL`
     )
     .bind(reason ?? null, tokenId, userId)
     .run();

@@ -27,9 +27,14 @@ type EnvValidationResult =
 
 /**
  * 環境変数を検証する。
+ * Cloudflare Workers の同一isolate内では環境変数は不変のため、
+ * 初回検証結果をキャッシュして以降のリクエストではスキップする。
  * @returns バリデーション結果。エラーの場合はエラーメッセージの配列を含む。
  */
+let cachedResult: EnvValidationResult | null = null;
+
 export function validateEnv(env: IdpEnv): EnvValidationResult {
+  if (cachedResult) return cachedResult;
   const result = envSchema.safeParse(env);
   const errors: string[] = result.success
     ? []
@@ -53,7 +58,9 @@ export function validateEnv(env: IdpEnv): EnvValidationResult {
   }
 
   if (errors.length > 0) {
-    return { ok: false, errors };
+    cachedResult = { ok: false, errors };
+    return cachedResult;
   }
-  return { ok: true };
+  cachedResult = { ok: true };
+  return cachedResult;
 }

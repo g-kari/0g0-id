@@ -43,7 +43,7 @@ async function deriveAesKey(secret: string): Promise<CryptoKey> {
     {
       name: 'HKDF',
       hash: 'SHA-256',
-      salt: new Uint8Array(32),
+      salt: new TextEncoder().encode('0g0-id-bff-session-v1'),
       info: new TextEncoder().encode('bff-session'),
     },
     keyMaterial,
