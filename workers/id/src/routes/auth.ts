@@ -46,6 +46,7 @@ import {
   findServiceByClientId,
   findServiceById,
   isValidRedirectUri,
+  normalizeRedirectUri,
   timingSafeEqual,
   linkProvider,
   insertLoginEvent,
@@ -610,7 +611,11 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
     if (!service) {
       return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid client_id' } }, 400);
     }
-    const valid = await isValidRedirectUri(c.env.DB, service.id, redirectTo);
+    const normalizedRedirectTo = normalizeRedirectUri(redirectTo);
+    if (!normalizedRedirectTo) {
+      return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid redirect_to' } }, 400);
+    }
+    const valid = await isValidRedirectUri(c.env.DB, service.id, normalizedRedirectTo);
     if (!valid) {
       return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid redirect_to' } }, 400);
     }
@@ -642,6 +647,11 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
   }
   const codeChallengeMethod = c.req.query('code_challenge_method');
   const scope = c.req.query('scope');
+
+  // scope の長さ制限
+  if (scope !== undefined && scope.length > 2048) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'scope too long' } }, 400);
+  }
 
   // code_challenge が指定された場合は S256 のみ許可（OAuth 2.1 / RFC 7636）
   // code_challenge_method が省略された場合も拒否（デフォルトplainとの混同防止）

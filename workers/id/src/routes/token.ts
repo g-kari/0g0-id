@@ -147,7 +147,7 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
       active: true,
       sub,
       exp: payload.exp,
-      scope: payload.scope ?? allowedScopes.join(' '),
+      scope: allowedScopes.join(' '),
       token_type: 'access_token',
     };
 
