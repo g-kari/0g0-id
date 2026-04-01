@@ -572,6 +572,11 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Missing required parameters' } }, 400);
   }
 
+  // redirect_to パラメータの長さ制限（Cookie内stateData肥大化防止）
+  if (redirectTo.length > 2048) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'redirect_to too long' } }, 400);
+  }
+
   // state パラメータの長さ制限（Cookie汚染・過大データ保存防止）
   if (bffState.length > 1024) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'state parameter too long' } }, 400);
@@ -1020,10 +1025,12 @@ app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
   let refreshService: Awaited<ReturnType<typeof findServiceById>> | undefined = undefined;
   if (storedToken.service_id !== null) {
     refreshService = await findServiceById(c.env.DB, storedToken.service_id);
-    if (refreshService) {
-      const allowedScopes = parseAllowedScopes(refreshService.allowed_scopes);
-      refreshScope = ['openid', ...allowedScopes].join(' ');
+    if (!refreshService) {
+      // サービス削除済み → トークンリフレッシュを拒否
+      return c.json({ error: { code: 'INVALID_TOKEN', message: 'Service no longer exists' } }, 401);
     }
+    const allowedScopes = parseAllowedScopes(refreshService.allowed_scopes);
+    refreshScope = ['openid', ...allowedScopes].join(' ');
   }
 
   // 新アクセストークン・リフレッシュトークン発行（ローテーション、同じfamily_id）
@@ -1075,12 +1082,15 @@ app.post('/logout', tokenApiRateLimitMiddleware, async (c) => {
   }
 
   const parsed = LogoutSchema.safeParse(rawBody);
-  const refreshToken = parsed.success ? parsed.data.refresh_token : undefined;
+  if (!parsed.success) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid request body' } }, 400);
+  }
 
+  const { refresh_token: refreshToken } = parsed.data;
   if (refreshToken) {
     const tokenHash = await sha256(refreshToken);
     const storedToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
-    if (storedToken) {
+    if (storedToken && storedToken.revoked_at === null) {
       await revokeRefreshToken(c.env.DB, storedToken.id, 'user_logout');
     }
   }

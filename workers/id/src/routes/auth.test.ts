@@ -42,6 +42,7 @@ vi.mock('@0g0-id/shared', () => ({
   tryBootstrapAdmin: vi.fn(),
   createAuthCode: vi.fn(),
   findAndConsumeAuthCode: vi.fn(),
+  findServiceById: vi.fn(),
   findServiceByClientId: vi.fn(),
   isValidRedirectUri: vi.fn(),
   timingSafeEqual: vi.fn(),
@@ -86,6 +87,7 @@ import {
   upsertUser,
   createAuthCode,
   findAndConsumeAuthCode,
+  findServiceById,
   findServiceByClientId,
   timingSafeEqual,
   verifyAccessToken,
@@ -199,6 +201,17 @@ describe('GET /auth/login', () => {
     const res = await sendRequest(
       app,
       '/auth/login?redirect_to=https://user.0g0.xyz/callback'
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('redirect_toが長すぎる → 400を返す', async () => {
+    const longUrl = 'https://user.0g0.xyz/callback' + 'a'.repeat(2100);
+    const res = await sendRequest(
+      app,
+      `/auth/login?redirect_to=${encodeURIComponent(longUrl)}&state=bff-state`
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -727,6 +740,22 @@ describe('POST /auth/refresh', () => {
       mockEnv.DB,
       expect.objectContaining({ familyId: 'family-1' })
     );
+  });
+
+  it('削除済みサービスのトークン → 401を返す', async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue({
+      ...mockRefreshToken,
+      service_id: 'deleted-service-id',
+    } as never);
+    vi.mocked(findServiceById).mockResolvedValue(null);
+
+    const res = await sendRequest(app, '/auth/refresh', {
+      method: 'POST',
+      body: { refresh_token: 'valid-token' },
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INVALID_TOKEN');
   });
 });
 
