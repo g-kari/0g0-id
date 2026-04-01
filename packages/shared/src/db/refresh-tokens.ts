@@ -44,6 +44,21 @@ export async function findAndRevokeRefreshToken(
     .first<RefreshToken>();
 }
 
+export async function unrevokeRefreshToken(
+  db: D1Database,
+  tokenId: string
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE refresh_tokens
+       SET revoked_at = NULL, revoked_reason = NULL
+       WHERE id = ?
+         AND revoked_at IS NOT NULL`
+    )
+    .bind(tokenId)
+    .run();
+}
+
 export async function createRefreshToken(
   db: D1Database,
   params: {

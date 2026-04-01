@@ -67,6 +67,7 @@ export interface RefreshToken {
   token_hash: string;
   family_id: string;
   revoked_at: string | null;
+  revoked_reason: string | null;
   expires_at: string;
   created_at: string;
 }

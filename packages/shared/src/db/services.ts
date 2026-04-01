@@ -1,4 +1,5 @@
 import type { Service } from '../types';
+import { escapeLikePattern } from '../lib/sql';
 
 // ─── インメモリ TTL キャッシュ ───────────────────────────────────────────────
 // Cloudflare Workers の isolate はリクエスト間で再利用されるため、
@@ -141,8 +142,8 @@ export async function listServices(db: D1Database, filter: ServiceListFilter = {
   const params: unknown[] = [];
 
   if (name) {
-    conditions.push('name LIKE ?');
-    params.push(`%${name}%`);
+    conditions.push("name LIKE ? ESCAPE '\\'");
+    params.push(`%${escapeLikePattern(name)}%`);
   }
 
   const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';

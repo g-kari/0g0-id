@@ -31,6 +31,7 @@ import {
   createRefreshToken,
   findRefreshTokenByHash,
   findAndRevokeRefreshToken,
+  unrevokeRefreshToken,
   findUserById,
   revokeRefreshToken,
   revokeTokenFamily,
@@ -1034,12 +1035,22 @@ app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
   }
 
   // 新アクセストークン・リフレッシュトークン発行（ローテーション、同じfamily_id）
-  const { accessToken, refreshToken: newRefreshTokenRaw } = await issueTokenPair(c.env.DB, c.env, user, {
-    serviceId: storedToken.service_id,
-    clientId: refreshService?.client_id,
-    familyId: storedToken.family_id,
-    scope: refreshScope,
-  });
+  // issueTokenPair失敗時は旧トークンの失効を取り消してセッション消失を防止
+  let accessToken: string;
+  let newRefreshTokenRaw: string;
+  try {
+    const tokens = await issueTokenPair(c.env.DB, c.env, user, {
+      serviceId: storedToken.service_id,
+      clientId: refreshService?.client_id,
+      familyId: storedToken.family_id,
+      scope: refreshScope,
+    });
+    accessToken = tokens.accessToken;
+    newRefreshTokenRaw = tokens.refreshToken;
+  } catch (e) {
+    await unrevokeRefreshToken(c.env.DB, storedToken.id);
+    throw e;
+  }
 
   return c.json({
     data: {
