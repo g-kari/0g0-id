@@ -179,7 +179,7 @@ export async function countServices(db: D1Database, filter: { name?: string } = 
   let query = 'SELECT COUNT(*) as count FROM services';
 
   if (name) {
-    query += ' WHERE name LIKE ?';
+    query += " WHERE name LIKE ? ESCAPE '\\'";
     params.push(`%${escapeLikePattern(name)}%`);
   }
 
