@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import {
   findUserById,
+  findUserIdByPairwiseSub,
   sha256,
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
@@ -102,24 +103,8 @@ app.get('/users/:sub', externalApiRateLimitMiddleware, serviceAuthMiddleware, as
   const requestedSub = c.req.param('sub');
 
   try {
-    // このサービスの認可済みユーザーIDを取得
-    const authorizedRows = await c.env.DB
-      .prepare(
-        `SELECT DISTINCT user_id FROM refresh_tokens
-         WHERE service_id = ? AND revoked_at IS NULL AND datetime(expires_at) > datetime('now')`
-      )
-      .bind(service.id)
-      .all<{ user_id: string }>();
-
-    // 各ユーザーのペアワイズsubを計算して照合
-    let matchedUserId: string | null = null;
-    for (const row of authorizedRows.results) {
-      const sub = await generatePairwiseSub(service, row.user_id);
-      if (sub === requestedSub) {
-        matchedUserId = row.user_id;
-        break;
-      }
-    }
+    // pairwise_subカラムによるインデックス検索（O(1)）
+    const matchedUserId = await findUserIdByPairwiseSub(c.env.DB, service.id, requestedSub);
 
     if (!matchedUserId) {
       return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);

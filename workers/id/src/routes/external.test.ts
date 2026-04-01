@@ -7,6 +7,7 @@ vi.mock('@0g0-id/shared', async (importActual) => {
   return {
     ...actual,
     findUserById: vi.fn(),
+    findUserIdByPairwiseSub: vi.fn(),
     findServiceByClientId: vi.fn(),
     sha256: vi.fn(),
     timingSafeEqual: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock('@0g0-id/shared', async (importActual) => {
 
 import {
   findUserById,
+  findUserIdByPairwiseSub,
   findServiceByClientId,
   sha256,
   timingSafeEqual,
@@ -27,6 +29,7 @@ import {
 import externalRoutes from './external';
 
 const mockFindUserById = vi.mocked(findUserById);
+const mockFindUserIdByPairwiseSub = vi.mocked(findUserIdByPairwiseSub);
 const mockFindServiceByClientId = vi.mocked(findServiceByClientId);
 const mockSha256 = vi.mocked(sha256);
 const mockTimingSafeEqual = vi.mocked(timingSafeEqual);
@@ -148,8 +151,8 @@ describe('GET /api/external/users/:sub', () => {
     mockTimingSafeEqual.mockReturnValue(true);
     mockFindServiceByClientId.mockResolvedValue(mockService);
     mockFindUserById.mockResolvedValue(mockUser);
-    // DBモック: 認可済みユーザーを返す（ペアワイズsub検索で使用）
-    mockEnv.DB = createMockDb(['user-1']);
+    // ペアワイズsubによるユーザーID逆引き
+    mockFindUserIdByPairwiseSub.mockResolvedValue('user-1');
   });
 
   describe('認証', () => {
@@ -188,14 +191,8 @@ describe('GET /api/external/users/:sub', () => {
       expect(res.status).toBe(500);
     });
 
-    it('DB障害時（refresh_tokensクエリ） → 500を返す', async () => {
-      mockEnv.DB = {
-        prepare: vi.fn().mockReturnValue({
-          bind: vi.fn().mockReturnValue({
-            all: vi.fn().mockRejectedValue(new Error('DB error')),
-          }),
-        }),
-      } as unknown as D1Database;
+    it('DB障害時（findUserIdByPairwiseSubエラー） → 500を返す', async () => {
+      mockFindUserIdByPairwiseSub.mockRejectedValue(new Error('DB error'));
       const res = await requestExternalUser(app, PAIRWISE_SUB);
       expect(res.status).toBe(500);
     });
@@ -203,7 +200,7 @@ describe('GET /api/external/users/:sub', () => {
 
   describe('認可チェック（IDOR防止）', () => {
     it('ペアワイズsubに一致する認可済みユーザーがいない場合 → 404を返す', async () => {
-      mockEnv.DB = createMockDb([]);
+      mockFindUserIdByPairwiseSub.mockResolvedValue(null);
       const res = await requestExternalUser(app, PAIRWISE_SUB);
       expect(res.status).toBe(404);
       const body = await res.json<{ error: { code: string } }>();
