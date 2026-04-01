@@ -56,7 +56,7 @@ const PatchServiceSchema = z
   });
 
 const AddRedirectUriSchema = z.object({
-  uri: z.string().min(1, 'uri is required'),
+  uri: z.string().min(1, 'uri is required').max(2048, 'URI must be 2048 characters or less'),
 });
 
 const TransferOwnerSchema = z.object({
@@ -291,6 +291,7 @@ app.post('/:id/redirect-uris', authMiddleware, adminMiddleware, csrfMiddleware, 
     targetId: serviceId,
     details: { uri: normalized },
     ipAddress: getClientIp(c.req.raw),
+    status: 'success',
   });
 
   return c.json({ data: uri }, 201);
@@ -443,6 +444,7 @@ app.delete('/:id/users/:userId', authMiddleware, adminMiddleware, csrfMiddleware
     targetId: serviceId,
     details: { user_id: userId },
     ipAddress: getClientIp(c.req.raw),
+    status: 'success',
   });
 
   return c.body(null, 204);
