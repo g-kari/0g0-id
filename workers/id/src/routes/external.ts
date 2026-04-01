@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 import {
   findUserById,
   sha256,
-  hasUserAuthorizedService,
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
   parsePagination,
@@ -97,31 +96,47 @@ app.get('/users', externalApiRateLimitMiddleware, serviceAuthMiddleware, async (
   return c.json({ data, meta: { total, limit, offset } });
 });
 
-// GET /api/external/users/:id — IDによるユーザー完全一致検索（外部サービス向け）
-app.get('/users/:id', externalApiRateLimitMiddleware, serviceAuthMiddleware, async (c) => {
+// GET /api/external/users/:sub — ペアワイズsubによるユーザー検索（外部サービス向け）
+app.get('/users/:sub', externalApiRateLimitMiddleware, serviceAuthMiddleware, async (c) => {
   const service = c.get('service');
-  const userId = c.req.param('id');
+  const requestedSub = c.req.param('sub');
 
-  let authorized: boolean;
-  let user: Awaited<ReturnType<typeof findUserById>>;
   try {
-    // ユーザーがサービスを認可済みか確認（IDOR防止）
-    authorized = await hasUserAuthorizedService(c.env.DB, userId, service.id);
-    if (!authorized) {
+    // このサービスの認可済みユーザーIDを取得
+    const authorizedRows = await c.env.DB
+      .prepare(
+        `SELECT DISTINCT user_id FROM refresh_tokens
+         WHERE service_id = ? AND revoked_at IS NULL AND datetime(expires_at) > datetime('now')`
+      )
+      .bind(service.id)
+      .all<{ user_id: string }>();
+
+    // 各ユーザーのペアワイズsubを計算して照合
+    let matchedUserId: string | null = null;
+    for (const row of authorizedRows.results) {
+      const sub = await generatePairwiseSub(service, row.user_id);
+      if (sub === requestedSub) {
+        matchedUserId = row.user_id;
+        break;
+      }
+    }
+
+    if (!matchedUserId) {
       return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
     }
-    user = await findUserById(c.env.DB, userId);
+
+    const user = await findUserById(c.env.DB, matchedUserId);
+    if (!user) {
+      return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+    }
+
+    const allowedScopes = parseAllowedScopes(service.allowed_scopes);
+    const data = await buildUserData(service, user, allowedScopes);
+
+    return c.json({ data });
   } catch {
     return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
   }
-  if (!user) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
-  }
-
-  const allowedScopes = parseAllowedScopes(service.allowed_scopes);
-  const data = await buildUserData(service, user, allowedScopes);
-
-  return c.json({ data });
 });
 
 export default app;
