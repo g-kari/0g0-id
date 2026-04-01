@@ -102,6 +102,8 @@ export async function updateServiceFields(
     binds.push(fields.allowedScopes);
   }
 
+  if (sets.length === 0) return null;
+
   binds.push(id);
   const service = await db
     .prepare(
