@@ -196,8 +196,11 @@ app.patch('/me', authMiddleware, csrfMiddleware, async (c) => {
   let user: User;
   try {
     user = await updateUserProfile(c.env.DB, tokenUser.sub, profileUpdate);
-  } catch {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  } catch (err) {
+    if (err instanceof Error && err.message === 'User not found') {
+      return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+    }
+    throw err;
   }
 
   return c.json({ data: formatMyProfile(user) });

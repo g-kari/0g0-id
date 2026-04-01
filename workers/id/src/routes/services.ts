@@ -461,7 +461,10 @@ app.delete('/:id/redirect-uris/:uriId', authMiddleware, adminMiddleware, csrfMid
   }
 
   const tokenUser = c.get('user');
-  await deleteRedirectUri(c.env.DB, uriId, serviceId);
+  const deleted = await deleteRedirectUri(c.env.DB, uriId, serviceId);
+  if (deleted === 0) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Redirect URI not found' } }, 404);
+  }
 
   try {
     await createAdminAuditLog(c.env.DB, {
@@ -471,6 +474,7 @@ app.delete('/:id/redirect-uris/:uriId', authMiddleware, adminMiddleware, csrfMid
       targetId: serviceId,
       details: { uri_id: uriId },
       ipAddress: getClientIp(c.req.raw),
+      status: 'success',
     });
   } catch (err) {
     servicesLogger.error('[services] Failed to create audit log for service.redirect_uri_deleted', err);

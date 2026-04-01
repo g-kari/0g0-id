@@ -1374,7 +1374,7 @@ describe('DELETE /api/services/:id/redirect-uris/:uriId', () => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
     vi.mocked(findServiceById).mockResolvedValue(mockService);
-    vi.mocked(deleteRedirectUri).mockResolvedValue();
+    vi.mocked(deleteRedirectUri).mockResolvedValue(1);
     vi.mocked(createAdminAuditLog).mockResolvedValue(undefined);
   });
 
@@ -1397,6 +1397,17 @@ describe('DELETE /api/services/:id/redirect-uris/:uriId', () => {
       'uri-1',
       'service-1'
     );
+  });
+
+  it('リダイレクトURIが存在しない場合 → 404を返す', async () => {
+    vi.mocked(deleteRedirectUri).mockResolvedValue(0);
+    const res = await sendRequest(app, '/api/services/service-1/redirect-uris/no-such', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('NOT_FOUND');
   });
 
   it('サービスが存在しない場合 → 404を返す', async () => {

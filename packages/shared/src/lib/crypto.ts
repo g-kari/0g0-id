@@ -69,19 +69,22 @@ export function timingSafeEqual(a: string, b: string): boolean {
   const encoder = new TextEncoder();
   const aBytes = encoder.encode(a);
   const bBytes = encoder.encode(b);
-  if (aBytes.length !== bBytes.length) {
-    return false;
-  }
   // crypto.subtle.timingSafeEqual は Cloudflare Workers / Node.js 19+ で利用可能
+  // 長さが一致する場合のみネイティブAPIを使用（ネイティブAPIは長さ不一致でエラーを投げるため）
   type SubtleCryptoWithTimingSafeEqual = SubtleCrypto & { timingSafeEqual(a: ArrayBuffer, b: ArrayBuffer): boolean };
   const subtleCrypto = crypto.subtle as unknown as SubtleCryptoWithTimingSafeEqual;
-  if (typeof subtleCrypto.timingSafeEqual === 'function') {
+  if (typeof subtleCrypto.timingSafeEqual === 'function' && aBytes.length === bBytes.length) {
     return subtleCrypto.timingSafeEqual(aBytes.buffer as ArrayBuffer, bBytes.buffer as ArrayBuffer);
   }
-  // フォールバック: バイト列に対するXORループ定数時間比較
-  let result = 0;
-  for (let i = 0; i < aBytes.length; i++) {
-    result |= aBytes[i] ^ bBytes[i];
+  // フォールバック: 長さ差分もXORループで定数時間比較（タイミングリーク防止）
+  const maxLen = Math.max(aBytes.length, bBytes.length);
+  const aPadded = new Uint8Array(maxLen);
+  const bPadded = new Uint8Array(maxLen);
+  aPadded.set(aBytes);
+  bPadded.set(bBytes);
+  let result = aBytes.length === bBytes.length ? 0 : 1;
+  for (let i = 0; i < maxLen; i++) {
+    result |= aPadded[i] ^ bPadded[i];
   }
   return result === 0;
 }

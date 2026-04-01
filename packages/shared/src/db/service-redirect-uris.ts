@@ -29,11 +29,12 @@ export async function deleteRedirectUri(
   db: D1Database,
   id: string,
   serviceId: string
-): Promise<void> {
-  await db
+): Promise<number> {
+  const result = await db
     .prepare('DELETE FROM service_redirect_uris WHERE id = ? AND service_id = ?')
     .bind(id, serviceId)
     .run();
+  return result.meta.changes ?? 0;
 }
 
 export async function isValidRedirectUri(
