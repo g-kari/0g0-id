@@ -9,7 +9,8 @@ export type RevokeReason =
   | 'service_revoke'
   | 'rotation'
   | 'security_event'
-  | 'admin_action';
+  | 'admin_action'
+  | 'expired';
 
 export async function findRefreshTokenByHash(
   db: D1Database,

@@ -285,15 +285,19 @@ app.post('/:id/redirect-uris', authMiddleware, adminMiddleware, csrfMiddleware, 
   }
 
   const tokenUser = c.get('user');
-  await createAdminAuditLog(c.env.DB, {
-    adminUserId: tokenUser.sub,
-    action: 'service.redirect_uri_added',
-    targetType: 'service',
-    targetId: serviceId,
-    details: { uri: normalized },
-    ipAddress: getClientIp(c.req.raw),
-    status: 'success',
-  });
+  try {
+    await createAdminAuditLog(c.env.DB, {
+      adminUserId: tokenUser.sub,
+      action: 'service.redirect_uri_added',
+      targetType: 'service',
+      targetId: serviceId,
+      details: { uri: normalized },
+      ipAddress: getClientIp(c.req.raw),
+      status: 'success',
+    });
+  } catch (err) {
+    servicesLogger.error('[services] Failed to create audit log for service.redirect_uri_added', err);
+  }
 
   return c.json({ data: uri }, 201);
 });
@@ -438,15 +442,19 @@ app.delete('/:id/users/:userId', authMiddleware, adminMiddleware, csrfMiddleware
   }
 
   const tokenUser = c.get('user');
-  await createAdminAuditLog(c.env.DB, {
-    adminUserId: tokenUser.sub,
-    action: 'service.user_access_revoked',
-    targetType: 'service',
-    targetId: serviceId,
-    details: { user_id: userId },
-    ipAddress: getClientIp(c.req.raw),
-    status: 'success',
-  });
+  try {
+    await createAdminAuditLog(c.env.DB, {
+      adminUserId: tokenUser.sub,
+      action: 'service.user_access_revoked',
+      targetType: 'service',
+      targetId: serviceId,
+      details: { user_id: userId },
+      ipAddress: getClientIp(c.req.raw),
+      status: 'success',
+    });
+  } catch (err) {
+    servicesLogger.error('[services] Failed to create audit log for service.user_access_revoked', err);
+  }
 
   return c.body(null, 204);
 });
