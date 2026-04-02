@@ -203,17 +203,19 @@ describe('fetchGithubPrimaryEmail', () => {
     expect(result).toBeNull();
   });
 
-  it('HTTPエラー時は null を返す', async () => {
+  it('HTTPエラー時は例外を投げる', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response('Unauthorized', { status: 401 }));
 
-    const result = await fetchGithubPrimaryEmail('bad-token');
-    expect(result).toBeNull();
+    await expect(fetchGithubPrimaryEmail('bad-token')).rejects.toThrow(
+      'GitHub Emails API failed with status 401'
+    );
   });
 
-  it('不正なJSONレスポンス時は null を返す', async () => {
+  it('不正なJSONレスポンス時は例外を投げる', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response('not-json', { status: 200 }));
 
-    const result = await fetchGithubPrimaryEmail('test-token');
-    expect(result).toBeNull();
+    await expect(fetchGithubPrimaryEmail('test-token')).rejects.toThrow(
+      'GitHub Emails API returned invalid JSON'
+    );
   });
 });

@@ -26,6 +26,7 @@ vi.mock('@0g0-id/shared', () => ({
   banUser: vi.fn(),
   unbanUser: vi.fn(),
   createAdminAuditLog: vi.fn(),
+  isValidProvider: (value: string) => ['google', 'line', 'twitch', 'github', 'x'].includes(value),
   parseDays: (daysParam: string | undefined, options: { minDays?: number; maxDays?: number } = {}) => {
     if (daysParam === undefined) return undefined;
     const { minDays = 1, maxDays = 90 } = options;
@@ -201,12 +202,12 @@ describe('GET /api/users/me', () => {
     expect(body.data.role).toBe('user');
   });
 
-  it('ユーザーが存在しない場合 → 404を返す', async () => {
+  it('ユーザーが存在しない場合 → 401を返す', async () => {
     vi.mocked(findUserById).mockResolvedValue(null);
     const res = await sendRequest(app, '/api/users/me');
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe('NOT_FOUND');
+    expect(body.error.code).toBe('UNAUTHORIZED');
   });
 
   it('verifyAccessTokenが失敗した場合 → 401を返す', async () => {
@@ -293,12 +294,12 @@ describe('GET /api/users/me/data-export', () => {
     expect(body.data.active_sessions).toEqual(mockSessions);
   });
 
-  it('ユーザーが存在しない場合 → 404を返す', async () => {
+  it('ユーザーが存在しない場合 → 401を返す', async () => {
     vi.mocked(findUserById).mockResolvedValue(null);
     const res = await sendRequest(app, '/api/users/me/data-export');
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe('NOT_FOUND');
+    expect(body.error.code).toBe('UNAUTHORIZED');
   });
 });
 
@@ -384,12 +385,12 @@ describe('GET /api/users/me/security-summary', () => {
     expect(body.data.last_login).toBeNull();
   });
 
-  it('ユーザーが存在しない場合404を返す', async () => {
+  it('ユーザーが存在しない場合401を返す', async () => {
     vi.mocked(findUserById).mockResolvedValue(null);
     const res = await sendRequest(app, '/api/users/me/security-summary');
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe('NOT_FOUND');
+    expect(body.error.code).toBe('UNAUTHORIZED');
   });
 
   it('認証なしで401を返す', async () => {
@@ -405,6 +406,7 @@ describe('PATCH /api/users/me', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(updateUserProfile).mockResolvedValue({
       ...mockUser,
       name: 'Updated Name',
@@ -596,6 +598,7 @@ describe('GET /api/users/me/connections', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(listUserConnections).mockResolvedValue(mockConnections);
   });
 
@@ -628,6 +631,7 @@ describe('DELETE /api/users/me/connections/:serviceId', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(revokeUserServiceTokens).mockResolvedValue(1);
   });
 
@@ -672,6 +676,7 @@ describe('GET /api/users/me/providers', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(getUserProviders).mockResolvedValue(mockProviders);
   });
 
@@ -704,6 +709,7 @@ describe('DELETE /api/users/me/providers/:provider', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(getUserProviders).mockResolvedValue(twoProviders);
     vi.mocked(unlinkProvider).mockResolvedValue();
   });
@@ -1152,6 +1158,7 @@ describe('GET /api/users/me/login-history', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(getLoginEventsByUserId).mockResolvedValue({ events: mockLoginEvents, total: 1 });
   });
 
@@ -1607,6 +1614,7 @@ describe('GET /api/users/me/tokens', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(listActiveSessionsByUserId).mockResolvedValue(mockSessions);
   });
 
@@ -1649,6 +1657,7 @@ describe('DELETE /api/users/me/tokens', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(revokeUserTokens).mockResolvedValue(undefined);
   });
 
@@ -1679,6 +1688,7 @@ describe('DELETE /api/users/me/tokens/:tokenId', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(revokeTokenByIdForUser).mockResolvedValue(1);
   });
 
@@ -1739,6 +1749,7 @@ describe('DELETE /api/users/me/tokens/others', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(revokeOtherUserTokens).mockResolvedValue(2);
   });
 
@@ -2039,15 +2050,15 @@ describe('DELETE /api/users/me', () => {
     expect(res.status).toBe(403);
   });
 
-  it('ユーザーが存在しない → 404を返す', async () => {
+  it('ユーザーが存在しない → 401を返す', async () => {
     vi.mocked(findUserById).mockResolvedValue(null);
     const res = await sendRequest(app, '/api/users/me', {
       method: 'DELETE',
       origin: 'https://id.0g0.xyz',
     });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe('NOT_FOUND');
+    expect(body.error.code).toBe('UNAUTHORIZED');
   });
 
   it('サービスを所有している場合 → 409を返す', async () => {
@@ -2338,7 +2349,7 @@ describe('GET /api/users/:id/login-trends', () => {
 
   it('daysが範囲外の場合 → 400を返す', async () => {
     const res = await app.request(
-      new Request(`${baseUrl}/api/users/user-1/login-trends?days=91`, {
+      new Request(`${baseUrl}/api/users/user-1/login-trends?days=366`, {
         headers: { Authorization: 'Bearer mock-token' },
       }),
       undefined,

@@ -233,12 +233,12 @@ describe('user BFF — /auth', () => {
     });
   });
 
-  describe('GET /link — SNSプロバイダー連携開始', () => {
+  describe('POST /link — SNSプロバイダー連携開始', () => {
     it('セッションなしで /?error=not_authenticated にリダイレクトする', async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request('/auth/link?provider=github');
+      const res = await app.request('/auth/link?provider=github', { method: 'POST' });
 
       expect(res.status).toBe(302);
       expect(res.headers.get('Location')).toBe('/?error=not_authenticated');
@@ -249,6 +249,7 @@ describe('user BFF — /auth', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/auth/link?provider=invalid', {
+        method: 'POST',
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
@@ -269,6 +270,7 @@ describe('user BFF — /auth', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/auth/link?provider=github', {
+        method: 'POST',
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie('user-abc')}` },
       });
 
@@ -291,6 +293,7 @@ describe('user BFF — /auth', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/auth/link?provider=github', {
+        method: 'POST',
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
@@ -311,6 +314,7 @@ describe('user BFF — /auth', () => {
       const app = buildApp(idpFetch);
 
       const res = await app.request('/auth/link?provider=google', {
+        method: 'POST',
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
