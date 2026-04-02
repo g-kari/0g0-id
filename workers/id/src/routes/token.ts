@@ -103,7 +103,10 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
       return c.json({ active: false });
     }
 
-    const allowedScopes = parseAllowedScopes(service.allowed_scopes);
+    // 保存済みスコープがあればそれを使用（発行時のスコープを正確に反映）
+    // マイグレーション前のトークンはallowed_scopesにフォールバック
+    const scopeStr = refreshToken.scope ?? parseAllowedScopes(service.allowed_scopes).join(' ');
+    const scopeList = scopeStr.split(' ').filter((s: string) => s !== 'openid' && s !== '');
 
     // ペアワイズsub: 内部IDを直接公開しないようにsha256(client_id:user_id)を使用
     const sub = await sha256(service.client_id + ':' + refreshToken.user_id);
@@ -112,10 +115,10 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
       active: true,
       sub,
       exp: Math.floor(new Date(refreshToken.expires_at).getTime() / 1000),
-      scope: allowedScopes.join(' '),
+      scope: scopeStr,
     };
 
-    applyUserClaims(response, user, allowedScopes);
+    applyUserClaims(response, user, scopeList);
 
     return c.json(response);
   }

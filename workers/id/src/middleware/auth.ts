@@ -16,6 +16,9 @@ export const rejectServiceTokenMiddleware = createMiddleware<{
   Variables: AuthVariables;
 }>(async (c, next) => {
   const user = c.get('user');
+  if (!user) {
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } }, 401);
+  }
   if (user.cid) {
     return c.json({ error: { code: 'FORBIDDEN', message: 'Service tokens cannot access this endpoint' } }, 403);
   }

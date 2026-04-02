@@ -552,6 +552,7 @@ async function issueTokenPair(
     familyId,
     expiresAt,
     pairwiseSub,
+    scope: scope ?? null,
   });
 
   return { accessToken, refreshToken };
@@ -1044,8 +1045,14 @@ app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
       // サービス削除済み → トークンリフレッシュを拒否
       return c.json({ error: { code: 'INVALID_TOKEN', message: 'Service no longer exists' } }, 401);
     }
-    const allowedScopes = parseAllowedScopes(refreshService.allowed_scopes);
-    refreshScope = ['openid', ...allowedScopes].join(' ');
+    // 保存済みスコープがあればそれを引き継ぐ（スコープ昇格防止）
+    // 保存済みスコープがない（マイグレーション前のトークン）場合はallowed_scopesにフォールバック
+    if (storedToken.scope) {
+      refreshScope = storedToken.scope;
+    } else {
+      const allowedScopes = parseAllowedScopes(refreshService.allowed_scopes);
+      refreshScope = ['openid', ...allowedScopes].join(' ');
+    }
   }
 
   // 新アクセストークン・リフレッシュトークン発行（ローテーション、同じfamily_id）
