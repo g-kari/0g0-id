@@ -55,7 +55,7 @@ import {
 import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
 import { type OAuthProvider, PROVIDER_DISPLAY_NAMES } from '@0g0-id/shared';
 import { authRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
-import { authMiddleware, rejectServiceTokenMiddleware } from '../middleware/auth';
+import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware } from '../middleware/auth';
 import { parseAllowedScopes } from '../utils/scopes';
 
 const ExchangeSchema = z.object({
@@ -996,8 +996,12 @@ app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
     return c.json({ error: { code: 'INVALID_TOKEN', message: 'Token not found' } }, 401);
   }
 
-  // 有効期限チェック（既にrotationとして失効済みなので再revokeは不要）
+  // 有効期限チェック
+  // 期限切れの場合、rotationとして失効済みのトークンを元に戻す。
+  // 元に戻さないと、同じ期限切れトークンの再提示時にreuse detectionが
+  // 誤発動しトークンファミリー全体が無効化されてしまう。
   if (new Date(storedToken.expires_at) < new Date()) {
+    await unrevokeRefreshToken(c.env.DB, storedToken.id);
     return c.json({ error: { code: 'TOKEN_EXPIRED', message: 'Refresh token expired' } }, 401);
   }
 
@@ -1062,7 +1066,7 @@ app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
 // POST /auth/link-intent — SNSプロバイダー連携用ワンタイムトークン発行（認証済みユーザー専用）
 // link_user_id をURLパラメータとして直接受け付けると第三者が任意ユーザーのIDを指定し
 // アカウント乗っ取りが可能なため、アクセストークンで認証したうえでワンタイムトークンを発行する
-app.post('/link-intent', tokenApiRateLimitMiddleware, authMiddleware, rejectServiceTokenMiddleware, async (c) => {
+app.post('/link-intent', tokenApiRateLimitMiddleware, authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware, async (c) => {
   const tokenUser = c.get('user');
 
   const linkToken = generateToken(32);

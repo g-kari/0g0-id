@@ -1,5 +1,5 @@
 import { createMiddleware } from 'hono/factory';
-import { verifyAccessToken } from '@0g0-id/shared';
+import { verifyAccessToken, findUserById } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 
 type AuthVariables = {
@@ -47,4 +47,24 @@ export const authMiddleware = createMiddleware<{
   } catch {
     return c.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token' } }, 401);
   }
+});
+
+/**
+ * BAN済みユーザーを拒否するミドルウェア。
+ * authMiddleware の後に配置して使用する。
+ * アクセストークン有効期限内でもBAN済みユーザーを即時ブロックする。
+ */
+export const rejectBannedUserMiddleware = createMiddleware<{
+  Bindings: IdpEnv;
+  Variables: AuthVariables;
+}>(async (c, next) => {
+  const tokenUser = c.get('user');
+  if (!tokenUser) {
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } }, 401);
+  }
+  const user = await findUserById(c.env.DB, tokenUser.sub);
+  if (!user || user.banned_at !== null) {
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Account suspended or not found' } }, 401);
+  }
+  await next();
 });

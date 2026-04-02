@@ -33,6 +33,7 @@ vi.mock('@0g0-id/shared', () => ({
   findAndRevokeRefreshToken: vi.fn(),
   findUserById: vi.fn(),
   revokeRefreshToken: vi.fn(),
+  unrevokeRefreshToken: vi.fn(),
   revokeTokenFamily: vi.fn(),
   upsertUser: vi.fn(),
   upsertLineUser: vi.fn(),
@@ -858,6 +859,7 @@ describe('POST /auth/link-intent', () => {
     vi.mocked(generateToken).mockReturnValue('mock-link-token');
     vi.mocked(sha256).mockResolvedValue('hashed-link-token');
     vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
+    vi.mocked(findUserById).mockResolvedValue({ id: 'user-1', banned_at: null } as never);
     vi.mocked(verifyAccessToken).mockResolvedValue({
       sub: 'user-1',
       email: 'test@example.com',

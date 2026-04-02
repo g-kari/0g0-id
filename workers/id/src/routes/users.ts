@@ -135,6 +135,9 @@ app.get('/me', authMiddleware, rejectServiceTokenMiddleware, async (c) => {
   if (!user) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
+  if (user.banned_at !== null) {
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Account suspended' } }, 401);
+  }
   return c.json({ data: formatMyProfile(user) });
 });
 
@@ -146,6 +149,9 @@ app.get('/me/data-export', authMiddleware, rejectServiceTokenMiddleware, async (
   const user = await findUserById(c.env.DB, userId);
   if (!user) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+  if (user.banned_at !== null) {
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Account suspended' } }, 401);
   }
 
   const [providers, connections, { events: loginHistory }, sessions] = await Promise.all([
@@ -277,6 +283,9 @@ app.get('/me/security-summary', authMiddleware, rejectServiceTokenMiddleware, as
 
   if (!user) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+  }
+  if (user.banned_at !== null) {
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Account suspended' } }, 401);
   }
 
   const linkedProviders = providers.filter((p) => p.connected).map((p) => p.provider);
