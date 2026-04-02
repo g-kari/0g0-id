@@ -1,0 +1,26 @@
+name = "0g0-mcp"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+workers_dev = false
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+routes = [
+  { pattern = "mcp.0g0.xyz", custom_domain = true }
+]
+
+[vars]
+IDP_ORIGIN = "https://id.0g0.xyz"
+MCP_ORIGIN = "https://mcp.0g0.xyz"
+
+[[services]]
+binding = "IDP"
+service = "0g0-id"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "0g0-id-db"
+database_id = "f13d6e85-7a42-463f-b07e-5201423dc840"
+migrations_dir = "../../migrations"

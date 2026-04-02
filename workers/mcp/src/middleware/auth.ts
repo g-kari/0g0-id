@@ -1,0 +1,75 @@
+import { createMiddleware } from 'hono/factory';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
+import type { TokenPayload } from '@0g0-id/shared';
+
+type McpEnv = {
+  Bindings: {
+    DB: D1Database;
+    IDP: Fetcher;
+    IDP_ORIGIN: string;
+    MCP_ORIGIN: string;
+  };
+  Variables: {
+    user: TokenPayload;
+  };
+};
+
+/**
+ * IDP_ORIGIN ごとに JWKS クライアントをキャッシュする。
+ * createRemoteJWKSet は内部で鍵キャッシュ・ローテーション対応を行う。
+ */
+const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+
+function getJWKS(idpOrigin: string): ReturnType<typeof createRemoteJWKSet> {
+  const cached = jwksCache.get(idpOrigin);
+  if (cached) return cached;
+  const jwks = createRemoteJWKSet(new URL(`${idpOrigin}/.well-known/jwks.json`));
+  jwksCache.set(idpOrigin, jwks);
+  return jwks;
+}
+
+/**
+ * MCP OAuth Bearer Token 認証ミドルウェア
+ * Authorization: Bearer <token> ヘッダーからJWTを検証する。
+ * IDP の JWKS エンドポイントから公開鍵を取得し ES256 署名を検証する。
+ */
+export const mcpAuthMiddleware = createMiddleware<McpEnv>(async (c, next): Promise<Response | void> => {
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    c.header(
+      'WWW-Authenticate',
+      `Bearer resource_metadata="${c.env.MCP_ORIGIN}/.well-known/oauth-protected-resource"`,
+    );
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Bearer token required' } }, 401);
+  }
+
+  const token = authHeader.slice(7);
+
+  try {
+    const jwks = getJWKS(c.env.IDP_ORIGIN);
+    const { payload } = await jwtVerify(token, jwks, {
+      issuer: c.env.IDP_ORIGIN,
+      algorithms: ['ES256'],
+    });
+    c.set('user', payload as unknown as TokenPayload);
+    await next();
+  } catch {
+    c.header(
+      'WWW-Authenticate',
+      `Bearer error="invalid_token", resource_metadata="${c.env.MCP_ORIGIN}/.well-known/oauth-protected-resource"`,
+    );
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token' } }, 401);
+  }
+});
+
+/**
+ * 管理者ロール必須ミドルウェア。
+ * mcpAuthMiddleware の後に配置して使用する。
+ */
+export const mcpAdminMiddleware = createMiddleware<McpEnv>(async (c, next): Promise<Response | void> => {
+  const user = c.get('user');
+  if (!user || user.role !== 'admin') {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Admin role required' } }, 403);
+  }
+  await next();
+});

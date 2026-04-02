@@ -37,4 +37,27 @@ app.get('/openid-configuration', (c) => {
   );
 });
 
+// GET /.well-known/oauth-authorization-server — OAuth Authorization Server Metadata (RFC 8414)
+app.get('/oauth-authorization-server', (c) => {
+  const issuer = c.env.IDP_ORIGIN;
+  return c.json(
+    {
+      issuer,
+      authorization_endpoint: `${issuer}/auth/authorize`,
+      token_endpoint: `${issuer}/api/token`,
+      registration_endpoint: `${issuer}/api/register`,
+      jwks_uri: `${issuer}/.well-known/jwks.json`,
+      scopes_supported: ['openid', 'profile', 'email', 'phone', 'address'],
+      response_types_supported: ['code'],
+      grant_types_supported: ['authorization_code', 'refresh_token'],
+      token_endpoint_auth_methods_supported: ['client_secret_basic', 'none'],
+      code_challenge_methods_supported: ['S256'],
+      revocation_endpoint: `${issuer}/api/token/revoke`,
+      introspection_endpoint: `${issuer}/api/token/introspect`,
+    },
+    200,
+    { 'Cache-Control': 'public, max-age=86400' }
+  );
+});
+
 export default app;

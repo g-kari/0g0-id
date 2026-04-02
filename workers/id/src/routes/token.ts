@@ -1,8 +1,28 @@
 import { Hono } from 'hono';
 import type { HonoRequest } from 'hono';
-import { findRefreshTokenByHash, findUserById, revokeRefreshToken, sha256, verifyAccessToken, createLogger } from '@0g0-id/shared';
+import {
+  findRefreshTokenByHash,
+  findUserById,
+  revokeRefreshToken,
+  sha256,
+  verifyAccessToken,
+  createLogger,
+  findAndConsumeAuthCode,
+  findServiceByClientId,
+  findServiceById,
+  findAndRevokeRefreshToken,
+  unrevokeRefreshToken,
+  revokeTokenFamily,
+  generateCodeChallenge,
+  generateToken,
+  signAccessToken,
+  signIdToken,
+  createRefreshToken,
+  timingSafeEqual,
+  matchRedirectUri,
+} from '@0g0-id/shared';
 import type { IdpEnv, User } from '@0g0-id/shared';
-import { externalApiRateLimitMiddleware } from '../middleware/rate-limit';
+import { externalApiRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authenticateService } from '../utils/service-auth';
 import { parseAllowedScopes } from '../utils/scopes';
 
@@ -57,6 +77,322 @@ function applyUserClaims(
   if (scopes.includes('address')) {
     claims['address'] = user.address;
   }
+}
+
+/** リフレッシュトークンの有効期限（30日）*/
+const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * アクセストークンとリフレッシュトークンのペアを発行する（OAuth標準トークンエンドポイント用）。
+ */
+async function issueOAuthTokenPair(
+  db: D1Database,
+  env: IdpEnv,
+  user: User,
+  options: { serviceId: string; clientId: string; familyId?: string; scope?: string }
+): Promise<{ accessToken: string; refreshToken: string }> {
+  const { serviceId, clientId, familyId = crypto.randomUUID(), scope } = options;
+
+  const accessToken = await signAccessToken(
+    { iss: env.IDP_ORIGIN, sub: user.id, aud: env.IDP_ORIGIN, email: user.email, role: user.role, scope, cid: clientId },
+    env.JWT_PRIVATE_KEY,
+    env.JWT_PUBLIC_KEY
+  );
+
+  const refreshToken = generateToken(32);
+  const tokenHash = await sha256(refreshToken);
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
+
+  // ペアワイズsubを事前計算して保存（外部API逆引き用）
+  const pairwiseSub = await sha256(`${clientId}:${user.id}`);
+
+  await createRefreshToken(db, {
+    id: crypto.randomUUID(),
+    userId: user.id,
+    serviceId,
+    tokenHash,
+    familyId,
+    expiresAt,
+    pairwiseSub,
+    scope: scope ?? null,
+  });
+
+  return { accessToken, refreshToken };
+}
+
+/**
+ * client_secret_basic 認証（Authorization: Basic）またはパブリッククライアント（none）を処理する。
+ * Authorization ヘッダーがある場合は Basic 認証を検証し、クライアントIDの一致も確認する。
+ * ヘッダーがない場合はパブリッククライアントとして bodyClientId のみで検証する。
+ */
+async function resolveOAuthClient(
+  db: D1Database,
+  authHeader: string | undefined,
+  bodyClientId: string | undefined
+): Promise<{ ok: true; service: NonNullable<Awaited<ReturnType<typeof findServiceByClientId>>> } | { ok: false; error: string; status: 400 | 401 }> {
+  if (authHeader?.startsWith('Basic ')) {
+    // Confidential client: client_secret_basic
+    let service: Awaited<ReturnType<typeof authenticateService>>;
+    try {
+      service = await authenticateService(db, authHeader);
+    } catch {
+      return { ok: false, error: 'Internal server error', status: 401 };
+    }
+    if (!service) {
+      return { ok: false, error: 'invalid_client', status: 401 };
+    }
+    // bodyのclient_idが指定されている場合、Basicヘッダーのclient_idと一致するか確認
+    if (bodyClientId && bodyClientId !== service.client_id) {
+      return { ok: false, error: 'invalid_client', status: 401 };
+    }
+    return { ok: true, service };
+  }
+
+  // Public client: client_id のみで識別（client_secret なし）
+  if (!bodyClientId) {
+    return { ok: false, error: 'client_id is required', status: 400 };
+  }
+  const service = await findServiceByClientId(db, bodyClientId);
+  if (!service) {
+    return { ok: false, error: 'invalid_client', status: 401 };
+  }
+  return { ok: true, service };
+}
+
+// POST /api/token — 標準 OAuth 2.0 トークンエンドポイント (RFC 6749)
+// MCPクライアント等のネイティブアプリが直接HTTPリクエストで利用する
+app.post('/', tokenApiRateLimitMiddleware, async (c) => {
+  // application/x-www-form-urlencoded をパース
+  const contentType = c.req.header('Content-Type') ?? '';
+  let params: Record<string, string>;
+  try {
+    if (contentType.includes('application/x-www-form-urlencoded')) {
+      const body = await c.req.parseBody();
+      params = {};
+      for (const [key, value] of Object.entries(body)) {
+        if (typeof value === 'string') {
+          params[key] = value;
+        }
+      }
+    } else if (contentType.includes('application/json')) {
+      params = await c.req.json<Record<string, string>>();
+    } else {
+      return c.json({ error: 'invalid_request', error_description: 'Unsupported Content-Type' }, 400);
+    }
+  } catch {
+    return c.json({ error: 'invalid_request', error_description: 'Failed to parse request body' }, 400);
+  }
+
+  const grantType = params['grant_type'];
+
+  if (grantType === 'authorization_code') {
+    return handleAuthorizationCodeGrant(c, params);
+  } else if (grantType === 'refresh_token') {
+    return handleRefreshTokenGrant(c, params);
+  } else {
+    return c.json({ error: 'unsupported_grant_type', error_description: 'Only authorization_code and refresh_token are supported' }, 400);
+  }
+});
+
+/**
+ * authorization_code グラント処理
+ */
+async function handleAuthorizationCodeGrant(
+  c: { env: IdpEnv; req: { header: (name: string) => string | undefined }; json: (data: unknown, status?: number) => Response },
+  params: Record<string, string>
+): Promise<Response> {
+  const code = params['code'];
+  const redirectUri = params['redirect_uri'];
+  const clientId = params['client_id'];
+  const codeVerifier = params['code_verifier'];
+
+  if (!code) {
+    return c.json({ error: 'invalid_request', error_description: 'code is required' }, 400);
+  }
+  if (!redirectUri) {
+    return c.json({ error: 'invalid_request', error_description: 'redirect_uri is required' }, 400);
+  }
+  if (!codeVerifier) {
+    return c.json({ error: 'invalid_request', error_description: 'code_verifier is required' }, 400);
+  }
+
+  // クライアント認証
+  const clientResult = await resolveOAuthClient(c.env.DB, c.req.header('Authorization'), clientId);
+  if (!clientResult.ok) {
+    return c.json({ error: clientResult.error }, clientResult.status);
+  }
+  const service = clientResult.service;
+
+  // 認可コード検証
+  const codeHash = await sha256(code);
+  const authCode = await findAndConsumeAuthCode(c.env.DB, codeHash);
+  if (!authCode) {
+    return c.json({ error: 'invalid_grant', error_description: 'Invalid or expired authorization code' }, 400);
+  }
+
+  // service_id の一致確認
+  if (authCode.service_id !== service.id) {
+    return c.json({ error: 'invalid_grant', error_description: 'Authorization code was not issued for this client' }, 400);
+  }
+
+  // redirect_uri の一致検証（ポート番号無視のlocalhost比較を含む）
+  if (!matchRedirectUri(authCode.redirect_to, redirectUri)) {
+    return c.json({ error: 'invalid_grant', error_description: 'redirect_uri mismatch' }, 400);
+  }
+
+  // PKCE 検証 (S256)
+  if (authCode.code_challenge) {
+    const expectedChallenge = await generateCodeChallenge(codeVerifier);
+    if (!timingSafeEqual(expectedChallenge, authCode.code_challenge)) {
+      return c.json({ error: 'invalid_grant', error_description: 'code_verifier mismatch' }, 400);
+    }
+  }
+
+  // ユーザー情報取得
+  const user = await findUserById(c.env.DB, authCode.user_id);
+  if (!user) {
+    return c.json({ error: 'invalid_grant', error_description: 'User not found' }, 400);
+  }
+  if (user.banned_at !== null) {
+    return c.json({ error: 'access_denied', error_description: 'Account has been suspended' }, 403);
+  }
+
+  // スコープ計算
+  const allowedScopes = parseAllowedScopes(service.allowed_scopes);
+  let serviceScope: string | undefined;
+  if (authCode.scope) {
+    const requested = authCode.scope.split(' ').filter(Boolean);
+    const valid = requested.filter((s) => s === 'openid' || allowedScopes.includes(s));
+    serviceScope = valid.length > 0 ? valid.join(' ') : undefined;
+  } else {
+    serviceScope = ['openid', ...allowedScopes].join(' ');
+  }
+
+  // トークン発行
+  const { accessToken, refreshToken } = await issueOAuthTokenPair(c.env.DB, c.env, user, {
+    serviceId: service.id,
+    clientId: service.client_id,
+    scope: serviceScope,
+  });
+
+  // レスポンス (RFC 6749 §5.1)
+  const response: Record<string, unknown> = {
+    access_token: accessToken,
+    token_type: 'Bearer',
+    expires_in: 900,
+    refresh_token: refreshToken,
+  };
+  if (serviceScope) {
+    response['scope'] = serviceScope;
+  }
+
+  return c.json(response);
+}
+
+/**
+ * refresh_token グラント処理
+ */
+async function handleRefreshTokenGrant(
+  c: { env: IdpEnv; req: { header: (name: string) => string | undefined }; json: (data: unknown, status?: number) => Response },
+  params: Record<string, string>
+): Promise<Response> {
+  const refreshTokenRaw = params['refresh_token'];
+  const clientId = params['client_id'];
+
+  if (!refreshTokenRaw) {
+    return c.json({ error: 'invalid_request', error_description: 'refresh_token is required' }, 400);
+  }
+
+  // クライアント認証
+  const clientResult = await resolveOAuthClient(c.env.DB, c.req.header('Authorization'), clientId);
+  if (!clientResult.ok) {
+    return c.json({ error: clientResult.error }, clientResult.status);
+  }
+  const service = clientResult.service;
+
+  const tokenHash = await sha256(refreshTokenRaw);
+
+  // アトミックに失効させる（TOCTOU競合状態防止: RFC 6819 §5.2.2.3）
+  const storedToken = await findAndRevokeRefreshToken(c.env.DB, tokenHash, 'rotation');
+
+  if (!storedToken) {
+    // reuse detection チェック
+    const existingToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
+    if (existingToken) {
+      if (existingToken.revoked_reason === 'rotation') {
+        await revokeTokenFamily(c.env.DB, existingToken.family_id, 'reuse_detected');
+        return c.json({ error: 'invalid_grant', error_description: 'Token reuse detected' }, 400);
+      }
+      return c.json({ error: 'invalid_grant', error_description: 'Token has been revoked' }, 400);
+    }
+    return c.json({ error: 'invalid_grant', error_description: 'Invalid refresh token' }, 400);
+  }
+
+  // サービス所有権確認
+  if (storedToken.service_id !== service.id) {
+    // 別サービス向けのトークン → 元に戻して拒否
+    await unrevokeRefreshToken(c.env.DB, storedToken.id);
+    return c.json({ error: 'invalid_grant', error_description: 'Token was not issued for this client' }, 400);
+  }
+
+  // 有効期限チェック
+  if (new Date(storedToken.expires_at) < new Date()) {
+    await unrevokeRefreshToken(c.env.DB, storedToken.id);
+    return c.json({ error: 'invalid_grant', error_description: 'Refresh token expired' }, 400);
+  }
+
+  // ユーザー情報取得
+  const user = await findUserById(c.env.DB, storedToken.user_id);
+  if (!user) {
+    return c.json({ error: 'invalid_grant', error_description: 'User not found' }, 400);
+  }
+  if (user.banned_at !== null) {
+    return c.json({ error: 'access_denied', error_description: 'Account has been suspended' }, 403);
+  }
+
+  // スコープ引き継ぎ
+  let refreshScope: string | undefined;
+  if (storedToken.scope) {
+    refreshScope = storedToken.scope;
+  } else {
+    const allowedScopes = parseAllowedScopes(service.allowed_scopes);
+    refreshScope = ['openid', ...allowedScopes].join(' ');
+  }
+
+  // 新トークン発行（ローテーション）
+  let accessToken: string;
+  let newRefreshToken: string;
+  try {
+    const tokens = await issueOAuthTokenPair(c.env.DB, c.env, user, {
+      serviceId: service.id,
+      clientId: service.client_id,
+      familyId: storedToken.family_id,
+      scope: refreshScope,
+    });
+    accessToken = tokens.accessToken;
+    newRefreshToken = tokens.refreshToken;
+  } catch (e) {
+    // レース条件対策
+    const currentToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
+    if (currentToken && currentToken.revoked_reason === 'reuse_detected') {
+      return c.json({ error: 'invalid_grant', error_description: 'Token reuse detected' }, 400);
+    }
+    await unrevokeRefreshToken(c.env.DB, storedToken.id);
+    throw e;
+  }
+
+  // レスポンス (RFC 6749 §5.1)
+  const response: Record<string, unknown> = {
+    access_token: accessToken,
+    token_type: 'Bearer',
+    expires_in: 900,
+    refresh_token: newRefreshToken,
+  };
+  if (refreshScope) {
+    response['scope'] = refreshScope;
+  }
+
+  return c.json(response);
 }
 
 // POST /api/token/introspect — RFC 7662 トークンイントロスペクション

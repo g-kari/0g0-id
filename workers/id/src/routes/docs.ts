@@ -1322,6 +1322,42 @@ const INTERNAL_OPENAPI = {
         },
       },
     },
+    '/.well-known/oauth-authorization-server': {
+      get: {
+        tags: ['OIDC'],
+        summary: 'OAuth Authorization Server Metadata',
+        description:
+          'RFC 8414 準拠の OAuth Authorization Server メタデータ。\n\n' +
+          'MCP 仕様で必要とされるエンドポイント情報を返す。\n\n' +
+          'レスポンスは24時間キャッシュ可能（`Cache-Control: public, max-age=86400`）。',
+        responses: {
+          '200': {
+            description: 'OAuth Authorization Server メタデータ',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    issuer: { type: 'string', example: 'https://id.0g0.xyz' },
+                    authorization_endpoint: { type: 'string', example: 'https://id.0g0.xyz/auth/authorize' },
+                    token_endpoint: { type: 'string', example: 'https://id.0g0.xyz/api/token' },
+                    registration_endpoint: { type: 'string', example: 'https://id.0g0.xyz/api/register' },
+                    jwks_uri: { type: 'string', example: 'https://id.0g0.xyz/.well-known/jwks.json' },
+                    scopes_supported: { type: 'array', items: { type: 'string' }, example: ['openid', 'profile', 'email', 'phone', 'address'] },
+                    response_types_supported: { type: 'array', items: { type: 'string' }, example: ['code'] },
+                    grant_types_supported: { type: 'array', items: { type: 'string' }, example: ['authorization_code', 'refresh_token'] },
+                    token_endpoint_auth_methods_supported: { type: 'array', items: { type: 'string' }, example: ['client_secret_basic', 'none'] },
+                    code_challenge_methods_supported: { type: 'array', items: { type: 'string' }, example: ['S256'] },
+                    revocation_endpoint: { type: 'string', example: 'https://id.0g0.xyz/api/token/revoke' },
+                    introspection_endpoint: { type: 'string', example: 'https://id.0g0.xyz/api/token/introspect' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     '/auth/link-intent': {
       post: {
         tags: ['認証フロー'],
@@ -2112,6 +2148,56 @@ Authorization: Basic <Base64(client_id:client_secret)>
                   id_token_signing_alg_values_supported: ['ES256'],
                   token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post'],
                   code_challenge_methods_supported: ['S256'],
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/.well-known/oauth-authorization-server': {
+      get: {
+        tags: ['OIDC'],
+        summary: 'OAuth Authorization Server Metadata',
+        description:
+          'RFC 8414 準拠の OAuth Authorization Server メタデータ。\n\n' +
+          'MCP 仕様で必要とされるエンドポイント情報を返す。\n\n' +
+          'レスポンスは24時間キャッシュ可能（`Cache-Control: public, max-age=86400`）。',
+        responses: {
+          '200': {
+            description: 'OAuth Authorization Server メタデータ',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    issuer: { type: 'string' },
+                    authorization_endpoint: { type: 'string' },
+                    token_endpoint: { type: 'string' },
+                    registration_endpoint: { type: 'string' },
+                    jwks_uri: { type: 'string' },
+                    scopes_supported: { type: 'array', items: { type: 'string' } },
+                    response_types_supported: { type: 'array', items: { type: 'string' } },
+                    grant_types_supported: { type: 'array', items: { type: 'string' } },
+                    token_endpoint_auth_methods_supported: { type: 'array', items: { type: 'string' } },
+                    code_challenge_methods_supported: { type: 'array', items: { type: 'string' } },
+                    revocation_endpoint: { type: 'string' },
+                    introspection_endpoint: { type: 'string' },
+                  },
+                },
+                example: {
+                  issuer: 'https://id.0g0.xyz',
+                  authorization_endpoint: 'https://id.0g0.xyz/auth/authorize',
+                  token_endpoint: 'https://id.0g0.xyz/api/token',
+                  registration_endpoint: 'https://id.0g0.xyz/api/register',
+                  jwks_uri: 'https://id.0g0.xyz/.well-known/jwks.json',
+                  scopes_supported: ['openid', 'profile', 'email', 'phone', 'address'],
+                  response_types_supported: ['code'],
+                  grant_types_supported: ['authorization_code', 'refresh_token'],
+                  token_endpoint_auth_methods_supported: ['client_secret_basic', 'none'],
+                  code_challenge_methods_supported: ['S256'],
+                  revocation_endpoint: 'https://id.0g0.xyz/api/token/revoke',
+                  introspection_endpoint: 'https://id.0g0.xyz/api/token/introspect',
                 },
               },
             },

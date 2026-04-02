@@ -18,6 +18,7 @@ export * from './lib/providers';
 export * from './lib/parse-body';
 export * from './middleware/body-limit';
 export * from './lib/sql';
+export * from './lib/redirect-uri';
 export * from './db/users';
 export * from './db/services';
 export * from './db/service-redirect-uris';

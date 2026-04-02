@@ -46,11 +46,13 @@ import {
   findServiceByClientId,
   findServiceById,
   isValidRedirectUri,
+  listRedirectUris,
   normalizeRedirectUri,
   timingSafeEqual,
   linkProvider,
   insertLoginEvent,
   createLogger,
+  matchRedirectUri,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
 import { type OAuthProvider, PROVIDER_DISPLAY_NAMES, ALL_PROVIDERS, isValidProvider } from '@0g0-id/shared';
@@ -525,6 +527,83 @@ async function issueTokenPair(
 }
 
 // ─── ルートハンドラー ──────────────────────────────────────────────────────────
+
+// GET /auth/authorize — 標準 OAuth 2.0 Authorization エンドポイント (RFC 6749 / RFC 7636 / RFC 8252)
+// MCPクライアント等のネイティブアプリが直接HTTPリクエストで利用する
+app.get('/authorize', authRateLimitMiddleware, async (c) => {
+  const responseType = c.req.query('response_type');
+  const clientId = c.req.query('client_id');
+  const redirectUri = c.req.query('redirect_uri');
+  const scope = c.req.query('scope');
+  const state = c.req.query('state');
+  const codeChallenge = c.req.query('code_challenge');
+  const codeChallengeMethod = c.req.query('code_challenge_method');
+
+  // 必須パラメータ検証
+  if (responseType !== 'code') {
+    return c.json({ error: 'unsupported_response_type', error_description: 'Only response_type=code is supported' }, 400);
+  }
+  if (!clientId) {
+    return c.json({ error: 'invalid_request', error_description: 'client_id is required' }, 400);
+  }
+  if (!redirectUri) {
+    return c.json({ error: 'invalid_request', error_description: 'redirect_uri is required' }, 400);
+  }
+  if (!state) {
+    return c.json({ error: 'invalid_request', error_description: 'state is required' }, 400);
+  }
+  if (!codeChallenge) {
+    return c.json({ error: 'invalid_request', error_description: 'code_challenge is required (PKCE S256)' }, 400);
+  }
+  if (codeChallengeMethod !== 'S256') {
+    return c.json({ error: 'invalid_request', error_description: 'Only code_challenge_method=S256 is supported' }, 400);
+  }
+
+  // パラメータ長制限
+  if (redirectUri.length > 2048) {
+    return c.json({ error: 'invalid_request', error_description: 'redirect_uri too long' }, 400);
+  }
+  if (state.length > 1024) {
+    return c.json({ error: 'invalid_request', error_description: 'state too long' }, 400);
+  }
+  if (scope && scope.length > 2048) {
+    return c.json({ error: 'invalid_request', error_description: 'scope too long' }, 400);
+  }
+
+  // サービス検証
+  const service = await findServiceByClientId(c.env.DB, clientId);
+  if (!service) {
+    return c.json({ error: 'invalid_request', error_description: 'Unknown client_id' }, 400);
+  }
+
+  // redirect_uri 検証（localhost/127.0.0.1 の場合はポートを無視: RFC 8252 §7.3）
+  const normalizedRequested = normalizeRedirectUri(redirectUri);
+  if (!normalizedRequested) {
+    return c.json({ error: 'invalid_request', error_description: 'Invalid redirect_uri' }, 400);
+  }
+
+  // 登録済みredirect_uriを取得して、matchRedirectUriで比較
+  const registeredUris = await listRedirectUris(c.env.DB, service.id);
+  const matched = registeredUris.some((ru) => matchRedirectUri(ru.uri, normalizedRequested));
+  if (!matched) {
+    return c.json({ error: 'invalid_request', error_description: 'redirect_uri not registered for this client' }, 400);
+  }
+
+  // ユーザーをプロバイダー選択画面（USER_ORIGIN/login）にリダイレクト
+  // BFFのログイン画面がプロバイダー選択とIdPへの/auth/loginリダイレクトを担当する
+  const loginUrl = new URL('/login', c.env.USER_ORIGIN);
+  loginUrl.searchParams.set('service_id', service.id);
+  loginUrl.searchParams.set('client_id', clientId);
+  loginUrl.searchParams.set('redirect_uri', redirectUri);
+  loginUrl.searchParams.set('state', state);
+  loginUrl.searchParams.set('code_challenge', codeChallenge);
+  loginUrl.searchParams.set('code_challenge_method', codeChallengeMethod);
+  if (scope) {
+    loginUrl.searchParams.set('scope', scope);
+  }
+
+  return c.redirect(loginUrl.toString());
+});
 
 // GET /auth/login — BFFからのリダイレクト受け取り + プロバイダー認可へリダイレクト
 // client_id を指定すると登録済みサービスの redirect URI で検証（OAuth 2.0 Authorization Code フロー）
