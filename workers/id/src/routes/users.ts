@@ -25,6 +25,8 @@ import {
   createAdminAuditLog,
   parseDays,
   parsePagination,
+  isValidProvider,
+  type OAuthProvider,
   type UserFilter,
   createLogger,
 } from '@0g0-id/shared';
@@ -55,8 +57,6 @@ const PatchRoleSchema = z.object({
 const RevokeOthersSchema = z.object({
   token_hash: z.string().min(1, 'token_hash is required'),
 });
-
-const VALID_PROVIDERS = ['google', 'line', 'twitch', 'github', 'x'] as const;
 
 type Variables = { user: TokenPayload };
 
@@ -312,10 +312,10 @@ app.get('/me/security-summary', authMiddleware, rejectServiceTokenMiddleware, re
 app.delete('/me/providers/:provider', authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
   const providerParam = c.req.param('provider');
-  if (!VALID_PROVIDERS.includes(providerParam as (typeof VALID_PROVIDERS)[number])) {
+  if (!isValidProvider(providerParam)) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid provider' } }, 400);
   }
-  const provider = providerParam as (typeof VALID_PROVIDERS)[number];
+  const provider: OAuthProvider = providerParam;
 
   // 最後のプロバイダーは解除不可（ログインできなくなる）、また未連携プロバイダーのチェックも実施
   const providers = await getUserProviders(c.env.DB, tokenUser.sub);

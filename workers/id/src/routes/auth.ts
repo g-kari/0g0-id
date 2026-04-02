@@ -53,7 +53,7 @@ import {
   createLogger,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
-import { type OAuthProvider, PROVIDER_DISPLAY_NAMES } from '@0g0-id/shared';
+import { type OAuthProvider, PROVIDER_DISPLAY_NAMES, ALL_PROVIDERS, isValidProvider } from '@0g0-id/shared';
 import { authRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware } from '../middleware/auth';
 import { parseAllowedScopes } from '../utils/scopes';
@@ -548,11 +548,10 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
   }
 
   // providerの検証
-  const validProviders: OAuthProvider[] = ['google', 'line', 'twitch', 'github', 'x'];
-  if (!validProviders.includes(providerParam as OAuthProvider)) {
+  if (!isValidProvider(providerParam)) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid provider' } }, 400);
   }
-  const provider = providerParam as OAuthProvider;
+  const provider = providerParam;
 
   // プロバイダー資格情報の確認（Google以外はオプション設定）
   if (provider !== 'google') {
@@ -735,9 +734,8 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
   const callbackUri = `${c.env.IDP_ORIGIN}${CALLBACK_PATH}`;
 
   // providerの検証（Cookie改ざん対策）
-  const validProviders: OAuthProvider[] = ['google', 'line', 'twitch', 'github', 'x'];
-  const provider = stateData.provider ?? 'google';
-  if (!validProviders.includes(provider)) {
+  const provider: OAuthProvider = stateData.provider ?? 'google';
+  if (!isValidProvider(provider)) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid provider in state' } }, 400);
   }
 

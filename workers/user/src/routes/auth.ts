@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import { generateToken, parseSession, setSessionCookie, timingSafeEqual, createLogger } from '@0g0-id/shared';
+import { generateToken, isValidProvider, parseSession, setSessionCookie, timingSafeEqual, createLogger } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 
 const app = new Hono<{ Bindings: BffEnv }>();
@@ -13,8 +13,7 @@ const STATE_COOKIE = '__Host-user-oauth-state';
 // GET /auth/login
 app.get('/login', async (c) => {
   const provider = c.req.query('provider') ?? 'google';
-  const validProviders = ['google', 'line', 'twitch', 'github', 'x'];
-  if (!validProviders.includes(provider)) {
+  if (!isValidProvider(provider)) {
     return c.redirect('/?error=invalid_provider');
   }
 
@@ -120,8 +119,7 @@ app.post('/logout', async (c) => {
 app.post('/link', async (c) => {
   const body = await c.req.parseBody().catch(() => ({} as Record<string, string>));
   const provider = (body['provider'] as string) ?? c.req.query('provider') ?? 'google';
-  const validProviders = ['google', 'line', 'twitch', 'github', 'x'];
-  if (!validProviders.includes(provider)) {
+  if (!isValidProvider(provider)) {
     return c.redirect('/profile.html?error=invalid_provider');
   }
 

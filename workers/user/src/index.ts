@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
+
 import type { BffEnv } from '@0g0-id/shared';
-import { logger, securityHeaders, bffCorsMiddleware, bffCsrfMiddleware, createLogger } from '@0g0-id/shared';
+import { logger, securityHeaders, bodyLimitMiddleware, bffCorsMiddleware, bffCsrfMiddleware, createLogger } from '@0g0-id/shared';
 import authRoutes from './routes/auth';
 import profileRoutes from './routes/profile';
 import connectionsRoutes from './routes/connections';
@@ -16,9 +16,7 @@ const app = new Hono<{ Bindings: BffEnv }>();
 
 app.use('*', logger());
 app.use('*', securityHeaders());
-app.use('*', bodyLimit({ maxSize: 64 * 1024, onError: (c) => {
-  return c.json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'Request body too large' } }, 413);
-}}));
+app.use('*', bodyLimitMiddleware());
 
 // ユーザー画面APIへのCORSをユーザー画面自身のドメインのみに制限
 app.use('/api/*', bffCorsMiddleware);

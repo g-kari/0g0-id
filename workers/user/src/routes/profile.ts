@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { deleteCookie } from 'hono/cookie';
-import { fetchWithAuth, fetchWithJsonBody, parsePagination, proxyResponse } from '@0g0-id/shared';
+import { fetchWithAuth, fetchWithJsonBody, isValidProvider, parseDays, parsePagination, proxyResponse } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 import { SESSION_COOKIE } from './auth';
 
@@ -26,8 +26,7 @@ app.get('/login-history', async (c) => {
   url.searchParams.set('offset', String(pagination.offset));
   const provider = c.req.query('provider');
   if (provider) {
-    const validProviders = ['google', 'line', 'twitch', 'github', 'x'];
-    if (!validProviders.includes(provider)) {
+    if (!isValidProvider(provider)) {
       return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid provider' } }, 400);
     }
     url.searchParams.set('provider', provider);
@@ -39,16 +38,12 @@ app.get('/login-history', async (c) => {
 // GET /api/me/login-stats — プロバイダー別ログイン統計
 app.get('/login-stats', async (c) => {
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/me/login-stats`);
-  const daysStr = c.req.query('days');
-  if (daysStr !== undefined) {
-    const days = Number(daysStr);
-    if (!Number.isInteger(days) || days < 1 || days > 365) {
-      return c.json(
-        { error: { code: 'BAD_REQUEST', message: 'days must be an integer between 1 and 365' } },
-        400
-      );
+  const daysResult = parseDays(c.req.query('days'), { maxDays: 365 });
+  if (daysResult !== undefined) {
+    if ('error' in daysResult) {
+      return c.json({ error: { code: 'INVALID_PARAMETER', message: daysResult.error } }, 400);
     }
-    url.searchParams.set('days', String(days));
+    url.searchParams.set('days', String(daysResult.days));
   }
   const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
   return proxyResponse(res);

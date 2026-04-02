@@ -5,8 +5,10 @@ import type { z } from 'zod';
  * リクエストボディのJSONパースとZodバリデーションを一括で行うユーティリティ。
  * 成功時は `{ ok: true, data }` を、失敗時は `{ ok: false, response }` を返す。
  *
- * NOTE: この関数は packages/shared/src/lib/parse-body.ts にも同一実装があり、
- * 新規コードはshared版の利用を推奨。既存コードの互換性のためローカルコピーを維持。
+ * @example
+ * const result = await parseJsonBody(c, MySchema);
+ * if (!result.ok) return result.response;
+ * const body = result.data;
  */
 export async function parseJsonBody<T, E extends Env = Env>(
   c: Context<E>,

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { fetchWithAuth, fetchWithJsonBody, parseDays, parsePagination, proxyMutate, proxyResponse } from '@0g0-id/shared';
+import { fetchWithAuth, fetchWithJsonBody, isValidProvider, parseDays, parsePagination, proxyMutate, proxyResponse } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 import { SESSION_COOKIE } from './auth';
 
@@ -84,8 +84,7 @@ app.get('/:id/login-history', async (c) => {
   url.searchParams.set('offset', String(pagination.offset));
   const provider = c.req.query('provider');
   if (provider) {
-    const validProviders = ['google', 'line', 'twitch', 'github', 'x'];
-    if (!validProviders.includes(provider)) {
+    if (!isValidProvider(provider)) {
       return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid provider' } }, 400);
     }
     url.searchParams.set('provider', provider);

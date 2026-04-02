@@ -4,6 +4,7 @@ vi.mock('@0g0-id/shared', () => ({
   createLogger: vi.fn().mockReturnValue({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
   logger: () => async (_c: unknown, next: () => Promise<void>) => next(),
   securityHeaders: () => async (_c: unknown, next: () => Promise<void>) => next(),
+  bodyLimitMiddleware: () => async (_c: unknown, next: () => Promise<void>) => next(),
   verifyAccessToken: vi.fn(),
   countUsers: vi.fn(),
   countAdminUsers: vi.fn(),

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
+
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
-import { logger, securityHeaders, createLogger } from '@0g0-id/shared';
+import { logger, securityHeaders, bodyLimitMiddleware, createLogger } from '@0g0-id/shared';
 import { validateEnv } from './utils/env-validation';
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
@@ -37,10 +37,7 @@ app.use('*', logger());
 app.use('*', securityHeaders());
 
 // リクエストボディサイズ制限（メモリ消耗攻撃防止）
-// IdPの全エンドポイントは小さなJSONボディのみ受け付けるため64KBで十分
-app.use('*', bodyLimit({ maxSize: 64 * 1024, onError: (c) => {
-  return c.json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'Request body too large' } }, 413);
-}}));
+app.use('*', bodyLimitMiddleware());
 
 // ルート登録
 app.route('/auth', authRoutes);

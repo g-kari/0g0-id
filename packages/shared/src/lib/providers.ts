@@ -10,6 +10,11 @@ export type OAuthProvider = 'google' | 'line' | 'twitch' | 'github' | 'x';
 /** サポートするOAuthプロバイダーの一覧（イテレーション用） */
 export const ALL_PROVIDERS: OAuthProvider[] = ['google', 'line', 'twitch', 'github', 'x'];
 
+/** 文字列が有効なOAuthプロバイダーかどうかを検証する型ガード */
+export function isValidProvider(value: string): value is OAuthProvider {
+  return (ALL_PROVIDERS as readonly string[]).includes(value);
+}
+
 /** プロバイダーごとのUI表示名 */
 export const PROVIDER_DISPLAY_NAMES: Record<OAuthProvider, string> = {
   google: 'Google',
