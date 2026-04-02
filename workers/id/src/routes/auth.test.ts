@@ -1312,6 +1312,7 @@ describe('GET /auth/callback - プロバイダー連携 (linkUserId)', () => {
     vi.resetAllMocks();
     vi.mocked(sha256).mockResolvedValue('hashed-value');
     vi.mocked(generateToken).mockReturnValue('mock-auth-code');
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(linkProvider).mockResolvedValue(mockUser);
     vi.mocked(tryBootstrapAdmin).mockResolvedValue(false);
     vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
@@ -1407,6 +1408,30 @@ describe('GET /auth/callback - プロバイダー連携 (linkUserId)', () => {
       'line',
       'line-sub-new'
     );
+  });
+
+  it('BAN済みユーザーのリンクフロー → 403を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, banned_at: '2024-06-01T00:00:00Z' });
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'google',
+      linkUserId: 'existing-user-id',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('ACCOUNT_BANNED');
+    expect(vi.mocked(linkProvider)).not.toHaveBeenCalled();
   });
 
   it('LINE: PROVIDER_ALREADY_LINKED → 409を返す', async () => {

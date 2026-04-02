@@ -92,8 +92,8 @@ app.get('/users', externalApiRateLimitMiddleware, serviceAuthMiddleware, async (
     return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
   }
 
-  const activeUsers = users.filter((u) => u.banned_at === null);
-  const data = await Promise.all(activeUsers.map((user) => buildUserData(service, user, allowedScopes)));
+  // listUsersAuthorizedForService のSQLで banned_at IS NULL フィルタ済み
+  const data = await Promise.all(users.map((user) => buildUserData(service, user, allowedScopes)));
 
   return c.json({ data, meta: { total, limit, offset } });
 });

@@ -237,9 +237,12 @@ app.get('/me/login-history', authMiddleware, rejectServiceTokenMiddleware, rejec
     return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
   }
   const { limit, offset } = pagination;
-  const provider = c.req.query('provider') || undefined;
+  const providerParam = c.req.query('provider') || undefined;
+  if (providerParam !== undefined && !isValidProvider(providerParam)) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid provider' } }, 400);
+  }
 
-  const { events, total } = await getLoginEventsByUserId(c.env.DB, tokenUser.sub, limit, offset, provider);
+  const { events, total } = await getLoginEventsByUserId(c.env.DB, tokenUser.sub, limit, offset, providerParam);
   return c.json({ data: events, total });
 });
 
@@ -468,14 +471,17 @@ app.get('/:id/login-history', authMiddleware, adminMiddleware, async (c) => {
     return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
   }
   const { limit, offset } = pagination;
-  const provider = c.req.query('provider') || undefined;
+  const providerParam = c.req.query('provider') || undefined;
+  if (providerParam !== undefined && !isValidProvider(providerParam)) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid provider' } }, 400);
+  }
 
   const targetUser = await findUserById(c.env.DB, targetId);
   if (!targetUser) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  const { events, total } = await getLoginEventsByUserId(c.env.DB, targetId, limit, offset, provider);
+  const { events, total } = await getLoginEventsByUserId(c.env.DB, targetId, limit, offset, providerParam);
   return c.json({ data: events, total });
 });
 

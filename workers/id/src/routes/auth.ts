@@ -769,6 +769,11 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
   const userId = crypto.randomUUID();
   let user: User;
   if (stateData.linkUserId) {
+    // BAN済みユーザーへのプロバイダー連携を防止（DBに書き込む前にチェック）
+    const linkTargetUser = await findUserById(c.env.DB, stateData.linkUserId);
+    if (!linkTargetUser || linkTargetUser.banned_at !== null) {
+      return c.json({ error: { code: 'ACCOUNT_BANNED', message: 'Your account has been suspended' } }, 403);
+    }
     const result = await handleProviderLink(c.env.DB, stateData.linkUserId, provider, resolved.sub);
     if (!result.ok) {
       return c.json(
