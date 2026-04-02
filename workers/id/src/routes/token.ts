@@ -25,6 +25,7 @@ import type { IdpEnv, User } from '@0g0-id/shared';
 import { externalApiRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authenticateService } from '../utils/service-auth';
 import { parseAllowedScopes } from '../utils/scopes';
+import { handleDeviceCodeGrant } from './device';
 
 const tokenLogger = createLogger('token');
 
@@ -189,8 +190,10 @@ app.post('/', tokenApiRateLimitMiddleware, async (c) => {
     return handleAuthorizationCodeGrant(c, params);
   } else if (grantType === 'refresh_token') {
     return handleRefreshTokenGrant(c, params);
+  } else if (grantType === 'urn:ietf:params:oauth:grant-type:device_code') {
+    return handleDeviceCodeGrant(c, params);
   } else {
-    return c.json({ error: 'unsupported_grant_type', error_description: 'Only authorization_code and refresh_token are supported' }, 400);
+    return c.json({ error: 'unsupported_grant_type', error_description: 'Unsupported grant_type' }, 400);
   }
 });
 

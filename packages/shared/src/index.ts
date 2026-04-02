@@ -26,3 +26,4 @@ export * from './db/refresh-tokens';
 export * from './db/auth-codes';
 export * from './db/login-events';
 export * from './db/admin-audit-logs';
+export * from './db/device-codes';

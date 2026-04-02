@@ -13,6 +13,7 @@ import docsRoutes from './routes/docs';
 import adminAuditLogsRoutes from './routes/admin-audit-logs';
 import externalRoutes from './routes/external';
 import userInfoRoutes from './routes/userinfo';
+import deviceRoutes from './routes/device';
 
 const appLogger = createLogger('id');
 
@@ -48,6 +49,7 @@ app.route('/api/services', servicesRoutes);
 app.route('/api/metrics', metricsRoutes);
 app.route('/api/external', externalRoutes);
 app.route('/api/userinfo', userInfoRoutes);
+app.route('/api/device', deviceRoutes);
 app.route('/docs', docsRoutes);
 app.route('/api/admin/audit-logs', adminAuditLogsRoutes);
 

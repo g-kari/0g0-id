@@ -9,6 +9,7 @@ import providersRoutes from './routes/providers';
 import loginHistoryRoutes from './routes/login-history';
 import sessionsRoutes from './routes/sessions';
 import securityRoutes from './routes/security';
+import deviceRoutes from './routes/device';
 
 const appLogger = createLogger('user');
 
@@ -34,6 +35,7 @@ app.route('/api/providers', providersRoutes);
 app.route('/api/login-history', loginHistoryRoutes);
 app.route('/api/me/sessions', sessionsRoutes);
 app.route('/api/me/security', securityRoutes);
+app.route('/api/device', deviceRoutes);
 
 app.get('/api/health', (c) => {
   return c.json({ status: 'ok', worker: 'user', timestamp: new Date().toISOString() });
