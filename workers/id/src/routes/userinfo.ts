@@ -22,6 +22,11 @@ async function handleUserInfo(c: AppContext): Promise<Response> {
     return c.json({ error: 'invalid_token', error_description: 'User not found' }, 401);
   }
 
+  // BAN済みユーザーのクレーム返却を防止
+  if (user.banned_at !== null) {
+    return c.json({ error: 'invalid_token', error_description: 'Account suspended' }, 401);
+  }
+
   // スコープベースのクレームフィルタリング（OIDC Core 1.0 Section 5.3）
   // scope未定義 = BFFセッション（全クレームを返す）
   // scope定義済み = サービストークン（スコープに応じてフィルタリング）

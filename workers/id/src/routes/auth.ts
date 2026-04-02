@@ -55,7 +55,7 @@ import {
 import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
 import { type OAuthProvider, PROVIDER_DISPLAY_NAMES } from '@0g0-id/shared';
 import { authRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
-import { authMiddleware } from '../middleware/auth';
+import { authMiddleware, rejectServiceTokenMiddleware } from '../middleware/auth';
 import { parseAllowedScopes } from '../utils/scopes';
 
 const ExchangeSchema = z.object({
@@ -421,7 +421,13 @@ async function resolveGithubProvider(
   const githubSub = String(githubUser.id);
   // GitHub User APIのemailフィールドは検証済みとは限らないため、
   // 常にEmails APIから検証済みプライマリメールを取得する
-  const email = await fetchGithubPrimaryEmail(tokenResponse.access_token);
+  let email: string | null;
+  try {
+    email = await fetchGithubPrimaryEmail(tokenResponse.access_token);
+  } catch (err) {
+    authLogger.error('[oauth-github] Failed to fetch primary email', err);
+    return { ok: false as const, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to fetch GitHub email' } }, 400) };
+  }
   const isPlaceholderEmail = !email;
   const finalEmail = email ?? `github_${githubSub}@github.placeholder`;
 
@@ -1056,7 +1062,7 @@ app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
 // POST /auth/link-intent — SNSプロバイダー連携用ワンタイムトークン発行（認証済みユーザー専用）
 // link_user_id をURLパラメータとして直接受け付けると第三者が任意ユーザーのIDを指定し
 // アカウント乗っ取りが可能なため、アクセストークンで認証したうえでワンタイムトークンを発行する
-app.post('/link-intent', tokenApiRateLimitMiddleware, authMiddleware, async (c) => {
+app.post('/link-intent', tokenApiRateLimitMiddleware, authMiddleware, rejectServiceTokenMiddleware, async (c) => {
   const tokenUser = c.get('user');
 
   const linkToken = generateToken(32);

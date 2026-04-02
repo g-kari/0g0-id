@@ -69,6 +69,7 @@ export interface RefreshToken {
   revoked_at: string | null;
   revoked_reason: string | null;
   scope: string | null;
+  pairwise_sub: string | null;
   expires_at: string;
   created_at: string;
 }

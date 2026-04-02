@@ -29,6 +29,7 @@ const baseToken: RefreshToken = {
   revoked_at: null,
   revoked_reason: null,
   scope: null,
+  pairwise_sub: null,
   expires_at: '2025-12-31T23:59:59Z',
   created_at: '2024-01-01T00:00:00Z',
 };

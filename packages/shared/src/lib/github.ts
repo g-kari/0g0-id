@@ -122,7 +122,7 @@ export async function fetchGithubPrimaryEmail(accessToken: string): Promise<stri
   });
 
   if (!response.ok) {
-    return null;
+    throw new Error(`GitHub Emails API failed with status ${response.status}`);
   }
 
   try {
@@ -130,6 +130,6 @@ export async function fetchGithubPrimaryEmail(accessToken: string): Promise<stri
     const primary = emails.find((e) => e.primary && e.verified);
     return primary?.email ?? null;
   } catch {
-    return null;
+    throw new Error('GitHub Emails API returned invalid JSON');
   }
 }
