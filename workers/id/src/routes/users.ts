@@ -58,7 +58,7 @@ const RevokeOthersSchema = z.object({
   token_hash: z.string().min(1, 'token_hash is required'),
 });
 
-type Variables = { user: TokenPayload };
+type Variables = { user: TokenPayload; dbUser: User };
 
 const usersLogger = createLogger('users');
 
@@ -130,29 +130,14 @@ const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
 // GET /api/users/me
 app.get('/me', authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware, async (c) => {
-  const tokenUser = c.get('user');
-  const user = await findUserById(c.env.DB, tokenUser.sub);
-  if (!user) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
-  }
-  if (user.banned_at !== null) {
-    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Account suspended' } }, 401);
-  }
+  const user = c.get('dbUser');
   return c.json({ data: formatMyProfile(user) });
 });
 
 // GET /api/users/me/data-export — GDPR準拠のアカウントデータ一括エクスポート
 app.get('/me/data-export', authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware, async (c) => {
-  const tokenUser = c.get('user');
-  const userId = tokenUser.sub;
-
-  const user = await findUserById(c.env.DB, userId);
-  if (!user) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
-  }
-  if (user.banned_at !== null) {
-    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Account suspended' } }, 401);
-  }
+  const user = c.get('dbUser');
+  const userId = user.id;
 
   const [providers, connections, { events: loginHistory }, sessions] = await Promise.all([
     getUserProviders(c.env.DB, userId),
@@ -249,7 +234,7 @@ app.get('/me/login-history', authMiddleware, rejectServiceTokenMiddleware, rejec
 // GET /api/users/me/login-stats — 自分のプロバイダー別ログイン統計
 app.get('/me/login-stats', authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware, async (c) => {
   const tokenUser = c.get('user');
-  const daysResult = parseDays(c.req.query('days'));
+  const daysResult = parseDays(c.req.query('days'), { maxDays: 365 });
   if (daysResult && 'error' in daysResult) {
     return c.json({ error: { code: 'BAD_REQUEST', message: daysResult.error } }, 400);
   }
@@ -262,7 +247,7 @@ app.get('/me/login-stats', authMiddleware, rejectServiceTokenMiddleware, rejectB
 // GET /api/users/me/login-trends — 自分の日別ログイントレンド
 app.get('/me/login-trends', authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware, async (c) => {
   const tokenUser = c.get('user');
-  const daysResult = parseDays(c.req.query('days'));
+  const daysResult = parseDays(c.req.query('days'), { maxDays: 365 });
   if (daysResult && 'error' in daysResult) {
     return c.json({ error: { code: 'BAD_REQUEST', message: daysResult.error } }, 400);
   }
@@ -273,23 +258,15 @@ app.get('/me/login-trends', authMiddleware, rejectServiceTokenMiddleware, reject
 
 // GET /api/users/me/security-summary — セキュリティ概要
 app.get('/me/security-summary', authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware, async (c) => {
-  const tokenUser = c.get('user');
-  const userId = tokenUser.sub;
+  const user = c.get('dbUser');
+  const userId = user.id;
 
-  const [sessions, connections, loginHistory, providers, user] = await Promise.all([
+  const [sessions, connections, loginHistory, providers] = await Promise.all([
     listActiveSessionsByUserId(c.env.DB, userId),
     listUserConnections(c.env.DB, userId),
     getLoginEventsByUserId(c.env.DB, userId, 1, 0),
     getUserProviders(c.env.DB, userId),
-    findUserById(c.env.DB, userId),
   ]);
-
-  if (!user) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
-  }
-  if (user.banned_at !== null) {
-    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Account suspended' } }, 401);
-  }
 
   const linkedProviders = providers.filter((p) => p.connected).map((p) => p.provider);
   const lastLoginEvent = loginHistory.events[0] ?? null;
@@ -388,14 +365,9 @@ app.delete('/me/tokens', authMiddleware, rejectServiceTokenMiddleware, rejectBan
 
 // DELETE /api/users/me — 自分のアカウントを削除
 app.delete('/me', authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware, csrfMiddleware, async (c) => {
-  const tokenUser = c.get('user');
+  const user = c.get('dbUser');
 
-  const targetUser = await findUserById(c.env.DB, tokenUser.sub);
-  if (!targetUser) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
-  }
-
-  const deleteError = await performUserDeletion(c.env.DB, tokenUser.sub);
+  const deleteError = await performUserDeletion(c.env.DB, user.id);
   if (deleteError) {
     return c.json({ error: deleteError }, 409);
   }
@@ -488,7 +460,7 @@ app.get('/:id/login-history', authMiddleware, adminMiddleware, async (c) => {
 // GET /api/users/:id/login-stats — ユーザーのプロバイダー別ログイン統計（管理者のみ）
 app.get('/:id/login-stats', authMiddleware, adminMiddleware, async (c) => {
   const targetId = c.req.param('id');
-  const daysResult = parseDays(c.req.query('days'));
+  const daysResult = parseDays(c.req.query('days'), { maxDays: 365 });
   if (daysResult && 'error' in daysResult) {
     return c.json({ error: { code: 'BAD_REQUEST', message: daysResult.error } }, 400);
   }
@@ -507,7 +479,7 @@ app.get('/:id/login-stats', authMiddleware, adminMiddleware, async (c) => {
 // GET /api/users/:id/login-trends — ユーザーの日別ログイントレンド（管理者のみ）
 app.get('/:id/login-trends', authMiddleware, adminMiddleware, async (c) => {
   const targetId = c.req.param('id');
-  const daysResult = parseDays(c.req.query('days'));
+  const daysResult = parseDays(c.req.query('days'), { maxDays: 365 });
   if (daysResult && 'error' in daysResult) {
     return c.json({ error: { code: 'BAD_REQUEST', message: daysResult.error } }, 400);
   }

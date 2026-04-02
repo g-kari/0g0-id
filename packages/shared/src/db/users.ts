@@ -9,15 +9,21 @@ export async function findUserById(db: D1Database, id: string): Promise<User | n
 
 const ALLOWED_PROVIDER_COLUMNS = new Set(Object.values(PROVIDER_COLUMN));
 
+/** プロバイダー名からカラム名を取得し、不正なプロバイダーなら例外を投げる */
+function validateProviderColumn(provider: OAuthProvider): string {
+  const col = PROVIDER_COLUMN[provider];
+  if (!col || !ALLOWED_PROVIDER_COLUMNS.has(col)) {
+    throw new Error(`Invalid provider: ${provider}`);
+  }
+  return col;
+}
+
 export async function findUserBySub(
   db: D1Database,
   provider: OAuthProvider,
   sub: string
 ): Promise<User | null> {
-  const col = PROVIDER_COLUMN[provider];
-  if (!col || !ALLOWED_PROVIDER_COLUMNS.has(col)) {
-    throw new Error(`Invalid provider: ${provider}`);
-  }
+  const col = validateProviderColumn(provider);
   return db.prepare(`SELECT * FROM users WHERE ${col} = ?`).bind(sub).first<User>();
 }
 
@@ -41,10 +47,7 @@ async function upsertProviderUser(
     newUserEmailVerified: boolean;
   }
 ): Promise<User> {
-  const subColumn = PROVIDER_COLUMN[opts.provider];
-  if (!subColumn || !ALLOWED_PROVIDER_COLUMNS.has(subColumn)) {
-    throw new Error(`Invalid provider: ${opts.provider}`);
-  }
+  const subColumn = validateProviderColumn(opts.provider);
   const providerLabel = PROVIDER_DISPLAY_NAMES[opts.provider];
   // 既存ユーザー（同プロバイダー）のプロフィール更新
   const existingBySub = await findUserBySub(db, opts.provider, opts.subValue);
@@ -387,10 +390,7 @@ export async function unlinkProvider(
   userId: string,
   provider: OAuthProvider
 ): Promise<void> {
-  const col = PROVIDER_COLUMN[provider];
-  if (!col || !ALLOWED_PROVIDER_COLUMNS.has(col)) {
-    throw new Error(`Invalid provider: ${provider}`);
-  }
+  const col = validateProviderColumn(provider);
   const result = await db
     .prepare(`UPDATE users SET ${col} = NULL, updated_at = datetime('now') WHERE id = ?`)
     .bind(userId)
@@ -456,10 +456,7 @@ export async function linkProvider(
     throw new Error('PROVIDER_ALREADY_LINKED');
   }
 
-  const col = PROVIDER_COLUMN[provider];
-  if (!col || !ALLOWED_PROVIDER_COLUMNS.has(col)) {
-    throw new Error(`Invalid provider: ${provider}`);
-  }
+  const col = validateProviderColumn(provider);
   const user = await db
     .prepare(
       `UPDATE users SET ${col} = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`

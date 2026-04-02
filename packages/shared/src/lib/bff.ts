@@ -191,26 +191,25 @@ export async function fetchWithAuth(
 
     if (refreshRes.ok) {
       const refreshData = await refreshRes.json<{
-        data: { access_token: string; refresh_token: string };
+        data: {
+          access_token: string;
+          refresh_token: string;
+          user?: { id: string; email: string; name: string; role: 'user' | 'admin' };
+        };
       }>();
 
       // セッションCookieを新トークンで更新
-      // JWTペイロード（署名未検証）からrole/emailを抽出してUI表示用に更新する。
-      // セキュリティ上の判断はIdPのauthMiddlewareがJWT署名検証時に毎回行うが、
-      // admin BFFのセッションベースroleガードが古いroleを保持し続けるのを防ぐため、
-      // リフレッシュ時にペイロードから最新のroleを反映させる。
-      let updatedUser = session.user;
-      try {
-        const payloadB64 = refreshData.data.access_token.split('.')[1];
-        if (payloadB64) {
-          const payload = JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')));
-          if (payload.role && (payload.role === 'admin' || payload.role === 'user')) {
-            updatedUser = { ...session.user, role: payload.role };
+      // IdPのリフレッシュレスポンスに含まれる検証済みユーザー情報でセッションを更新する。
+      // これにより署名未検証JWTペイロードからのrole抽出が不要になり、
+      // admin BFFのセッションベースroleガードが最新のroleを反映できる。
+      const updatedUser = refreshData.data.user
+        ? {
+            id: refreshData.data.user.id,
+            email: refreshData.data.user.email,
+            name: refreshData.data.user.name,
+            role: refreshData.data.user.role,
           }
-        }
-      } catch {
-        // ペイロード解析失敗時は既存のroleを維持
-      }
+        : session.user;
       const newSession: BffSession = {
         ...session,
         access_token: refreshData.data.access_token,

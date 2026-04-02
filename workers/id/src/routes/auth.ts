@@ -260,7 +260,7 @@ async function handleProviderLink(
     if (
       err instanceof Error &&
       (err.message === 'PROVIDER_ALREADY_LINKED' ||
-        err.message.includes('UNIQUE constraint'))
+        err.message.includes('UNIQUE constraint failed: users.') && err.message.includes('_sub'))
     ) {
       return { ok: false };
     }
@@ -1072,6 +1072,12 @@ app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
       refresh_token: newRefreshTokenRaw,
       token_type: 'Bearer',
       expires_in: 900,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
     },
   });
 });
