@@ -1,6 +1,7 @@
 import { createMiddleware } from 'hono/factory';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import type { TokenPayload } from '@0g0-id/shared';
+import { findUserById } from '@0g0-id/shared';
 
 type McpEnv = {
   Bindings: {
@@ -49,6 +50,7 @@ export const mcpAuthMiddleware = createMiddleware<McpEnv>(async (c, next): Promi
     const jwks = getJWKS(c.env.IDP_ORIGIN);
     const { payload } = await jwtVerify(token, jwks, {
       issuer: c.env.IDP_ORIGIN,
+      audience: c.env.MCP_ORIGIN,
       algorithms: ['ES256'],
     });
     c.set('user', payload as unknown as TokenPayload);
@@ -60,6 +62,28 @@ export const mcpAuthMiddleware = createMiddleware<McpEnv>(async (c, next): Promi
     );
     return c.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token' } }, 401);
   }
+});
+
+/**
+ * BAN済みユーザー拒否ミドルウェア。
+ * mcpAuthMiddleware の後に配置して使用する。
+ * DBからユーザーを取得し、BANされている場合は401を返す。
+ */
+export const mcpRejectBannedUserMiddleware = createMiddleware<McpEnv>(async (c, next): Promise<Response | void> => {
+  const user = c.get('user');
+  if (!user) {
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } }, 401);
+  }
+  let dbUser;
+  try {
+    dbUser = await findUserById(c.env.DB, user.sub);
+  } catch {
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
+  if (!dbUser || dbUser.banned_at !== null) {
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Account suspended or not found' } }, 401);
+  }
+  await next();
 });
 
 /**

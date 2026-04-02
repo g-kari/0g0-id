@@ -9,6 +9,7 @@ import {
   generateClientId,
   generateClientSecret,
   sha256,
+  createAdminAuditLog,
   type ServiceListFilter,
 } from '@0g0-id/shared';
 
@@ -142,6 +143,14 @@ export const createServiceTool: McpTool = {
       ownerUserId: context.userId,
     });
 
+    await createAdminAuditLog(context.db, {
+      adminUserId: context.userId,
+      action: 'service.create',
+      targetType: 'service',
+      targetId: id,
+      details: { name },
+    });
+
     const result = {
       id: service.id,
       name: service.name,
@@ -189,6 +198,14 @@ export const deleteServiceTool: McpTool = {
 
     await deleteService(context.db, serviceId);
 
+    await createAdminAuditLog(context.db, {
+      adminUserId: context.userId,
+      action: 'service.delete',
+      targetType: 'service',
+      targetId: serviceId,
+      details: { name: service.name },
+    });
+
     return {
       content: [
         {
@@ -230,6 +247,14 @@ export const rotateServiceSecretTool: McpTool = {
     if (!updated) {
       return { content: [{ type: 'text', text: 'シークレットのローテーションに失敗しました' }], isError: true };
     }
+
+    await createAdminAuditLog(context.db, {
+      adminUserId: context.userId,
+      action: 'service.rotate_secret',
+      targetType: 'service',
+      targetId: serviceId,
+      details: { name: service.name },
+    });
 
     const result = {
       id: updated.id,

@@ -8,6 +8,7 @@ import {
   deleteUser,
   getUserProviders,
   getLoginEventsByUserId,
+  createAdminAuditLog,
   type UserFilter,
 } from '@0g0-id/shared';
 
@@ -110,6 +111,12 @@ export const banUserTool: McpTool = {
     }
 
     const user = await banUser(context.db, userId);
+    await createAdminAuditLog(context.db, {
+      adminUserId: context.userId,
+      action: 'user.ban',
+      targetType: 'user',
+      targetId: userId,
+    });
     return {
       content: [
         {
@@ -140,6 +147,12 @@ export const unbanUserTool: McpTool = {
     }
 
     const user = await unbanUser(context.db, userId);
+    await createAdminAuditLog(context.db, {
+      adminUserId: context.userId,
+      action: 'user.unban',
+      targetType: 'user',
+      targetId: userId,
+    });
     return {
       content: [
         {
@@ -173,6 +186,13 @@ export const deleteUserTool: McpTool = {
     if (!deleted) {
       return { content: [{ type: 'text', text: 'ユーザーが見つかりません' }], isError: true };
     }
+
+    await createAdminAuditLog(context.db, {
+      adminUserId: context.userId,
+      action: 'user.delete',
+      targetType: 'user',
+      targetId: userId,
+    });
 
     return {
       content: [{ type: 'text', text: `ユーザー ${userId} を削除しました。` }],

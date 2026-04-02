@@ -4,7 +4,7 @@ import { createLogger } from '@0g0-id/shared';
 import type { TokenPayload } from '@0g0-id/shared';
 import { McpServer, createMcpRoutes, type McpContext } from './mcp';
 import wellKnownRoutes from './routes/well-known';
-import { mcpAuthMiddleware } from './middleware/auth';
+import { mcpAuthMiddleware, mcpAdminMiddleware, mcpRejectBannedUserMiddleware } from './middleware/auth';
 import {
   listUsersTool,
   getUserTool,
@@ -66,8 +66,16 @@ mcpServer.registerTool(getSystemMetricsTool);
 
 const app = new Hono<Env>();
 
-// CORS
-app.use('*', cors());
+// CORS: MCPオリジンのみ許可
+app.use(
+  '*',
+  cors({
+    origin: (origin, c) => {
+      const allowed = c.env.MCP_ORIGIN;
+      return origin === allowed ? origin : '';
+    },
+  }),
+);
 
 // Health check
 app.get('/health', (c): Response => {
@@ -77,8 +85,10 @@ app.get('/health', (c): Response => {
 // Protected Resource Metadata (RFC 9728)
 app.route('/.well-known', wellKnownRoutes);
 
-// MCP ルート: Bearer token 認証 + コンテキスト設定
+// MCP ルート: Bearer token 認証 + BAN拒否 + 管理者ロール必須 + コンテキスト設定
 app.use('/mcp/*', mcpAuthMiddleware);
+app.use('/mcp/*', mcpRejectBannedUserMiddleware);
+app.use('/mcp/*', mcpAdminMiddleware);
 app.use('/mcp/*', async (c, next): Promise<void> => {
   const user = c.get('user');
   const context: McpContext = {
