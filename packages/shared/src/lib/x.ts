@@ -72,7 +72,8 @@ export async function exchangeXCode(params: {
 
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`X token exchange failed: ${error}`);
+    console.error(`X token exchange failed (${response.status}): ${error}`);
+    throw new Error('X token exchange failed');
   }
 
   try {

@@ -195,13 +195,27 @@ export async function fetchWithAuth(
       }>();
 
       // セッションCookieを新トークンで更新
-      // 注意: role/emailはdecodeJwt（署名未検証）から取得しない。
-      // roleはIdPのauthMiddlewareがJWT署名検証時に毎回確認するため、
-      // セッション内のroleはUI表示用にすぎず、セキュリティ上の判断には使われない。
+      // JWTペイロード（署名未検証）からrole/emailを抽出してUI表示用に更新する。
+      // セキュリティ上の判断はIdPのauthMiddlewareがJWT署名検証時に毎回行うが、
+      // admin BFFのセッションベースroleガードが古いroleを保持し続けるのを防ぐため、
+      // リフレッシュ時にペイロードから最新のroleを反映させる。
+      let updatedUser = session.user;
+      try {
+        const payloadB64 = refreshData.data.access_token.split('.')[1];
+        if (payloadB64) {
+          const payload = JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')));
+          if (payload.role && (payload.role === 'admin' || payload.role === 'user')) {
+            updatedUser = { ...session.user, role: payload.role };
+          }
+        }
+      } catch {
+        // ペイロード解析失敗時は既存のroleを維持
+      }
       const newSession: BffSession = {
         ...session,
         access_token: refreshData.data.access_token,
         refresh_token: refreshData.data.refresh_token,
+        user: updatedUser,
       };
       await setSessionCookie(c, sessionCookieName, newSession);
 
@@ -215,7 +229,7 @@ export async function fetchWithAuth(
       return errorResponse(502, 'UPSTREAM_ERROR', 'Identity provider error');
     } else {
       // 400/401: リフレッシュトークン無効/期限切れ → 無効セッションCookieを削除して401を返す
-      deleteCookie(c, sessionCookieName, { path: '/', secure: true, httpOnly: true });
+      deleteCookie(c, sessionCookieName, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' });
       return errorResponse(401, 'UNAUTHORIZED', 'Session expired');
     }
   }

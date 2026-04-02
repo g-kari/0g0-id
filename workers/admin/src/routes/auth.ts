@@ -120,7 +120,7 @@ app.post('/logout', async (c) => {
     }
   }
 
-  deleteCookie(c, SESSION_COOKIE, { path: '/', secure: true });
+  deleteCookie(c, SESSION_COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' });
   return c.redirect('/');
 });
 

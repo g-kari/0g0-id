@@ -80,7 +80,7 @@ describe('exchangeGithubCode', () => {
     );
 
     await expect(exchangeGithubCode(baseParams)).rejects.toThrow(
-      'GitHub token exchange failed: bad_verification_code'
+      'GitHub token exchange failed'
     );
   });
 

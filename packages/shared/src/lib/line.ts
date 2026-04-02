@@ -69,7 +69,8 @@ export async function exchangeLineCode(params: {
 
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`LINE token exchange failed: ${error}`);
+    console.error(`LINE token exchange failed (${response.status}): ${error}`);
+    throw new Error('LINE token exchange failed');
   }
 
   try {

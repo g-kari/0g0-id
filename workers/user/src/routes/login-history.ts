@@ -20,7 +20,13 @@ app.get('/', async (c) => {
   if (limitRaw !== undefined) url.searchParams.set('limit', String(pagination.limit));
   if (offsetRaw !== undefined) url.searchParams.set('offset', String(pagination.offset));
   const provider = c.req.query('provider');
-  if (provider) url.searchParams.set('provider', provider);
+  if (provider) {
+    const validProviders = ['google', 'line', 'twitch', 'github', 'x'];
+    if (!validProviders.includes(provider)) {
+      return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid provider' } }, 400);
+    }
+    url.searchParams.set('provider', provider);
+  }
   const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
   return proxyResponse(res);
 });

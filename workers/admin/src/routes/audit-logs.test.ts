@@ -127,50 +127,50 @@ describe('admin BFF — /api/audit-logs', () => {
       const idpFetch = mockIdp(200, { data: [], total: 0 });
       const app = buildApp(idpFetch);
 
-      await app.request('/api/audit-logs?admin_user_id=admin-1', {
+      await app.request('/api/audit-logs?admin_user_id=00000000-0000-0000-0000-000000000001', {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const calledUrl = new URL(vi.mocked(idpFetch).mock.calls[0][0].url);
-      expect(calledUrl.searchParams.get('admin_user_id')).toBe('admin-1');
+      expect(calledUrl.searchParams.get('admin_user_id')).toBe('00000000-0000-0000-0000-000000000001');
     });
 
     it('target_idフィルターをIdPに転送する', async () => {
       const idpFetch = mockIdp(200, { data: [], total: 0 });
       const app = buildApp(idpFetch);
 
-      await app.request('/api/audit-logs?target_id=user-1', {
+      await app.request('/api/audit-logs?target_id=00000000-0000-0000-0000-000000000002', {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const calledUrl = new URL(vi.mocked(idpFetch).mock.calls[0][0].url);
-      expect(calledUrl.searchParams.get('target_id')).toBe('user-1');
+      expect(calledUrl.searchParams.get('target_id')).toBe('00000000-0000-0000-0000-000000000002');
     });
 
     it('actionフィルターをIdPに転送する', async () => {
       const idpFetch = mockIdp(200, { data: [], total: 0 });
       const app = buildApp(idpFetch);
 
-      await app.request('/api/audit-logs?action=ban_user', {
+      await app.request('/api/audit-logs?action=user.ban', {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const calledUrl = new URL(vi.mocked(idpFetch).mock.calls[0][0].url);
-      expect(calledUrl.searchParams.get('action')).toBe('ban_user');
+      expect(calledUrl.searchParams.get('action')).toBe('user.ban');
     });
 
     it('複数フィルターを同時にIdPに転送する', async () => {
       const idpFetch = mockIdp(200, { data: [], total: 0 });
       const app = buildApp(idpFetch);
 
-      await app.request('/api/audit-logs?admin_user_id=admin-1&target_id=user-1&action=ban_user', {
+      await app.request('/api/audit-logs?admin_user_id=00000000-0000-0000-0000-000000000001&target_id=00000000-0000-0000-0000-000000000002&action=user.ban', {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const calledUrl = new URL(vi.mocked(idpFetch).mock.calls[0][0].url);
-      expect(calledUrl.searchParams.get('admin_user_id')).toBe('admin-1');
-      expect(calledUrl.searchParams.get('target_id')).toBe('user-1');
-      expect(calledUrl.searchParams.get('action')).toBe('ban_user');
+      expect(calledUrl.searchParams.get('admin_user_id')).toBe('00000000-0000-0000-0000-000000000001');
+      expect(calledUrl.searchParams.get('target_id')).toBe('00000000-0000-0000-0000-000000000002');
+      expect(calledUrl.searchParams.get('action')).toBe('user.ban');
     });
 
     it('IdP が404を返した場合は404をプロキシする', async () => {

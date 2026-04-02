@@ -70,7 +70,8 @@ export async function exchangeTwitchCode(params: {
 
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`Twitch token exchange failed: ${error}`);
+    console.error(`Twitch token exchange failed (${response.status}): ${error}`);
+    throw new Error('Twitch token exchange failed');
   }
 
   try {

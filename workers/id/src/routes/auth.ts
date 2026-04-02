@@ -1049,6 +1049,12 @@ app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
     accessToken = tokens.accessToken;
     newRefreshTokenRaw = tokens.refreshToken;
   } catch (e) {
+    // レース条件対策: 並行リクエストがreuse detectionを発動しfamily全体を
+    // 失効させた可能性がある。その場合はunrevokeせずTOKEN_REUSEを返す。
+    const currentToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
+    if (currentToken && currentToken.revoked_reason === 'reuse_detected') {
+      return c.json({ error: { code: 'TOKEN_REUSE', message: 'Token reuse detected' } }, 401);
+    }
     await unrevokeRefreshToken(c.env.DB, storedToken.id);
     throw e;
   }

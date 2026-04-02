@@ -42,6 +42,9 @@ async function upsertProviderUser(
   }
 ): Promise<User> {
   const subColumn = PROVIDER_COLUMN[opts.provider];
+  if (!subColumn || !ALLOWED_PROVIDER_COLUMNS.has(subColumn)) {
+    throw new Error(`Invalid provider: ${opts.provider}`);
+  }
   const providerLabel = PROVIDER_DISPLAY_NAMES[opts.provider];
   // 既存ユーザー（同プロバイダー）のプロフィール更新
   const existingBySub = await findUserBySub(db, opts.provider, opts.subValue);
@@ -385,6 +388,9 @@ export async function unlinkProvider(
   provider: OAuthProvider
 ): Promise<void> {
   const col = PROVIDER_COLUMN[provider];
+  if (!col || !ALLOWED_PROVIDER_COLUMNS.has(col)) {
+    throw new Error(`Invalid provider: ${provider}`);
+  }
   const result = await db
     .prepare(`UPDATE users SET ${col} = NULL, updated_at = datetime('now') WHERE id = ?`)
     .bind(userId)
@@ -451,6 +457,9 @@ export async function linkProvider(
   }
 
   const col = PROVIDER_COLUMN[provider];
+  if (!col || !ALLOWED_PROVIDER_COLUMNS.has(col)) {
+    throw new Error(`Invalid provider: ${provider}`);
+  }
   const user = await db
     .prepare(
       `UPDATE users SET ${col} = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`

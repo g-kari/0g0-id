@@ -37,7 +37,7 @@ app.use('/api/*', async (c, next) => {
     return c.json({ error: { code: 'UNAUTHORIZED', message: 'Unauthorized' } }, 401);
   }
   if (session.user.role !== 'admin') {
-    deleteCookie(c, SESSION_COOKIE, { path: '/', secure: true });
+    deleteCookie(c, SESSION_COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' });
     return c.json({ error: { code: 'FORBIDDEN', message: 'Forbidden' } }, 403);
   }
   await next();

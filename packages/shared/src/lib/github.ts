@@ -73,17 +73,19 @@ export async function exchangeGithubCode(params: {
 
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`GitHub token exchange failed: ${error}`);
+    console.error(`GitHub token exchange failed (${response.status}): ${error}`);
+    throw new Error('GitHub token exchange failed');
   }
 
   try {
     const data = (await response.json()) as GithubTokenResponse & { error?: string };
     if (data.error) {
-      throw new Error(`GitHub token exchange failed: ${data.error}`);
+      console.error(`GitHub token exchange failed: ${data.error}`);
+      throw new Error('GitHub token exchange failed');
     }
     return data;
   } catch (e) {
-    if (e instanceof Error && e.message.startsWith('GitHub token exchange failed:')) throw e;
+    if (e instanceof Error && e.message === 'GitHub token exchange failed') throw e;
     throw new Error('GitHub token exchange failed: Invalid JSON response');
   }
 }
@@ -122,7 +124,8 @@ export async function fetchGithubPrimaryEmail(accessToken: string): Promise<stri
   });
 
   if (!response.ok) {
-    throw new Error(`GitHub Emails API failed with status ${response.status}`);
+    console.error(`GitHub Emails API failed with status ${response.status}`);
+    return null;
   }
 
   try {
@@ -130,6 +133,7 @@ export async function fetchGithubPrimaryEmail(accessToken: string): Promise<stri
     const primary = emails.find((e) => e.primary && e.verified);
     return primary?.email ?? null;
   } catch {
-    throw new Error('GitHub Emails API returned invalid JSON');
+    console.error('GitHub Emails API returned invalid JSON');
+    return null;
   }
 }
