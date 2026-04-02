@@ -81,14 +81,17 @@ export async function tryUpdateDeviceCodePolledAt(
   id: string,
   intervalSec: number
 ): Promise<boolean> {
+  const now = new Date();
+  const threshold = new Date(now.getTime() - intervalSec * 1000).toISOString();
+  const nowIso = now.toISOString();
   const result = await db
     .prepare(
       `UPDATE device_codes
-       SET last_polled_at = datetime('now')
+       SET last_polled_at = ?
        WHERE id = ?
-         AND (last_polled_at IS NULL OR last_polled_at < datetime('now', '-' || ? || ' seconds'))`
+         AND (last_polled_at IS NULL OR last_polled_at < ?)`
     )
-    .bind(id, intervalSec)
+    .bind(nowIso, id, threshold)
     .run();
   return (result.meta?.changes ?? 0) > 0;
 }

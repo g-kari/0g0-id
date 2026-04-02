@@ -110,6 +110,11 @@ export const banUserTool: McpTool = {
       return { content: [{ type: 'text', text: 'user_id は必須です' }], isError: true };
     }
 
+    const existing = await findUserById(context.db, userId);
+    if (!existing) {
+      return { content: [{ type: 'text', text: 'ユーザーが見つかりません' }], isError: true };
+    }
+
     const user = await banUser(context.db, userId);
     await createAdminAuditLog(context.db, {
       adminUserId: context.userId,
@@ -144,6 +149,11 @@ export const unbanUserTool: McpTool = {
     const userId = params.user_id;
     if (typeof userId !== 'string' || userId.length === 0) {
       return { content: [{ type: 'text', text: 'user_id は必須です' }], isError: true };
+    }
+
+    const existing = await findUserById(context.db, userId);
+    if (!existing) {
+      return { content: [{ type: 'text', text: 'ユーザーが見つかりません' }], isError: true };
     }
 
     const user = await unbanUser(context.db, userId);

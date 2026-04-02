@@ -311,19 +311,22 @@ export async function handleDeviceCodeGrant(
     return c.json({ error: 'authorization_pending' }, 400);
   }
 
-  // 承認済み: アトミック削除で二重トークン発行を防止
-  const deleted = await deleteApprovedDeviceCode(c.env.DB, deviceCode.id);
-  if (!deleted) {
-    // 他のリクエストが先にトークンを発行済み
-    return c.json({ error: 'invalid_grant', error_description: 'Device code already consumed' }, 400);
-  }
-
+  // 承認済みユーザー取得とBANチェック（不可逆な削除の前に実施）
   const user = await findUserById(c.env.DB, deviceCode.user_id);
   if (!user) {
     return c.json({ error: 'invalid_grant', error_description: 'User not found' }, 400);
   }
   if (user.banned_at !== null) {
+    // BAN済みユーザーのdevice codeは失効させる
+    await deleteDeviceCode(c.env.DB, deviceCode.id);
     return c.json({ error: 'access_denied', error_description: 'Account has been suspended' }, 403);
+  }
+
+  // 全チェック通過後にアトミック削除で二重トークン発行を防止
+  const deleted = await deleteApprovedDeviceCode(c.env.DB, deviceCode.id);
+  if (!deleted) {
+    // 他のリクエストが先にトークンを発行済み
+    return c.json({ error: 'invalid_grant', error_description: 'Device code already consumed' }, 400);
   }
 
   // スコープ計算

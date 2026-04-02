@@ -85,10 +85,10 @@ app.get('/health', (c): Response => {
 // Protected Resource Metadata (RFC 9728)
 app.route('/.well-known', wellKnownRoutes);
 
-// MCP ルート: Bearer token 認証 + BAN拒否 + 管理者ロール必須 + コンテキスト設定
+// MCP ルート: Bearer token 認証 + 管理者ロール必須 + BAN拒否 + コンテキスト設定
 app.use('/mcp/*', mcpAuthMiddleware);
-app.use('/mcp/*', mcpRejectBannedUserMiddleware);
 app.use('/mcp/*', mcpAdminMiddleware);
+app.use('/mcp/*', mcpRejectBannedUserMiddleware);
 app.use('/mcp/*', async (c, next): Promise<void> => {
   const user = c.get('user');
   const context: McpContext = {
