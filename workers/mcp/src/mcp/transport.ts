@@ -9,7 +9,29 @@ type McpEnv = {
 };
 
 // セッション管理（インメモリ、Worker単位）
+const SESSION_TTL_MS = 30 * 60 * 1000; // 30分
 const sessions = new Map<string, { createdAt: number }>();
+
+/** TTL超過セッションを除去する */
+function pruneExpiredSessions(): void {
+  const now = Date.now();
+  for (const [id, session] of sessions) {
+    if (now - session.createdAt > SESSION_TTL_MS) {
+      sessions.delete(id);
+    }
+  }
+}
+
+/** セッションが有効（存在＋TTL内）か判定する */
+function isValidSession(sessionId: string): boolean {
+  const session = sessions.get(sessionId);
+  if (!session) return false;
+  if (Date.now() - session.createdAt > SESSION_TTL_MS) {
+    sessions.delete(sessionId);
+    return false;
+  }
+  return true;
+}
 
 export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
   const app = new Hono<McpEnv>();
@@ -35,6 +57,7 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
 
       // initializeの場合、新セッション作成
       if (rpcRequest.method === 'initialize') {
+        pruneExpiredSessions();
         const newSessionId = crypto.randomUUID();
         sessions.set(newSessionId, { createdAt: Date.now() });
         const result = await server.handleRequest(rpcRequest, c.get('mcpContext'));
@@ -44,7 +67,7 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
       }
 
       // initialize以外はセッションID必須
-      if (!sessionId || !sessions.has(sessionId)) {
+      if (!sessionId || !isValidSession(sessionId)) {
         responses.push({
           jsonrpc: '2.0',
           id: rpcRequest.id,
@@ -69,7 +92,7 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
   // GET /mcp — SSEストリーム（将来のサーバー→クライアント通知用）
   app.get('/', (c): Response => {
     const sessionId = c.req.header('mcp-session-id');
-    if (!sessionId || !sessions.has(sessionId)) {
+    if (!sessionId || !isValidSession(sessionId)) {
       return c.json({ error: 'Invalid session' }, 400);
     }
     // 現時点ではサーバーからの通知は不要なので、接続を維持するだけ

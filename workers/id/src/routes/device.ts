@@ -15,6 +15,7 @@ import {
   deleteExpiredDeviceCodes,
   generateToken,
   signAccessToken,
+  signIdToken,
   createRefreshToken,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
@@ -296,18 +297,23 @@ export async function handleDeviceCodeGrant(
 
   // 拒否済みチェック
   if (deviceCode.denied_at) {
-    await deleteDeviceCode(c.env.DB, deviceCode.id);
+    try {
+      await deleteDeviceCode(c.env.DB, deviceCode.id);
+    } catch {
+      // 削除失敗してもクライアントにはaccess_deniedを返す（期限切れ時に自動削除される）
+    }
     return c.json({ error: 'access_denied' }, 400);
   }
 
-  // slow_down チェック＋ポーリング時刻更新をアトミックに実行（レースコンディション防止）
-  const pollingAllowed = await tryUpdateDeviceCodePolledAt(c.env.DB, deviceCode.id, POLLING_INTERVAL_SEC);
-  if (!pollingAllowed) {
-    return c.json({ error: 'slow_down' }, 400);
-  }
-
-  // まだ承認されていない場合
-  if (!deviceCode.approved_at || !deviceCode.user_id) {
+  // 承認済みチェックをslow_downの前に実施（承認済みなのに余分な待機を強いるのを防止）
+  if (deviceCode.approved_at && deviceCode.user_id) {
+    // 承認済み — slow_downスキップしてトークン発行へ進む
+  } else {
+    // まだ承認されていない場合のみポーリング間隔チェック
+    const pollingAllowed = await tryUpdateDeviceCodePolledAt(c.env.DB, deviceCode.id, POLLING_INTERVAL_SEC);
+    if (!pollingAllowed) {
+      return c.json({ error: 'slow_down' }, 400);
+    }
     return c.json({ error: 'authorization_pending' }, 400);
   }
 
@@ -365,6 +371,26 @@ export async function handleDeviceCodeGrant(
     scope: serviceScope ?? null,
   });
 
+  // OIDC ID トークン発行（openid スコープがある場合）
+  let idToken: string | undefined;
+  const shouldIssueIdToken = serviceScope?.split(' ').includes('openid');
+  if (shouldIssueIdToken) {
+    const authTime = Math.floor(Date.now() / 1000);
+    idToken = await signIdToken(
+      {
+        iss: c.env.IDP_ORIGIN,
+        sub: pairwiseSub,
+        aud: service.client_id,
+        email: user.email,
+        name: user.name,
+        picture: user.picture,
+        authTime,
+      },
+      c.env.JWT_PRIVATE_KEY,
+      c.env.JWT_PUBLIC_KEY
+    );
+  }
+
   // レスポンス (RFC 6749 §5.1)
   const response: Record<string, unknown> = {
     access_token: accessToken,
@@ -372,6 +398,9 @@ export async function handleDeviceCodeGrant(
     expires_in: 900,
     refresh_token: refreshToken,
   };
+  if (idToken) {
+    response['id_token'] = idToken;
+  }
   if (serviceScope) {
     response['scope'] = serviceScope;
   }

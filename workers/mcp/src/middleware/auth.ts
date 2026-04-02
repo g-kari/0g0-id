@@ -50,7 +50,7 @@ export const mcpAuthMiddleware = createMiddleware<McpEnv>(async (c, next): Promi
     const jwks = getJWKS(c.env.IDP_ORIGIN);
     const { payload } = await jwtVerify(token, jwks, {
       issuer: c.env.IDP_ORIGIN,
-      audience: c.env.MCP_ORIGIN,
+      audience: c.env.IDP_ORIGIN,
       algorithms: ['ES256'],
     });
     c.set('user', payload as unknown as TokenPayload);

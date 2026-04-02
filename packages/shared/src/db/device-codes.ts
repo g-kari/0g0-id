@@ -128,6 +128,6 @@ export async function deleteApprovedDeviceCode(
 
 export async function deleteExpiredDeviceCodes(db: D1Database): Promise<void> {
   await db
-    .prepare(`DELETE FROM device_codes WHERE datetime(expires_at) < datetime('now')`)
+    .prepare(`DELETE FROM device_codes WHERE expires_at < datetime('now')`)
     .run();
 }
