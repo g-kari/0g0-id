@@ -272,6 +272,38 @@ function oauthError(
   return { ok: false, response: c.json({ error: { code, message } }, 400) };
 }
 
+// ─── プロバイダー共通ヘルパー ─────────────────────────────────────────────────
+
+/**
+ * OAuthプロバイダー共通のコード交換・ユーザー情報取得処理。
+ * 各 resolve*Provider 関数の try/catch ボイラープレートを集約する。
+ */
+async function exchangeAndFetchUserInfo<TUserInfo>(
+  c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
+  providerKey: string,
+  displayName: string,
+  exchangeFn: () => Promise<{ access_token: string }>,
+  fetchFn: (accessToken: string) => Promise<TUserInfo>
+): Promise<{ ok: true; accessToken: string; userInfo: TUserInfo } | { ok: false; response: Response }> {
+  let tokens: { access_token: string };
+  try {
+    tokens = await exchangeFn();
+  } catch (err) {
+    authLogger.error(`[oauth-${providerKey}] Failed to exchange code`, err);
+    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: `Failed to exchange ${displayName} code` } }, 400) };
+  }
+
+  let userInfo: TUserInfo;
+  try {
+    userInfo = await fetchFn(tokens.access_token);
+  } catch (err) {
+    authLogger.error(`[oauth-${providerKey}] Failed to fetch user info`, err);
+    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: `Failed to fetch ${displayName} user info` } }, 400) };
+  }
+
+  return { ok: true, accessToken: tokens.access_token, userInfo };
+}
+
 // ─── プロバイダー固有の認証解決関数 ──────────────────────────────────────────
 
 async function resolveGoogleProvider(
@@ -280,27 +312,12 @@ async function resolveGoogleProvider(
   pkceVerifier: string,
   callbackUri: string
 ): Promise<ProviderResolution> {
-  let googleTokens;
-  try {
-    googleTokens = await exchangeGoogleCode({
-      code,
-      clientId: c.env.GOOGLE_CLIENT_ID,
-      clientSecret: c.env.GOOGLE_CLIENT_SECRET,
-      redirectUri: callbackUri,
-      codeVerifier: pkceVerifier,
-    });
-  } catch (err) {
-    authLogger.error('[oauth-google] Failed to exchange code', err);
-    return oauthError(c, 'Failed to exchange code');
-  }
-
-  let userInfo;
-  try {
-    userInfo = await fetchGoogleUserInfo(googleTokens.access_token);
-  } catch (err) {
-    authLogger.error('[oauth-google] Failed to fetch user info', err);
-    return oauthError(c, 'Failed to fetch user info');
-  }
+  const result = await exchangeAndFetchUserInfo(c, 'google', 'Google',
+    () => exchangeGoogleCode({ code, clientId: c.env.GOOGLE_CLIENT_ID, clientSecret: c.env.GOOGLE_CLIENT_SECRET, redirectUri: callbackUri, codeVerifier: pkceVerifier }),
+    fetchGoogleUserInfo
+  );
+  if (!result.ok) return result;
+  const { userInfo } = result;
 
   if (!userInfo.email_verified) {
     return oauthError(c, 'Email not verified', 'UNVERIFIED_EMAIL');
@@ -327,27 +344,12 @@ async function resolveLineProvider(
   pkceVerifier: string,
   callbackUri: string
 ): Promise<ProviderResolution> {
-  let lineTokens;
-  try {
-    lineTokens = await exchangeLineCode({
-      code,
-      clientId: c.env.LINE_CLIENT_ID!,
-      clientSecret: c.env.LINE_CLIENT_SECRET!,
-      redirectUri: callbackUri,
-      codeVerifier: pkceVerifier,
-    });
-  } catch (err) {
-    authLogger.error('[oauth-line] Failed to exchange code', err);
-    return oauthError(c, 'Failed to exchange LINE code');
-  }
-
-  let userInfo;
-  try {
-    userInfo = await fetchLineUserInfo(lineTokens.access_token);
-  } catch (err) {
-    authLogger.error('[oauth-line] Failed to fetch user info', err);
-    return oauthError(c, 'Failed to fetch LINE user info');
-  }
+  const result = await exchangeAndFetchUserInfo(c, 'line', 'LINE',
+    () => exchangeLineCode({ code, clientId: c.env.LINE_CLIENT_ID!, clientSecret: c.env.LINE_CLIENT_SECRET!, redirectUri: callbackUri, codeVerifier: pkceVerifier }),
+    fetchLineUserInfo
+  );
+  if (!result.ok) return result;
+  const { userInfo } = result;
 
   const isPlaceholderEmail = !userInfo.email;
   const email = userInfo.email ?? `line_${userInfo.sub}@line.placeholder`;
@@ -373,27 +375,12 @@ async function resolveTwitchProvider(
   pkceVerifier: string,
   callbackUri: string
 ): Promise<ProviderResolution> {
-  let twitchTokens;
-  try {
-    twitchTokens = await exchangeTwitchCode({
-      code,
-      clientId: c.env.TWITCH_CLIENT_ID!,
-      clientSecret: c.env.TWITCH_CLIENT_SECRET!,
-      redirectUri: callbackUri,
-      codeVerifier: pkceVerifier,
-    });
-  } catch (err) {
-    authLogger.error('[oauth-twitch] Failed to exchange code', err);
-    return oauthError(c, 'Failed to exchange Twitch code');
-  }
-
-  let userInfo;
-  try {
-    userInfo = await fetchTwitchUserInfo(twitchTokens.access_token);
-  } catch (err) {
-    authLogger.error('[oauth-twitch] Failed to fetch user info', err);
-    return oauthError(c, 'Failed to fetch Twitch user info');
-  }
+  const result = await exchangeAndFetchUserInfo(c, 'twitch', 'Twitch',
+    () => exchangeTwitchCode({ code, clientId: c.env.TWITCH_CLIENT_ID!, clientSecret: c.env.TWITCH_CLIENT_SECRET!, redirectUri: callbackUri, codeVerifier: pkceVerifier }),
+    fetchTwitchUserInfo
+  );
+  if (!result.ok) return result;
+  const { userInfo } = result;
 
   const isPlaceholderEmail = !userInfo.email;
   const email = userInfo.email ?? `twitch_${userInfo.sub}@twitch.placeholder`;
@@ -424,32 +411,17 @@ async function resolveGithubProvider(
   pkceVerifier: string,
   callbackUri: string
 ): Promise<ProviderResolution> {
-  let githubTokens;
-  try {
-    githubTokens = await exchangeGithubCode({
-      code,
-      clientId: c.env.GITHUB_CLIENT_ID!,
-      clientSecret: c.env.GITHUB_CLIENT_SECRET!,
-      redirectUri: callbackUri,
-      codeVerifier: pkceVerifier,
-    });
-  } catch (err) {
-    authLogger.error('[oauth-github] Failed to exchange code', err);
-    return oauthError(c, 'Failed to exchange GitHub code');
-  }
-
-  let githubUser;
-  try {
-    githubUser = await fetchGithubUserInfo(githubTokens.access_token);
-  } catch (err) {
-    authLogger.error('[oauth-github] Failed to fetch user info', err);
-    return oauthError(c, 'Failed to fetch GitHub user info');
-  }
+  const result = await exchangeAndFetchUserInfo(c, 'github', 'GitHub',
+    () => exchangeGithubCode({ code, clientId: c.env.GITHUB_CLIENT_ID!, clientSecret: c.env.GITHUB_CLIENT_SECRET!, redirectUri: callbackUri, codeVerifier: pkceVerifier }),
+    fetchGithubUserInfo
+  );
+  if (!result.ok) return result;
+  const { accessToken, userInfo: githubUser } = result;
 
   const githubSub = String(githubUser.id);
   let email = githubUser.email;
   if (!email) {
-    email = await fetchGithubPrimaryEmail(githubTokens.access_token);
+    email = await fetchGithubPrimaryEmail(accessToken);
   }
   const isPlaceholderEmail = !email;
   const finalEmail = email ?? `github_${githubSub}@github.placeholder`;
@@ -475,27 +447,12 @@ async function resolveXProvider(
   pkceVerifier: string,
   callbackUri: string
 ): Promise<ProviderResolution> {
-  let xTokens;
-  try {
-    xTokens = await exchangeXCode({
-      code,
-      clientId: c.env.X_CLIENT_ID!,
-      clientSecret: c.env.X_CLIENT_SECRET!,
-      redirectUri: callbackUri,
-      codeVerifier: pkceVerifier,
-    });
-  } catch (err) {
-    authLogger.error('[oauth-x] Failed to exchange code', err);
-    return oauthError(c, 'Failed to exchange X code');
-  }
-
-  let xUser;
-  try {
-    xUser = await fetchXUserInfo(xTokens.access_token);
-  } catch (err) {
-    authLogger.error('[oauth-x] Failed to fetch user info', err);
-    return oauthError(c, 'Failed to fetch X user info');
-  }
+  const result = await exchangeAndFetchUserInfo(c, 'x', 'X',
+    () => exchangeXCode({ code, clientId: c.env.X_CLIENT_ID!, clientSecret: c.env.X_CLIENT_SECRET!, redirectUri: callbackUri, codeVerifier: pkceVerifier }),
+    fetchXUserInfo
+  );
+  if (!result.ok) return result;
+  const { userInfo: xUser } = result;
 
   const xEmail = `x_${xUser.id}@x.placeholder`;
 
