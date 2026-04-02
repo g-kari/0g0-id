@@ -257,7 +257,11 @@ async function handleProviderLink(
     const user = await linkProvider(db, linkUserId, provider, providerSub);
     return { ok: true, user };
   } catch (err) {
-    if (err instanceof Error && err.message === 'PROVIDER_ALREADY_LINKED') {
+    if (
+      err instanceof Error &&
+      (err.message === 'PROVIDER_ALREADY_LINKED' ||
+        err.message.includes('UNIQUE constraint'))
+    ) {
       return { ok: false };
     }
     throw err;

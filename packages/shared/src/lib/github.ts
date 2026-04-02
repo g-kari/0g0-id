@@ -124,8 +124,8 @@ export async function fetchGithubPrimaryEmail(accessToken: string): Promise<stri
   });
 
   if (!response.ok) {
-    console.error(`GitHub Emails API failed with status ${response.status}`);
-    return null;
+    // API失敗は「メールなし」とは異なるため、throwして呼び出し元に判断を委ねる
+    throw new Error(`GitHub Emails API failed with status ${response.status}`);
   }
 
   try {
@@ -133,7 +133,6 @@ export async function fetchGithubPrimaryEmail(accessToken: string): Promise<stri
     const primary = emails.find((e) => e.primary && e.verified);
     return primary?.email ?? null;
   } catch {
-    console.error('GitHub Emails API returned invalid JSON');
-    return null;
+    throw new Error('GitHub Emails API returned invalid JSON');
   }
 }

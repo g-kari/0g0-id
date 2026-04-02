@@ -48,7 +48,7 @@ export async function unrevokeRefreshToken(
   db: D1Database,
   tokenId: string
 ): Promise<void> {
-  await db
+  const result = await db
     .prepare(
       `UPDATE refresh_tokens
        SET revoked_at = NULL, revoked_reason = NULL
@@ -58,6 +58,11 @@ export async function unrevokeRefreshToken(
     )
     .bind(tokenId)
     .run();
+  if (result.meta.changes === 0) {
+    console.warn(
+      `[unrevokeRefreshToken] token ${tokenId} was not unrevoked — revoked_reason may have changed concurrently`
+    );
+  }
 }
 
 export async function createRefreshToken(
