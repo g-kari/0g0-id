@@ -27,6 +27,7 @@ app.use('/api/*', bffCorsMiddleware);
 // /api/* および /auth/logout に適用（強制ログアウトCSRF対策）
 app.use('/api/*', bffCsrfMiddleware);
 app.use('/auth/logout', bffCsrfMiddleware);
+app.use('/auth/link', bffCsrfMiddleware);
 
 app.route('/auth', authRoutes);
 app.route('/api/me', profileRoutes);

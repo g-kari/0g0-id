@@ -1,6 +1,5 @@
 import { type Context } from 'hono';
 import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
-import { decodeJwt } from 'jose';
 import type { BffEnv } from '../types';
 import { decodeBase64Url } from './base64url';
 
@@ -195,17 +194,14 @@ export async function fetchWithAuth(
         data: { access_token: string; refresh_token: string };
       }>();
 
-      // セッションCookieを新トークンで更新（JWTペイロードからrole/emailも反映）
-      const claims = decodeJwt(refreshData.data.access_token);
+      // セッションCookieを新トークンで更新
+      // 注意: role/emailはdecodeJwt（署名未検証）から取得しない。
+      // roleはIdPのauthMiddlewareがJWT署名検証時に毎回確認するため、
+      // セッション内のroleはUI表示用にすぎず、セキュリティ上の判断には使われない。
       const newSession: BffSession = {
         ...session,
         access_token: refreshData.data.access_token,
         refresh_token: refreshData.data.refresh_token,
-        user: {
-          ...session.user,
-          ...(typeof claims['email'] === 'string' ? { email: claims['email'] } : {}),
-          ...(claims['role'] === 'user' || claims['role'] === 'admin' ? { role: claims['role'] } : {}),
-        },
       };
       await setSessionCookie(c, sessionCookieName, newSession);
 

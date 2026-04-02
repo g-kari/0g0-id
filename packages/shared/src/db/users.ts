@@ -7,12 +7,17 @@ export async function findUserById(db: D1Database, id: string): Promise<User | n
   return db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<User>();
 }
 
+const ALLOWED_PROVIDER_COLUMNS = new Set(Object.values(PROVIDER_COLUMN));
+
 export async function findUserBySub(
   db: D1Database,
   provider: OAuthProvider,
   sub: string
 ): Promise<User | null> {
   const col = PROVIDER_COLUMN[provider];
+  if (!col || !ALLOWED_PROVIDER_COLUMNS.has(col)) {
+    throw new Error(`Invalid provider: ${provider}`);
+  }
   return db.prepare(`SELECT * FROM users WHERE ${col} = ?`).bind(sub).first<User>();
 }
 

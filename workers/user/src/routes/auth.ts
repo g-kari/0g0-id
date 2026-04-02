@@ -114,9 +114,12 @@ app.post('/logout', async (c) => {
   return c.redirect('/');
 });
 
-// GET /auth/link?provider=xxx — ログイン済みユーザーがSNSプロバイダー連携を開始
-app.get('/link', async (c) => {
-  const provider = c.req.query('provider') ?? 'google';
+// POST /auth/link — ログイン済みユーザーがSNSプロバイダー連携を開始
+// GETではなくPOSTにすることでbffCsrfMiddlewareによるOriginヘッダー検証を適用し、
+// クロスサイトからの強制ナビゲーションによるアカウントリンク攻撃を防止する
+app.post('/link', async (c) => {
+  const body = await c.req.parseBody().catch(() => ({} as Record<string, string>));
+  const provider = (body['provider'] as string) ?? c.req.query('provider') ?? 'google';
   const validProviders = ['google', 'line', 'twitch', 'github', 'x'];
   if (!validProviders.includes(provider)) {
     return c.redirect('/profile.html?error=invalid_provider');

@@ -718,6 +718,8 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
   const error = c.req.query('error');
 
   if (error) {
+    deleteCookie(c, STATE_COOKIE, { path: '/', secure: true });
+    deleteCookie(c, PKCE_COOKIE, { path: '/', secure: true });
     const safeMessage = OAUTH_ERROR_MAP[error] ?? 'Authentication failed';
     return c.json({ error: { code: 'OAUTH_ERROR', message: safeMessage } }, 400);
   }
