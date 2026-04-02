@@ -72,6 +72,28 @@ export async function denyDeviceCode(db: D1Database, id: string): Promise<void> 
     .run();
 }
 
+/**
+ * ポーリング間隔チェック＋更新をアトミックに行う。
+ * 間隔内の再ポーリングの場合は false を返す（slow_down 応答用）。
+ */
+export async function tryUpdateDeviceCodePolledAt(
+  db: D1Database,
+  id: string,
+  intervalSec: number
+): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `UPDATE device_codes
+       SET last_polled_at = datetime('now')
+       WHERE id = ?
+         AND (last_polled_at IS NULL OR last_polled_at < datetime('now', '-' || ? || ' seconds'))`
+    )
+    .bind(id, intervalSec)
+    .run();
+  return (result.meta?.changes ?? 0) > 0;
+}
+
+/** @deprecated tryUpdateDeviceCodePolledAt を使用してください */
 export async function updateDeviceCodePolledAt(
   db: D1Database,
   id: string
@@ -84,6 +106,21 @@ export async function updateDeviceCodePolledAt(
 
 export async function deleteDeviceCode(db: D1Database, id: string): Promise<void> {
   await db.prepare(`DELETE FROM device_codes WHERE id = ?`).bind(id).run();
+}
+
+/**
+ * 承認済みデバイスコードをアトミックに削除する。
+ * 他リクエストが先に削除済みの場合は false を返す（二重トークン発行防止）。
+ */
+export async function deleteApprovedDeviceCode(
+  db: D1Database,
+  id: string
+): Promise<boolean> {
+  const result = await db
+    .prepare(`DELETE FROM device_codes WHERE id = ? AND approved_at IS NOT NULL`)
+    .bind(id)
+    .run();
+  return (result.meta?.changes ?? 0) > 0;
 }
 
 export async function deleteExpiredDeviceCodes(db: D1Database): Promise<void> {

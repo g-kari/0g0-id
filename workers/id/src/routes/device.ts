@@ -9,8 +9,9 @@ import {
   findDeviceCodeByHash,
   approveDeviceCode,
   denyDeviceCode,
-  updateDeviceCodePolledAt,
+  tryUpdateDeviceCodePolledAt,
   deleteDeviceCode,
+  deleteApprovedDeviceCode,
   deleteExpiredDeviceCodes,
   generateToken,
   signAccessToken,
@@ -43,10 +44,18 @@ const USER_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
  * DBにはハイフンなしで格納し、レスポンスでは "XXXX-XXXX" 形式で返す。
  */
 function generateUserCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(8));
-  return Array.from(bytes)
-    .map((b) => USER_CODE_CHARS[b % USER_CODE_CHARS.length])
-    .join('');
+  const len = USER_CODE_CHARS.length; // 31
+  const limit = 256 - (256 % len); // 拒否サンプリング閾値（248）
+  const result: string[] = [];
+  while (result.length < 8) {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    for (let i = 0; i < bytes.length && result.length < 8; i++) {
+      if (bytes[i] < limit) {
+        result.push(USER_CODE_CHARS[bytes[i] % len]);
+      }
+    }
+  }
+  return result.join('');
 }
 
 /** user_codeをハイフン区切りで表示用に整形する */
@@ -120,12 +129,14 @@ app.post('/code', tokenApiRateLimitMiddleware, async (c) => {
 
   // user_codeの衝突リトライ（最大3回）
   let saved = false;
+  let currentUserCode = userCode;
   for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) currentUserCode = generateUserCode();
     try {
       await createDeviceCode(c.env.DB, {
         id: crypto.randomUUID(),
         deviceCodeHash,
-        userCode: attempt === 0 ? userCode : generateUserCode(),
+        userCode: currentUserCode,
         serviceId: service.id,
         scope: resolvedScope ?? null,
         expiresAt,
@@ -146,17 +157,13 @@ app.post('/code', tokenApiRateLimitMiddleware, async (c) => {
     return c.json({ error: 'server_error', error_description: 'Failed to create device code' }, 500);
   }
 
-  // 実際に保存されたuser_codeを取得（リトライ時に変わる可能性があるため）
-  const stored = await findDeviceCodeByHash(c.env.DB, deviceCodeHash);
-  const finalUserCode = stored?.user_code ?? userCode;
-
   const verificationUri = `${c.env.USER_ORIGIN}/device`;
 
   return c.json({
     device_code: deviceCode,
-    user_code: formatUserCode(finalUserCode),
+    user_code: formatUserCode(currentUserCode),
     verification_uri: verificationUri,
-    verification_uri_complete: `${verificationUri}?code=${formatUserCode(finalUserCode)}`,
+    verification_uri_complete: `${verificationUri}?code=${formatUserCode(currentUserCode)}`,
     expires_in: DEVICE_CODE_LIFETIME_SEC,
     interval: POLLING_INTERVAL_SEC,
   });
@@ -164,8 +171,10 @@ app.post('/code', tokenApiRateLimitMiddleware, async (c) => {
 
 // POST /api/device/verify — BFFから呼ばれるデバイスコード承認/拒否
 // authMiddleware でアクセストークン認証、rejectServiceTokenMiddleware でサービストークン拒否
+// tokenApiRateLimitMiddleware でブルートフォース対策
 app.post(
   '/verify',
+  tokenApiRateLimitMiddleware,
   authMiddleware,
   rejectServiceTokenMiddleware,
   rejectBannedUserMiddleware,
@@ -175,37 +184,37 @@ app.post(
     try {
       params = await c.req.json<Record<string, string>>();
     } catch {
-      return c.json({ error: 'invalid_request', error_description: 'Failed to parse request body' }, 400);
+      return c.json({ error: { code: 'BAD_REQUEST', message: 'Failed to parse request body' } }, 400);
     }
 
     const rawUserCode = params['user_code'];
     const action = params['action'] as string | undefined;
 
     if (!rawUserCode) {
-      return c.json({ error: 'invalid_request', error_description: 'user_code is required' }, 400);
+      return c.json({ error: { code: 'BAD_REQUEST', message: 'user_code is required' } }, 400);
     }
 
     const userCode = normalizeUserCode(rawUserCode);
     if (userCode.length !== 8) {
-      return c.json({ error: 'invalid_request', error_description: 'Invalid user_code format' }, 400);
+      return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid user_code format' } }, 400);
     }
 
     const deviceCode = await findDeviceCodeByUserCode(c.env.DB, userCode);
     if (!deviceCode) {
-      return c.json({ error: 'invalid_grant', error_description: 'Unknown or expired user_code' }, 404);
+      return c.json({ error: { code: 'INVALID_CODE', message: 'Unknown or expired user_code' } }, 404);
     }
 
     // 期限切れチェック
     if (new Date(deviceCode.expires_at) < new Date()) {
-      return c.json({ error: 'expired_token', error_description: 'Device code has expired' }, 400);
+      return c.json({ error: { code: 'CODE_EXPIRED', message: 'Device code has expired' } }, 400);
     }
 
     // 既に承認/拒否済みの場合
     if (deviceCode.approved_at) {
-      return c.json({ error: 'invalid_grant', error_description: 'Device code already approved' }, 400);
+      return c.json({ error: { code: 'CODE_ALREADY_USED', message: 'Device code already approved' } }, 400);
     }
     if (deviceCode.denied_at) {
-      return c.json({ error: 'invalid_grant', error_description: 'Device code already denied' }, 400);
+      return c.json({ error: { code: 'CODE_ALREADY_USED', message: 'Device code already denied' } }, 400);
     }
 
     // actionなし → 情報取得のみ（BFFの検証ステップ用）
@@ -227,7 +236,7 @@ app.post(
 
     // action付き → 承認/拒否
     if (action !== 'approve' && action !== 'deny') {
-      return c.json({ error: 'invalid_request', error_description: 'action must be "approve" or "deny"' }, 400);
+      return c.json({ error: { code: 'BAD_REQUEST', message: 'action must be "approve" or "deny"' } }, 400);
     }
 
     const tokenUser = c.get('user');
@@ -291,25 +300,24 @@ export async function handleDeviceCodeGrant(
     return c.json({ error: 'access_denied' }, 400);
   }
 
-  // slow_down チェック（ポーリング間隔が短すぎる場合）
-  if (deviceCode.last_polled_at) {
-    const lastPolled = new Date(deviceCode.last_polled_at).getTime();
-    const now = Date.now();
-    if (now - lastPolled < POLLING_INTERVAL_SEC * 1000) {
-      await updateDeviceCodePolledAt(c.env.DB, deviceCode.id);
-      return c.json({ error: 'slow_down' }, 400);
-    }
+  // slow_down チェック＋ポーリング時刻更新をアトミックに実行（レースコンディション防止）
+  const pollingAllowed = await tryUpdateDeviceCodePolledAt(c.env.DB, deviceCode.id, POLLING_INTERVAL_SEC);
+  if (!pollingAllowed) {
+    return c.json({ error: 'slow_down' }, 400);
   }
-
-  // ポーリング時刻を更新
-  await updateDeviceCodePolledAt(c.env.DB, deviceCode.id);
 
   // まだ承認されていない場合
   if (!deviceCode.approved_at || !deviceCode.user_id) {
     return c.json({ error: 'authorization_pending' }, 400);
   }
 
-  // 承認済み: トークン発行
+  // 承認済み: アトミック削除で二重トークン発行を防止
+  const deleted = await deleteApprovedDeviceCode(c.env.DB, deviceCode.id);
+  if (!deleted) {
+    // 他のリクエストが先にトークンを発行済み
+    return c.json({ error: 'invalid_grant', error_description: 'Device code already consumed' }, 400);
+  }
+
   const user = await findUserById(c.env.DB, deviceCode.user_id);
   if (!user) {
     return c.json({ error: 'invalid_grant', error_description: 'User not found' }, 400);
@@ -353,9 +361,6 @@ export async function handleDeviceCodeGrant(
     pairwiseSub,
     scope: serviceScope ?? null,
   });
-
-  // device_codeレコードを削除（使い捨て）
-  await deleteDeviceCode(c.env.DB, deviceCode.id);
 
   // レスポンス (RFC 6749 §5.1)
   const response: Record<string, unknown> = {
