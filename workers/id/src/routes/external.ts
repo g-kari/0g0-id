@@ -114,6 +114,10 @@ app.get('/users/:sub', externalApiRateLimitMiddleware, serviceAuthMiddleware, as
     if (!user) {
       return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
     }
+    // BAN済みユーザーは外部サービスに公開しない
+    if (user.banned_at !== null) {
+      return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+    }
 
     const allowedScopes = parseAllowedScopes(service.allowed_scopes);
     const data = await buildUserData(service, user, allowedScopes);

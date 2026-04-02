@@ -278,14 +278,14 @@ function oauthError(
  * OAuthプロバイダー共通のコード交換・ユーザー情報取得処理。
  * 各 resolve*Provider 関数の try/catch ボイラープレートを集約する。
  */
-async function exchangeAndFetchUserInfo<TUserInfo>(
+async function exchangeAndFetchUserInfo<TTokenResponse extends { access_token: string }, TUserInfo>(
   c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
   providerKey: string,
   displayName: string,
-  exchangeFn: () => Promise<{ access_token: string }>,
+  exchangeFn: () => Promise<TTokenResponse>,
   fetchFn: (accessToken: string) => Promise<TUserInfo>
-): Promise<{ ok: true; accessToken: string; userInfo: TUserInfo } | { ok: false; response: Response }> {
-  let tokens: { access_token: string };
+): Promise<{ ok: true; tokenResponse: TTokenResponse; userInfo: TUserInfo } | { ok: false; response: Response }> {
+  let tokens: TTokenResponse;
   try {
     tokens = await exchangeFn();
   } catch (err) {
@@ -301,7 +301,7 @@ async function exchangeAndFetchUserInfo<TUserInfo>(
     return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: `Failed to fetch ${displayName} user info` } }, 400) };
   }
 
-  return { ok: true, accessToken: tokens.access_token, userInfo };
+  return { ok: true, tokenResponse: tokens, userInfo };
 }
 
 // ─── プロバイダー固有の認証解決関数 ──────────────────────────────────────────
@@ -416,13 +416,12 @@ async function resolveGithubProvider(
     fetchGithubUserInfo
   );
   if (!result.ok) return result;
-  const { accessToken, userInfo: githubUser } = result;
+  const { tokenResponse, userInfo: githubUser } = result;
 
   const githubSub = String(githubUser.id);
-  let email = githubUser.email;
-  if (!email) {
-    email = await fetchGithubPrimaryEmail(accessToken);
-  }
+  // GitHub User APIのemailフィールドは検証済みとは限らないため、
+  // 常にEmails APIから検証済みプライマリメールを取得する
+  const email = await fetchGithubPrimaryEmail(tokenResponse.access_token);
   const isPlaceholderEmail = !email;
   const finalEmail = email ?? `github_${githubSub}@github.placeholder`;
 
@@ -682,6 +681,8 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
   }
 
   if (!code || !state) {
+    deleteCookie(c, STATE_COOKIE, { path: '/', secure: true });
+    deleteCookie(c, PKCE_COOKIE, { path: '/', secure: true });
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Missing code or state' } }, 400);
   }
 
@@ -709,11 +710,15 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
     stateData = JSON.parse(decodeURIComponent(atob(stateCookieRaw)));
   } catch (err) {
     authLogger.error('[oauth-callback] Failed to parse state cookie', err);
+    deleteCookie(c, STATE_COOKIE, { path: '/', secure: true });
+    deleteCookie(c, PKCE_COOKIE, { path: '/', secure: true });
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid state cookie' } }, 400);
   }
 
   // state検証（タイミング攻撃対策のため定数時間比較を使用）
   if (!timingSafeEqual(state, stateData.idState)) {
+    deleteCookie(c, STATE_COOKIE, { path: '/', secure: true });
+    deleteCookie(c, PKCE_COOKIE, { path: '/', secure: true });
     return c.json({ error: { code: 'BAD_REQUEST', message: 'State mismatch' } }, 400);
   }
 
@@ -722,7 +727,13 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
   deleteCookie(c, PKCE_COOKIE, { path: '/', secure: true });
 
   const callbackUri = `${c.env.IDP_ORIGIN}${CALLBACK_PATH}`;
+
+  // providerの検証（Cookie改ざん対策）
+  const validProviders: OAuthProvider[] = ['google', 'line', 'twitch', 'github', 'x'];
   const provider = stateData.provider ?? 'google';
+  if (!validProviders.includes(provider)) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid provider in state' } }, 400);
+  }
 
   // Google以外はオプション設定のため資格情報の存在を確認
   if (provider !== 'google') {

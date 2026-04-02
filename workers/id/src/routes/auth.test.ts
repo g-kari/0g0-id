@@ -1013,9 +1013,11 @@ describe('GET /auth/callback - GitHubプロバイダー', () => {
       email: 'github@example.com',
       avatar_url: 'https://example.com/avatar.jpg',
     } as never);
+    // 常にEmails APIから検証済みメールを取得する（User APIのemailは未検証の可能性があるため）
+    vi.mocked(fetchGithubPrimaryEmail).mockResolvedValue('github@example.com');
   });
 
-  it('GitHub: 正常なコールバック（公開メールあり）→ BFFコールバックへリダイレクト', async () => {
+  it('GitHub: 正常なコールバック → fetchGithubPrimaryEmailで検証済みメールを取得', async () => {
     const stateData = buildStateCookie({
       idState: 'correct-state',
       bffState: 'bff-state',
@@ -1032,6 +1034,7 @@ describe('GET /auth/callback - GitHubプロバイダー', () => {
       mockEnv as unknown as Record<string, string>
     );
     expect(res.status).toBe(302);
+    expect(vi.mocked(fetchGithubPrimaryEmail)).toHaveBeenCalledWith('github-at');
     expect(vi.mocked(upsertGithubUser)).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -1042,7 +1045,7 @@ describe('GET /auth/callback - GitHubプロバイダー', () => {
     );
   });
 
-  it('GitHub: 公開メールなし → fetchGithubPrimaryEmailを呼び出す', async () => {
+  it('GitHub: Emails APIからプライマリメールを取得する', async () => {
     vi.mocked(fetchGithubUserInfo).mockResolvedValue({
       id: 12345,
       login: 'testuser',

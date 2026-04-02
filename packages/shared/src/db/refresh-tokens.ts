@@ -270,7 +270,8 @@ export async function listUsersAuthorizedForService(
            AND rt.service_id = ?
            AND rt.revoked_at IS NULL
            AND datetime(rt.expires_at) > datetime('now')
-       )${extraConditions}
+       )
+       AND u.banned_at IS NULL${extraConditions}
        ORDER BY u.created_at DESC, u.id DESC
        LIMIT ? OFFSET ?`
     )
@@ -310,7 +311,8 @@ export async function countUsersAuthorizedForService(
            AND rt.service_id = ?
            AND rt.revoked_at IS NULL
            AND datetime(rt.expires_at) > datetime('now')
-       )${extraConditions}`
+       )
+       AND u.banned_at IS NULL${extraConditions}`
     )
     .bind(...bindings)
     .first<{ count: number }>();

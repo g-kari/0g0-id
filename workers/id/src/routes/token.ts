@@ -102,6 +102,10 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
     if (!user) {
       return c.json({ active: false });
     }
+    // BAN済みユーザーのトークンは無効として扱う
+    if (user.banned_at !== null) {
+      return c.json({ active: false });
+    }
 
     // 保存済みスコープがあればそれを使用（発行時のスコープを正確に反映）
     // マイグレーション前のトークンはallowed_scopesにフォールバック
@@ -142,19 +146,26 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
     if (!tokenUser) {
       return c.json({ active: false });
     }
+    // BAN済みユーザーのトークンは無効として扱う
+    if (tokenUser.banned_at !== null) {
+      return c.json({ active: false });
+    }
 
-    const allowedScopes = parseAllowedScopes(service.allowed_scopes);
+    // JWTに埋め込まれた発行時スコープを優先（リフレッシュトークンブランチとの一貫性）
+    // マイグレーション前のトークンはallowed_scopesにフォールバック
+    const tokenScopeStr = payload.scope ?? parseAllowedScopes(service.allowed_scopes).join(' ');
+    const tokenScopes = tokenScopeStr.split(' ').filter((s: string) => s !== 'openid' && s !== '');
     const sub = await sha256(service.client_id + ':' + payload.sub);
 
     const jwtResponse: Record<string, unknown> = {
       active: true,
       sub,
       exp: payload.exp,
-      scope: allowedScopes.join(' '),
+      scope: tokenScopeStr,
       token_type: 'access_token',
     };
 
-    applyUserClaims(jwtResponse, tokenUser, allowedScopes);
+    applyUserClaims(jwtResponse, tokenUser, tokenScopes);
 
     return c.json(jwtResponse);
   } catch (err) {
