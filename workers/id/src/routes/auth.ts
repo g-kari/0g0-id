@@ -1140,7 +1140,7 @@ app.post('/link-intent', tokenApiRateLimitMiddleware, authMiddleware, rejectServ
 });
 
 // POST /auth/logout — ログアウト（BFFサーバー間専用）
-app.post('/logout', tokenApiRateLimitMiddleware, async (c) => {
+app.post('/logout', tokenApiRateLimitMiddleware, serviceBindingMiddleware, async (c) => {
   let rawBody: unknown;
   try {
     rawBody = await c.req.json();

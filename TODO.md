@@ -26,12 +26,9 @@
 
 - **対応済み**: `serviceBindingMiddleware` を追加。`INTERNAL_SERVICE_SECRET` 環境変数による共有シークレット検証で、BFF以外の外部からの直接呼び出しをブロック。サービスOAuth（Basic認証）は引き続き許可
 
-### [低] /auth/logout が認証なしでアクセス可能
+### ~~[低] /auth/logout が認証なしでアクセス可能~~ ✅
 
-- **場所**: `workers/id/src/routes/auth.ts` (L1186)
-- **問題**: リフレッシュトークンの値を知っていれば認証なしで他ユーザーのセッションを失効可能
-- **影響**: リフレッシュトークンの秘匿性が前提のため現実的リスクは低いが、defense-in-depthの観点では認証追加が望ましい
-- **対応案**: アクセストークン認証の追加
+- **対応済み**: `serviceBindingMiddleware` を追加。`/auth/exchange` や `/auth/refresh` と同様に、BFF以外の外部からの直接呼び出しをブロック
 
 ### [低] Device Code Grant の user_code ブルートフォース耐性
 
@@ -55,3 +52,4 @@
 - [x] ~~Device Code Grant: approved_at/user_id 不整合防止のCHECK制約追加~~ (2026-04-03, migration 0018)
 - [x] ~~管理者ルートにBANチェック追加~~ (2026-04-03, adminMiddleware内でDB確認)
 - [x] ~~/auth/exchange, /auth/refresh にService Bindings保護追加~~ (2026-04-03, serviceBindingMiddleware + INTERNAL_SERVICE_SECRET)
+- [x] ~~/auth/logout にService Bindings保護追加~~ (2026-04-03, serviceBindingMiddleware適用)

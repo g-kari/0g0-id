@@ -851,6 +851,24 @@ describe('POST /auth/logout', () => {
     const body = await res.json<{ data: { success: boolean } }>();
     expect(body.data.success).toBe(true);
   });
+
+  it('INTERNAL_SERVICE_SECRET設定時にヘッダーなし → 403を返す', async () => {
+    const envWithSecret = { ...mockEnv, INTERNAL_SERVICE_SECRET: 'test-secret' };
+    const securedApp = new Hono<{ Bindings: typeof envWithSecret }>();
+    securedApp.route('/auth', authRoutes);
+    const res = await securedApp.request(
+      new Request(`${baseUrl}/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: 'some-token' }),
+      }),
+      undefined,
+      envWithSecret as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('FORBIDDEN');
+  });
 });
 
 // ===== POST /auth/link-intent =====
