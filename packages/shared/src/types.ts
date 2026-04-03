@@ -136,6 +136,8 @@ export interface IdpEnv {
   RATE_LIMITER_EXTERNAL?: RateLimitBinding;
   /** /auth/exchange, /auth/refresh 向けレートリミッター（IP単位） */
   RATE_LIMITER_TOKEN?: RateLimitBinding;
+  /** /api/device/verify 向けレートリミッター（認証ユーザー単位） */
+  RATE_LIMITER_DEVICE_VERIFY?: RateLimitBinding;
   /** BFF→IdP間のService Bindings呼び出しを検証する共有シークレット */
   INTERNAL_SERVICE_SECRET?: string;
 }

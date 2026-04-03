@@ -30,11 +30,9 @@
 
 - **対応済み**: `serviceBindingMiddleware` を追加。`/auth/exchange` や `/auth/refresh` と同様に、BFF以外の外部からの直接呼び出しをブロック
 
-### [低] Device Code Grant の user_code ブルートフォース耐性
+### ~~[低] Device Code Grant の user_code ブルートフォース耐性~~ ✅
 
-- **場所**: `workers/id/src/routes/device.ts` (L176-253)
-- **問題**: user_codeは8文字(31種類)≒約8.5億パターン。試行失敗回数の追跡メカニズムがなく、大量の不正試行を検知する手段がない
-- **対応案**: user_code試行失敗回数カウント+一定回数超過時のdevice_code自動失効、またはuser_code長の拡張
+- **対応済み**: 認証ユーザー単位のレートリミッター `RATE_LIMITER_DEVICE_VERIFY` を追加（10回/分/ユーザー）。既存のIP単位レートリミット（30回/分）と二重防御でブルートフォースを緩和
 
 ### [情報] matchRedirectUri の localhost/127.0.0.1 混在
 
@@ -53,3 +51,4 @@
 - [x] ~~管理者ルートにBANチェック追加~~ (2026-04-03, adminMiddleware内でDB確認)
 - [x] ~~/auth/exchange, /auth/refresh にService Bindings保護追加~~ (2026-04-03, serviceBindingMiddleware + INTERNAL_SERVICE_SECRET)
 - [x] ~~/auth/logout にService Bindings保護追加~~ (2026-04-03, serviceBindingMiddleware適用)
+- [x] ~~Device Code user_code ブルートフォース耐性強化~~ (2026-04-03, 認証ユーザー単位レートリミッター追加)

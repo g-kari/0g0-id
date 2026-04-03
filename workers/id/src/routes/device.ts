@@ -16,7 +16,7 @@ import {
   signIdToken,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
-import { tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
+import { tokenApiRateLimitMiddleware, deviceVerifyRateLimitMiddleware } from '../middleware/rate-limit';
 import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware } from '../middleware/auth';
 import { parseAllowedScopes, resolveEffectiveScope } from '../utils/scopes';
 import { issueTokenPair, buildTokenResponse } from '../utils/token-pair';
@@ -174,6 +174,7 @@ app.post(
   '/verify',
   tokenApiRateLimitMiddleware,
   authMiddleware,
+  deviceVerifyRateLimitMiddleware,
   rejectServiceTokenMiddleware,
   rejectBannedUserMiddleware,
   async (c) => {

@@ -115,3 +115,21 @@ export const tokenApiRateLimitMiddleware = createRateLimitMiddleware(
   (c) => getClientIp(c.req.raw) ?? 'unknown',
   'Too many requests. Please try again later.',
 );
+
+/**
+ * デバイスコード検証向けレートリミッター（認証ユーザー単位）。
+ * 対象: POST /api/device/verify
+ *
+ * user_code のブルートフォース推測を緩和する。authMiddleware の後に適用し、
+ * 認証済みユーザーの sub をキーとして使用する。
+ * RATE_LIMITER_DEVICE_VERIFY バインディングが未設定の場合はスキップ（ローカル開発・テスト時）。
+ */
+export const deviceVerifyRateLimitMiddleware = createRateLimitMiddleware(
+  'RATE_LIMITER_DEVICE_VERIFY',
+  (env) => env.RATE_LIMITER_DEVICE_VERIFY,
+  (c) => {
+    const user = c.get('user' as never) as { sub: string } | undefined;
+    return user?.sub ?? getClientIp(c.req.raw) ?? 'unknown';
+  },
+  'Too many verification attempts. Please try again later.',
+);
