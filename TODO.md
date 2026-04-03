@@ -12,11 +12,12 @@
   - Durable Objectsでセッション管理する
   - セッションIDをステートレス化する（JWTベースのセッショントークン等）
 
-### [高] Dependabot脆弱性アラート（high 1件、moderate 1件）
+### ~~[高] Dependabot脆弱性アラート（high 1件、moderate 1件）~~ ✅
 
-- **場所**: https://github.com/g-kari/0g0-id/security/dependabot
-- **問題**: 依存パッケージに既知の脆弱性が報告されている
-- **対応案**: Dependabotの詳細を確認し、該当パッケージをアップデート
+- **対応済み**: picomatch@4.0.3 → 4.0.4 へアップデート
+  - ReDoS脆弱性（GHSA-c2c7-rcm5-vvqj, High, CVSS 7.5）修正
+  - POSIXキャラクタークラスのMethod Injection（GHSA-3v7f-55p6-f55p, Moderate）修正
+  - vitest・viteの間接依存。`npm audit`で0件を確認済み
 
 ### ~~[中] 管理者ルートにBANチェックミドルウェアが未適用~~ ✅
 
@@ -75,3 +76,4 @@
 - [x] ~~既存テストの不備修正（admin-audit-logs, metrics テスト）~~ (2026-04-03, findUserByIdモック追加で全57テストパス)
 - [x] ~~使用済み認可コード・デバイスコードの定期クリーンアップ~~ (2026-04-03, Cron Trigger + cleanupExpiredAuthCodes + deleteExpiredDeviceCodes)
 - [x] ~~既存テストの不備修正（services, users, admin テスト）~~ (2026-04-03, findUserByIdモック追加+mockResolvedValueOnceチェーンで全1286テストパス)
+- [x] ~~Dependabot脆弱性アラート対応（picomatch ReDoS + Method Injection）~~ (2026-04-04, picomatch@4.0.4へアップデート + workers/mcp --passWithNoTests修正)
