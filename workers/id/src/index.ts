@@ -8,6 +8,7 @@ import {
   createLogger,
   cleanupExpiredAuthCodes,
   deleteExpiredDeviceCodes,
+  cleanupExpiredMcpSessions,
 } from '@0g0-id/shared';
 import { validateEnv } from './utils/env-validation';
 import authRoutes from './routes/auth';
@@ -87,6 +88,9 @@ export default {
 
         await deleteExpiredDeviceCodes(env.DB);
         appLogger.info('デバイスコードクリーンアップ完了');
+
+        await cleanupExpiredMcpSessions(env.DB);
+        appLogger.info('MCPセッションクリーンアップ完了');
       })()
     );
   },

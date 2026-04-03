@@ -1,37 +1,22 @@
 import { Hono } from 'hono';
 import { McpServer, type McpContext } from './server';
 import type { JsonRpcRequest, JsonRpcNotification, JsonRpcResponse } from './types';
+import {
+  createMcpSession,
+  validateAndRefreshMcpSession,
+  deleteMcpSession,
+} from '@0g0-id/shared';
+
+type McpBindings = {
+  DB: D1Database;
+};
 
 type McpEnv = {
+  Bindings: McpBindings;
   Variables: {
     mcpContext: McpContext;
   };
 };
-
-// セッション管理（インメモリ、Worker単位）
-const SESSION_TTL_MS = 30 * 60 * 1000; // 30分
-const sessions = new Map<string, { createdAt: number; lastActiveAt: number }>();
-
-/** TTL超過セッションを除去する */
-function pruneExpiredSessions(): void {
-  const now = Date.now();
-  for (const [id, session] of sessions) {
-    if (now - session.lastActiveAt > SESSION_TTL_MS) {
-      sessions.delete(id);
-    }
-  }
-}
-
-/** セッションが有効（存在＋TTL内）か判定する */
-function isValidSession(sessionId: string): boolean {
-  const session = sessions.get(sessionId);
-  if (!session) return false;
-  if (Date.now() - session.createdAt > SESSION_TTL_MS) {
-    sessions.delete(sessionId);
-    return false;
-  }
-  return true;
-}
 
 export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
   const app = new Hono<McpEnv>();
@@ -57,10 +42,8 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
 
       // initializeの場合、新セッション作成
       if (rpcRequest.method === 'initialize') {
-        pruneExpiredSessions();
         const newSessionId = crypto.randomUUID();
-        const now = Date.now();
-        sessions.set(newSessionId, { createdAt: now, lastActiveAt: now });
+        await createMcpSession(c.env.DB, newSessionId);
         const result = await server.handleRequest(rpcRequest, c.get('mcpContext'));
         c.header('Mcp-Session-Id', newSessionId);
         responses.push(result);
@@ -68,7 +51,7 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
       }
 
       // initialize以外はセッションID必須
-      if (!sessionId || !isValidSession(sessionId)) {
+      if (!sessionId) {
         responses.push({
           jsonrpc: '2.0',
           id: rpcRequest.id,
@@ -77,10 +60,15 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
         continue;
       }
 
-      // セッションのアイドルタイムアウトをスライディングウィンドウで管理
-      const activeSession = sessions.get(sessionId);
-      if (activeSession) {
-        activeSession.lastActiveAt = Date.now();
+      // セッション検証＆アイドルタイムアウトのスライディングウィンドウ更新
+      const valid = await validateAndRefreshMcpSession(c.env.DB, sessionId);
+      if (!valid) {
+        responses.push({
+          jsonrpc: '2.0',
+          id: rpcRequest.id,
+          error: { code: -32600, message: 'Invalid or missing session' },
+        });
+        continue;
       }
 
       const result = await server.handleRequest(rpcRequest, c.get('mcpContext'));
@@ -97,9 +85,13 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
   });
 
   // GET /mcp — SSEストリーム（将来のサーバー→クライアント通知用）
-  app.get('/', (c): Response => {
+  app.get('/', async (c): Promise<Response> => {
     const sessionId = c.req.header('mcp-session-id');
-    if (!sessionId || !isValidSession(sessionId)) {
+    if (!sessionId) {
+      return c.json({ error: 'Invalid session' }, 400);
+    }
+    const valid = await validateAndRefreshMcpSession(c.env.DB, sessionId);
+    if (!valid) {
       return c.json({ error: 'Invalid session' }, 400);
     }
     // 現時点ではサーバーからの通知は不要なので、接続を維持するだけ
@@ -123,10 +115,10 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
   });
 
   // DELETE /mcp — セッション終了
-  app.delete('/', (c): Response => {
+  app.delete('/', async (c): Promise<Response> => {
     const sessionId = c.req.header('mcp-session-id');
     if (sessionId) {
-      sessions.delete(sessionId);
+      await deleteMcpSession(c.env.DB, sessionId);
     }
     return c.body(null, 204);
   });

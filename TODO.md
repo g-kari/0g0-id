@@ -2,15 +2,9 @@
 
 ## セキュリティ / アーキテクチャ課題
 
-### [高] MCPセッションのインメモリ管理がWorkerスケールアウトに非対応
+### ~~[高] MCPセッションのインメモリ管理がWorkerスケールアウトに非対応~~ ✅
 
-- **場所**: `workers/mcp/src/mcp/transport.ts`
-- **問題**: セッションIDが `Map` (インメモリ) に格納されており、Cloudflare Workersが複数インスタンスにスケールした場合、`initialize` を受けたインスタンスと後続リクエストを受けるインスタンスが異なると `Invalid or missing session` で全MCP呼び出しが失敗する
-- **影響**: 本番環境でMCPが断続的に動作しなくなる可能性がある
-- **対応案**:
-  - D1にセッションを永続化する
-  - Durable Objectsでセッション管理する
-  - セッションIDをステートレス化する（JWTベースのセッショントークン等）
+- **対応済み**: `mcp_sessions` テーブルをD1に追加（migration 0019）し、`transport.ts` のインメモリ `Map` をD1永続化に置き換え。`packages/shared/src/db/mcp-sessions.ts` にCRUD関数を追加し、id workerのCron Triggerで期限切れセッションを自動削除
 
 ### ~~[高] Dependabot脆弱性アラート（high 1件、moderate 1件）~~ ✅
 
@@ -112,3 +106,4 @@
 - [x] ~~fetchWithAuthリフレッシュレスポンスバリデーション追加~~ (2026-04-04)
 - [x] ~~MCPセッションTTLをスライディングウィンドウに変更~~ (2026-04-04, lastActiveAt追加)
 - [x] ~~MCP list_usersのsearch OR検索対応~~ (2026-04-04, UserFilter.search + buildUserFilterClause)
+- [x] ~~MCPセッションのインメモリ管理をD1永続化に変更~~ (2026-04-04, migration 0019 + mcp-sessions.ts + transport.ts書き換え)
