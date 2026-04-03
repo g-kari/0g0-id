@@ -1,7 +1,14 @@
 import { Hono } from 'hono';
 
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
-import { logger, securityHeaders, bodyLimitMiddleware, createLogger } from '@0g0-id/shared';
+import {
+  logger,
+  securityHeaders,
+  bodyLimitMiddleware,
+  createLogger,
+  cleanupExpiredAuthCodes,
+  deleteExpiredDeviceCodes,
+} from '@0g0-id/shared';
 import { validateEnv } from './utils/env-validation';
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
@@ -68,4 +75,19 @@ app.notFound((c) => {
   return c.json({ error: { code: 'NOT_FOUND', message: 'Not found' } }, 404);
 });
 
-export default app;
+export { app };
+
+export default {
+  fetch: app.fetch,
+  async scheduled(event: ScheduledEvent, env: IdpEnv, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      (async () => {
+        const deleted = await cleanupExpiredAuthCodes(env.DB);
+        appLogger.info('認可コードクリーンアップ完了', { deletedCount: deleted });
+
+        await deleteExpiredDeviceCodes(env.DB);
+        appLogger.info('デバイスコードクリーンアップ完了');
+      })()
+    );
+  },
+};

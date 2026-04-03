@@ -51,3 +51,14 @@ export async function findAndConsumeAuthCode(
     .bind(codeHash)
     .first<AuthCode>();
 }
+
+export async function cleanupExpiredAuthCodes(db: D1Database): Promise<number> {
+  const result = await db
+    .prepare(
+      `DELETE FROM auth_codes
+       WHERE datetime(expires_at) < datetime('now')
+          OR used_at IS NOT NULL`
+    )
+    .run();
+  return result.meta.changes ?? 0;
+}

@@ -30,11 +30,15 @@
 
 - **対応済み**: `serviceBindingMiddleware` を追加。`/auth/exchange` や `/auth/refresh` と同様に、BFF以外の外部からの直接呼び出しをブロック
 
-### [低] 使用済み認可コードの定期クリーンアップ
+### ~~[低] 使用済み認可コードの定期クリーンアップ~~ ✅
 
-- **場所**: `packages/shared/src/db/auth-codes.ts`
-- **問題**: `findAndConsumeAuthCode` で消費済みの認可コードレコードがDBに残り続ける。セキュリティ上は `used_at IS NULL` チェックで再利用防止されているが、ストレージの肥大化につながる
-- **対応案**: Cron Triggerで期限切れ・消費済みの認可コードを定期削除する
+- **対応済み**: Cron Trigger（毎日0時UTC）で期限切れ・消費済みの認可コードとデバイスコードを自動削除。`cleanupExpiredAuthCodes`を`auth-codes.ts`に追加、`workers/id`のscheduledハンドラから実行
+
+### [低] 既存テストの不備（services, users テスト）
+
+- **場所**: `workers/id/src/routes/services.test.ts`, `workers/id/src/routes/users.test.ts`
+- **問題**: `findUserById`モックが未設定のため、adminMiddlewareのBANチェックで401エラーとなり62件以上のテストが失敗
+- **対応案**: 両テストファイルの`vi.mock`に`findUserById`を追加し、BANされていない管理者ユーザーを返すモックを設定（admin-audit-logs, metricsテストと同じ修正パターン）
 
 ### [低] matchRedirectUri で localhost 時に query string が無視される
 
@@ -71,3 +75,4 @@
 - [x] ~~Service Bindingミドルウェア Basic認証バイパス修正~~ (2026-04-03, authenticateServiceで実際のクライアント認証情報を検証)
 - [x] ~~本番環境INTERNAL_SERVICE_SECRET必須化~~ (2026-04-03, HTTPS環境で未設定時にバリデーションエラー)
 - [x] ~~既存テストの不備修正（admin-audit-logs, metrics テスト）~~ (2026-04-03, findUserByIdモック追加で全57テストパス)
+- [x] ~~使用済み認可コード・デバイスコードの定期クリーンアップ~~ (2026-04-03, Cron Trigger + cleanupExpiredAuthCodes + deleteExpiredDeviceCodes)

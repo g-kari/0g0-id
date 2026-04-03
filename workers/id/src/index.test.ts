@@ -38,10 +38,15 @@ vi.mock('@0g0-id/shared', () => ({
   // well-known route で使用
   getJWTKeys: vi.fn(),
   getJWKS: vi.fn(),
+  // scheduled handler で使用
+  cleanupExpiredAuthCodes: vi.fn().mockResolvedValue(0),
+  deleteExpiredDeviceCodes: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { getJWTKeys } from '@0g0-id/shared';
-import app from './index';
+import type { IdpEnv } from '@0g0-id/shared';
+import { getJWTKeys, cleanupExpiredAuthCodes, deleteExpiredDeviceCodes } from '@0g0-id/shared';
+import { app } from './index';
+import worker from './index';
 import { _resetValidationCache } from './utils/env-validation';
 
 const mockEnv = {
@@ -207,5 +212,29 @@ describe('環境変数バリデーション ミドルウェア', () => {
       envWithLine as unknown as Record<string, string>
     );
     expect(res.status).toBe(200);
+  });
+});
+
+describe('scheduled handler', () => {
+  beforeEach(() => {
+    vi.mocked(cleanupExpiredAuthCodes).mockClear();
+    vi.mocked(deleteExpiredDeviceCodes).mockClear();
+  });
+
+  it('認可コードとデバイスコードのクリーンアップを実行する', async () => {
+    vi.mocked(cleanupExpiredAuthCodes).mockResolvedValue(5);
+
+    const waitUntilFn = vi.fn();
+    const ctx = { waitUntil: waitUntilFn } as unknown as ExecutionContext;
+    const event = { cron: '0 0 * * *', scheduledTime: Date.now() } as unknown as ScheduledEvent;
+
+    await worker.scheduled(event, mockEnv as unknown as IdpEnv, ctx);
+
+    expect(waitUntilFn).toHaveBeenCalledOnce();
+    // waitUntilに渡されたPromiseを実行
+    await waitUntilFn.mock.calls[0][0];
+
+    expect(cleanupExpiredAuthCodes).toHaveBeenCalledWith(mockEnv.DB);
+    expect(deleteExpiredDeviceCodes).toHaveBeenCalledWith(mockEnv.DB);
   });
 });
