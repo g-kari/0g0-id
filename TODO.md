@@ -34,11 +34,9 @@
 
 - **対応済み**: Cron Trigger（毎日0時UTC）で期限切れ・消費済みの認可コードとデバイスコードを自動削除。`cleanupExpiredAuthCodes`を`auth-codes.ts`に追加、`workers/id`のscheduledハンドラから実行
 
-### [低] 既存テストの不備（services, users テスト）
+### ~~[低] 既存テストの不備（services, users テスト）~~ ✅
 
-- **場所**: `workers/id/src/routes/services.test.ts`, `workers/id/src/routes/users.test.ts`
-- **問題**: `findUserById`モックが未設定のため、adminMiddlewareのBANチェックで401エラーとなり62件以上のテストが失敗
-- **対応案**: 両テストファイルの`vi.mock`に`findUserById`を追加し、BANされていない管理者ユーザーを返すモックを設定（admin-audit-logs, metricsテストと同じ修正パターン）
+- **対応済み**: 両テストファイルの`beforeEach`にadminMiddleware用`findUserById`モックを追加。admin系ルートの「ユーザー不在」テストは`mockResolvedValueOnce`チェーンでadminMiddlewareとルートハンドラを分離。`admin.test.ts`のenv未設定も修正。全1286テストがパス
 
 ### [低] matchRedirectUri で localhost 時に query string が無視される
 
@@ -76,3 +74,4 @@
 - [x] ~~本番環境INTERNAL_SERVICE_SECRET必須化~~ (2026-04-03, HTTPS環境で未設定時にバリデーションエラー)
 - [x] ~~既存テストの不備修正（admin-audit-logs, metrics テスト）~~ (2026-04-03, findUserByIdモック追加で全57テストパス)
 - [x] ~~使用済み認可コード・デバイスコードの定期クリーンアップ~~ (2026-04-03, Cron Trigger + cleanupExpiredAuthCodes + deleteExpiredDeviceCodes)
+- [x] ~~既存テストの不備修正（services, users, admin テスト）~~ (2026-04-03, findUserByIdモック追加+mockResolvedValueOnceチェーンで全1286テストパス)

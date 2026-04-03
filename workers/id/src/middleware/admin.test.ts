@@ -1,6 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Hono } from 'hono';
 import type { TokenPayload } from '@0g0-id/shared';
+
+vi.mock('@0g0-id/shared', () => ({
+  findUserById: vi.fn().mockResolvedValue({ id: 'admin-1', email: 'admin@example.com', role: 'admin', banned_at: null }),
+}));
+
 import { adminMiddleware } from './admin';
 
 type AdminVariables = { user: TokenPayload };
@@ -25,8 +30,16 @@ const mockUserPayload: TokenPayload = {
   jti: 'jti-user',
 };
 
+const mockEnv = {
+  DB: {} as D1Database,
+  JWT_PUBLIC_KEY: 'mock-public-key',
+  IDP_ORIGIN: 'https://id.0g0.xyz',
+  USER_ORIGIN: 'https://user.0g0.xyz',
+  ADMIN_ORIGIN: 'https://admin.0g0.xyz',
+};
+
 function buildApp(user?: TokenPayload) {
-  const app = new Hono<{ Variables: AdminVariables }>();
+  const app = new Hono<{ Bindings: typeof mockEnv; Variables: AdminVariables }>();
   if (user) {
     app.use('*', async (c, next) => {
       c.set('user', user);
@@ -57,7 +70,7 @@ describe('adminMiddleware', () => {
 
   it('role=admin の場合 → 200を返す', async () => {
     const app = buildApp(mockAdminPayload);
-    const res = await app.request('https://id.0g0.xyz/admin/resource');
+    const res = await app.request('https://id.0g0.xyz/admin/resource', undefined, mockEnv);
     expect(res.status).toBe(200);
     const body = await res.json<{ ok: boolean }>();
     expect(body.ok).toBe(true);

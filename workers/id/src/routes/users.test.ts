@@ -133,6 +133,9 @@ const mockUser = {
   updated_at: '2024-01-01T00:00:00Z',
 };
 
+// adminMiddlewareのBANチェック用モックユーザー
+const mockAdminUser = { id: 'admin-user-id', email: 'admin@example.com', role: 'admin', banned_at: null } as any;
+
 function buildApp() {
   const app = new Hono<{ Bindings: typeof mockEnv }>();
   app.route('/api/users', usersRoutes);
@@ -823,7 +826,7 @@ describe('GET /api/users/:id', () => {
   });
 
   it('存在しないユーザーID → 404を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
     const res = await sendRequest(app, '/api/users/no-such-user');
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
@@ -887,7 +890,7 @@ describe('PATCH /api/users/:id/role', () => {
   });
 
   it('存在しないユーザーID → 404を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
     const res = await sendRequest(app, '/api/users/no-such-user/role', {
       method: 'PATCH',
       body: { role: 'admin' },
@@ -966,7 +969,7 @@ describe('DELETE /api/users/:id', () => {
   });
 
   it('存在しないユーザーID → 404を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
     const res = await sendRequest(app, '/api/users/no-such-user', {
       method: 'DELETE',
       origin: 'https://admin.0g0.xyz',
@@ -1005,6 +1008,7 @@ describe('GET /api/users', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockAdminUser);
     vi.mocked(listUsers).mockResolvedValue([mockUser]);
     vi.mocked(countUsers).mockResolvedValue(1);
   });
@@ -1292,7 +1296,7 @@ describe('GET /api/users/:id/services', () => {
   });
 
   it('対象ユーザーが存在しない場合 → 404を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
     const res = await sendRequest(app, '/api/users/no-such/services');
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
@@ -1368,7 +1372,7 @@ describe('GET /api/users/:id/login-history', () => {
   });
 
   it('対象ユーザーが存在しない場合 → 404を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
     const res = await sendRequest(app, '/api/users/no-such/login-history');
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
@@ -1482,7 +1486,7 @@ describe('GET /api/users/:id/providers', () => {
   });
 
   it('対象ユーザーが存在しない場合 → 404を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
     const res = await sendRequest(app, '/api/users/no-such/providers');
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
@@ -1553,7 +1557,7 @@ describe('GET /api/users/:id/owned-services', () => {
   });
 
   it('対象ユーザーが存在しない場合 → 404を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
     const res = await sendRequest(app, '/api/users/no-such/owned-services');
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
@@ -1860,7 +1864,7 @@ describe('GET /api/users/:id/tokens', () => {
   });
 
   it('管理者: 存在しないユーザー → 404を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
     const res = await sendRequest(app, '/api/users/no-such-user/tokens');
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
@@ -1920,7 +1924,7 @@ describe('DELETE /api/users/:id/tokens', () => {
   });
 
   it('対象ユーザーが存在しない → 404を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
     const res = await sendRequest(app, '/api/users/nonexistent/tokens', {
       method: 'DELETE',
       origin: 'https://admin.0g0.xyz',
@@ -1974,7 +1978,7 @@ describe('DELETE /api/users/:id/tokens/:tokenId', () => {
   });
 
   it('対象ユーザーが存在しない → 404を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
     const res = await sendRequest(app, '/api/users/nonexistent/tokens/token-abc', {
       method: 'DELETE',
       origin: 'https://admin.0g0.xyz',
@@ -2142,7 +2146,7 @@ describe('PATCH /api/users/:id/ban — ユーザー停止', () => {
   });
 
   it('すでに停止済みのユーザーを停止しようとした場合 → 409を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: 'target-user-id', banned_at: '2026-01-01T00:00:00Z' });
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce({ ...mockUser, id: 'target-user-id', banned_at: '2026-01-01T00:00:00Z' });
     const res = await sendRequest(app, '/api/users/target-user-id/ban', {
       method: 'PATCH',
       origin: 'https://id.0g0.xyz',
@@ -2153,7 +2157,7 @@ describe('PATCH /api/users/:id/ban — ユーザー停止', () => {
   });
 
   it('ユーザーが存在しない場合 → 404を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
     const res = await sendRequest(app, '/api/users/not-exist/ban', {
       method: 'PATCH',
       origin: 'https://id.0g0.xyz',
@@ -2169,7 +2173,7 @@ describe('DELETE /api/users/:id/ban — ユーザー停止解除', () => {
     vi.resetAllMocks();
     app = buildApp();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
-    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: 'target-user-id', banned_at: '2026-01-01T00:00:00Z' });
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValue({ ...mockUser, id: 'target-user-id', banned_at: '2026-01-01T00:00:00Z' });
     vi.mocked(unbanUser).mockResolvedValue({ ...mockUser, id: 'target-user-id', banned_at: null });
   });
 
@@ -2184,7 +2188,8 @@ describe('DELETE /api/users/:id/ban — ユーザー停止解除', () => {
   });
 
   it('停止されていないユーザーを解除しようとした場合 → 409を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: 'target-user-id', banned_at: null });
+    vi.mocked(findUserById).mockReset();
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValue({ ...mockUser, id: 'target-user-id', banned_at: null });
     const res = await sendRequest(app, '/api/users/target-user-id/ban', {
       method: 'DELETE',
       origin: 'https://id.0g0.xyz',
@@ -2195,7 +2200,8 @@ describe('DELETE /api/users/:id/ban — ユーザー停止解除', () => {
   });
 
   it('ユーザーが存在しない場合 → 404を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockReset();
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
     const res = await sendRequest(app, '/api/users/not-exist/ban', {
       method: 'DELETE',
       origin: 'https://id.0g0.xyz',
@@ -2235,7 +2241,7 @@ describe('GET /api/users/:id/login-stats', () => {
   });
 
   it('対象ユーザーが存在しない場合 → 404を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
     const res = await sendRequest(app, '/api/users/no-such/login-stats');
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
@@ -2314,7 +2320,7 @@ describe('GET /api/users/:id/login-trends', () => {
   });
 
   it('対象ユーザーが存在しない場合 → 404を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
     const res = await sendRequest(app, '/api/users/no-such/login-trends');
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();

@@ -120,6 +120,9 @@ const mockRedirectUri = {
   created_at: '2024-01-01T00:00:00Z',
 };
 
+// adminMiddlewareのBANチェック用モックユーザー
+const mockAdminUser = { id: 'admin-user-id', email: 'admin@example.com', role: 'admin', banned_at: null } as any;
+
 function buildApp() {
   const app = new Hono<{ Bindings: typeof mockEnv }>();
   app.route('/api/services', servicesRoutes);
@@ -168,6 +171,7 @@ describe('GET /api/services', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockAdminUser);
     vi.mocked(listServices).mockResolvedValue([mockService]);
     vi.mocked(countServices).mockResolvedValue(1);
   });
@@ -290,6 +294,7 @@ describe('GET /api/services/:id', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockAdminUser);
     vi.mocked(findServiceById).mockResolvedValue(mockService);
   });
 
@@ -338,6 +343,7 @@ describe('POST /api/services', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockAdminUser);
     vi.mocked(generateClientId).mockReturnValue('generated-client-id');
     vi.mocked(generateClientSecret).mockReturnValue('generated-client-secret');
     vi.mocked(sha256).mockResolvedValue('hashed-secret');
@@ -515,6 +521,7 @@ describe('PATCH /api/services/:id', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockAdminUser);
     vi.mocked(updateServiceFields).mockResolvedValue({
       ...mockService,
       allowed_scopes: JSON.stringify(['profile', 'email', 'phone']),
@@ -684,6 +691,7 @@ describe('DELETE /api/services/:id', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockAdminUser);
     vi.mocked(findServiceById).mockResolvedValue(mockService);
     vi.mocked(deleteService).mockResolvedValue();
     vi.mocked(createAdminAuditLog).mockResolvedValue(undefined);
@@ -740,6 +748,7 @@ describe('GET /api/services/:id/redirect-uris', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockAdminUser);
     vi.mocked(findServiceById).mockResolvedValue(mockService);
     vi.mocked(listRedirectUris).mockResolvedValue([mockRedirectUri]);
   });
@@ -774,6 +783,7 @@ describe('POST /api/services/:id/redirect-uris', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockAdminUser);
     vi.mocked(findServiceById).mockResolvedValue(mockService);
     vi.mocked(normalizeRedirectUri).mockReturnValue('https://app.example.com/callback');
     vi.mocked(addRedirectUri).mockResolvedValue(mockRedirectUri);
@@ -881,6 +891,7 @@ describe('POST /api/services/:id/rotate-secret', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockAdminUser);
     vi.mocked(findServiceById).mockResolvedValue(mockService);
     vi.mocked(generateClientSecret).mockReturnValue('new-client-secret');
     vi.mocked(sha256).mockResolvedValue('new-secret-hash');
@@ -1071,7 +1082,7 @@ describe('PATCH /api/services/:id/owner', () => {
   });
 
   it('新しいオーナーが存在しない場合 → 404を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
     const res = await sendRequest(app, '/api/services/service-1/owner', {
       method: 'PATCH',
       body: { new_owner_user_id: 'nonexistent-user' },
@@ -1156,6 +1167,7 @@ describe('GET /api/services/:id/users', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockAdminUser);
     vi.mocked(findServiceById).mockResolvedValue(mockService);
     vi.mocked(listUsersAuthorizedForService).mockResolvedValue([mockAuthorizedUser]);
     vi.mocked(countUsersAuthorizedForService).mockResolvedValue(1);
@@ -1329,7 +1341,7 @@ describe('DELETE /api/services/:id/users/:userId', () => {
   });
 
   it('ユーザーが存在しない場合 → 404を返す', async () => {
-    vi.mocked(findUserById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
     const res = await sendRequest(app, '/api/services/service-1/users/no-such-user', {
       method: 'DELETE',
       origin: 'https://admin.0g0.xyz',
@@ -1375,6 +1387,7 @@ describe('DELETE /api/services/:id/redirect-uris/:uriId', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockAdminUser);
     vi.mocked(findServiceById).mockResolvedValue(mockService);
     vi.mocked(findRedirectUriById).mockResolvedValue({ id: 'uri-1', service_id: 'service-1', uri: 'https://example.com/callback', created_at: '2024-01-01T00:00:00Z' });
     vi.mocked(deleteRedirectUri).mockResolvedValue(1);
