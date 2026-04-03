@@ -11,6 +11,7 @@ vi.mock('@0g0-id/shared', () => ({
   getLoginEventCountryStats: vi.fn(),
   getDailyLoginTrends: vi.fn(),
   verifyAccessToken: vi.fn(),
+  findUserById: vi.fn(),
   getServiceTokenStats: vi.fn(),
   getSuspiciousMultiCountryLogins: vi.fn(),
   getDailyUserRegistrations: vi.fn(),
@@ -26,6 +27,7 @@ import {
   getLoginEventCountryStats,
   getDailyLoginTrends,
   verifyAccessToken,
+  findUserById,
   getServiceTokenStats,
   getSuspiciousMultiCountryLogins,
   getDailyUserRegistrations,
@@ -81,6 +83,7 @@ describe('GET /api/metrics', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(findUserById).mockResolvedValue({ id: 'admin-user-id', email: 'admin@example.com', role: 'admin', banned_at: null } as any);
   });
 
   it('Authorizationヘッダーなしで401を返す', async () => {
@@ -285,6 +288,7 @@ describe('GET /api/metrics/login-trends', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(findUserById).mockResolvedValue({ id: 'admin-user-id', email: 'admin@example.com', role: 'admin', banned_at: null } as any);
   });
 
   it('Authorizationヘッダーなしで401を返す', async () => {
@@ -403,6 +407,7 @@ describe('GET /api/metrics - 国別ログイン統計', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(findUserById).mockResolvedValue({ id: 'admin-user-id', email: 'admin@example.com', role: 'admin', banned_at: null } as any);
     // 共通のデフォルトモック
     vi.mocked(countUsers).mockResolvedValue(0);
     vi.mocked(countAdminUsers).mockResolvedValue(0);
@@ -516,6 +521,7 @@ describe('GET /api/metrics/services', () => {
 describe('GET /api/metrics/suspicious-logins', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(findUserById).mockResolvedValue({ id: 'admin-user-id', email: 'admin@example.com', role: 'admin', banned_at: null } as any);
   });
 
   it('認証なしで 401 を返す', async () => {
@@ -667,6 +673,7 @@ describe('GET /api/metrics/suspicious-logins', () => {
 describe('GET /api/metrics/user-registrations', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(findUserById).mockResolvedValue({ id: 'admin-user-id', email: 'admin@example.com', role: 'admin', banned_at: null } as any);
   });
 
   it('認証なしで 401 を返す', async () => {

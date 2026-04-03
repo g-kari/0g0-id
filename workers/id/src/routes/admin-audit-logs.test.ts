@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 
 vi.mock('@0g0-id/shared', () => ({
   createLogger: vi.fn().mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+  findUserById: vi.fn(),
   listAdminAuditLogs: vi.fn(),
   getAuditLogStats: vi.fn(),
   parseDays: (daysParam: string | undefined, options: { minDays?: number; maxDays?: number } = {}) => {
@@ -32,6 +33,7 @@ vi.mock('@0g0-id/shared', () => ({
 }));
 
 import {
+  findUserById,
   listAdminAuditLogs,
   getAuditLogStats,
   verifyAccessToken,
@@ -97,6 +99,8 @@ const mockLog: AdminAuditLog = {
 describe('GET /api/admin/audit-logs', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    // adminMiddlewareがfindUserByIdでBANチェックするため、デフォルトで有効な管理者を返す
+    vi.mocked(findUserById).mockResolvedValue({ id: 'admin-user-id', email: 'admin@example.com', role: 'admin', banned_at: null } as any);
   });
 
   it('管理者は監査ログ一覧を取得できる', async () => {
@@ -215,6 +219,8 @@ describe('GET /api/admin/audit-logs/stats', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    // adminMiddlewareがfindUserByIdでBANチェックするため、デフォルトで有効な管理者を返す
+    vi.mocked(findUserById).mockResolvedValue({ id: 'admin-user-id', email: 'admin@example.com', role: 'admin', banned_at: null } as any);
   });
 
   it('管理者は統計情報を取得できる', async () => {
