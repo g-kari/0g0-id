@@ -21,9 +21,9 @@ import {
 import type { IdpEnv, User } from '@0g0-id/shared';
 import { externalApiRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authenticateService } from '../utils/service-auth';
-import { parseAllowedScopes } from '../utils/scopes';
+import { parseAllowedScopes, resolveEffectiveScope } from '../utils/scopes';
 import { handleDeviceCodeGrant } from './device';
-import { issueTokenPair } from '../utils/token-pair';
+import { issueTokenPair, buildTokenResponse } from '../utils/token-pair';
 
 const tokenLogger = createLogger('token');
 
@@ -220,15 +220,7 @@ async function handleAuthorizationCodeGrant(
   }
 
   // スコープ計算
-  const allowedScopes = parseAllowedScopes(service.allowed_scopes);
-  let serviceScope: string | undefined;
-  if (authCode.scope) {
-    const requested = authCode.scope.split(' ').filter(Boolean);
-    const valid = requested.filter((s) => s === 'openid' || allowedScopes.includes(s));
-    serviceScope = valid.length > 0 ? valid.join(' ') : undefined;
-  } else {
-    serviceScope = ['openid', ...allowedScopes].join(' ');
-  }
+  const serviceScope = resolveEffectiveScope(authCode.scope, service.allowed_scopes);
 
   // トークン発行
   const { accessToken, refreshToken } = await issueTokenPair(c.env.DB, c.env, user, {
@@ -238,17 +230,7 @@ async function handleAuthorizationCodeGrant(
   });
 
   // レスポンス (RFC 6749 §5.1)
-  const response: Record<string, unknown> = {
-    access_token: accessToken,
-    token_type: 'Bearer',
-    expires_in: 900,
-    refresh_token: refreshToken,
-  };
-  if (serviceScope) {
-    response['scope'] = serviceScope;
-  }
-
-  return c.json(response);
+  return c.json(buildTokenResponse(accessToken, refreshToken, serviceScope));
 }
 
 /**
@@ -313,13 +295,7 @@ async function handleRefreshTokenGrant(
   }
 
   // スコープ引き継ぎ
-  let refreshScope: string | undefined;
-  if (storedToken.scope) {
-    refreshScope = storedToken.scope;
-  } else {
-    const allowedScopes = parseAllowedScopes(service.allowed_scopes);
-    refreshScope = ['openid', ...allowedScopes].join(' ');
-  }
+  const refreshScope = storedToken.scope ?? resolveEffectiveScope(null, service.allowed_scopes);
 
   // 新トークン発行（ローテーション）
   let accessToken: string;
@@ -344,17 +320,7 @@ async function handleRefreshTokenGrant(
   }
 
   // レスポンス (RFC 6749 §5.1)
-  const response: Record<string, unknown> = {
-    access_token: accessToken,
-    token_type: 'Bearer',
-    expires_in: 900,
-    refresh_token: newRefreshToken,
-  };
-  if (refreshScope) {
-    response['scope'] = refreshScope;
-  }
-
-  return c.json(response);
+  return c.json(buildTokenResponse(accessToken, newRefreshToken, refreshScope));
 }
 
 // POST /api/token/introspect — RFC 7662 トークンイントロスペクション

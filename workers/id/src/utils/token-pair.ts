@@ -49,3 +49,23 @@ export async function issueTokenPair(
 
   return { accessToken, refreshToken };
 }
+
+/**
+ * RFC 6749 §5.1 準拠のトークンレスポンスオブジェクトを構築する。
+ */
+export function buildTokenResponse(
+  accessToken: string,
+  refreshToken: string,
+  scope?: string,
+  idToken?: string
+): Record<string, unknown> {
+  const response: Record<string, unknown> = {
+    access_token: accessToken,
+    token_type: 'Bearer',
+    expires_in: 900,
+    refresh_token: refreshToken,
+  };
+  if (idToken) response['id_token'] = idToken;
+  if (scope) response['scope'] = scope;
+  return response;
+}

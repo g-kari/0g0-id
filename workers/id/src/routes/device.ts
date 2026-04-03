@@ -18,8 +18,8 @@ import {
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware } from '../middleware/auth';
-import { parseAllowedScopes } from '../utils/scopes';
-import { issueTokenPair } from '../utils/token-pair';
+import { parseAllowedScopes, resolveEffectiveScope } from '../utils/scopes';
+import { issueTokenPair, buildTokenResponse } from '../utils/token-pair';
 
 const deviceLogger = createLogger('device');
 
@@ -333,15 +333,7 @@ export async function handleDeviceCodeGrant(
   }
 
   // スコープ計算
-  const allowedScopes = parseAllowedScopes(service.allowed_scopes);
-  let serviceScope: string | undefined;
-  if (deviceCode.scope) {
-    const requested = deviceCode.scope.split(' ').filter(Boolean);
-    const valid = requested.filter((s) => s === 'openid' || allowedScopes.includes(s));
-    serviceScope = valid.length > 0 ? valid.join(' ') : undefined;
-  } else {
-    serviceScope = ['openid', ...allowedScopes].join(' ');
-  }
+  const serviceScope = resolveEffectiveScope(deviceCode.scope, service.allowed_scopes);
 
   // トークン発行
   const { accessToken, refreshToken } = await issueTokenPair(c.env.DB, c.env, user, {
@@ -372,20 +364,7 @@ export async function handleDeviceCodeGrant(
   }
 
   // レスポンス (RFC 6749 §5.1)
-  const response: Record<string, unknown> = {
-    access_token: accessToken,
-    token_type: 'Bearer',
-    expires_in: 900,
-    refresh_token: refreshToken,
-  };
-  if (idToken) {
-    response['id_token'] = idToken;
-  }
-  if (serviceScope) {
-    response['scope'] = serviceScope;
-  }
-
-  return c.json(response);
+  return c.json(buildTokenResponse(accessToken, refreshToken, serviceScope, idToken));
 }
 
 export default app;

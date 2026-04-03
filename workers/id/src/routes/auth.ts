@@ -57,7 +57,7 @@ import { type OAuthProvider, PROVIDER_DISPLAY_NAMES, ALL_PROVIDERS, isValidProvi
 import { authRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware } from '../middleware/auth';
 import { serviceBindingMiddleware } from '../middleware/service-binding';
-import { parseAllowedScopes } from '../utils/scopes';
+import { resolveEffectiveScope } from '../utils/scopes';
 import { issueTokenPair } from '../utils/token-pair';
 
 const ExchangeSchema = z.object({
@@ -956,15 +956,7 @@ app.post('/exchange', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asy
     idTokenSub = await sha256(`${service.client_id}:${user.id}`);
     idTokenAud = service.client_id;
     // サービストークンのスコープ: 要求スコープとサービスの allowed_scopes を交差検証
-    const allowedScopes = parseAllowedScopes(service.allowed_scopes);
-    if (authCode.scope) {
-      // 要求スコープをサービスの allowed_scopes と openid でフィルタリング
-      const requested = authCode.scope.split(' ').filter(Boolean);
-      const valid = requested.filter((s) => s === 'openid' || allowedScopes.includes(s));
-      serviceScope = valid.length > 0 ? valid.join(' ') : undefined;
-    } else {
-      serviceScope = ['openid', ...allowedScopes].join(' ');
-    }
+    serviceScope = resolveEffectiveScope(authCode.scope, service.allowed_scopes);
   }
 
   // アクセストークン・リフレッシュトークン発行
@@ -1070,12 +1062,7 @@ app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
     }
     // 保存済みスコープがあればそれを引き継ぐ（スコープ昇格防止）
     // 保存済みスコープがない（マイグレーション前のトークン）場合はallowed_scopesにフォールバック
-    if (storedToken.scope) {
-      refreshScope = storedToken.scope;
-    } else {
-      const allowedScopes = parseAllowedScopes(refreshService.allowed_scopes);
-      refreshScope = ['openid', ...allowedScopes].join(' ');
-    }
+    refreshScope = storedToken.scope ?? resolveEffectiveScope(null, refreshService.allowed_scopes);
   }
 
   // 新アクセストークン・リフレッシュトークン発行（ローテーション、同じfamily_id）
