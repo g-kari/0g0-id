@@ -13,15 +13,13 @@ import {
   deleteDeviceCode,
   deleteApprovedDeviceCode,
   deleteExpiredDeviceCodes,
-  generateToken,
-  signAccessToken,
   signIdToken,
-  createRefreshToken,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware } from '../middleware/auth';
 import { parseAllowedScopes } from '../utils/scopes';
+import { issueTokenPair } from '../utils/token-pair';
 
 const deviceLogger = createLogger('device');
 
@@ -31,8 +29,7 @@ const DEVICE_CODE_LIFETIME_SEC = 600;
 /** ポーリング間隔（秒） */
 const POLLING_INTERVAL_SEC = 5;
 
-/** リフレッシュトークンの有効期限（30日） */
-const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 
 /**
  * user_code 生成用の文字セット。
@@ -346,30 +343,13 @@ export async function handleDeviceCodeGrant(
     serviceScope = ['openid', ...allowedScopes].join(' ');
   }
 
-  // トークン発行（issueOAuthTokenPair と同じロジック）
-  const familyId = crypto.randomUUID();
-
-  const accessToken = await signAccessToken(
-    { iss: c.env.IDP_ORIGIN, sub: user.id, aud: c.env.IDP_ORIGIN, email: user.email, role: user.role, scope: serviceScope, cid: service.client_id },
-    c.env.JWT_PRIVATE_KEY,
-    c.env.JWT_PUBLIC_KEY
-  );
-
-  const refreshToken = generateToken(32);
-  const tokenHash = await sha256(refreshToken);
-  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
-  const pairwiseSub = await sha256(`${service.client_id}:${user.id}`);
-
-  await createRefreshToken(c.env.DB, {
-    id: crypto.randomUUID(),
-    userId: user.id,
+  // トークン発行
+  const { accessToken, refreshToken } = await issueTokenPair(c.env.DB, c.env, user, {
     serviceId: service.id,
-    tokenHash,
-    familyId,
-    expiresAt,
-    pairwiseSub,
-    scope: serviceScope ?? null,
+    clientId: service.client_id,
+    scope: serviceScope,
   });
+  const pairwiseSub = await sha256(`${service.client_id}:${user.id}`);
 
   // OIDC ID トークン発行（openid スコープがある場合）
   let idToken: string | undefined;

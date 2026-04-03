@@ -14,10 +14,7 @@ import {
   unrevokeRefreshToken,
   revokeTokenFamily,
   generateCodeChallenge,
-  generateToken,
-  signAccessToken,
   signIdToken,
-  createRefreshToken,
   timingSafeEqual,
   matchRedirectUri,
 } from '@0g0-id/shared';
@@ -26,6 +23,7 @@ import { externalApiRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../
 import { authenticateService } from '../utils/service-auth';
 import { parseAllowedScopes } from '../utils/scopes';
 import { handleDeviceCodeGrant } from './device';
+import { issueTokenPair } from '../utils/token-pair';
 
 const tokenLogger = createLogger('token');
 
@@ -80,46 +78,7 @@ function applyUserClaims(
   }
 }
 
-/** リフレッシュトークンの有効期限（30日）*/
-const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-/**
- * アクセストークンとリフレッシュトークンのペアを発行する（OAuth標準トークンエンドポイント用）。
- */
-async function issueOAuthTokenPair(
-  db: D1Database,
-  env: IdpEnv,
-  user: User,
-  options: { serviceId: string; clientId: string; familyId?: string; scope?: string }
-): Promise<{ accessToken: string; refreshToken: string }> {
-  const { serviceId, clientId, familyId = crypto.randomUUID(), scope } = options;
-
-  const accessToken = await signAccessToken(
-    { iss: env.IDP_ORIGIN, sub: user.id, aud: env.IDP_ORIGIN, email: user.email, role: user.role, scope, cid: clientId },
-    env.JWT_PRIVATE_KEY,
-    env.JWT_PUBLIC_KEY
-  );
-
-  const refreshToken = generateToken(32);
-  const tokenHash = await sha256(refreshToken);
-  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
-
-  // ペアワイズsubを事前計算して保存（外部API逆引き用）
-  const pairwiseSub = await sha256(`${clientId}:${user.id}`);
-
-  await createRefreshToken(db, {
-    id: crypto.randomUUID(),
-    userId: user.id,
-    serviceId,
-    tokenHash,
-    familyId,
-    expiresAt,
-    pairwiseSub,
-    scope: scope ?? null,
-  });
-
-  return { accessToken, refreshToken };
-}
 
 /**
  * client_secret_basic 認証（Authorization: Basic）またはパブリッククライアント（none）を処理する。
@@ -272,7 +231,7 @@ async function handleAuthorizationCodeGrant(
   }
 
   // トークン発行
-  const { accessToken, refreshToken } = await issueOAuthTokenPair(c.env.DB, c.env, user, {
+  const { accessToken, refreshToken } = await issueTokenPair(c.env.DB, c.env, user, {
     serviceId: service.id,
     clientId: service.client_id,
     scope: serviceScope,
@@ -366,7 +325,7 @@ async function handleRefreshTokenGrant(
   let accessToken: string;
   let newRefreshToken: string;
   try {
-    const tokens = await issueOAuthTokenPair(c.env.DB, c.env, user, {
+    const tokens = await issueTokenPair(c.env.DB, c.env, user, {
       serviceId: service.id,
       clientId: service.client_id,
       familyId: storedToken.family_id,

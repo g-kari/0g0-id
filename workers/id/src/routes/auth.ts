@@ -26,9 +26,7 @@ import {
   generateCodeChallenge,
   generateToken,
   sha256,
-  signAccessToken,
   signIdToken,
-  createRefreshToken,
   findRefreshTokenByHash,
   findAndRevokeRefreshToken,
   unrevokeRefreshToken,
@@ -59,6 +57,7 @@ import { type OAuthProvider, PROVIDER_DISPLAY_NAMES, ALL_PROVIDERS, isValidProvi
 import { authRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware } from '../middleware/auth';
 import { parseAllowedScopes } from '../utils/scopes';
+import { issueTokenPair } from '../utils/token-pair';
 
 const ExchangeSchema = z.object({
   code: z.string().min(1, 'code is required'),
@@ -481,50 +480,7 @@ async function resolveXProvider(
   };
 }
 
-/** リフレッシュトークンの有効期限（30日）*/
-const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-/**
- * アクセストークンとリフレッシュトークンのペアを発行する。
- * /auth/exchange（新規ログイン）と /auth/refresh（トークンローテーション）で共通利用。
- *
- * @param options.serviceId - サービス連携トークンの場合はサービスID、IdP直接セッションはnull
- * @param options.familyId  - 既存ファミリーへの追加（ローテーション）の場合は既存ID、省略で新規UUID
- */
-async function issueTokenPair(
-  db: D1Database,
-  env: IdpEnv,
-  user: User,
-  options: { serviceId: string | null; clientId?: string; familyId?: string; scope?: string }
-): Promise<{ accessToken: string; refreshToken: string }> {
-  const { serviceId, clientId, familyId = crypto.randomUUID(), scope } = options;
-
-  const accessToken = await signAccessToken(
-    { iss: env.IDP_ORIGIN, sub: user.id, aud: env.IDP_ORIGIN, email: user.email, role: user.role, scope, cid: clientId },
-    env.JWT_PRIVATE_KEY,
-    env.JWT_PUBLIC_KEY
-  );
-
-  const refreshToken = generateToken(32);
-  const tokenHash = await sha256(refreshToken);
-  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
-
-  // サービス連携時はペアワイズsubを事前計算して保存（外部API逆引き用）
-  const pairwiseSub = clientId ? await sha256(`${clientId}:${user.id}`) : null;
-
-  await createRefreshToken(db, {
-    id: crypto.randomUUID(),
-    userId: user.id,
-    serviceId,
-    tokenHash,
-    familyId,
-    expiresAt,
-    pairwiseSub,
-    scope: scope ?? null,
-  });
-
-  return { accessToken, refreshToken };
-}
 
 // ─── ルートハンドラー ──────────────────────────────────────────────────────────
 
