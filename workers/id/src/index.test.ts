@@ -41,6 +41,7 @@ vi.mock('@0g0-id/shared', () => ({
   // scheduled handler で使用
   cleanupExpiredAuthCodes: vi.fn().mockResolvedValue(0),
   deleteExpiredDeviceCodes: vi.fn().mockResolvedValue(undefined),
+  cleanupExpiredMcpSessions: vi.fn().mockResolvedValue(0),
 }));
 
 import type { IdpEnv } from '@0g0-id/shared';
