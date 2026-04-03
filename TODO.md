@@ -18,12 +18,9 @@
 - **問題**: 依存パッケージに既知の脆弱性が報告されている
 - **対応案**: Dependabotの詳細を確認し、該当パッケージをアップデート
 
-### [中] 管理者ルートにBANチェックミドルウェアが未適用
+### ~~[中] 管理者ルートにBANチェックミドルウェアが未適用~~ ✅
 
-- **場所**: `workers/id/src/routes/users.ts`, `services.ts`, `metrics.ts`, `admin-audit-logs.ts`
-- **問題**: 管理者ルートで `authMiddleware` + `adminMiddleware` は適用されているが、`rejectBannedUserMiddleware` が含まれていない。BANされた管理者がJWT有効期限（15分）内に管理操作を継続できる
-- **影響**: 管理者がBANされた場合、即座にアクセスを遮断できない（最大15分の猶予が発生）
-- **対応案**: 管理者ルートに `rejectBannedUserMiddleware` を追加するか、`adminMiddleware` 内でDB確認を行う
+- **対応済み**: `adminMiddleware` 内でDB問い合わせによるBANチェックを追加。全管理者ルートでBANされたユーザーのアクセスを即時遮断
 
 ### [中] /auth/exchange と /auth/refresh が Service Bindings 保護なし
 
@@ -59,3 +56,4 @@
 
 - [x] ~~MCPミドルウェアのBAN/Adminチェック順序修正~~ (2026-04-03, commit 9575641)
 - [x] ~~Device Code Grant: approved_at/user_id 不整合防止のCHECK制約追加~~ (2026-04-03, migration 0018)
+- [x] ~~管理者ルートにBANチェック追加~~ (2026-04-03, adminMiddleware内でDB確認)
