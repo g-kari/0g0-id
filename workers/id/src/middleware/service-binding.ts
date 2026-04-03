@@ -1,9 +1,11 @@
 import { createMiddleware } from 'hono/factory';
 import type { IdpEnv } from '@0g0-id/shared';
-import { timingSafeEqual } from '@0g0-id/shared';
+import { timingSafeEqual, createLogger } from '@0g0-id/shared';
 import { authenticateService } from '../utils/service-auth';
 
 const INTERNAL_SECRET_HEADER = 'X-Internal-Secret';
+const sbLogger = createLogger('service-binding');
+let warnedMissingSecret = false;
 
 /**
  * BFF→IdP間のService Bindings呼び出しを検証するミドルウェア。
@@ -13,6 +15,7 @@ const INTERNAL_SECRET_HEADER = 'X-Internal-Secret';
  * 2. Authorization: Basic ヘッダーのクライアント認証情報がDBと一致（外部OAuthクライアント）
  *
  * INTERNAL_SERVICE_SECRET が未設定の場合はミドルウェアをスキップ（開発環境向け）。
+ * 本番環境（HTTPS）で未設定の場合は警告ログを出力する。
  */
 export const serviceBindingMiddleware = createMiddleware<{ Bindings: IdpEnv }>(
   async (c, next) => {
@@ -20,6 +23,10 @@ export const serviceBindingMiddleware = createMiddleware<{ Bindings: IdpEnv }>(
 
     // シークレット未設定時はスキップ（開発環境向けグレースフルデグラデーション）
     if (!secret) {
+      if (!warnedMissingSecret && c.env.IDP_ORIGIN?.startsWith('https://')) {
+        sbLogger.warn('INTERNAL_SERVICE_SECRET が未設定です。Service Bindings保護が無効になっています。本番環境では設定を推奨します。');
+        warnedMissingSecret = true;
+      }
       await next();
       return;
     }

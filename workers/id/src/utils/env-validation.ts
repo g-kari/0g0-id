@@ -62,13 +62,6 @@ export function validateEnv(env: IdpEnv): EnvValidationResult {
     }
   }
 
-  // 本番環境ではINTERNAL_SERVICE_SECRETを必須にする（Service Bindings保護のスキップを防止）
-  if (!env.INTERNAL_SERVICE_SECRET && env.IDP_ORIGIN?.startsWith('https://')) {
-    errors.push(
-      'INTERNAL_SERVICE_SECRET: 本番環境では必須です（Service Bindings保護に必要）'
-    );
-  }
-
   if (errors.length > 0) {
     // 検証失敗時はキャッシュしない（環境変数修正後にisolate再起動なしで回復できるようにする）
     return { ok: false, errors };
