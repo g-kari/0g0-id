@@ -42,11 +42,9 @@
 - **問題**: RFC 8252 §7.3 に従い localhost のポートは無視しているが、query string の比較も省略されている。`http://localhost/callback` 登録時に `http://localhost:9999/callback?extra=param` も一致する
 - **影響**: PKCE必須のため実害は低い。query付きredirect_uriの登録も稀
 
-### [低] 既存テストの不備（admin-audit-logs, metrics テスト）
+### ~~[低] 既存テストの不備（admin-audit-logs, metrics テスト）~~ ✅
 
-- **場所**: `workers/id/src/routes/admin-audit-logs.test.ts`, `workers/id/src/routes/metrics.test.ts`
-- **問題**: `@0g0-id/shared` のモックに `findUserById` が含まれておらず、テスト実行時にエラーが発生する（adminMiddleware がDB問い合わせする際に失敗）
-- **対応案**: `vi.mock` に `findUserById` を追加するか、`importOriginal` でpartial mockに変更
+- **対応済み**: 両テストファイルの `vi.mock` に `findUserById` を追加し、`beforeEach` でBANされていない管理者ユーザーを返すモックを設定。全57テストがパス
 
 ### ~~[低] Device Code Grant の user_code ブルートフォース耐性~~ ✅
 
@@ -72,3 +70,4 @@
 - [x] ~~Device Code user_code ブルートフォース耐性強化~~ (2026-04-03, 認証ユーザー単位レートリミッター追加)
 - [x] ~~Service Bindingミドルウェア Basic認証バイパス修正~~ (2026-04-03, authenticateServiceで実際のクライアント認証情報を検証)
 - [x] ~~本番環境INTERNAL_SERVICE_SECRET必須化~~ (2026-04-03, HTTPS環境で未設定時にバリデーションエラー)
+- [x] ~~既存テストの不備修正（admin-audit-logs, metrics テスト）~~ (2026-04-03, findUserByIdモック追加で全57テストパス)
