@@ -1,7 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Hono } from 'hono';
 import type { IdpEnv } from '@0g0-id/shared';
+
+vi.mock('../utils/service-auth', () => ({
+  authenticateService: vi.fn(),
+}));
+
 import { serviceBindingMiddleware } from './service-binding';
+import { authenticateService } from '../utils/service-auth';
 
 function buildApp(env: Partial<IdpEnv>) {
   const app = new Hono<{ Bindings: typeof env }>();
@@ -66,8 +72,9 @@ describe('serviceBindingMiddleware', () => {
       expect(res.status).toBe(403);
     });
 
-    it('Authorization: Basic ヘッダーがあれば通過する（サービスOAuth）', async () => {
-      const { app, env } = buildApp({ INTERNAL_SERVICE_SECRET: SECRET });
+    it('有効な Authorization: Basic ヘッダーで通過する（サービスOAuth）', async () => {
+      vi.mocked(authenticateService).mockResolvedValue({ id: 'service-1' } as never);
+      const { app, env } = buildApp({ INTERNAL_SERVICE_SECRET: SECRET, DB: {} as D1Database });
       const res = await app.request(
         new Request(`${baseUrl}/auth/exchange`, {
           method: 'POST',
@@ -77,6 +84,39 @@ describe('serviceBindingMiddleware', () => {
         env
       );
       expect(res.status).toBe(200);
+      expect(authenticateService).toHaveBeenCalled();
+    });
+
+    it('無効な Authorization: Basic ヘッダーでは403を返す', async () => {
+      vi.mocked(authenticateService).mockResolvedValue(null);
+      const { app, env } = buildApp({ INTERNAL_SERVICE_SECRET: SECRET, DB: {} as D1Database });
+      const res = await app.request(
+        new Request(`${baseUrl}/auth/exchange`, {
+          method: 'POST',
+          headers: { Authorization: 'Basic aW52YWxpZDppbnZhbGlk' },
+        }),
+        undefined,
+        env
+      );
+      expect(res.status).toBe(403);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('FORBIDDEN');
+    });
+
+    it('authenticateService がエラーを投げたら500を返す', async () => {
+      vi.mocked(authenticateService).mockRejectedValue(new Error('DB error'));
+      const { app, env } = buildApp({ INTERNAL_SERVICE_SECRET: SECRET, DB: {} as D1Database });
+      const res = await app.request(
+        new Request(`${baseUrl}/auth/exchange`, {
+          method: 'POST',
+          headers: { Authorization: 'Basic dGVzdDp0ZXN0' },
+        }),
+        undefined,
+        env
+      );
+      expect(res.status).toBe(500);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('INTERNAL_ERROR');
     });
 
     it('Authorization: Bearer ヘッダーでは通過しない', async () => {

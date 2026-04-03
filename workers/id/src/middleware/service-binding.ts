@@ -1,6 +1,7 @@
 import { createMiddleware } from 'hono/factory';
 import type { IdpEnv } from '@0g0-id/shared';
 import { timingSafeEqual } from '@0g0-id/shared';
+import { authenticateService } from '../utils/service-auth';
 
 const INTERNAL_SECRET_HEADER = 'X-Internal-Secret';
 
@@ -9,7 +10,7 @@ const INTERNAL_SECRET_HEADER = 'X-Internal-Secret';
  *
  * 許可条件（いずれか1つを満たせば通過）:
  * 1. X-Internal-Secret ヘッダーが INTERNAL_SERVICE_SECRET と一致（BFFからのService Bindings呼び出し）
- * 2. Authorization: Basic ... ヘッダーが存在（サービスOAuthクライアントの認証情報付き呼び出し）
+ * 2. Authorization: Basic ヘッダーのクライアント認証情報がDBと一致（外部OAuthクライアント）
  *
  * INTERNAL_SERVICE_SECRET が未設定の場合はミドルウェアをスキップ（開発環境向け）。
  */
@@ -31,11 +32,21 @@ export const serviceBindingMiddleware = createMiddleware<{ Bindings: IdpEnv }>(
     }
 
     // 条件2: Authorization: Basic ヘッダーによるサービスOAuthクライアント認証
-    // （実際の認証情報の検証はルートハンドラ内で行われる）
+    // 存在チェックだけでなく、実際にDB上のクライアント認証情報と照合する
     const authHeader = c.req.header('Authorization');
     if (authHeader && authHeader.startsWith('Basic ')) {
-      await next();
-      return;
+      try {
+        const service = await authenticateService(c.env.DB, authHeader);
+        if (service) {
+          await next();
+          return;
+        }
+      } catch {
+        return c.json(
+          { error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } },
+          500
+        );
+      }
     }
 
     return c.json(
