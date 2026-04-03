@@ -33,11 +33,9 @@
 
 - **対応済み**: 両テストファイルの`beforeEach`にadminMiddleware用`findUserById`モックを追加。admin系ルートの「ユーザー不在」テストは`mockResolvedValueOnce`チェーンでadminMiddlewareとルートハンドラを分離。`admin.test.ts`のenv未設定も修正。全1286テストがパス
 
-### [低] matchRedirectUri で localhost 時に query string が無視される
+### ~~[低] matchRedirectUri で localhost 時に query string が無視される~~ ✅
 
-- **場所**: `packages/shared/src/lib/redirect-uri.ts` (L22-29)
-- **問題**: RFC 8252 §7.3 に従い localhost のポートは無視しているが、query string の比較も省略されている。`http://localhost/callback` 登録時に `http://localhost:9999/callback?extra=param` も一致する
-- **影響**: PKCE必須のため実害は低い。query付きredirect_uriの登録も稀
+- **対応済み**: `regUrl.search === reqUrl.search` を localhost 比較ロジックに追加。ポートは無視しつつ query string は厳密に比較するよう修正（2026-04-04）
 
 ### ~~[低] 既存テストの不備（admin-audit-logs, metrics テスト）~~ ✅
 
@@ -75,11 +73,9 @@
 
 - **対応済み**: `UserFilter` に `search` フィールドを追加し、`buildUserFilterClause` でemail OR nameの部分一致検索を実装。MCPツールのhandlerを `filter.search` に変更
 
-### [情報] matchRedirectUri の localhost/127.0.0.1 混在
+### ~~[情報] matchRedirectUri の localhost/127.0.0.1 混在~~ ✅
 
-- **場所**: `packages/shared/src/lib/redirect-uri.ts` (L9-33)
-- **問題**: `isLocalhostHost`は`localhost`と`127.0.0.1`の両方を認識するが、後続のhostname比較で不一致になる。セキュリティ上は安全側だが、localhostで登録して127.0.0.1でリクエストした場合にユーザー体験が悪化する可能性
-- **対応案**: 両方のhostnameをlocalhostとして統一するか、ドキュメントで明記
+- **対応済み**: hostname比較を削除し、`localhost` と `127.0.0.1` を同一ホストとして扱うよう変更（RFC 8252 §8.3 SHOULD準拠）。テスト2件追加（2026-04-04）
 
 ### ~~[低] Device Code Grant: approved_at / user_id のデータ不整合エッジケース~~ ✅
 
@@ -108,3 +104,5 @@
 - [x] ~~MCP list_usersのsearch OR検索対応~~ (2026-04-04, UserFilter.search + buildUserFilterClause)
 - [x] ~~MCPセッションのインメモリ管理をD1永続化に変更~~ (2026-04-04, migration 0019 + mcp-sessions.ts + transport.ts書き換え)
 - [x] ~~cleanupExpiredMcpSessionsテストのモック修正~~ (2026-04-04, scheduledハンドラテストでvi.mockのモック不備を修正)
+- [x] ~~matchRedirectUri query string比較追加~~ (2026-04-04, localhostのポート無視しつつquery stringは厳密比較)
+- [x] ~~matchRedirectUri localhost/127.0.0.1 混在対応~~ (2026-04-04, RFC 8252 §8.3 SHOULDに従い同一ホストとして扱う)

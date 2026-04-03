@@ -5,6 +5,8 @@
  * ネイティブアプリ（MCPクライアント等）は起動時にランダムポートで
  * ローカルHTTPサーバーを立ち上げるため、登録時のポートと
  * 実際のリクエスト時のポートが異なることがある。
+ *
+ * localhost と 127.0.0.1 は同一ホストとして扱う (RFC 8252 §8.3 SHOULD)。
  */
 export function matchRedirectUri(registered: string, requested: string): boolean {
   let regUrl: URL;
@@ -20,11 +22,12 @@ export function matchRedirectUri(registered: string, requested: string): boolean
     hostname === 'localhost' || hostname === '127.0.0.1';
 
   // 両方がlocalhostの場合はポートを無視して比較
+  // localhost と 127.0.0.1 は同一ホストとして扱う (RFC 8252 §8.3)
   if (isLocalhostHost(regUrl.hostname) && isLocalhostHost(reqUrl.hostname)) {
     return (
       regUrl.protocol === reqUrl.protocol &&
-      regUrl.hostname.toLowerCase() === reqUrl.hostname.toLowerCase() &&
-      regUrl.pathname === reqUrl.pathname
+      regUrl.pathname === reqUrl.pathname &&
+      regUrl.search === reqUrl.search
     );
   }
 
