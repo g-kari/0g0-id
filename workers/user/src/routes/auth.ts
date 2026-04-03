@@ -1,6 +1,10 @@
 import { Hono } from 'hono';
-import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import { generateToken, isValidProvider, parseSession, setSessionCookie, timingSafeEqual, createLogger, internalServiceHeaders } from '@0g0-id/shared';
+import { getCookie, deleteCookie } from 'hono/cookie';
+import {
+  generateToken, isValidProvider, parseSession, setSessionCookie, createLogger,
+  internalServiceHeaders, setOAuthStateCookie, verifyAndConsumeOAuthState,
+  exchangeCodeAtIdp, revokeTokenAtIdp,
+} from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 
 const app = new Hono<{ Bindings: BffEnv }>();
@@ -18,16 +22,9 @@ app.get('/login', async (c) => {
   }
 
   const state = generateToken(16);
-
   const callbackUrl = `${c.env.SELF_ORIGIN}/auth/callback`;
 
-  setCookie(c, STATE_COOKIE, state, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'Lax',
-    path: '/',
-    maxAge: 600,
-  });
+  setOAuthStateCookie(c, STATE_COOKIE, state);
 
   const loginUrl = new URL(`${c.env.IDP_ORIGIN}/auth/login`);
   loginUrl.searchParams.set('redirect_to', callbackUrl);
@@ -46,46 +43,24 @@ app.get('/callback', async (c) => {
     return c.redirect('/?error=missing_params');
   }
 
-  const storedState = getCookie(c, STATE_COOKIE);
-
-  if (!storedState) {
-    return c.redirect('/?error=missing_session');
+  const stateError = verifyAndConsumeOAuthState(c, STATE_COOKIE, state);
+  if (stateError) {
+    return c.redirect(`/?error=${stateError}`);
   }
-
-  if (!timingSafeEqual(state, storedState)) {
-    return c.redirect('/?error=state_mismatch');
-  }
-
-  // Cookie削除（__Host- prefix には secure: true が必須）
-  deleteCookie(c, STATE_COOKIE, { path: '/', secure: true });
 
   // id worker にコード交換リクエスト（Service Bindings使用）
   const callbackUrl = `${c.env.SELF_ORIGIN}/auth/callback`;
-  const exchangeRes = await c.env.IDP.fetch(
-    new Request(`${c.env.IDP_ORIGIN}/auth/exchange`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...internalServiceHeaders(c.env) },
-      body: JSON.stringify({ code, redirect_to: callbackUrl }),
-    })
-  );
+  const result = await exchangeCodeAtIdp(c.env, code, callbackUrl);
 
-  if (!exchangeRes.ok) {
+  if (!result.ok) {
     return c.redirect('/?error=exchange_failed');
   }
 
-  const exchangeData = await exchangeRes.json<{
-    data: {
-      access_token: string;
-      refresh_token: string;
-      user: { id: string; email: string; name: string; role: 'user' | 'admin' };
-    };
-  }>();
-
   // セッションCookieにトークンを保存
   await setSessionCookie(c, SESSION_COOKIE, {
-    access_token: exchangeData.data.access_token,
-    refresh_token: exchangeData.data.refresh_token,
-    user: exchangeData.data.user,
+    access_token: result.data.access_token,
+    refresh_token: result.data.refresh_token,
+    user: result.data.user,
   });
 
   return c.redirect('/profile.html');
@@ -96,13 +71,7 @@ app.post('/logout', async (c) => {
   const sessionData = await parseSession(getCookie(c, SESSION_COOKIE), c.env.SESSION_SECRET);
   if (sessionData) {
     try {
-      await c.env.IDP.fetch(
-        new Request(`${c.env.IDP_ORIGIN}/auth/logout`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...internalServiceHeaders(c.env) },
-          body: JSON.stringify({ refresh_token: sessionData.refresh_token }),
-        })
-      );
+      await revokeTokenAtIdp(c.env, sessionData.refresh_token);
     } catch (err) {
       // IdP側のトークン失効に失敗してもCookie削除は継続するが、ログに記録する
       userAuthLogger.error('[logout] IdP revoke request failed', err);
@@ -152,13 +121,7 @@ app.post('/link', async (c) => {
   const state = generateToken(16);
   const callbackUrl = `${c.env.SELF_ORIGIN}/auth/callback`;
 
-  setCookie(c, STATE_COOKIE, state, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'Lax',
-    path: '/',
-    maxAge: 600,
-  });
+  setOAuthStateCookie(c, STATE_COOKIE, state);
 
   const loginUrl = new URL(`${c.env.IDP_ORIGIN}/auth/login`);
   loginUrl.searchParams.set('redirect_to', callbackUrl);

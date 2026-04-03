@@ -2,6 +2,7 @@ import { type Context } from 'hono';
 import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
 import type { BffEnv } from '../types';
 import { decodeBase64Url } from './base64url';
+import { timingSafeEqual } from './crypto';
 
 export interface BffSession {
   access_token: string;
@@ -320,4 +321,78 @@ export async function proxyMutate(
     headers: { Origin: c.env.IDP_ORIGIN },
   });
   return proxyResponse(res);
+}
+
+/**
+ * OAuth stateパラメータをCookieに保存する（BFFログイン・リンク開始時に使用）。
+ */
+export function setOAuthStateCookie(
+  c: Context<{ Bindings: BffEnv }>,
+  cookieName: string,
+  state: string
+): void {
+  setCookie(c, cookieName, state, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: 600,
+  });
+}
+
+/**
+ * OAuthコールバックでstateパラメータを検証し、state Cookieを消費する。
+ * 成功時は null を返し、失敗時はエラーコードを返す。
+ */
+export function verifyAndConsumeOAuthState(
+  c: Context<{ Bindings: BffEnv }>,
+  stateCookieName: string,
+  stateParam: string
+): 'missing_session' | 'state_mismatch' | null {
+  const storedState = getCookie(c, stateCookieName);
+  if (!storedState) return 'missing_session';
+  if (!timingSafeEqual(stateParam, storedState)) return 'state_mismatch';
+  deleteCookie(c, stateCookieName, { path: '/', secure: true });
+  return null;
+}
+
+export interface ExchangeResult {
+  access_token: string;
+  refresh_token: string;
+  user: { id: string; email: string; name: string; role: 'user' | 'admin' };
+}
+
+/**
+ * BFFからIdPへ認可コードを交換する。
+ * Service Bindingsを使用してIdPのexchangeエンドポイントを呼び出す。
+ */
+export async function exchangeCodeAtIdp(
+  env: BffEnv,
+  code: string,
+  callbackUrl: string
+): Promise<{ ok: true; data: ExchangeResult } | { ok: false }> {
+  const res = await env.IDP.fetch(
+    new Request(`${env.IDP_ORIGIN}/auth/exchange`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...internalServiceHeaders(env) },
+      body: JSON.stringify({ code, redirect_to: callbackUrl }),
+    })
+  );
+  if (!res.ok) return { ok: false };
+  const body = await res.json<{ data: ExchangeResult }>();
+  return { ok: true, data: body.data };
+}
+
+/**
+ * BFFからIdPへリフレッシュトークンの失効を要求する。
+ * 通信エラーは呼び出し側で処理する。
+ */
+export async function revokeTokenAtIdp(env: BffEnv, refreshToken: string): Promise<void> {
+  await env.IDP.fetch(
+    new Request(`${env.IDP_ORIGIN}/auth/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...internalServiceHeaders(env) },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    })
+  );
 }
