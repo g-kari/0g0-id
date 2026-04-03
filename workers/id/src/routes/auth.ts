@@ -56,6 +56,7 @@ import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
 import { type OAuthProvider, PROVIDER_DISPLAY_NAMES, ALL_PROVIDERS, isValidProvider } from '@0g0-id/shared';
 import { authRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware } from '../middleware/auth';
+import { serviceBindingMiddleware } from '../middleware/service-binding';
 import { parseAllowedScopes } from '../utils/scopes';
 import { issueTokenPair } from '../utils/token-pair';
 
@@ -886,7 +887,7 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
 
 // POST /auth/exchange — ワンタイムコード交換
 // BFF（service_id なし）および外部サービス（service_id あり）の両方をサポート
-app.post('/exchange', tokenApiRateLimitMiddleware, async (c) => {
+app.post('/exchange', tokenApiRateLimitMiddleware, serviceBindingMiddleware, async (c) => {
   const result = await parseJsonBody(c, ExchangeSchema);
   if (!result.ok) return result.response;
   const body = result.data;
@@ -1014,7 +1015,7 @@ app.post('/exchange', tokenApiRateLimitMiddleware, async (c) => {
 });
 
 // POST /auth/refresh — トークンリフレッシュ（BFFサーバー間専用）
-app.post('/refresh', tokenApiRateLimitMiddleware, async (c) => {
+app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, async (c) => {
   const result = await parseJsonBody(c, RefreshSchema);
   if (!result.ok) return result.response;
 

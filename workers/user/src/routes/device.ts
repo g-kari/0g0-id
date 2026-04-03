@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
-import { parseSession, createLogger } from '@0g0-id/shared';
+import { parseSession, createLogger, internalServiceHeaders } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 import { SESSION_COOKIE } from './auth';
 
@@ -38,6 +38,7 @@ app.post('/verify', async (c): Promise<Response> => {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
+          ...internalServiceHeaders(c.env),
         },
         body: JSON.stringify({ user_code: userCode }),
       })
@@ -85,6 +86,7 @@ app.post('/approve', async (c): Promise<Response> => {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
+          ...internalServiceHeaders(c.env),
         },
         body: JSON.stringify({ user_code: userCode, action }),
       })

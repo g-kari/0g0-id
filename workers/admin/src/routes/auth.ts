@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import { generateToken, parseSession, setSessionCookie, timingSafeEqual, createLogger } from '@0g0-id/shared';
+import { generateToken, parseSession, setSessionCookie, timingSafeEqual, createLogger, internalServiceHeaders } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 
 const app = new Hono<{ Bindings: BffEnv }>();
@@ -57,7 +57,7 @@ app.get('/callback', async (c) => {
   const exchangeRes = await c.env.IDP.fetch(
     new Request(`${c.env.IDP_ORIGIN}/auth/exchange`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...internalServiceHeaders(c.env) },
       body: JSON.stringify({ code, redirect_to: callbackUrl }),
     })
   );
@@ -81,7 +81,7 @@ app.get('/callback', async (c) => {
       await c.env.IDP.fetch(
         new Request(`${c.env.IDP_ORIGIN}/auth/logout`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...internalServiceHeaders(c.env) },
           body: JSON.stringify({ refresh_token: exchangeData.data.refresh_token }),
         })
       );
@@ -110,7 +110,7 @@ app.post('/logout', async (c) => {
       await c.env.IDP.fetch(
         new Request(`${c.env.IDP_ORIGIN}/auth/logout`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...internalServiceHeaders(c.env) },
           body: JSON.stringify({ refresh_token: sessionData.refresh_token }),
         })
       );

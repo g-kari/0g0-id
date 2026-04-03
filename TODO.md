@@ -22,12 +22,9 @@
 
 - **対応済み**: `adminMiddleware` 内でDB問い合わせによるBANチェックを追加。全管理者ルートでBANされたユーザーのアクセスを即時遮断
 
-### [中] /auth/exchange と /auth/refresh が Service Bindings 保護なし
+### ~~[中] /auth/exchange と /auth/refresh が Service Bindings 保護なし~~ ✅
 
-- **場所**: `workers/id/src/routes/auth.ts` (L933, L1061)
-- **問題**: BFF向けトークン交換エンドポイントが外部から直接HTTPリクエストで呼び出し可能。Service Bindings経由であることを検証するミドルウェアがない
-- **影響**: 認可コードを窃取できた攻撃者が直接エンドポイントを呼び出し可能（ただし認可コードは1分有効期限+SHA-256+一度きり消費で保護されており攻撃難易度は高い）
-- **対応案**: Service Bindings経由の呼び出しを検証するミドルウェア（特定ヘッダーやシークレット検証）の追加
+- **対応済み**: `serviceBindingMiddleware` を追加。`INTERNAL_SERVICE_SECRET` 環境変数による共有シークレット検証で、BFF以外の外部からの直接呼び出しをブロック。サービスOAuth（Basic認証）は引き続き許可
 
 ### [低] /auth/logout が認証なしでアクセス可能
 
@@ -57,3 +54,4 @@
 - [x] ~~MCPミドルウェアのBAN/Adminチェック順序修正~~ (2026-04-03, commit 9575641)
 - [x] ~~Device Code Grant: approved_at/user_id 不整合防止のCHECK制約追加~~ (2026-04-03, migration 0018)
 - [x] ~~管理者ルートにBANチェック追加~~ (2026-04-03, adminMiddleware内でDB確認)
+- [x] ~~/auth/exchange, /auth/refresh にService Bindings保護追加~~ (2026-04-03, serviceBindingMiddleware + INTERNAL_SERVICE_SECRET)

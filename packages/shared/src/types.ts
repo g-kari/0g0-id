@@ -136,6 +136,8 @@ export interface IdpEnv {
   RATE_LIMITER_EXTERNAL?: RateLimitBinding;
   /** /auth/exchange, /auth/refresh 向けレートリミッター（IP単位） */
   RATE_LIMITER_TOKEN?: RateLimitBinding;
+  /** BFF→IdP間のService Bindings呼び出しを検証する共有シークレット */
+  INTERNAL_SERVICE_SECRET?: string;
 }
 
 export interface BffEnv {
@@ -145,4 +147,6 @@ export interface BffEnv {
   SELF_ORIGIN: string;
   /** BFFセッションCookieのAES-GCM暗号化キー */
   SESSION_SECRET: string;
+  /** BFF→IdP間のService Bindings呼び出しを検証する共有シークレット */
+  INTERNAL_SERVICE_SECRET?: string;
 }

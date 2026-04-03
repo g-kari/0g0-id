@@ -139,6 +139,17 @@ function errorResponse(status: number, code: string, message: string): Response 
 }
 
 /**
+ * BFF→IdP間のService Bindings呼び出しに付与する内部認証ヘッダーを返す。
+ * INTERNAL_SERVICE_SECRET が未設定の場合は空オブジェクトを返す。
+ */
+export function internalServiceHeaders(env: BffEnv): Record<string, string> {
+  if (env.INTERNAL_SERVICE_SECRET) {
+    return { 'X-Internal-Secret': env.INTERNAL_SERVICE_SECRET };
+  }
+  return {};
+}
+
+/**
  * BFF→IdP へのリクエストをアクセストークン付きで実行する。
  * 401が返った場合はリフレッシュトークンで再取得してリトライする。
  * リフレッシュに成功した場合はセッションCookieも更新する。
@@ -155,12 +166,15 @@ export async function fetchWithAuth(
     return errorResponse(401, 'UNAUTHORIZED', 'Not authenticated');
   }
 
+  const serviceHeaders = internalServiceHeaders(c.env);
+
   const makeRequest = (token: string): Promise<Response> =>
     c.env.IDP.fetch(
       new Request(url, {
         ...init,
         headers: {
           ...(init?.headers as Record<string, string> | undefined),
+          ...serviceHeaders,
           Authorization: `Bearer ${token}`,
         },
       })
@@ -180,7 +194,7 @@ export async function fetchWithAuth(
       refreshRes = await c.env.IDP.fetch(
         new Request(`${c.env.IDP_ORIGIN}/auth/refresh`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...serviceHeaders },
           body: JSON.stringify({ refresh_token: session.refresh_token }),
         })
       );
