@@ -33,10 +33,9 @@ export const listUsersTool: McpTool = {
     const search = typeof params.search === 'string' ? params.search : undefined;
     const role = params.role === 'user' || params.role === 'admin' ? params.role : undefined;
 
-    // UserFilter の email/name は AND 条件のため、search は email 部分一致で検索する
     const filter: UserFilter = { role };
     if (search) {
-      filter.email = search;
+      filter.search = search;
     }
 
     const [users, total] = await Promise.all([

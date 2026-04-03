@@ -24,7 +24,7 @@ function isBffSession(obj: unknown): obj is BffSession {
   const u = s['user'] as Record<string, unknown>;
   if (typeof u['id'] !== 'string' || !u['id']) return false;
   if (typeof u['email'] !== 'string' || !u['email']) return false;
-  if (typeof u['name'] !== 'string') return false;
+  if (typeof u['name'] !== 'string' || !u['name']) return false;
   if (u['role'] !== 'user' && u['role'] !== 'admin') return false;
   return true;
 }
@@ -212,6 +212,15 @@ export async function fetchWithAuth(
           user?: { id: string; email: string; name: string; role: 'user' | 'admin' };
         };
       }>();
+
+      // リフレッシュレスポンスの実行時バリデーション
+      if (
+        typeof refreshData.data?.access_token !== 'string' || !refreshData.data.access_token ||
+        typeof refreshData.data?.refresh_token !== 'string' || !refreshData.data.refresh_token
+      ) {
+        deleteCookie(c, sessionCookieName, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' });
+        return errorResponse(401, 'UNAUTHORIZED', 'Session expired');
+      }
 
       // セッションCookieを新トークンで更新
       // IdPのリフレッシュレスポンスに含まれる検証済みユーザー情報でセッションを更新する。

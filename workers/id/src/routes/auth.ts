@@ -43,7 +43,6 @@ import {
   findAndConsumeAuthCode,
   findServiceByClientId,
   findServiceById,
-  isValidRedirectUri,
   listRedirectUris,
   normalizeRedirectUri,
   timingSafeEqual,
@@ -617,8 +616,11 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
     if (!normalizedRedirectTo) {
       return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid redirect_to' } }, 400);
     }
-    const valid = await isValidRedirectUri(c.env.DB, service.id, normalizedRedirectTo);
-    if (!valid) {
+    // 登録済みredirect_uriをmatchRedirectUriで比較（/auth/authorizeと同じロジック）
+    // localhostの場合はポート番号を無視してマッチ（RFC 8252 §7.3準拠）
+    const registeredUris = await listRedirectUris(c.env.DB, service.id);
+    const matched = registeredUris.some((ru) => matchRedirectUri(ru.uri, normalizedRedirectTo));
+    if (!matched) {
       return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid redirect_to' } }, 400);
     }
     serviceId = service.id;

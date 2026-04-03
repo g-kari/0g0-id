@@ -17,6 +17,7 @@ import {
   signIdToken,
   timingSafeEqual,
   matchRedirectUri,
+  normalizeRedirectUri,
 } from '@0g0-id/shared';
 import type { IdpEnv, User } from '@0g0-id/shared';
 import { externalApiRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
@@ -197,8 +198,9 @@ async function handleAuthorizationCodeGrant(
     return c.json({ error: 'invalid_grant', error_description: 'Authorization code was not issued for this client' }, 400);
   }
 
-  // redirect_uri の一致検証（ポート番号無視のlocalhost比較を含む）
-  if (!matchRedirectUri(authCode.redirect_to, redirectUri)) {
+  // redirect_uri を正規化してから比較（RFC 6749 §4.1.3）
+  const normalizedRedirectUri = normalizeRedirectUri(redirectUri);
+  if (!normalizedRedirectUri || !matchRedirectUri(authCode.redirect_to, normalizedRedirectUri)) {
     return c.json({ error: 'invalid_grant', error_description: 'redirect_uri mismatch' }, 400);
   }
 
@@ -229,8 +231,29 @@ async function handleAuthorizationCodeGrant(
     scope: serviceScope,
   });
 
+  // OIDC ID トークン発行（openid スコープがある場合）
+  let idToken: string | undefined;
+  if (serviceScope?.split(' ').includes('openid')) {
+    const pairwiseSub = await sha256(`${service.client_id}:${user.id}`);
+    const authTime = Math.floor(Date.now() / 1000);
+    idToken = await signIdToken(
+      {
+        iss: c.env.IDP_ORIGIN,
+        sub: pairwiseSub,
+        aud: service.client_id,
+        email: user.email,
+        name: user.name,
+        picture: user.picture,
+        authTime,
+        nonce: authCode.nonce ?? undefined,
+      },
+      c.env.JWT_PRIVATE_KEY,
+      c.env.JWT_PUBLIC_KEY
+    );
+  }
+
   // レスポンス (RFC 6749 §5.1)
-  return c.json(buildTokenResponse(accessToken, refreshToken, serviceScope));
+  return c.json(buildTokenResponse(accessToken, refreshToken, serviceScope, idToken));
 }
 
 /**

@@ -10,13 +10,13 @@ type McpEnv = {
 
 // セッション管理（インメモリ、Worker単位）
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30分
-const sessions = new Map<string, { createdAt: number }>();
+const sessions = new Map<string, { createdAt: number; lastActiveAt: number }>();
 
 /** TTL超過セッションを除去する */
 function pruneExpiredSessions(): void {
   const now = Date.now();
   for (const [id, session] of sessions) {
-    if (now - session.createdAt > SESSION_TTL_MS) {
+    if (now - session.lastActiveAt > SESSION_TTL_MS) {
       sessions.delete(id);
     }
   }
@@ -59,7 +59,8 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
       if (rpcRequest.method === 'initialize') {
         pruneExpiredSessions();
         const newSessionId = crypto.randomUUID();
-        sessions.set(newSessionId, { createdAt: Date.now() });
+        const now = Date.now();
+        sessions.set(newSessionId, { createdAt: now, lastActiveAt: now });
         const result = await server.handleRequest(rpcRequest, c.get('mcpContext'));
         c.header('Mcp-Session-Id', newSessionId);
         responses.push(result);
@@ -74,6 +75,12 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
           error: { code: -32600, message: 'Invalid or missing session' },
         });
         continue;
+      }
+
+      // セッションのアイドルタイムアウトをスライディングウィンドウで管理
+      const activeSession = sessions.get(sessionId);
+      if (activeSession) {
+        activeSession.lastActiveAt = Date.now();
       }
 
       const result = await server.handleRequest(rpcRequest, c.get('mcpContext'));

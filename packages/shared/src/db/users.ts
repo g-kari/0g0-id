@@ -315,12 +315,20 @@ export interface UserFilter {
   name?: string;
   /** true: BAN済みのみ / false: BAN済み除外 / undefined: 全件 */
   banned?: boolean;
+  /** メールアドレスまたは名前で部分一致OR検索 */
+  search?: string;
 }
 
 function buildUserFilterClause(filter?: UserFilter): { where: string; params: unknown[] } {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
+  if (filter?.search) {
+    // email OR name の部分一致検索
+    conditions.push("(email LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\')");
+    const pattern = `%${escapeLikePattern(filter.search)}%`;
+    params.push(pattern, pattern);
+  }
   if (filter?.email) {
     conditions.push("email LIKE ? ESCAPE '\\'");
     params.push(`%${escapeLikePattern(filter.email)}%`);

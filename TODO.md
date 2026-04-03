@@ -53,6 +53,34 @@
 
 - **対応済み**: 認証ユーザー単位のレートリミッター `RATE_LIMITER_DEVICE_VERIFY` を追加（10回/分/ユーザー）。既存のIP単位レートリミット（30回/分）と二重防御でブルートフォースを緩和
 
+### ~~[中] authorization_code grantでID tokenが発行されない（OIDC非準拠）~~ ✅
+
+- **対応済み**: `handleAuthorizationCodeGrant` で `openid` スコープがある場合に `signIdToken` を呼び出すよう修正。device code grantと同じパターンでpairwise sub + nonce対応
+
+### ~~[中] token exchangeでredirect_uriが正規化されない~~ ✅
+
+- **対応済み**: `handleAuthorizationCodeGrant` で `normalizeRedirectUri` を呼び出してから `matchRedirectUri` で比較するよう修正（RFC 6749 §4.1.3準拠）
+
+### ~~[中] /auth/loginと/auth/authorizeでredirect_uri検証が不一致~~ ✅
+
+- **対応済み**: `/auth/login` の `isValidRedirectUri`（完全一致DB検索）を `listRedirectUris` + `matchRedirectUri`（ポート番号無視のlocalhost比較）に置換。`/auth/authorize` と同一ロジックに統一（RFC 8252 §7.3準拠）
+
+### ~~[低] isBffSessionでnameの空文字チェック漏れ~~ ✅
+
+- **対応済み**: `isBffSession` type guardで `name` フィールドにも空文字チェック（`!u['name']`）を追加。他のフィールド（access_token, id, email等）と整合
+
+### ~~[低] fetchWithAuthのリフレッシュレスポンス未バリデーション~~ ✅
+
+- **対応済み**: `fetchWithAuth` でリフレッシュレスポンスの `access_token`/`refresh_token` が非空文字列であることを実行時バリデーション。不正な場合はセッションCookieを削除して401を返す
+
+### ~~[低] MCPセッションTTLが固定期限（スライディングウィンドウでない）~~ ✅
+
+- **対応済み**: セッションに `lastActiveAt` フィールドを追加し、リクエストごとに更新。TTL判定を `createdAt` から `lastActiveAt` に変更してアイドルタイムアウト方式に
+
+### ~~[低] MCP list_usersのsearchがemailのみ（説明と不一致）~~ ✅
+
+- **対応済み**: `UserFilter` に `search` フィールドを追加し、`buildUserFilterClause` でemail OR nameの部分一致検索を実装。MCPツールのhandlerを `filter.search` に変更
+
 ### [情報] matchRedirectUri の localhost/127.0.0.1 混在
 
 - **場所**: `packages/shared/src/lib/redirect-uri.ts` (L9-33)
@@ -77,3 +105,10 @@
 - [x] ~~使用済み認可コード・デバイスコードの定期クリーンアップ~~ (2026-04-03, Cron Trigger + cleanupExpiredAuthCodes + deleteExpiredDeviceCodes)
 - [x] ~~既存テストの不備修正（services, users, admin テスト）~~ (2026-04-03, findUserByIdモック追加+mockResolvedValueOnceチェーンで全1286テストパス)
 - [x] ~~Dependabot脆弱性アラート対応（picomatch ReDoS + Method Injection）~~ (2026-04-04, picomatch@4.0.4へアップデート + workers/mcp --passWithNoTests修正)
+- [x] ~~authorization_code grantでID token発行（OIDC準拠）~~ (2026-04-04, signIdToken呼び出し追加)
+- [x] ~~token exchangeのredirect_uri正規化~~ (2026-04-04, normalizeRedirectUri追加)
+- [x] ~~/auth/loginのredirect_uri検証を/auth/authorizeと統一~~ (2026-04-04, matchRedirectUri方式に変更)
+- [x] ~~isBffSessionのname空文字チェック追加~~ (2026-04-04)
+- [x] ~~fetchWithAuthリフレッシュレスポンスバリデーション追加~~ (2026-04-04)
+- [x] ~~MCPセッションTTLをスライディングウィンドウに変更~~ (2026-04-04, lastActiveAt追加)
+- [x] ~~MCP list_usersのsearch OR検索対応~~ (2026-04-04, UserFilter.search + buildUserFilterClause)
