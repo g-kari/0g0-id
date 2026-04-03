@@ -12,6 +12,12 @@
   - Durable Objectsでセッション管理する
   - セッションIDをステートレス化する（JWTベースのセッショントークン等）
 
+### [高] Dependabot脆弱性アラート（high 1件、moderate 1件）
+
+- **場所**: https://github.com/g-kari/0g0-id/security/dependabot
+- **問題**: 依存パッケージに既知の脆弱性が報告されている
+- **対応案**: Dependabotの詳細を確認し、該当パッケージをアップデート
+
 ### [中] 管理者ルートにBANチェックミドルウェアが未適用
 
 - **場所**: `workers/id/src/routes/users.ts`, `services.ts`, `metrics.ts`, `admin-audit-logs.ts`
