@@ -255,7 +255,7 @@ app.post(
  * token.ts の POST /api/token から呼ばれる。
  */
 export async function handleDeviceCodeGrant(
-  c: { env: IdpEnv; req: { header: (name: string) => string | undefined }; json: (data: unknown, status?: number) => Response },
+  c: { env: IdpEnv; req: { header: (name: string) => string | undefined }; json: (data: unknown, status?: number, headers?: Record<string, string>) => Response },
   params: Record<string, string>
 ): Promise<Response> {
   const rawDeviceCode = params['device_code'];
@@ -310,7 +310,8 @@ export async function handleDeviceCodeGrant(
     // まだ承認されていない場合のみポーリング間隔チェック
     const pollingAllowed = await tryUpdateDeviceCodePolledAt(c.env.DB, deviceCode.id, POLLING_INTERVAL_SEC);
     if (!pollingAllowed) {
-      return c.json({ error: 'slow_down' }, 400);
+      // RFC 8628 §3.5: slow_down には Retry-After ヘッダーを付与する
+      return c.json({ error: 'slow_down' }, 400, { 'Retry-After': String(POLLING_INTERVAL_SEC) });
     }
     return c.json({ error: 'authorization_pending' }, 400);
   }
