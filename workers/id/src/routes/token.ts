@@ -204,6 +204,14 @@ async function handleAuthorizationCodeGrant(
     return c.json({ error: 'invalid_grant', error_description: 'redirect_uri mismatch' }, 400);
   }
 
+  // パブリッククライアント判定（Authorizationヘッダーがない = パブリッククライアント）
+  const isPublicClient = !c.req.header('Authorization')?.startsWith('Basic ');
+
+  // パブリッククライアントはPKCEを必須とする（RFC 7636 §4.4 / OAuth 2.1）
+  if (isPublicClient && !authCode.code_challenge) {
+    return c.json({ error: 'invalid_grant', error_description: 'PKCE is required for public clients' }, 400);
+  }
+
   // PKCE 検証 (S256)
   if (authCode.code_challenge) {
     const expectedChallenge = await generateCodeChallenge(codeVerifier);

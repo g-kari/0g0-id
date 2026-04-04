@@ -1039,7 +1039,7 @@ describe('POST /api/token/ — authorization_code grant', () => {
     expect(body.id_token).toBeUndefined();
   });
 
-  it('code_challengeがない認可コード（PKCE不要）→ 成功', async () => {
+  it('パブリッククライアント + code_challengeがない認可コード → PKCE必須エラー', async () => {
     vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
       ...mockAuthCode,
       code_challenge: null,
@@ -1054,11 +1054,10 @@ describe('POST /api/token/ — authorization_code grant', () => {
         code_verifier: 'a'.repeat(43),
       },
     });
-    expect(res.status).toBe(200);
-    const body = await res.json<{ access_token: string }>();
-    expect(body.access_token).toBe('mock-access-token');
-    // PKCE検証は実行されない
-    expect(vi.mocked(generateCodeChallenge)).not.toHaveBeenCalled();
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string; error_description: string }>();
+    expect(body.error).toBe('invalid_grant');
+    expect(body.error_description).toBe('PKCE is required for public clients');
   });
 
   it('application/json形式でも動作する', async () => {

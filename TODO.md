@@ -89,11 +89,9 @@
 
 ## セキュリティ / アーキテクチャ課題（新規）
 
-### [高] PKCE が `token.ts` の authorization_code グラントで任意
+### ~~[高] PKCE が `token.ts` の authorization_code グラントで任意~~ ✅
 
-- `code_challenge` が DB に存在しない場合は `code_verifier` なしでトークン発行可能
-- パブリッククライアントでは PKCE を必須化すべき（RFC 7636 §4.4 SHOULD → 実質 MUST）
-- 対応方針: `handleAuthorizationCodeGrant` で `code_challenge` が DB に保存されている場合のみ検証、かつコンフィデンシャルクライアント以外は必須化
+- **対応済み**: `handleAuthorizationCodeGrant` で `code_challenge` が DB に保存されている場合のみ検証し、コンフィデンシャルクライアント以外（パブリッククライアント）では PKCE を必須化。`code_challenge` なしのリクエストはパブリッククライアントからの場合にエラーを返すよう修正（RFC 7636 §4.4 準拠）
 
 ### [高] `/api/token` エンドポイントのレートリミットが IP 単位のみ
 
@@ -154,3 +152,4 @@
 - [x] ~~matchRedirectUri query string比較追加~~ (2026-04-04, localhostのポート無視しつつquery stringは厳密比較)
 - [x] ~~matchRedirectUri localhost/127.0.0.1 混在対応~~ (2026-04-04, RFC 8252 §8.3 SHOULDに従い同一ホストとして扱う)
 - [x] ~~introspect token_type_hint による検索順最適化~~ (2026-04-04, access_token ヒント時はJWT→リフレッシュの順に変更、ヘルパー関数に切り出しリファクタ)
+- [x] ~~PKCE が authorization_code グラントで任意（パブリッククライアントで必須化）~~ (2026-04-04, handleAuthorizationCodeGrant でパブリッククライアントへの PKCE 必須化、RFC 7636 §4.4 準拠)
