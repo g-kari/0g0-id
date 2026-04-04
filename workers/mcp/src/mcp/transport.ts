@@ -43,7 +43,8 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
       // initializeの場合、新セッション作成
       if (rpcRequest.method === 'initialize') {
         const newSessionId = crypto.randomUUID();
-        await createMcpSession(c.env.DB, newSessionId);
+        const context = c.get('mcpContext');
+        await createMcpSession(c.env.DB, newSessionId, context.userId);
         const result = await server.handleRequest(rpcRequest, c.get('mcpContext'));
         c.header('Mcp-Session-Id', newSessionId);
         responses.push(result);

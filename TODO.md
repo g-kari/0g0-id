@@ -110,10 +110,9 @@
 
 - **対応済み**: スコープ未指定時は `'openid'` のみを返すよう修正（最小スコープポリシー、RFC 6749 §3.3 準拠）。`scopes.test.ts` を新規作成し 14テストを追加（2026-04-05）
 
-### [中] `mcp_sessions` テーブルにユーザーIDが関連付けられていない
+### ~~[中] `mcp_sessions` テーブルにユーザーIDが関連付けられていない~~ ✅
 
-- セッションハイジャックが発生した場合にユーザーとセッションを紐付けて無効化できない
-- 対応方針: `mcp_sessions` テーブルに `user_id` カラムを追加（migration 追加）し、セッション作成時に記録
+- **対応済み**: migration 0021: `user_id` カラム追加、`createMcpSession`/`deleteMcpSessionsByUser` 更新（2026-04-05）
 
 ## 完了済み（Device Code Grant 対応）
 
