@@ -28,3 +28,4 @@ export * from './db/login-events';
 export * from './db/admin-audit-logs';
 export * from './db/device-codes';
 export * from './db/mcp-sessions';
+export * from './db/revoked-access-tokens';

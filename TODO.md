@@ -101,11 +101,10 @@
 
 - **対応済み**: `token.ts` のサービス所有権確認・有効期限チェックのパスで `unrevokeRefreshToken` 呼び出し前に `findRefreshTokenByHash` で現在の `revoked_reason` を確認し、`reuse_detected` が設定済みの場合はアンリボークせず `Token reuse detected` を返すよう修正。`auth.ts` の catch ブロックと同様のパターンを追加。テスト2件追加（2026-04-05）
 
-### [中] RFC 7009 (Token Revocation) — アクセストークンの revoke が未実装
+### ~~[中] RFC 7009 (Token Revocation) — アクセストークンの revoke が実装済み~~ ✅
 
-- 現状リフレッシュトークンの revoke のみ対応
-- アクセストークンを revoke するには `jti` ブロックリスト（D1 または KV）が必要
-- 対応方針: `revoked_access_tokens` テーブルまたは KV に `jti` を保存し、`introspect` / リソースサーバー側で参照
+- **対応済み**: `revoked_access_tokens` テーブル（D1）に `jti` を保存し、`introspect` で参照
+- migration: `0020_revoked_access_tokens.sql`（⚠️ 本番DB適用要: `npm run migrate:id`）
 
 ### ~~[中] `resolveEffectiveScope`: スコープ未指定時に全 allowedScopes を付与~~ ✅
 

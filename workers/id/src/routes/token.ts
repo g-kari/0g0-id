@@ -18,6 +18,8 @@ import {
   timingSafeEqual,
   matchRedirectUri,
   normalizeRedirectUri,
+  addRevokedAccessToken,
+  isAccessTokenRevoked,
 } from '@0g0-id/shared';
 import type { IdpEnv, User } from '@0g0-id/shared';
 import { externalApiRateLimitMiddleware, tokenApiClientRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
@@ -413,6 +415,10 @@ async function introspectJwtToken(
     tokenLogger.warn('Introspect: JWT verification failed', err);
     return null;
   }
+  // RFC 7009: jtiがブロックリストに存在する場合は失効済み
+  if (payload.jti && await isAccessTokenRevoked(db, payload.jti)) {
+    return { active: false };
+  }
   // BFFセッショントークン（cid未設定）は外部サービスからイントロスペクト不可
   if (!payload.cid || payload.cid !== service.client_id) {
     return { active: false };
@@ -505,8 +511,25 @@ app.post('/revoke', externalApiRateLimitMiddleware, async (c) => {
     return c.json({ error: 'invalid_request' }, 400);
   }
 
+  const token = body.token;
+
+  // JWTアクセストークンの失効処理（RFC 7009 §2.1）
+  // JWTは "." を含む形式（header.payload.signature）で識別する
+  if (token.includes('.')) {
+    try {
+      const payload = await verifyAccessToken(token, c.env.JWT_PUBLIC_KEY, c.env.IDP_ORIGIN, c.env.IDP_ORIGIN);
+      // 自サービスが発行したトークンかつ有効期限内のものだけブロックリストに追加
+      if (payload.jti && payload.cid === service.client_id && payload.exp && payload.exp > Math.floor(Date.now() / 1000)) {
+        await addRevokedAccessToken(c.env.DB, payload.jti, payload.exp);
+      }
+    } catch {
+      // JWT検証失敗 → RFC 7009: エラーを無視して 200 OK を返す
+    }
+    return new Response(null, { status: 200 });
+  }
+
   // リフレッシュトークンの失効処理
-  const tokenHash = await sha256(body.token);
+  const tokenHash = await sha256(token);
   const refreshToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
 
   // RFC 7009: トークンが存在しない・失効済みでも 200 OK を返す（情報漏洩防止）
