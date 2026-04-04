@@ -138,6 +138,8 @@ export interface IdpEnv {
   RATE_LIMITER_TOKEN?: RateLimitBinding;
   /** /api/device/verify 向けレートリミッター（認証ユーザー単位） */
   RATE_LIMITER_DEVICE_VERIFY?: RateLimitBinding;
+  /** /api/token POST 向けレートリミッター（client_id単位、未取得時はIP） */
+  RATE_LIMITER_TOKEN_CLIENT?: RateLimitBinding;
   /** BFF→IdP間のService Bindings呼び出しを検証する共有シークレット */
   INTERNAL_SERVICE_SECRET?: string;
 }

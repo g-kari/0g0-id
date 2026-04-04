@@ -20,7 +20,7 @@ import {
   normalizeRedirectUri,
 } from '@0g0-id/shared';
 import type { IdpEnv, User } from '@0g0-id/shared';
-import { externalApiRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
+import { externalApiRateLimitMiddleware, tokenApiClientRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authenticateService } from '../utils/service-auth';
 import { parseAllowedScopes, resolveEffectiveScope } from '../utils/scopes';
 import { handleDeviceCodeGrant } from './device';
@@ -122,7 +122,7 @@ async function resolveOAuthClient(
 
 // POST /api/token — 標準 OAuth 2.0 トークンエンドポイント (RFC 6749)
 // MCPクライアント等のネイティブアプリが直接HTTPリクエストで利用する
-app.post('/', tokenApiRateLimitMiddleware, async (c) => {
+app.post('/', tokenApiRateLimitMiddleware, tokenApiClientRateLimitMiddleware, async (c) => {
   // application/x-www-form-urlencoded をパース
   const contentType = c.req.header('Content-Type') ?? '';
   let params: Record<string, string>;

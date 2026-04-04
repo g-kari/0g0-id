@@ -117,6 +117,23 @@ export const tokenApiRateLimitMiddleware = createRateLimitMiddleware(
 );
 
 /**
+ * トークンエンドポイント向けレートリミッター（client_id単位）。
+ * 対象: POST /api/token
+ *
+ * IPローテーションによるブルートフォースを防ぐため、IP単位の tokenApiRateLimitMiddleware と
+ * 併用する二重防御として使用する（RFC 6749 §10.10）。
+ * client_id は Authorization: Basic ヘッダーから取得する。
+ * 取得できない場合（パブリッククライアントのbody送信）はIPにフォールバックする。
+ * RATE_LIMITER_TOKEN_CLIENT バインディングが未設定の場合はスキップ（ローカル開発・テスト時）。
+ */
+export const tokenApiClientRateLimitMiddleware = createRateLimitMiddleware(
+  'RATE_LIMITER_TOKEN_CLIENT',
+  (env) => env.RATE_LIMITER_TOKEN_CLIENT,
+  (c) => extractClientId(c.req.header('Authorization')) ?? getClientIp(c.req.raw) ?? 'unknown',
+  'Too many requests for this client. Please try again later.',
+);
+
+/**
  * デバイスコード検証向けレートリミッター（認証ユーザー単位）。
  * 対象: POST /api/device/verify
  *
