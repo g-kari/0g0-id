@@ -132,11 +132,9 @@
 
 - **対応済み**: `introspectRefreshToken` / `introspectJwtToken` から `parseAllowedScopes` フォールバックを削除。スコープが null の場合は空文字列を返すよう修正（RFC 7662 §2.2 準拠）。リフレッシュトークンの introspect レスポンスに `token_type: 'refresh_token'` を追加（2026-04-05）
 
-### [中] パブリッククライアントの `client_id` 単位レートリミット欠如
+### ~~[中] パブリッククライアントの `client_id` 単位レートリミット欠如~~ ✅
 
-- **問題**: `body` で `client_id` を送信するパブリッククライアントのリクエストに対して、`client_id` 単位のレートリミットが適用されない（IPフォールバックのみ）
-- **影響**: 同一IPから複数の `client_id` を使い分けることでレートリミット回避が可能
-- [ ] パブリッククライアントでも `client_id` がbodyに含まれる場合はそれをキーとしたレートリミットを適用
+- **対応済み**: `tokenApiClientRateLimitMiddleware` の `getKey` を async 化し、`Authorization: Basic` ヘッダーがない場合はリクエストボディ（urlencoded / JSON両対応）から `client_id` を取得するよう修正。Honoのボディキャッシュ機構により二重読み取りが安全。テスト7件追加（2026-04-05）
 
 ### [低] `unrevokeRefreshToken` 失敗時のエラーハンドリング不足
 

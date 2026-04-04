@@ -1,5 +1,5 @@
 import { createMiddleware } from 'hono/factory';
-import type { Context } from 'hono';
+import type { Context, HonoRequest } from 'hono';
 import type { IdpEnv, RateLimitBinding } from '@0g0-id/shared';
 import { createLogger } from '@0g0-id/shared';
 import { getClientIp } from '../utils/ip';
@@ -24,6 +24,24 @@ function extractClientId(authHeader: string | undefined): string | null {
   }
 }
 
+/** リクエストボディから client_id を抽出する。取得できない場合は null を返す */
+async function extractClientIdFromBody(req: HonoRequest): Promise<string | null> {
+  const contentType = req.header('Content-Type') ?? '';
+  try {
+    if (contentType.includes('application/x-www-form-urlencoded')) {
+      const body = await req.parseBody();
+      const clientId = body['client_id'];
+      return typeof clientId === 'string' ? clientId : null;
+    } else if (contentType.includes('application/json')) {
+      const body = await req.json<Record<string, unknown>>();
+      return typeof body['client_id'] === 'string' ? (body['client_id'] as string) : null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 type IdpContext = Context<{ Bindings: IdpEnv }>;
 
 /**
@@ -42,7 +60,7 @@ type IdpContext = Context<{ Bindings: IdpEnv }>;
 function createRateLimitMiddleware(
   bindingName: string,
   getBinding: (env: IdpEnv) => RateLimitBinding | undefined,
-  getKey: (c: IdpContext) => string,
+  getKey: (c: IdpContext) => string | Promise<string>,
   errorMessage: string,
   retryAfterSeconds = 60,
 ) {
@@ -57,7 +75,7 @@ function createRateLimitMiddleware(
       }
       return next();
     }
-    const key = getKey(c);
+    const key = await getKey(c);
     const { success } = await binding.limit({ key });
     if (!success) {
       return c.json(
@@ -122,14 +140,25 @@ export const tokenApiRateLimitMiddleware = createRateLimitMiddleware(
  *
  * IPローテーションによるブルートフォースを防ぐため、IP単位の tokenApiRateLimitMiddleware と
  * 併用する二重防御として使用する（RFC 6749 §10.10）。
- * client_id は Authorization: Basic ヘッダーから取得する。
- * 取得できない場合（パブリッククライアントのbody送信）はIPにフォールバックする。
+ *
+ * client_id の取得優先順:
+ *   1. Authorization: Basic ヘッダー（コンフィデンシャルクライアント）
+ *   2. リクエストボディの client_id フィールド（パブリッククライアント）
+ *   3. IPアドレスにフォールバック
+ *
  * RATE_LIMITER_TOKEN_CLIENT バインディングが未設定の場合はスキップ（ローカル開発・テスト時）。
  */
 export const tokenApiClientRateLimitMiddleware = createRateLimitMiddleware(
   'RATE_LIMITER_TOKEN_CLIENT',
   (env) => env.RATE_LIMITER_TOKEN_CLIENT,
-  (c) => extractClientId(c.req.header('Authorization')) ?? getClientIp(c.req.raw) ?? 'unknown',
+  async (c) => {
+    // コンフィデンシャルクライアント: Authorization: Basic ヘッダーから client_id を取得
+    const headerClientId = extractClientId(c.req.header('Authorization'));
+    if (headerClientId) return headerClientId;
+    // パブリッククライアント: ボディの client_id を取得（Honoはbodyをキャッシュするため二重読み取り安全）
+    const bodyClientId = await extractClientIdFromBody(c.req);
+    return bodyClientId ?? getClientIp(c.req.raw) ?? 'unknown';
+  },
   'Too many requests for this client. Please try again later.',
 );
 
