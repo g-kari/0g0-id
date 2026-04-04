@@ -114,6 +114,44 @@
 
 - **対応済み**: migration 0021: `user_id` カラム追加、`createMcpSession`/`deleteMcpSessionsByUser` 更新（2026-04-05）
 
+### ~~[中] authMiddlewareにJTIブロックリストチェックが未追加~~ ✅
+
+- **対応済み**: `authMiddleware` で `isAccessTokenRevoked` を呼び出し、revokeされたアクセストークンを即時拒否するよう修正（2026-04-05）
+
+### ~~[中] `isAccessTokenRevoked`: 期限切れレコードを除外するフィルター未適用~~ ✅
+
+- **対応済み**: `expires_at` フィルターを追加し、期限切れのJTIレコードを除外してクエリ効率を改善（2026-04-05）
+
+### ~~[低] 期限切れJTIエントリの定期削除が未実装~~ ✅
+
+- **対応済み**: `cleanupExpiredRevokedAccessTokens` を実装し、scheduledハンドラー（Cron Trigger）に追加。期限切れエントリを自動削除（2026-04-05）
+
+## 未対応課題
+
+### [中] introspect時のスコープフォールバック不整合
+
+- **問題**: `introspect` エンドポイントでスコープ解決に `parseAllowedScopes` を使用しているため、トークン発行時のスコープと一致しない可能性がある（RFC 7662 §2.2）
+- **影響**: introspect レスポンスの `scope` フィールドが実際に発行されたスコープと乖離しうる
+- [ ] トークン発行時のスコープをDBに保存し、introspect時はそちらを返すよう修正
+
+### [中] パブリッククライアントの `client_id` 単位レートリミット欠如
+
+- **問題**: `body` で `client_id` を送信するパブリッククライアントのリクエストに対して、`client_id` 単位のレートリミットが適用されない（IPフォールバックのみ）
+- **影響**: 同一IPから複数の `client_id` を使い分けることでレートリミット回避が可能
+- [ ] パブリッククライアントでも `client_id` がbodyに含まれる場合はそれをキーとしたレートリミットを適用
+
+### [低] `unrevokeRefreshToken` 失敗時のエラーハンドリング不足
+
+- **問題**: DB障害等で `unrevokeRefreshToken` が失敗した場合、正規トークンが永久に失効状態のままになるリスクがある
+- **影響**: ユーザーが正規のトークンを持っていても再認証を強制される可能性
+- [ ] `unrevokeRefreshToken` の失敗時にリトライまたはフォールバック処理を追加
+
+### [低] `X-Forwarded-For` スプーフィングリスク
+
+- **問題**: `cf-connecting-ip` が未設定の場合（ローカル開発・Cloudflare設定ミス時）、`X-Forwarded-For` にフォールバックしてIPを取得しているため、ヘッダー偽装によるレートリミット回避が可能
+- **影響**: レートリミットのIPキーが信頼できない値になりうる
+- [ ] ローカル開発時は `127.0.0.1` を固定で使用するなど、フォールバック戦略を明示化
+
 ## 完了済み（Device Code Grant 対応）
 
 - [x] RFC 8628 §3.5: Device Code Grant の `slow_down` レスポンスに `Retry-After` ヘッダーを追加（`device.ts`）
@@ -146,3 +184,6 @@
 - [x] ~~matchRedirectUri localhost/127.0.0.1 混在対応~~ (2026-04-04, RFC 8252 §8.3 SHOULDに従い同一ホストとして扱う)
 - [x] ~~introspect token_type_hint による検索順最適化~~ (2026-04-04, access_token ヒント時はJWT→リフレッシュの順に変更、ヘルパー関数に切り出しリファクタ)
 - [x] ~~PKCE が authorization_code グラントで任意（パブリッククライアントで必須化）~~ (2026-04-04, handleAuthorizationCodeGrant でパブリッククライアントへの PKCE 必須化、RFC 7636 §4.4 準拠)
+- [x] ~~authMiddlewareにJTIブロックリストチェック追加~~ (2026-04-05, revokeされたアクセストークンを即時拒否)
+- [x] ~~isAccessTokenRevoked: expires_atフィルター追加~~ (2026-04-05, 期限切れレコードを除外してクエリ効率改善)
+- [x] ~~cleanupExpiredRevokedAccessTokens: 期限切れJTIエントリ定期削除~~ (2026-04-05, scheduledハンドラーに追加)
