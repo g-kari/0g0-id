@@ -1025,6 +1025,13 @@ app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
       // rotationで失効済み = 過去に正常ローテーションされたトークンの再利用 → リプレイ攻撃
       // それ以外の理由（user_logout, admin_revoke等）で失効 → 正当な失効なのでfamily全失効は不要
       if (existingToken.revoked_reason === 'rotation') {
+        // 並行リクエスト対策: rotation から 30 秒以内の再提示は BFF の並行リフレッシュ競合の可能性が高い。
+        // この場合はファミリー全失効を行わず、新トークンで再試行させる。
+        // 30 秒を超えた再提示は本物のリプレイ攻撃とみなしてファミリー全失効する。
+        const revokedMs = existingToken.revoked_at ? new Date(existingToken.revoked_at).getTime() : 0;
+        if (Date.now() - revokedMs < 30_000) {
+          return c.json({ error: { code: 'TOKEN_ROTATED', message: 'Token already rotated, retry with new token' } }, 401);
+        }
         await revokeTokenFamily(c.env.DB, existingToken.family_id, 'reuse_detected');
         return c.json({ error: { code: 'TOKEN_REUSE', message: 'Token reuse detected' } }, 401);
       }

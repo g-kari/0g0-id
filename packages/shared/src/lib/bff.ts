@@ -251,8 +251,20 @@ export async function fetchWithAuth(
       // リフレッシュエンドポイントが5xx → 502（認証失敗ではなくアップストリーム障害）
       return errorResponse(502, 'UPSTREAM_ERROR', 'Identity provider error');
     } else {
-      // 400/401: リフレッシュトークン無効/期限切れ → 無効セッションCookieを削除して401を返す
-      deleteCookie(c, sessionCookieName, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' });
+      // 400/401: リフレッシュ失敗。エラーコードによってセッション削除の判断を分ける。
+      // TOKEN_ROTATED は並行リクエスト競合（race condition）で発生する一時的なエラー。
+      // セッション Cookie を削除してしまうと、並行する別リクエストの成功で更新されたクッキーが消えてしまう。
+      // 真にセッションが無効な場合（TOKEN_REUSE・TOKEN_EXPIRED 等）のみ削除する。
+      let errorCode: string | undefined;
+      try {
+        const body = await refreshRes.clone().json<{ error?: { code?: string } }>();
+        errorCode = body?.error?.code;
+      } catch {
+        // パース失敗時はターミナルエラーとして扱う
+      }
+      if (errorCode !== 'TOKEN_ROTATED') {
+        deleteCookie(c, sessionCookieName, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' });
+      }
       return errorResponse(401, 'UNAUTHORIZED', 'Session expired');
     }
   }
