@@ -20,6 +20,13 @@ export function parseAllowedScopes(allowedScopesJson: string): string[] {
  * - requestedScope が指定されている場合: openid + 許可スコープに含まれるもののみ残す
  * - requestedScope が未指定の場合: openid + 全許可スコープをデフォルトとして返す
  */
+/**
+ * リクエストされたスコープをサービスの許可スコープでフィルタリングし、
+ * 有効なスコープ文字列を返す。
+ *
+ * - requestedScope が指定されている場合: openid + 許可スコープに含まれるもののみ残す
+ * - requestedScope が未指定の場合: 最小スコープポリシー（RFC 6749 §3.3）に従い openid のみを返す
+ */
 export function resolveEffectiveScope(
   requestedScope: string | null | undefined,
   allowedScopesJson: string
@@ -30,5 +37,5 @@ export function resolveEffectiveScope(
     const valid = requested.filter((s) => s === 'openid' || allowedScopes.includes(s));
     return valid.length > 0 ? valid.join(' ') : undefined;
   }
-  return ['openid', ...allowedScopes].join(' ');
+  return 'openid';
 }

@@ -107,10 +107,9 @@
 - アクセストークンを revoke するには `jti` ブロックリスト（D1 または KV）が必要
 - 対応方針: `revoked_access_tokens` テーブルまたは KV に `jti` を保存し、`introspect` / リソースサーバー側で参照
 
-### [中] `resolveEffectiveScope`: スコープ未指定時に全 allowedScopes を付与
+### ~~[中] `resolveEffectiveScope`: スコープ未指定時に全 allowedScopes を付与~~ ✅
 
-- 最小スコープポリシー（principle of least privilege）に反する
-- 対応方針: スコープ未指定時は空セットを返すか、クライアントごとにデフォルトスコープを定義する設計の検討
+- **対応済み**: スコープ未指定時は `'openid'` のみを返すよう修正（最小スコープポリシー、RFC 6749 §3.3 準拠）。`scopes.test.ts` を新規作成し 14テストを追加（2026-04-05）
 
 ### [中] `mcp_sessions` テーブルにユーザーIDが関連付けられていない
 
