@@ -93,11 +93,9 @@
 
 - **対応済み**: `handleAuthorizationCodeGrant` で `code_challenge` が DB に保存されている場合のみ検証し、コンフィデンシャルクライアント以外（パブリッククライアント）では PKCE を必須化。`code_challenge` なしのリクエストはパブリッククライアントからの場合にエラーを返すよう修正（RFC 7636 §4.4 準拠）
 
-### [高] `/api/token` エンドポイントのレートリミットが IP 単位のみ
+### ~~[高] `/api/token` エンドポイントのレートリミットが IP 単位のみ~~ ✅
 
-- `client_id` 単位の追加制限が未実装
-- IP ローテーションによるブルートフォースを防げない
-- 対応方針: `RATE_LIMITER_TOKEN` を `client_id` キーでも設定し、IP 単位と二重防御
+- **対応済み**: `RATE_LIMITER_TOKEN` を `client_id` キーでも設定し、IP 単位と二重防御
 
 ### ~~[高] `unrevokeRefreshToken` の競合状態~~ ✅
 
