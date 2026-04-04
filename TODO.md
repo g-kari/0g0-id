@@ -128,11 +128,9 @@
 
 ## 未対応課題
 
-### [中] introspect時のスコープフォールバック不整合
+### ~~[中] introspect時のスコープフォールバック不整合~~ ✅
 
-- **問題**: `introspect` エンドポイントでスコープ解決に `parseAllowedScopes` を使用しているため、トークン発行時のスコープと一致しない可能性がある（RFC 7662 §2.2）
-- **影響**: introspect レスポンスの `scope` フィールドが実際に発行されたスコープと乖離しうる
-- [ ] トークン発行時のスコープをDBに保存し、introspect時はそちらを返すよう修正
+- **対応済み**: `introspectRefreshToken` / `introspectJwtToken` から `parseAllowedScopes` フォールバックを削除。スコープが null の場合は空文字列を返すよう修正（RFC 7662 §2.2 準拠）。リフレッシュトークンの introspect レスポンスに `token_type: 'refresh_token'` を追加（2026-04-05）
 
 ### [中] パブリッククライアントの `client_id` 単位レートリミット欠如
 
