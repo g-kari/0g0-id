@@ -20,12 +20,23 @@ export async function addRevokedAccessToken(
 
 /**
  * アクセストークンのjtiがブロックリストに存在するか確認する。
- * 期限切れレコードも含めて確認（期限切れトークンはintrospectでexpチェックにより弾かれる）。
+ * 期限切れレコードは除外（unixepoch() との比較）。
  */
 export async function isAccessTokenRevoked(db: D1Database, jti: string): Promise<boolean> {
   const result = await db
-    .prepare('SELECT 1 FROM revoked_access_tokens WHERE jti = ?')
+    .prepare('SELECT 1 FROM revoked_access_tokens WHERE jti = ? AND expires_at > unixepoch()')
     .bind(jti)
     .first();
   return result !== null;
+}
+
+/**
+ * 期限切れのjtiブロックリストエントリを削除する。
+ * scheduled ハンドラーから定期実行してテーブルの肥大化を防ぐ。
+ */
+export async function cleanupExpiredRevokedAccessTokens(db: D1Database): Promise<number> {
+  const result = await db
+    .prepare('DELETE FROM revoked_access_tokens WHERE expires_at <= unixepoch()')
+    .run();
+  return result.meta.changes ?? 0;
 }

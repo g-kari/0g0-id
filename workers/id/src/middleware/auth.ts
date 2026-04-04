@@ -1,5 +1,5 @@
 import { createMiddleware } from 'hono/factory';
-import { verifyAccessToken, findUserById } from '@0g0-id/shared';
+import { verifyAccessToken, findUserById, isAccessTokenRevoked } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
 
 type AuthVariables = {
@@ -44,6 +44,9 @@ export const authMiddleware = createMiddleware<{
       c.env.IDP_ORIGIN,
       c.env.IDP_ORIGIN
     );
+    if (payload.jti && await isAccessTokenRevoked(c.env.DB, payload.jti)) {
+      return c.json({ error: { code: 'UNAUTHORIZED', message: 'Token has been revoked' } }, 401);
+    }
     c.set('user', payload);
     await next();
   } catch {
