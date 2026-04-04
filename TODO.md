@@ -81,6 +81,15 @@
 
 - **対応済み**: DB CHECK制約 `CHECK (approved_at IS NULL OR user_id IS NOT NULL)` を追加（migration 0018）
 
+## 軽微な改善候補（低優先度）
+
+### [低] introspect エンドポイントの `token_type_hint` が未活用
+
+- RFC 7662 では `token_type_hint` を参考にトークン検索順を最適化することを推奨
+- 現実装は `refresh_token → JWT` の固定順で検索しており、ヒントは無視される
+- パフォーマンス影響は小さく機能的には正常動作するため優先度は低い
+- 対応する場合: `token_type_hint === 'access_token'` のとき JWT を先に検証するよう分岐を追加
+
 ## 完了済み
 
 - [x] ~~MCPミドルウェアのBAN/Adminチェック順序修正~~ (2026-04-03, commit 9575641)
