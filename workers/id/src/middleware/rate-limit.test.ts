@@ -79,11 +79,11 @@ describe('authRateLimitMiddleware', () => {
     expect(rateLimiter.limit).toHaveBeenCalledWith({ key: '1.2.3.4' });
   });
 
-  it('cf-connecting-ip がない場合は x-forwarded-for をキーとして使う', async () => {
+  it('cf-connecting-ip がない場合は x-forwarded-for を無視して "unknown" をキーとして使う', async () => {
     const rateLimiter = makeRateLimiter(true);
     const app = buildApp(makeBaseEnv({ RATE_LIMITER_AUTH: rateLimiter }));
     await app.request('/auth/login', { 'x-forwarded-for': '10.0.0.1, 10.0.0.2' });
-    expect(rateLimiter.limit).toHaveBeenCalledWith({ key: '10.0.0.1' });
+    expect(rateLimiter.limit).toHaveBeenCalledWith({ key: 'unknown' });
   });
 
   it('IPが取得できない場合は "unknown" をキーとして使う', async () => {
@@ -237,11 +237,11 @@ describe('tokenApiRateLimitMiddleware', () => {
     expect(rateLimiter.limit).toHaveBeenCalledWith({ key: '1.2.3.4' });
   });
 
-  it('cf-connecting-ip がない場合は x-forwarded-for をキーとして使う', async () => {
+  it('cf-connecting-ip がない場合は x-forwarded-for を無視して "unknown" をキーとして使う', async () => {
     const rateLimiter = makeRateLimiter(true);
     const app = buildApp(makeBaseEnv({ RATE_LIMITER_TOKEN: rateLimiter }));
     await app.request('/auth/refresh', { 'x-forwarded-for': '10.0.0.1, 10.0.0.2' });
-    expect(rateLimiter.limit).toHaveBeenCalledWith({ key: '10.0.0.1' });
+    expect(rateLimiter.limit).toHaveBeenCalledWith({ key: 'unknown' });
   });
 
   it('IPが取得できない場合は "unknown" をキーとして使う', async () => {
