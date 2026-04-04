@@ -318,6 +318,17 @@ describe('POST /api/token/introspect', () => {
     expect(body.active).toBe(false);
   });
 
+  it('BAN済みユーザーのリフレッシュトークン → { active: false }', async () => {
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, banned_at: '2024-01-01T00:00:00Z' });
+    const res = await sendRequest(app, '/api/token/introspect', {
+      body: { token: 'valid-token' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ active: boolean }>();
+    expect(body.active).toBe(false);
+  });
+
   it('有効なトークン → ユーザー情報を含む { active: true } を返す', async () => {
     const res = await sendRequest(app, '/api/token/introspect', {
       body: { token: 'valid-token' },
@@ -457,6 +468,19 @@ describe('POST /api/token/introspect', () => {
     vi.mocked(findUserById).mockResolvedValue(null);
     const res = await sendRequest(app, '/api/token/introspect', {
       body: { token: 'valid-jwt-no-user' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ active: boolean }>();
+    expect(body.active).toBe(false);
+  });
+
+  it('BAN済みユーザーのJWTアクセストークン → { active: false }', async () => {
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(null);
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockJwtPayload);
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, banned_at: '2024-01-01T00:00:00Z' });
+    const res = await sendRequest(app, '/api/token/introspect', {
+      body: { token: 'valid-jwt-banned-user' },
       authHeader: makeBasicAuth('test-client-id', 'secret'),
     });
     expect(res.status).toBe(200);
