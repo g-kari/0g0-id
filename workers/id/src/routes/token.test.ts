@@ -6,21 +6,46 @@ vi.mock('@0g0-id/shared', () => ({
   createLogger: vi.fn().mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
   findRefreshTokenByHash: vi.fn(),
   findServiceByClientId: vi.fn(),
+  findServiceById: vi.fn(),
   findUserById: vi.fn(),
   revokeRefreshToken: vi.fn(),
   sha256: vi.fn(),
   timingSafeEqual: vi.fn(),
   verifyAccessToken: vi.fn(),
+  // POST /api/token/ grant types で使用
+  findAndConsumeAuthCode: vi.fn(),
+  findAndRevokeRefreshToken: vi.fn(),
+  unrevokeRefreshToken: vi.fn(),
+  revokeTokenFamily: vi.fn(),
+  generateCodeChallenge: vi.fn(),
+  signIdToken: vi.fn(),
+  matchRedirectUri: vi.fn(),
+  normalizeRedirectUri: vi.fn(),
+  signAccessToken: vi.fn(),
+  generateToken: vi.fn(),
+  createRefreshToken: vi.fn(),
 }));
 
 import {
   findRefreshTokenByHash,
   findServiceByClientId,
+  findServiceById,
   findUserById,
   revokeRefreshToken,
   sha256,
   timingSafeEqual,
   verifyAccessToken,
+  findAndConsumeAuthCode,
+  findAndRevokeRefreshToken,
+  unrevokeRefreshToken,
+  revokeTokenFamily,
+  generateCodeChallenge,
+  signIdToken,
+  matchRedirectUri,
+  normalizeRedirectUri,
+  signAccessToken,
+  generateToken,
+  createRefreshToken,
 } from '@0g0-id/shared';
 
 import tokenRoutes from './token';
@@ -30,6 +55,8 @@ const baseUrl = 'https://id.0g0.xyz';
 const mockEnv = {
   DB: {} as D1Database,
   IDP_ORIGIN: 'https://id.0g0.xyz',
+  JWT_PRIVATE_KEY: 'mock-private-key',
+  JWT_PUBLIC_KEY: 'mock-public-key',
 };
 
 const mockService = {
@@ -69,7 +96,23 @@ const mockRefreshToken = {
   token_hash: 'hashed-token',
   family_id: 'family-1',
   revoked_at: null,
+  revoked_reason: null,
+  scope: null,
   expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+  created_at: '2024-01-01T00:00:00Z',
+};
+
+const mockAuthCode = {
+  id: 'code-id',
+  user_id: 'user-1',
+  service_id: 'service-1',
+  code_hash: 'hashed-code',
+  redirect_to: 'http://localhost:51234/callback',
+  code_challenge: 'expected-challenge',
+  scope: 'openid profile email',
+  nonce: null,
+  expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+  used_at: null,
   created_at: '2024-01-01T00:00:00Z',
 };
 
@@ -667,5 +710,536 @@ describe('POST /api/token/revoke', () => {
     expect(res.status).toBe(400);
     const body = await res.json<{ error: string }>();
     expect(body.error).toBe('invalid_request');
+  });
+});
+
+// ===== POST /api/token/ — grant_type 振り分け =====
+describe('POST /api/token/ — 未サポートのgrant_type', () => {
+  const app = buildApp();
+
+  it('grant_type未指定 → { error: unsupported_grant_type } + 400', async () => {
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {},
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('unsupported_grant_type');
+  });
+
+  it('未知のgrant_type → { error: unsupported_grant_type } + 400', async () => {
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: { grant_type: 'client_credentials' },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('unsupported_grant_type');
+  });
+
+  it('Content-Type未サポート → { error: invalid_request } + 400', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: 'grant_type=authorization_code',
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_request');
+  });
+});
+
+// ===== POST /api/token/ — authorization_code grant =====
+describe('POST /api/token/ — authorization_code grant', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(sha256).mockResolvedValue('hashed-value');
+    vi.mocked(findServiceByClientId).mockResolvedValue(mockService as never);
+    vi.mocked(timingSafeEqual).mockReturnValue(true);
+    vi.mocked(findAndConsumeAuthCode).mockResolvedValue(mockAuthCode as never);
+    vi.mocked(normalizeRedirectUri).mockReturnValue('http://localhost:51234/callback');
+    vi.mocked(matchRedirectUri).mockReturnValue(true);
+    vi.mocked(generateCodeChallenge).mockResolvedValue('expected-challenge');
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(signAccessToken).mockResolvedValue('mock-access-token');
+    vi.mocked(generateToken).mockReturnValue('mock-refresh-token');
+    vi.mocked(createRefreshToken).mockResolvedValue(undefined);
+    vi.mocked(signIdToken).mockResolvedValue('mock-id-token');
+  });
+
+  it('codeが未指定 → { error: invalid_request } + 400', async () => {
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        redirect_uri: 'http://localhost:51234/callback',
+        client_id: 'test-client-id',
+        code_verifier: 'a'.repeat(43),
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_request');
+  });
+
+  it('redirect_uriが未指定 → { error: invalid_request } + 400', async () => {
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        client_id: 'test-client-id',
+        code_verifier: 'a'.repeat(43),
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_request');
+  });
+
+  it('code_verifierが未指定 → { error: invalid_request } + 400', async () => {
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        redirect_uri: 'http://localhost:51234/callback',
+        client_id: 'test-client-id',
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_request');
+  });
+
+  it('存在しないclient_id → { error: invalid_client } + 401', async () => {
+    vi.mocked(findServiceByClientId).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        redirect_uri: 'http://localhost:51234/callback',
+        client_id: 'unknown-client',
+        code_verifier: 'a'.repeat(43),
+      },
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_client');
+  });
+
+  it('認可コードが存在しない → { error: invalid_grant } + 400', async () => {
+    vi.mocked(findAndConsumeAuthCode).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'bad-code',
+        redirect_uri: 'http://localhost:51234/callback',
+        client_id: 'test-client-id',
+        code_verifier: 'a'.repeat(43),
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_grant');
+  });
+
+  it('service_idが不一致 → { error: invalid_grant } + 400', async () => {
+    vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
+      ...mockAuthCode,
+      service_id: 'other-service-id',
+    } as never);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        redirect_uri: 'http://localhost:51234/callback',
+        client_id: 'test-client-id',
+        code_verifier: 'a'.repeat(43),
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_grant');
+  });
+
+  it('redirect_uriが不一致 → { error: invalid_grant } + 400', async () => {
+    vi.mocked(matchRedirectUri).mockReturnValue(false);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        redirect_uri: 'http://localhost:9999/other',
+        client_id: 'test-client-id',
+        code_verifier: 'a'.repeat(43),
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_grant');
+  });
+
+  it('PKCE不一致 → { error: invalid_grant } + 400', async () => {
+    vi.mocked(timingSafeEqual).mockReturnValue(false);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        redirect_uri: 'http://localhost:51234/callback',
+        client_id: 'test-client-id',
+        code_verifier: 'wrong-verifier'.padEnd(43, 'x'),
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_grant');
+  });
+
+  it('ユーザーが存在しない → { error: invalid_grant } + 400', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        redirect_uri: 'http://localhost:51234/callback',
+        client_id: 'test-client-id',
+        code_verifier: 'a'.repeat(43),
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_grant');
+  });
+
+  it('BANされたユーザー → { error: access_denied } + 403', async () => {
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, banned_at: '2024-01-01T00:00:00Z' });
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        redirect_uri: 'http://localhost:51234/callback',
+        client_id: 'test-client-id',
+        code_verifier: 'a'.repeat(43),
+      },
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('access_denied');
+  });
+
+  it('openidスコープあり → id_tokenを含む成功レスポンス', async () => {
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        redirect_uri: 'http://localhost:51234/callback',
+        client_id: 'test-client-id',
+        code_verifier: 'a'.repeat(43),
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{
+      access_token: string;
+      refresh_token: string;
+      id_token: string;
+      token_type: string;
+      expires_in: number;
+    }>();
+    expect(body.access_token).toBe('mock-access-token');
+    expect(body.refresh_token).toBe('mock-refresh-token');
+    expect(body.id_token).toBe('mock-id-token');
+    expect(body.token_type).toBe('Bearer');
+    expect(body.expires_in).toBe(900);
+  });
+
+  it('openidスコープなし → id_tokenを含まない成功レスポンス', async () => {
+    vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
+      ...mockAuthCode,
+      scope: 'profile email',
+    } as never);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        redirect_uri: 'http://localhost:51234/callback',
+        client_id: 'test-client-id',
+        code_verifier: 'a'.repeat(43),
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<Record<string, unknown>>();
+    expect(body.access_token).toBe('mock-access-token');
+    expect(body.id_token).toBeUndefined();
+  });
+
+  it('code_challengeがない認可コード（PKCE不要）→ 成功', async () => {
+    vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
+      ...mockAuthCode,
+      code_challenge: null,
+    } as never);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        redirect_uri: 'http://localhost:51234/callback',
+        client_id: 'test-client-id',
+        code_verifier: 'a'.repeat(43),
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ access_token: string }>();
+    expect(body.access_token).toBe('mock-access-token');
+    // PKCE検証は実行されない
+    expect(vi.mocked(generateCodeChallenge)).not.toHaveBeenCalled();
+  });
+
+  it('application/json形式でも動作する', async () => {
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      body: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        redirect_uri: 'http://localhost:51234/callback',
+        client_id: 'test-client-id',
+        code_verifier: 'a'.repeat(43),
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ access_token: string }>();
+    expect(body.access_token).toBe('mock-access-token');
+  });
+});
+
+// ===== POST /api/token/ — refresh_token grant =====
+describe('POST /api/token/ — refresh_token grant', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(sha256).mockResolvedValue('hashed-token');
+    vi.mocked(findServiceByClientId).mockResolvedValue(mockService as never);
+    vi.mocked(timingSafeEqual).mockReturnValue(true);
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(mockRefreshToken as never);
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(mockRefreshToken as never);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(unrevokeRefreshToken).mockResolvedValue(undefined);
+    vi.mocked(revokeTokenFamily).mockResolvedValue(undefined);
+    vi.mocked(signAccessToken).mockResolvedValue('new-access-token');
+    vi.mocked(generateToken).mockReturnValue('new-refresh-token');
+    vi.mocked(createRefreshToken).mockResolvedValue(undefined);
+  });
+
+  it('refresh_tokenが未指定 → { error: invalid_request } + 400', async () => {
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        client_id: 'test-client-id',
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_request');
+  });
+
+  it('存在しないclient_id → { error: invalid_client } + 401', async () => {
+    vi.mocked(findServiceByClientId).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'some-token',
+        client_id: 'unknown-client',
+      },
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_client');
+  });
+
+  it('トークンが存在しない → { error: invalid_grant } + 400', async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(null);
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'nonexistent-token',
+        client_id: 'test-client-id',
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_grant');
+  });
+
+  it('rotationで失効済みトークンの再利用 → reuseDetected + family全失効', async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(null);
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      revoked_at: '2024-01-01T00:00:00Z',
+      revoked_reason: 'rotation',
+    } as never);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'reused-token',
+        client_id: 'test-client-id',
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_grant');
+    expect(vi.mocked(revokeTokenFamily)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      'family-1',
+      'reuse_detected'
+    );
+  });
+
+  it('rotation以外で失効済みトークン → { error: invalid_grant } (family失効なし)', async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(null);
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      revoked_at: '2024-01-01T00:00:00Z',
+      revoked_reason: 'user_logout',
+    } as never);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'revoked-token',
+        client_id: 'test-client-id',
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_grant');
+    expect(vi.mocked(revokeTokenFamily)).not.toHaveBeenCalled();
+  });
+
+  it('service_idが不一致 → unrevokeして { error: invalid_grant } + 400', async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue({
+      ...mockRefreshToken,
+      service_id: 'other-service-id',
+    } as never);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'other-service-token',
+        client_id: 'test-client-id',
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_grant');
+    expect(vi.mocked(unrevokeRefreshToken)).toHaveBeenCalledWith(mockEnv.DB, 'rt-id');
+  });
+
+  it('期限切れトークン → unrevokeして { error: invalid_grant } + 400', async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue({
+      ...mockRefreshToken,
+      expires_at: new Date(Date.now() - 1000).toISOString(),
+    } as never);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'expired-token',
+        client_id: 'test-client-id',
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_grant');
+    expect(vi.mocked(unrevokeRefreshToken)).toHaveBeenCalledWith(mockEnv.DB, 'rt-id');
+  });
+
+  it('ユーザーが存在しない → { error: invalid_grant } + 400', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'valid-token',
+        client_id: 'test-client-id',
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_grant');
+  });
+
+  it('BANされたユーザー → { error: access_denied } + 403', async () => {
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, banned_at: '2024-01-01T00:00:00Z' });
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'valid-token',
+        client_id: 'test-client-id',
+      },
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('access_denied');
+  });
+
+  it('正常なローテーション → 新しいaccess_token + refresh_tokenを返す', async () => {
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'valid-token',
+        client_id: 'test-client-id',
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{
+      access_token: string;
+      refresh_token: string;
+      token_type: string;
+      expires_in: number;
+    }>();
+    expect(body.access_token).toBe('new-access-token');
+    expect(body.refresh_token).toBe('new-refresh-token');
+    expect(body.token_type).toBe('Bearer');
+    expect(body.expires_in).toBe(900);
+  });
+
+  it('スコープが保存されている場合は引き継がれる', async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue({
+      ...mockRefreshToken,
+      scope: 'profile email',
+    } as never);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'valid-token',
+        client_id: 'test-client-id',
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ scope: string }>();
+    expect(body.scope).toBe('profile email');
   });
 });
