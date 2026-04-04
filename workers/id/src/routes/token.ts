@@ -387,11 +387,12 @@ async function introspectRefreshToken(
   if (!user || user.banned_at !== null) {
     return { active: false };
   }
-  const scopeStr = refreshToken.scope ?? parseAllowedScopes(service.allowed_scopes).join(' ');
+  const scopeStr = refreshToken.scope ?? '';
   const scopeList = scopeStr.split(' ').filter((s: string) => s !== 'openid' && s !== '');
   const sub = await sha256(service.client_id + ':' + refreshToken.user_id);
   const response: Record<string, unknown> = {
     active: true,
+    token_type: 'refresh_token',
     sub,
     exp: Math.floor(new Date(refreshToken.expires_at).getTime() / 1000),
     scope: scopeStr,
@@ -428,8 +429,8 @@ async function introspectJwtToken(
     return { active: false };
   }
   // JWTに埋め込まれた発行時スコープを優先（リフレッシュトークンブランチとの一貫性）
-  // マイグレーション前のトークンはallowed_scopesにフォールバック
-  const tokenScopeStr = payload.scope ?? parseAllowedScopes(service.allowed_scopes).join(' ');
+  // スコープ未設定の旧トークンは空文字列（RFC 7662 §2.2 - 実際に付与されたスコープのみ返す）
+  const tokenScopeStr = payload.scope ?? '';
   const tokenScopes = tokenScopeStr.split(' ').filter((s: string) => s !== 'openid' && s !== '');
   const sub = await sha256(service.client_id + ':' + payload.sub);
   const jwtResponse: Record<string, unknown> = {
