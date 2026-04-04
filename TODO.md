@@ -83,12 +83,9 @@
 
 ## 軽微な改善候補（低優先度）
 
-### [低] introspect エンドポイントの `token_type_hint` が未活用
+### ~~[低] introspect エンドポイントの `token_type_hint` が未活用~~ ✅
 
-- RFC 7662 では `token_type_hint` を参考にトークン検索順を最適化することを推奨
-- 現実装は `refresh_token → JWT` の固定順で検索しており、ヒントは無視される
-- パフォーマンス影響は小さく機能的には正常動作するため優先度は低い
-- 対応する場合: `token_type_hint === 'access_token'` のとき JWT を先に検証するよう分岐を追加
+- **対応済み**: `token_type_hint === 'access_token'` のとき JWT を先に検証し、失敗時はリフレッシュトークンにフォールバックする分岐を追加。`introspectRefreshToken` / `introspectJwtToken` ヘルパー関数に切り出してリファクタリングも実施（2026-04-04）
 
 ## 完了済み
 
@@ -115,3 +112,4 @@
 - [x] ~~cleanupExpiredMcpSessionsテストのモック修正~~ (2026-04-04, scheduledハンドラテストでvi.mockのモック不備を修正)
 - [x] ~~matchRedirectUri query string比較追加~~ (2026-04-04, localhostのポート無視しつつquery stringは厳密比較)
 - [x] ~~matchRedirectUri localhost/127.0.0.1 混在対応~~ (2026-04-04, RFC 8252 §8.3 SHOULDに従い同一ホストとして扱う)
+- [x] ~~introspect token_type_hint による検索順最適化~~ (2026-04-04, access_token ヒント時はJWT→リフレッシュの順に変更、ヘルパー関数に切り出しリファクタ)
