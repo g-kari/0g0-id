@@ -346,6 +346,79 @@ async function handleRefreshTokenGrant(
   return c.json(buildTokenResponse(accessToken, newRefreshToken, refreshScope));
 }
 
+// イントロスペクション: リフレッシュトークンの検証ヘルパー（RFC 7662）
+// 見つかった場合はレスポンスオブジェクト（active:false含む）を返し、見つからない・失効済みの場合はnullを返す
+async function introspectRefreshToken(
+  db: D1Database,
+  service: NonNullable<Awaited<ReturnType<typeof authenticateService>>>,
+  tokenHash: string
+): Promise<Record<string, unknown> | null> {
+  const refreshToken = await findRefreshTokenByHash(db, tokenHash);
+  if (!refreshToken || refreshToken.revoked_at !== null) {
+    return null;
+  }
+  if (refreshToken.service_id !== service.id) {
+    return { active: false };
+  }
+  if (new Date(refreshToken.expires_at) < new Date()) {
+    return { active: false };
+  }
+  const user = await findUserById(db, refreshToken.user_id);
+  if (!user || user.banned_at !== null) {
+    return { active: false };
+  }
+  const scopeStr = refreshToken.scope ?? parseAllowedScopes(service.allowed_scopes).join(' ');
+  const scopeList = scopeStr.split(' ').filter((s: string) => s !== 'openid' && s !== '');
+  const sub = await sha256(service.client_id + ':' + refreshToken.user_id);
+  const response: Record<string, unknown> = {
+    active: true,
+    sub,
+    exp: Math.floor(new Date(refreshToken.expires_at).getTime() / 1000),
+    scope: scopeStr,
+  };
+  applyUserClaims(response, user, scopeList);
+  return response;
+}
+
+// イントロスペクション: JWTアクセストークンの検証ヘルパー（RFC 7662）
+// 検証成功時はレスポンスオブジェクトを返し、JWT検証失敗時はnullを返す
+async function introspectJwtToken(
+  db: D1Database,
+  service: NonNullable<Awaited<ReturnType<typeof authenticateService>>>,
+  token: string,
+  env: IdpEnv
+): Promise<Record<string, unknown> | null> {
+  let payload: Awaited<ReturnType<typeof verifyAccessToken>>;
+  try {
+    payload = await verifyAccessToken(token, env.JWT_PUBLIC_KEY, env.IDP_ORIGIN, env.IDP_ORIGIN);
+  } catch (err) {
+    tokenLogger.warn('Introspect: JWT verification failed', err);
+    return null;
+  }
+  // BFFセッショントークン（cid未設定）は外部サービスからイントロスペクト不可
+  if (!payload.cid || payload.cid !== service.client_id) {
+    return { active: false };
+  }
+  const tokenUser = await findUserById(db, payload.sub);
+  if (!tokenUser || tokenUser.banned_at !== null) {
+    return { active: false };
+  }
+  // JWTに埋め込まれた発行時スコープを優先（リフレッシュトークンブランチとの一貫性）
+  // マイグレーション前のトークンはallowed_scopesにフォールバック
+  const tokenScopeStr = payload.scope ?? parseAllowedScopes(service.allowed_scopes).join(' ');
+  const tokenScopes = tokenScopeStr.split(' ').filter((s: string) => s !== 'openid' && s !== '');
+  const sub = await sha256(service.client_id + ':' + payload.sub);
+  const jwtResponse: Record<string, unknown> = {
+    active: true,
+    sub,
+    exp: payload.exp,
+    scope: tokenScopeStr,
+    token_type: 'access_token',
+  };
+  applyUserClaims(jwtResponse, tokenUser, tokenScopes);
+  return jwtResponse;
+}
+
 // POST /api/token/introspect — RFC 7662 トークンイントロスペクション
 app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
   // Basic認証でサービス認証
@@ -365,101 +438,29 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
   if (!body) {
     return c.json({ active: false }, 400);
   }
-
   if (!body.token) {
     return c.json({ active: false }, 400);
   }
 
-  // リフレッシュトークンの場合
-  const tokenHash = await sha256(body.token);
-  const refreshToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
+  const token = body.token;
+  const tokenHash = await sha256(token);
 
-  if (refreshToken && refreshToken.revoked_at === null) {
-    // サービス所有権確認: 自サービス向けに発行されたトークンのみ照会可能
-    if (refreshToken.service_id !== service.id) {
-      return c.json({ active: false });
+  // token_type_hint に従って検索順を最適化（RFC 7662 §2.1 推奨）
+  // 'access_token' ヒントならJWT→リフレッシュトークンの順、それ以外はリフレッシュトークン→JWTの順
+  let result: Record<string, unknown> | null;
+  if (body.token_type_hint === 'access_token') {
+    result = await introspectJwtToken(c.env.DB, service!, token, c.env);
+    if (result === null) {
+      result = await introspectRefreshToken(c.env.DB, service!, tokenHash);
     }
-    const isExpired = new Date(refreshToken.expires_at) < new Date();
-    if (isExpired) {
-      return c.json({ active: false });
+  } else {
+    result = await introspectRefreshToken(c.env.DB, service!, tokenHash);
+    if (result === null) {
+      result = await introspectJwtToken(c.env.DB, service!, token, c.env);
     }
-
-    // ユーザー情報をallowed_scopesに基づいてフィルタリングして返却
-    const user = await findUserById(c.env.DB, refreshToken.user_id);
-    if (!user) {
-      return c.json({ active: false });
-    }
-    // BAN済みユーザーのトークンは無効として扱う
-    if (user.banned_at !== null) {
-      return c.json({ active: false });
-    }
-
-    // 保存済みスコープがあればそれを使用（発行時のスコープを正確に反映）
-    // マイグレーション前のトークンはallowed_scopesにフォールバック
-    const scopeStr = refreshToken.scope ?? parseAllowedScopes(service.allowed_scopes).join(' ');
-    const scopeList = scopeStr.split(' ').filter((s: string) => s !== 'openid' && s !== '');
-
-    // ペアワイズsub: 内部IDを直接公開しないようにsha256(client_id:user_id)を使用
-    const sub = await sha256(service.client_id + ':' + refreshToken.user_id);
-
-    const response: Record<string, unknown> = {
-      active: true,
-      sub,
-      exp: Math.floor(new Date(refreshToken.expires_at).getTime() / 1000),
-      scope: scopeStr,
-    };
-
-    applyUserClaims(response, user, scopeList);
-
-    return c.json(response);
   }
 
-  // JWTアクセストークンのイントロスペクション（RFC 7662）
-  // リフレッシュトークンとして見つからなかった場合、JWTとして検証を試みる
-  try {
-    const payload = await verifyAccessToken(
-      body.token,
-      c.env.JWT_PUBLIC_KEY,
-      c.env.IDP_ORIGIN,
-      c.env.IDP_ORIGIN
-    );
-
-    // BFFセッショントークン（cid未設定）は外部サービスからイントロスペクト不可
-    if (!payload.cid || payload.cid !== service.client_id) {
-      return c.json({ active: false });
-    }
-
-    const tokenUser = await findUserById(c.env.DB, payload.sub);
-    if (!tokenUser) {
-      return c.json({ active: false });
-    }
-    // BAN済みユーザーのトークンは無効として扱う
-    if (tokenUser.banned_at !== null) {
-      return c.json({ active: false });
-    }
-
-    // JWTに埋め込まれた発行時スコープを優先（リフレッシュトークンブランチとの一貫性）
-    // マイグレーション前のトークンはallowed_scopesにフォールバック
-    const tokenScopeStr = payload.scope ?? parseAllowedScopes(service.allowed_scopes).join(' ');
-    const tokenScopes = tokenScopeStr.split(' ').filter((s: string) => s !== 'openid' && s !== '');
-    const sub = await sha256(service.client_id + ':' + payload.sub);
-
-    const jwtResponse: Record<string, unknown> = {
-      active: true,
-      sub,
-      exp: payload.exp,
-      scope: tokenScopeStr,
-      token_type: 'access_token',
-    };
-
-    applyUserClaims(jwtResponse, tokenUser, tokenScopes);
-
-    return c.json(jwtResponse);
-  } catch (err) {
-    // JWT検証失敗（期限切れ・署名不正など）
-    tokenLogger.warn('Introspect: JWT verification failed', err);
-    return c.json({ active: false });
-  }
+  return c.json(result ?? { active: false });
 });
 
 // POST /api/token/revoke — RFC 7009 トークン失効

@@ -555,6 +555,34 @@ describe('POST /api/token/introspect', () => {
     const body = await res.json<{ active: boolean }>();
     expect(body.active).toBe(true);
   });
+
+  // RFC 7662 §2.1: token_type_hint による検索順最適化
+  it('token_type_hint=access_token: JWTを先に検証し { active: true } を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockJwtPayload);
+    const res = await sendRequest(app, '/api/token/introspect', {
+      body: { token: 'valid-jwt', token_type_hint: 'access_token' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<Record<string, unknown>>();
+    expect(body.active).toBe(true);
+    expect(body.token_type).toBe('access_token');
+    // access_token ヒント時はJWTを先に試みるためDBアクセスなし
+    expect(vi.mocked(findRefreshTokenByHash)).not.toHaveBeenCalled();
+  });
+
+  it('token_type_hint=access_token: JWT失敗時はリフレッシュトークンにフォールバック → { active: true }', async () => {
+    vi.mocked(verifyAccessToken).mockRejectedValue(new Error('not a JWT'));
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(mockRefreshToken as never);
+    const res = await sendRequest(app, '/api/token/introspect', {
+      body: { token: 'valid-refresh-token', token_type_hint: 'access_token' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<Record<string, unknown>>();
+    expect(body.active).toBe(true);
+    expect(body.token_type).toBeUndefined(); // リフレッシュトークンなのでtoken_typeなし
+  });
 });
 
 // ===== POST /api/token/revoke =====
