@@ -1205,6 +1205,31 @@ describe('POST /api/token/ — refresh_token grant', () => {
     expect(vi.mocked(unrevokeRefreshToken)).toHaveBeenCalledWith(mockEnv.DB, 'rt-id');
   });
 
+  it('service_id不一致 + 並行reuse_detected → unrevokeせず { error: invalid_grant } + 400', async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue({
+      ...mockRefreshToken,
+      service_id: 'other-service-id',
+    } as never);
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      revoked_at: new Date().toISOString(),
+      revoked_reason: 'reuse_detected',
+    } as never);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'other-service-token',
+        client_id: 'test-client-id',
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string; error_description: string }>();
+    expect(body.error).toBe('invalid_grant');
+    expect(body.error_description).toBe('Token reuse detected');
+    expect(vi.mocked(unrevokeRefreshToken)).not.toHaveBeenCalled();
+  });
+
   it('期限切れトークン → unrevokeして { error: invalid_grant } + 400', async () => {
     vi.mocked(findAndRevokeRefreshToken).mockResolvedValue({
       ...mockRefreshToken,
@@ -1222,6 +1247,31 @@ describe('POST /api/token/ — refresh_token grant', () => {
     const body = await res.json<{ error: string }>();
     expect(body.error).toBe('invalid_grant');
     expect(vi.mocked(unrevokeRefreshToken)).toHaveBeenCalledWith(mockEnv.DB, 'rt-id');
+  });
+
+  it('期限切れ + 並行reuse_detected → unrevokeせず { error: invalid_grant } + 400', async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue({
+      ...mockRefreshToken,
+      expires_at: new Date(Date.now() - 1000).toISOString(),
+    } as never);
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      revoked_at: new Date().toISOString(),
+      revoked_reason: 'reuse_detected',
+    } as never);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'expired-token',
+        client_id: 'test-client-id',
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string; error_description: string }>();
+    expect(body.error).toBe('invalid_grant');
+    expect(body.error_description).toBe('Token reuse detected');
+    expect(vi.mocked(unrevokeRefreshToken)).not.toHaveBeenCalled();
   });
 
   it('ユーザーが存在しない → { error: invalid_grant } + 400', async () => {

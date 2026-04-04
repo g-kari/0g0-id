@@ -99,11 +99,9 @@
 - IP ローテーションによるブルートフォースを防げない
 - 対応方針: `RATE_LIMITER_TOKEN` を `client_id` キーでも設定し、IP 単位と二重防御
 
-### [高] `unrevokeRefreshToken` の競合状態
+### ~~[高] `unrevokeRefreshToken` の競合状態~~ ✅
 
-- `token.ts` 側で `reuse_detected` チェックが未実施（`auth.ts` の `/refresh` では実施済み）
-- 同一トークンを並行して複数回 unrevoke するリクエストが来た場合の安全性が保証されない
-- 対応方針: `token.ts` のリフレッシュトークングラントに `reuse_detected` チェックを追加
+- **対応済み**: `token.ts` のサービス所有権確認・有効期限チェックのパスで `unrevokeRefreshToken` 呼び出し前に `findRefreshTokenByHash` で現在の `revoked_reason` を確認し、`reuse_detected` が設定済みの場合はアンリボークせず `Token reuse detected` を返すよう修正。`auth.ts` の catch ブロックと同様のパターンを追加。テスト2件追加（2026-04-05）
 
 ### [中] RFC 7009 (Token Revocation) — アクセストークンの revoke が未実装
 
