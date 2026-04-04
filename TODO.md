@@ -87,6 +87,47 @@
 
 - **対応済み**: `token_type_hint === 'access_token'` のとき JWT を先に検証し、失敗時はリフレッシュトークンにフォールバックする分岐を追加。`introspectRefreshToken` / `introspectJwtToken` ヘルパー関数に切り出してリファクタリングも実施（2026-04-04）
 
+## セキュリティ / アーキテクチャ課題（新規）
+
+### [高] PKCE が `token.ts` の authorization_code グラントで任意
+
+- `code_challenge` が DB に存在しない場合は `code_verifier` なしでトークン発行可能
+- パブリッククライアントでは PKCE を必須化すべき（RFC 7636 §4.4 SHOULD → 実質 MUST）
+- 対応方針: `handleAuthorizationCodeGrant` で `code_challenge` が DB に保存されている場合のみ検証、かつコンフィデンシャルクライアント以外は必須化
+
+### [高] `/api/token` エンドポイントのレートリミットが IP 単位のみ
+
+- `client_id` 単位の追加制限が未実装
+- IP ローテーションによるブルートフォースを防げない
+- 対応方針: `RATE_LIMITER_TOKEN` を `client_id` キーでも設定し、IP 単位と二重防御
+
+### [高] `unrevokeRefreshToken` の競合状態
+
+- `token.ts` 側で `reuse_detected` チェックが未実施（`auth.ts` の `/refresh` では実施済み）
+- 同一トークンを並行して複数回 unrevoke するリクエストが来た場合の安全性が保証されない
+- 対応方針: `token.ts` のリフレッシュトークングラントに `reuse_detected` チェックを追加
+
+### [中] RFC 7009 (Token Revocation) — アクセストークンの revoke が未実装
+
+- 現状リフレッシュトークンの revoke のみ対応
+- アクセストークンを revoke するには `jti` ブロックリスト（D1 または KV）が必要
+- 対応方針: `revoked_access_tokens` テーブルまたは KV に `jti` を保存し、`introspect` / リソースサーバー側で参照
+
+### [中] `resolveEffectiveScope`: スコープ未指定時に全 allowedScopes を付与
+
+- 最小スコープポリシー（principle of least privilege）に反する
+- 対応方針: スコープ未指定時は空セットを返すか、クライアントごとにデフォルトスコープを定義する設計の検討
+
+### [中] `mcp_sessions` テーブルにユーザーIDが関連付けられていない
+
+- セッションハイジャックが発生した場合にユーザーとセッションを紐付けて無効化できない
+- 対応方針: `mcp_sessions` テーブルに `user_id` カラムを追加（migration 追加）し、セッション作成時に記録
+
+## 完了済み（Device Code Grant 対応）
+
+- [x] RFC 8628 §3.5: Device Code Grant の `slow_down` レスポンスに `Retry-After` ヘッダーを追加（`device.ts`）
+- [x] `device.test.ts` を新規作成し 16テストを追加（RFC準拠・各エラーケース網羅）
+
 ## 完了済み
 
 - [x] ~~MCPミドルウェアのBAN/Adminチェック順序修正~~ (2026-04-03, commit 9575641)
