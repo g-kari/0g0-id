@@ -237,3 +237,12 @@
   - `!refreshToken || revoked_at !== null` を1行で null 返しにしていたのを分離
   - 失効済みトークン（存在はするが revoked）は `{ active: false }` を返すよう修正
   - 「見つからない」と「失効済み」を区別し RFC 7662 §2.2 に準拠
+
+## テストカバレッジ追加（未対応）
+
+- [ ] `/introspect` — JTIブロックリストhit時に `{ active: false }` を返すことのテスト（`isAccessTokenRevoked` が `true` を返す場合）
+- [ ] `/revoke` — JWTアクセストークンのrevoke（`addRevokedAccessToken` が呼ばれるか、期限内/期限外の分岐）
+- [ ] `/revoke` — JWT署名が無効な場合に 200 OK を返すことのテスト
+- [ ] `/token` (refresh_token grant) — `issueTokenPair` が例外をスローした場合の `server_error` レスポンスのテスト
+- [ ] `/token` (authorization_code grant) — `normalizeRedirectUri` が `null` を返す場合（無効URI）のテスト
+- [ ] `/token` (authorization_code grant) — Confidentialクライアント（Basic認証）での成功ケーステスト
