@@ -185,3 +185,11 @@
 - [x] ~~well-known: oauth-authorization-server に未実装の registration_endpoint が宣言されていた~~ (2026-04-05, 削除)
 - [x] ~~introspect: リフレッシュトークン・JWTトークンのレスポンスに iss・iat が欠落~~ (2026-04-05, 追加・RFC 7662 §2.2準拠)
 - [x] ~~期限切れ・失効済みリフレッシュトークンの自動クリーンアップが未実装~~ (2026-04-05, deleteExpiredRefreshTokens + scheduledハンドラーに追加)
+
+## コードレビュー対応済み（2026-04-05）
+
+### セキュリティ修正: unrevokeRefreshToken エラーハンドリング改善
+
+- ✅ `token.ts` / `auth.ts` の `throw e` を RFC 6749 §5.2 準拠の `server_error` JSON レスポンスに変更
+- ✅ `unrevokeRefreshToken` の戻り値チェックを追加（`false` 時に `console.error` でログ出力）
+- 並行処理でトークン失効解除が失敗した場合の追跡可能性を改善
