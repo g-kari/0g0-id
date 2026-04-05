@@ -80,13 +80,6 @@ function applyUserClaims(
   }
 }
 
-
-
-/**
- * client_secret_basic 認証（Authorization: Basic）またはパブリッククライアント（none）を処理する。
- * Authorization ヘッダーがある場合は Basic 認証を検証し、クライアントIDの一致も確認する。
- * ヘッダーがない場合はパブリッククライアントとして bodyClientId のみで検証する。
- */
 /**
  * client_secret_basic 認証（Authorization: Basic）またはパブリッククライアント（none）を処理する。
  * Authorization ヘッダーがある場合は Basic 認証を検証し、クライアントIDの一致も確認する。
@@ -117,7 +110,7 @@ async function resolveOAuthClient(
 
   // Public client: client_id のみで識別（client_secret なし）
   if (!bodyClientId) {
-    return { ok: false, error: 'client_id is required', status: 400 };
+    return { ok: false, error: 'invalid_request', status: 400 };
   }
   const service = await findServiceByClientId(db, bodyClientId);
   if (!service) {
@@ -356,6 +349,7 @@ async function handleRefreshTokenGrant(
     accessToken = tokens.accessToken;
     newRefreshToken = tokens.refreshToken;
   } catch (e) {
+    tokenLogger.error('handleRefreshTokenGrant: issueTokenPair failed', e);
     // レース条件対策
     const currentToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
     if (currentToken && currentToken.revoked_reason === 'reuse_detected') {
