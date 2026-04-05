@@ -1046,7 +1046,10 @@ app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
   // 誤発動しトークンファミリー全体が無効化されてしまう。
   if (new Date(storedToken.expires_at) < new Date()) {
     try {
-      await unrevokeRefreshToken(c.env.DB, storedToken.id);
+      const unrevoked = await unrevokeRefreshToken(c.env.DB, storedToken.id);
+      if (!unrevoked) {
+        console.error('[auth] unrevokeRefreshToken returned false after expiry check — token may remain revoked:', storedToken.id);
+      }
     } catch (unrevokeErr) {
       console.error('[auth] Failed to unrevoke refresh token after expiry check:', unrevokeErr);
     }
@@ -1099,11 +1102,14 @@ app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
       return c.json({ error: { code: 'TOKEN_REUSE', message: 'Token reuse detected' } }, 401);
     }
     try {
-      await unrevokeRefreshToken(c.env.DB, storedToken.id);
+      const unrevoked = await unrevokeRefreshToken(c.env.DB, storedToken.id);
+      if (!unrevoked) {
+        console.error('[auth] unrevokeRefreshToken returned false after issueTokenPair failure — token may remain revoked:', storedToken.id);
+      }
     } catch (unrevokeErr) {
       console.error('[auth] Failed to unrevoke refresh token after issueTokenPair failure:', unrevokeErr);
     }
-    throw e;
+    return c.json({ error: 'server_error', error_description: 'Token operation failed' }, 500);
   }
 
   return c.json({

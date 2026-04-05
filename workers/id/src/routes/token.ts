@@ -314,7 +314,10 @@ async function handleRefreshTokenGrant(
     }
     // 別サービス向けのトークン → 元に戻して拒否
     try {
-      await unrevokeRefreshToken(c.env.DB, storedToken.id);
+      const unrevoked = await unrevokeRefreshToken(c.env.DB, storedToken.id);
+      if (!unrevoked) {
+        console.error('[token] unrevokeRefreshToken returned false after service_id mismatch — token may remain revoked:', storedToken.id);
+      }
     } catch (unrevokeErr) {
       console.error('[token] Failed to unrevoke refresh token after service_id mismatch:', unrevokeErr);
     }
@@ -329,7 +332,10 @@ async function handleRefreshTokenGrant(
       return c.json({ error: 'invalid_grant', error_description: 'Token reuse detected' }, 400);
     }
     try {
-      await unrevokeRefreshToken(c.env.DB, storedToken.id);
+      const unrevoked = await unrevokeRefreshToken(c.env.DB, storedToken.id);
+      if (!unrevoked) {
+        console.error('[token] unrevokeRefreshToken returned false after expiry check — token may remain revoked:', storedToken.id);
+      }
     } catch (unrevokeErr) {
       console.error('[token] Failed to unrevoke refresh token after expiry check:', unrevokeErr);
     }
@@ -367,11 +373,14 @@ async function handleRefreshTokenGrant(
       return c.json({ error: 'invalid_grant', error_description: 'Token reuse detected' }, 400);
     }
     try {
-      await unrevokeRefreshToken(c.env.DB, storedToken.id);
+      const unrevoked = await unrevokeRefreshToken(c.env.DB, storedToken.id);
+      if (!unrevoked) {
+        console.error('[token] unrevokeRefreshToken returned false after issueTokenPair failure — token may remain revoked:', storedToken.id);
+      }
     } catch (unrevokeErr) {
       console.error('[token] Failed to unrevoke refresh token after issueTokenPair failure:', unrevokeErr);
     }
-    throw e;
+    return c.json({ error: 'server_error', error_description: 'Token operation failed' }, 500);
   }
 
   // レスポンス (RFC 6749 §5.1)
