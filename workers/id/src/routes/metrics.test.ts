@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
 
 vi.mock('@0g0-id/shared', () => ({
+  createLogger: vi.fn().mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
   countUsers: vi.fn(),
   countAdminUsers: vi.fn(),
   countServices: vi.fn(),
@@ -11,6 +12,7 @@ vi.mock('@0g0-id/shared', () => ({
   getLoginEventCountryStats: vi.fn(),
   getDailyLoginTrends: vi.fn(),
   verifyAccessToken: vi.fn(),
+  isAccessTokenRevoked: vi.fn().mockResolvedValue(false),
   findUserById: vi.fn(),
   getServiceTokenStats: vi.fn(),
   getSuspiciousMultiCountryLogins: vi.fn(),

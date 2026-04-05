@@ -50,6 +50,7 @@ vi.mock('@0g0-id/shared', () => ({
   linkProvider: vi.fn(),
   insertLoginEvent: vi.fn(),
   verifyAccessToken: vi.fn(),
+  isAccessTokenRevoked: vi.fn().mockResolvedValue(false),
   ALL_PROVIDERS: ['google', 'line', 'twitch', 'github', 'x'],
   isValidProvider: (v: string) => ['google', 'line', 'twitch', 'github', 'x'].includes(v),
   normalizeRedirectUri: vi.fn((uri: string) => uri),

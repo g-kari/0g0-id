@@ -232,6 +232,14 @@ describe('GET /api/external/users/:sub', () => {
       const body = await res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe('NOT_FOUND');
     });
+
+    it('BANされたユーザー → 404を返す（内部情報漏洩防止）', async () => {
+      mockFindUserById.mockResolvedValue({ ...mockUser, banned_at: '2024-06-01T00:00:00Z' });
+      const res = await requestExternalUser(app, PAIRWISE_SUB);
+      expect(res.status).toBe(404);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('NOT_FOUND');
+    });
   });
 
   describe('スコープフィルタリング', () => {

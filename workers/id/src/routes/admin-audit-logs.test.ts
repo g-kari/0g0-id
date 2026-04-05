@@ -30,6 +30,7 @@ vi.mock('@0g0-id/shared', () => ({
     return { limit: Math.min(limitRaw, options.maxLimit), offset: offsetRaw };
   },
   verifyAccessToken: vi.fn(),
+  isAccessTokenRevoked: vi.fn().mockResolvedValue(false),
 }));
 
 import {

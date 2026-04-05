@@ -1,11 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
 
-vi.mock('@0g0-id/shared', () => ({
-  findUserById: vi.fn(),
-  verifyAccessToken: vi.fn(),
-  sha256: vi.fn(),
-}));
+vi.mock('@0g0-id/shared', async (importActual) => {
+  const actual = await importActual<typeof import('@0g0-id/shared')>();
+  return {
+    ...actual,
+    findUserById: vi.fn(),
+    verifyAccessToken: vi.fn(),
+    sha256: vi.fn(),
+    isAccessTokenRevoked: vi.fn().mockResolvedValue(false),
+  };
+});
 
 vi.mock('../middleware/rate-limit', () => ({
   externalApiRateLimitMiddleware: vi.fn((c, next) => next()),
@@ -148,6 +153,15 @@ describe('GET /api/userinfo', () => {
       expect(res.status).toBe(401);
       const body = await res.json<{ error: string }>();
       expect(body.error).toBe('invalid_token');
+    });
+
+    it('BANされたユーザー → 401を返す', async () => {
+      vi.mocked(findUserById).mockResolvedValue({ ...mockUser, banned_at: '2024-06-01T00:00:00Z' });
+      const res = await requestUserInfo(app);
+      expect(res.status).toBe(401);
+      const body = await res.json<{ error: string; error_description: string }>();
+      expect(body.error).toBe('invalid_token');
+      expect(body.error_description).toBe('Account suspended');
     });
   });
 
