@@ -111,6 +111,9 @@ app.get('/login', async (c) => {
 </body>
 </html>`;
 
+  c.header('Content-Security-Policy', `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${c.env.IDP_ORIGIN}; frame-ancestors 'none'`);
+  c.header('X-Frame-Options', 'DENY');
+  c.header('X-Content-Type-Options', 'nosniff');
   return c.html(html);
 });
 
