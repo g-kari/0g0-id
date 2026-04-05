@@ -126,6 +126,16 @@
 
 - **対応済み**: `cleanupExpiredRevokedAccessTokens` を実装し、scheduledハンドラー（Cron Trigger）に追加。期限切れエントリを自動削除（2026-04-05）
 
+## 新機能追加（2026-04-06）
+
+- [x] **MCPツール: list_user_sessions / revoke_user_sessions 追加**
+  - `list_user_sessions`: 指定ユーザーのアクティブセッション一覧取得（IdPセッション・サービストークン両方含む）
+  - `revoke_user_sessions`: 指定ユーザーの全セッション強制失効（admin_action 理由付き + 監査ログ記録）
+  - テスト10件追加（users.test.ts: 合計32件）
+- [x] **リファクタリング: auth.ts のマジックナンバー `expires_in: 900` を `ACCESS_TOKEN_TTL_SECONDS` 定数に統一**
+  - `/auth/exchange` と `/auth/refresh` 両エンドポイントで `token-pair.ts` の既存定数を使用
+  - `token.ts` の `buildTokenResponse` との一貫性確保
+
 ## 未対応課題
 
 ### ~~[中] introspect時のスコープフォールバック不整合~~ ✅
