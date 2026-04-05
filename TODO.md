@@ -136,11 +136,9 @@
 
 - **対応済み**: `tokenApiClientRateLimitMiddleware` の `getKey` を async 化し、`Authorization: Basic` ヘッダーがない場合はリクエストボディ（urlencoded / JSON両対応）から `client_id` を取得するよう修正。Honoのボディキャッシュ機構により二重読み取りが安全。テスト7件追加（2026-04-05）
 
-### [低] `unrevokeRefreshToken` 失敗時のエラーハンドリング不足
+### ~~[低] `unrevokeRefreshToken` 失敗時のエラーハンドリング不足~~ ✅
 
-- **問題**: DB障害等で `unrevokeRefreshToken` が失敗した場合、正規トークンが永久に失効状態のままになるリスクがある
-- **影響**: ユーザーが正規のトークンを持っていても再認証を強制される可能性
-- [ ] `unrevokeRefreshToken` の失敗時にリトライまたはフォールバック処理を追加
+- **対応済み**: リトライ付き（最大2回）のエラーハンドリングを実装。戻り値を boolean に変更し、呼び出し箇所を try-catch で囲んでログ記録。
 
 ### ~~[低] `X-Forwarded-For` スプーフィングリスク~~ ✅
 

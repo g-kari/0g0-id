@@ -1045,7 +1045,11 @@ app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
   // 元に戻さないと、同じ期限切れトークンの再提示時にreuse detectionが
   // 誤発動しトークンファミリー全体が無効化されてしまう。
   if (new Date(storedToken.expires_at) < new Date()) {
-    await unrevokeRefreshToken(c.env.DB, storedToken.id);
+    try {
+      await unrevokeRefreshToken(c.env.DB, storedToken.id);
+    } catch (unrevokeErr) {
+      console.error('[auth] Failed to unrevoke refresh token after expiry check:', unrevokeErr);
+    }
     return c.json({ error: { code: 'TOKEN_EXPIRED', message: 'Refresh token expired' } }, 401);
   }
 
@@ -1094,7 +1098,11 @@ app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
     if (currentToken && currentToken.revoked_reason === 'reuse_detected') {
       return c.json({ error: { code: 'TOKEN_REUSE', message: 'Token reuse detected' } }, 401);
     }
-    await unrevokeRefreshToken(c.env.DB, storedToken.id);
+    try {
+      await unrevokeRefreshToken(c.env.DB, storedToken.id);
+    } catch (unrevokeErr) {
+      console.error('[auth] Failed to unrevoke refresh token after issueTokenPair failure:', unrevokeErr);
+    }
     throw e;
   }
 

@@ -46,23 +46,38 @@ export async function findAndRevokeRefreshToken(
 
 export async function unrevokeRefreshToken(
   db: D1Database,
-  tokenId: string
-): Promise<void> {
-  const result = await db
-    .prepare(
-      `UPDATE refresh_tokens
-       SET revoked_at = NULL, revoked_reason = NULL
-       WHERE id = ?
-         AND revoked_at IS NOT NULL
-         AND revoked_reason = 'rotation'`
-    )
-    .bind(tokenId)
-    .run();
-  if (result.meta.changes === 0) {
-    console.warn(
-      `[unrevokeRefreshToken] token ${tokenId} was not unrevoked — revoked_reason may have changed concurrently`
-    );
+  tokenId: string,
+  maxRetries = 2
+): Promise<boolean> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await db
+        .prepare(
+          `UPDATE refresh_tokens
+           SET revoked_at = NULL, revoked_reason = NULL
+           WHERE id = ?
+             AND revoked_at IS NOT NULL
+             AND revoked_reason = 'rotation'`
+        )
+        .bind(tokenId)
+        .run();
+      if (result.meta.changes === 0) {
+        console.warn(
+          `[unrevokeRefreshToken] token ${tokenId} was not unrevoked — revoked_reason may have changed concurrently`
+        );
+        return false;
+      }
+      return true;
+    } catch (err) {
+      lastError = err;
+      console.error(
+        `[unrevokeRefreshToken] attempt ${attempt + 1}/${maxRetries + 1} failed for token ${tokenId}:`,
+        err
+      );
+    }
   }
+  throw lastError;
 }
 
 export async function createRefreshToken(

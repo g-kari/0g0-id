@@ -1089,7 +1089,7 @@ describe('POST /api/token/ — refresh_token grant', () => {
     vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(mockRefreshToken as never);
     vi.mocked(findRefreshTokenByHash).mockResolvedValue(mockRefreshToken as never);
     vi.mocked(findUserById).mockResolvedValue(mockUser);
-    vi.mocked(unrevokeRefreshToken).mockResolvedValue(undefined);
+    vi.mocked(unrevokeRefreshToken).mockResolvedValue(true);
     vi.mocked(revokeTokenFamily).mockResolvedValue(undefined);
     vi.mocked(signAccessToken).mockResolvedValue('new-access-token');
     vi.mocked(generateToken).mockReturnValue('new-refresh-token');
