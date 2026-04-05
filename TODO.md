@@ -238,11 +238,11 @@
   - 失効済みトークン（存在はするが revoked）は `{ active: false }` を返すよう修正
   - 「見つからない」と「失効済み」を区別し RFC 7662 §2.2 に準拠
 
-## テストカバレッジ追加（未対応）
+## テストカバレッジ追加（対応済み 2026-04-05）
 
-- [ ] `/introspect` — JTIブロックリストhit時に `{ active: false }` を返すことのテスト（`isAccessTokenRevoked` が `true` を返す場合）
-- [ ] `/revoke` — JWTアクセストークンのrevoke（`addRevokedAccessToken` が呼ばれるか、期限内/期限外の分岐）
-- [ ] `/revoke` — JWT署名が無効な場合に 200 OK を返すことのテスト
-- [ ] `/token` (refresh_token grant) — `issueTokenPair` が例外をスローした場合の `server_error` レスポンスのテスト
-- [ ] `/token` (authorization_code grant) — `normalizeRedirectUri` が `null` を返す場合（無効URI）のテスト
-- [ ] `/token` (authorization_code grant) — Confidentialクライアント（Basic認証）での成功ケーステスト
+- [x] ~~`/introspect` — JTIブロックリストhit時に `{ active: false }` を返すことのテスト（`isAccessTokenRevoked` が `true` を返す場合）~~ (2026-04-05)
+- [x] ~~`/revoke` — JWTアクセストークンのrevoke（`addRevokedAccessToken` が呼ばれるか、期限内/期限外の分岐）~~ (2026-04-05)
+- [x] ~~`/revoke` — JWT署名が無効な場合に 200 OK を返すことのテスト~~ (2026-04-05)
+- [x] ~~`/token` (refresh_token grant) — `issueTokenPair` が例外をスローした場合の `server_error` レスポンスのテスト~~ (2026-04-05)
+- [x] ~~`/token` (authorization_code grant) — `normalizeRedirectUri` が `null` を返す場合（無効URI）のテスト~~ (2026-04-05)
+- [x] ~~`/token` (authorization_code grant) — Confidentialクライアント（Basic認証）での成功ケーステスト~~ (2026-04-05)
