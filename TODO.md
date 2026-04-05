@@ -254,12 +254,14 @@ $1
 ### 中優先度
 
 - [ ] `token.ts`: `handleRefreshTokenGrant` でサービス所有権不一致・有効期限切れの両方で `findRefreshTokenByHash` が重複呼び出しされている（D1への余分なクエリ）。1回の呼び出しに統合してパフォーマンス改善
-- [ ] `auth.ts`: `handleProviderLink` のエラーハンドリングが `err.message.includes('UNIQUE constraint failed')` という文字列マッチングに依存。D1/SQLiteのバージョンアップで壊れるリスク。`linkProvider` 側でカスタムエラーを投げるよう変更推奨
-- [ ] `token.ts`: `service!` 非null アサーション（`introspect` エンドポイント）が不要。直上の `if (!service)` チェック後なので `!` を削除
 
-### 低優先度
+### 対応済み（2026-04-05）
+- [x] `auth.ts`: `handleProviderLink` のエラーハンドリングが `err.message.includes('UNIQUE constraint failed')` という文字列マッチングに依存 → `linkProvider` 側で UNIQUE制約エラーをキャッチして `PROVIDER_ALREADY_LINKED` として再throw。`handleProviderLink` は完全一致 `=== 'PROVIDER_ALREADY_LINKED'` のみに簡素化
+- [x] `token.ts`: `service!` 非null アサーション（`introspect` エンドポイント）削除 → `const introspectService = service` に変数を分離してTypeScript型推論を活用
+- [x] `token-pair.ts`: アクセストークンの `expires_in: 900` マジックナンバー → `ACCESS_TOKEN_TTL_SECONDS = 900` 定数として管理
+
+### 低優先度（未対応）
 
 - [ ] `token.ts`: RFC 6749 §5.2 準拠 — `invalid_client` で401を返す際に `WWW-Authenticate: Basic realm="..."` ヘッダーが欠落
-- [ ] `token-pair.ts`: アクセストークンの `expires_in: 900` がマジックナンバー。`ACCESS_TOKEN_TTL_SEC` 等の定数として管理推奨
 - [ ] `rate-limit.ts`: `getClientIp` が `null` を返す際のフォールバック `'unknown'` キーで全リクエストが集約されるリスク（本番Cloudflare経由なら発生しないが、直接アクセス時やテスト環境での挙動注意）
 - [ ] `middleware/auth.ts`: `rejectBannedUserMiddleware` で削除済みユーザーと停止ユーザーが同じ `UNAUTHORIZED` レスポンスになっている（意図通りかもしれないが確認推奨）
