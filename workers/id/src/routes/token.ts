@@ -22,7 +22,7 @@ import {
 import type { IdpEnv, User } from '@0g0-id/shared';
 import { externalApiRateLimitMiddleware, tokenApiClientRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authenticateService } from '../utils/service-auth';
-import { parseAllowedScopes, resolveEffectiveScope } from '../utils/scopes';
+import { resolveEffectiveScope } from '../utils/scopes';
 import { handleDeviceCodeGrant } from './device';
 import { issueTokenPair, buildTokenResponse } from '../utils/token-pair';
 import { attemptUnrevokeToken } from '../utils/token-recovery';
@@ -516,8 +516,9 @@ app.post('/revoke', externalApiRateLimitMiddleware, async (c) => {
   const token = body.token;
 
   // JWTアクセストークンの失効処理（RFC 7009 §2.1）
-  // JWTは "." を含む形式（header.payload.signature）で識別する
-  if (token.includes('.')) {
+  // JWTは header.payload.signature の3セクション形式（Base64url）で識別する
+  const JWT_PATTERN = /^[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+$/;
+  if (JWT_PATTERN.test(token)) {
     try {
       const payload = await verifyAccessToken(token, c.env.JWT_PUBLIC_KEY, c.env.IDP_ORIGIN, c.env.IDP_ORIGIN);
       // 自サービスが発行したトークンかつ有効期限内のものだけブロックリストに追加

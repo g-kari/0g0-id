@@ -1095,7 +1095,7 @@ app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
       return c.json({ error: { code: 'TOKEN_REUSE', message: 'Token reuse detected' } }, 401);
     }
     await attemptUnrevokeToken(c.env.DB, storedToken.id, '[auth] issueTokenPair failure 後');
-    return c.json({ error: 'server_error', error_description: 'Token operation failed' }, 500);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Token operation failed' } }, 500);
   }
 
   return c.json({

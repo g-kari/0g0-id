@@ -31,7 +31,7 @@ app.get('/openid-configuration', (c) => {
       grant_types_supported: ['authorization_code', 'refresh_token', 'urn:ietf:params:oauth:grant-type:device_code'],
       subject_types_supported: ['pairwise'],
       id_token_signing_alg_values_supported: ['ES256'],
-      token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
+      token_endpoint_auth_methods_supported: ['client_secret_basic', 'none'],
       code_challenge_methods_supported: ['S256'],
     },
     200,
