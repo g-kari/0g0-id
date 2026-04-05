@@ -300,3 +300,16 @@
 - [x] ~~`token.ts`: RFC 6749 §5.2 準拠 — `invalid_client` で401を返す際に `WWW-Authenticate: Basic realm="..."` ヘッダーが欠落~~ (2026-04-05, c.header()で対応)
 - [x] ~~`rate-limit.ts`: `getClientIp` が `null` を返す際のフォールバック `'unknown'` キーで全リクエストが集約されるリスク~~ ✅ (2026-04-05, `key === 'unknown'` 時に warn ログ追加。挙動はX-Forwarded-For偽装防止の意図的設計)
 - [x] ~~`middleware/auth.ts`: `rejectBannedUserMiddleware` で削除済みユーザーと停止ユーザーが同じ `UNAUTHORIZED` レスポンスになっている~~ ✅ (2026-04-05, クライアントレスポンスは同一のまま。サーバーサイドで warn ログにより区別可能に)
+
+## 新機能追加（2026-04-06）
+
+- [x] **OAuth 2.0 / OIDC フロー完成: `/auth/authorize` nonce対応 + user BFF OAuth ログインページ追加**
+  - `/auth/authorize` に OIDC `nonce` パラメータを追加（最大128文字バリデーション）
+  - nonce を `USER_ORIGIN/login` へフォワーディング → auth code に保存 → ID token に埋め込み（OIDC Core 1.0 §3.1.2.1 準拠）
+  - `workers/user/src/routes/oauth.ts` を新規作成: `GET /login` プロバイダー選択ページ
+    - IdP `/auth/authorize` からリダイレクトされ、全OAuthパラメータを受け取る
+    - サーバーサイドで IdP `/auth/login` URLを組み立て（XSS防止）
+    - Google / LINE / Twitch / GitHub / X の5プロバイダーに対応
+  - `docs.ts` に `/auth/authorize` の OpenAPI ドキュメントを追加
+  - テスト12件追加（GET /auth/authorize バリデーション・正常系・nonceフォワーディング）
+  - 全1464テストパス
