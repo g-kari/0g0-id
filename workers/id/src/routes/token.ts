@@ -11,7 +11,6 @@ import {
   findServiceByClientId,
   findServiceById,
   findAndRevokeRefreshToken,
-  unrevokeRefreshToken,
   revokeTokenFamily,
   generateCodeChallenge,
   signIdToken,
@@ -27,6 +26,7 @@ import { authenticateService } from '../utils/service-auth';
 import { parseAllowedScopes, resolveEffectiveScope } from '../utils/scopes';
 import { handleDeviceCodeGrant } from './device';
 import { issueTokenPair, buildTokenResponse } from '../utils/token-pair';
+import { attemptUnrevokeToken } from '../utils/token-recovery';
 
 const tokenLogger = createLogger('token');
 
@@ -313,14 +313,7 @@ async function handleRefreshTokenGrant(
       return c.json({ error: 'invalid_grant', error_description: 'Token reuse detected' }, 400);
     }
     // 別サービス向けのトークン → 元に戻して拒否
-    try {
-      const unrevoked = await unrevokeRefreshToken(c.env.DB, storedToken.id);
-      if (!unrevoked) {
-        console.error('[token] unrevokeRefreshToken returned false after service_id mismatch — token may remain revoked:', storedToken.id);
-      }
-    } catch (unrevokeErr) {
-      console.error('[token] Failed to unrevoke refresh token after service_id mismatch:', unrevokeErr);
-    }
+    await attemptUnrevokeToken(c.env.DB, storedToken.id, '[token] service_id mismatch 後');
     return c.json({ error: 'invalid_grant', error_description: 'Token was not issued for this client' }, 400);
   }
 
@@ -331,14 +324,7 @@ async function handleRefreshTokenGrant(
     if (currentToken && currentToken.revoked_reason === 'reuse_detected') {
       return c.json({ error: 'invalid_grant', error_description: 'Token reuse detected' }, 400);
     }
-    try {
-      const unrevoked = await unrevokeRefreshToken(c.env.DB, storedToken.id);
-      if (!unrevoked) {
-        console.error('[token] unrevokeRefreshToken returned false after expiry check — token may remain revoked:', storedToken.id);
-      }
-    } catch (unrevokeErr) {
-      console.error('[token] Failed to unrevoke refresh token after expiry check:', unrevokeErr);
-    }
+    await attemptUnrevokeToken(c.env.DB, storedToken.id, '[token] expiry check 後');
     return c.json({ error: 'invalid_grant', error_description: 'Refresh token expired' }, 400);
   }
 
@@ -372,14 +358,7 @@ async function handleRefreshTokenGrant(
     if (currentToken && currentToken.revoked_reason === 'reuse_detected') {
       return c.json({ error: 'invalid_grant', error_description: 'Token reuse detected' }, 400);
     }
-    try {
-      const unrevoked = await unrevokeRefreshToken(c.env.DB, storedToken.id);
-      if (!unrevoked) {
-        console.error('[token] unrevokeRefreshToken returned false after issueTokenPair failure — token may remain revoked:', storedToken.id);
-      }
-    } catch (unrevokeErr) {
-      console.error('[token] Failed to unrevoke refresh token after issueTokenPair failure:', unrevokeErr);
-    }
+    await attemptUnrevokeToken(c.env.DB, storedToken.id, '[token] issueTokenPair failure 後');
     return c.json({ error: 'server_error', error_description: 'Token operation failed' }, 500);
   }
 

@@ -29,7 +29,6 @@ import {
   signIdToken,
   findRefreshTokenByHash,
   findAndRevokeRefreshToken,
-  unrevokeRefreshToken,
   findUserById,
   revokeRefreshToken,
   revokeTokenFamily,
@@ -58,6 +57,7 @@ import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddlewar
 import { serviceBindingMiddleware } from '../middleware/service-binding';
 import { resolveEffectiveScope } from '../utils/scopes';
 import { issueTokenPair } from '../utils/token-pair';
+import { attemptUnrevokeToken } from '../utils/token-recovery';
 
 const ExchangeSchema = z.object({
   code: z.string().min(1, 'code is required'),
@@ -1045,14 +1045,7 @@ app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
   // 元に戻さないと、同じ期限切れトークンの再提示時にreuse detectionが
   // 誤発動しトークンファミリー全体が無効化されてしまう。
   if (new Date(storedToken.expires_at) < new Date()) {
-    try {
-      const unrevoked = await unrevokeRefreshToken(c.env.DB, storedToken.id);
-      if (!unrevoked) {
-        console.error('[auth] unrevokeRefreshToken returned false after expiry check — token may remain revoked:', storedToken.id);
-      }
-    } catch (unrevokeErr) {
-      console.error('[auth] Failed to unrevoke refresh token after expiry check:', unrevokeErr);
-    }
+    await attemptUnrevokeToken(c.env.DB, storedToken.id, '[auth] expiry check 後');
     return c.json({ error: { code: 'TOKEN_EXPIRED', message: 'Refresh token expired' } }, 401);
   }
 
@@ -1101,14 +1094,7 @@ app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
     if (currentToken && currentToken.revoked_reason === 'reuse_detected') {
       return c.json({ error: { code: 'TOKEN_REUSE', message: 'Token reuse detected' } }, 401);
     }
-    try {
-      const unrevoked = await unrevokeRefreshToken(c.env.DB, storedToken.id);
-      if (!unrevoked) {
-        console.error('[auth] unrevokeRefreshToken returned false after issueTokenPair failure — token may remain revoked:', storedToken.id);
-      }
-    } catch (unrevokeErr) {
-      console.error('[auth] Failed to unrevoke refresh token after issueTokenPair failure:', unrevokeErr);
-    }
+    await attemptUnrevokeToken(c.env.DB, storedToken.id, '[auth] issueTokenPair failure 後');
     return c.json({ error: 'server_error', error_description: 'Token operation failed' }, 500);
   }
 
