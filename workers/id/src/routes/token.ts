@@ -9,7 +9,6 @@ import {
   createLogger,
   findAndConsumeAuthCode,
   findServiceByClientId,
-  findServiceById,
   findAndRevokeRefreshToken,
   revokeTokenFamily,
   generateCodeChallenge,
@@ -88,18 +87,23 @@ function applyUserClaims(
  * Authorization ヘッダーがある場合は Basic 認証を検証し、クライアントIDの一致も確認する。
  * ヘッダーがない場合はパブリッククライアントとして bodyClientId のみで検証する。
  */
+/**
+ * client_secret_basic 認証（Authorization: Basic）またはパブリッククライアント（none）を処理する。
+ * Authorization ヘッダーがある場合は Basic 認証を検証し、クライアントIDの一致も確認する。
+ * ヘッダーがない場合はパブリッククライアントとして bodyClientId のみで検証する。
+ */
 async function resolveOAuthClient(
   db: D1Database,
   authHeader: string | undefined,
   bodyClientId: string | undefined
-): Promise<{ ok: true; service: NonNullable<Awaited<ReturnType<typeof findServiceByClientId>>> } | { ok: false; error: string; status: 400 | 401 }> {
+): Promise<{ ok: true; service: NonNullable<Awaited<ReturnType<typeof findServiceByClientId>>> } | { ok: false; error: string; status: 400 | 401 | 500 }> {
   if (authHeader?.startsWith('Basic ')) {
     // Confidential client: client_secret_basic
     let service: Awaited<ReturnType<typeof authenticateService>>;
     try {
       service = await authenticateService(db, authHeader);
     } catch {
-      return { ok: false, error: 'Internal server error', status: 401 };
+      return { ok: false, error: 'server_error', status: 500 };
     }
     if (!service) {
       return { ok: false, error: 'invalid_client', status: 401 };

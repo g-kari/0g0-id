@@ -3,6 +3,7 @@ import {
   sha256,
   createLogger,
   findServiceByClientId,
+  findServiceById,
   findUserById,
   createDeviceCode,
   findDeviceCodeByUserCode,
@@ -194,7 +195,7 @@ app.post(
     }
 
     const userCode = normalizeUserCode(rawUserCode);
-    if (userCode.length !== 8) {
+    if (userCode.length !== 8 || !/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/.test(userCode)) {
       return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid user_code format' } }, 400);
     }
 
@@ -218,10 +219,7 @@ app.post(
 
     // actionなし → 情報取得のみ（BFFの検証ステップ用）
     if (!action) {
-      const serviceInfo = await c.env.DB
-        .prepare('SELECT name, allowed_scopes FROM services WHERE id = ?')
-        .bind(deviceCode.service_id)
-        .first<{ name: string; allowed_scopes: string | null }>();
+      const serviceInfo = await findServiceById(c.env.DB, deviceCode.service_id);
       const scopes = serviceInfo?.allowed_scopes
         ? parseAllowedScopes(serviceInfo.allowed_scopes)
         : [];
@@ -304,9 +302,7 @@ export async function handleDeviceCodeGrant(
   }
 
   // 承認済みチェックをslow_downの前に実施（承認済みなのに余分な待機を強いるのを防止）
-  if (deviceCode.approved_at && deviceCode.user_id) {
-    // 承認済み — slow_downスキップしてトークン発行へ進む
-  } else {
+  if (!deviceCode.approved_at || !deviceCode.user_id) {
     // まだ承認されていない場合のみポーリング間隔チェック
     const pollingAllowed = await tryUpdateDeviceCodePolledAt(c.env.DB, deviceCode.id, POLLING_INTERVAL_SEC);
     if (!pollingAllowed) {

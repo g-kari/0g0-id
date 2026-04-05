@@ -1,4 +1,6 @@
-import { unrevokeRefreshToken } from '@0g0-id/shared';
+import { unrevokeRefreshToken, createLogger } from '@0g0-id/shared';
+
+const recoveryLogger = createLogger('token-recovery');
 
 /**
  * リフレッシュトークンの失効解除を試みる。
@@ -16,9 +18,9 @@ export async function attemptUnrevokeToken(
   try {
     const unrevoked = await unrevokeRefreshToken(db, tokenId);
     if (!unrevoked) {
-      console.error(`${context} unrevokeRefreshToken returned false — token may remain revoked:`, tokenId);
+      recoveryLogger.error(`${context} unrevokeRefreshToken returned false — token may remain revoked:`, tokenId);
     }
   } catch (err) {
-    console.error(`${context} Failed to unrevoke refresh token:`, err);
+    recoveryLogger.error(`${context} Failed to unrevoke refresh token:`, err);
   }
 }
