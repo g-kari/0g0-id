@@ -465,12 +465,20 @@ export async function linkProvider(
   }
 
   const col = validateProviderColumn(provider);
-  const user = await db
-    .prepare(
-      `UPDATE users SET ${col} = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
-    )
-    .bind(sub, userId)
-    .first<User>();
+  let user: User | null;
+  try {
+    user = await db
+      .prepare(
+        `UPDATE users SET ${col} = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
+      )
+      .bind(sub, userId)
+      .first<User>();
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('UNIQUE constraint failed')) {
+      throw new Error('PROVIDER_ALREADY_LINKED');
+    }
+    throw err;
+  }
   if (!user) throw new Error('User not found');
   return user;
 }

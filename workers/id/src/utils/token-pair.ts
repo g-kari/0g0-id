@@ -9,6 +9,9 @@ import type { IdpEnv, User } from '@0g0-id/shared';
 /** リフレッシュトークンの有効期限（30日） */
 export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+/** アクセストークンの有効期限（秒）：15分 */
+export const ACCESS_TOKEN_TTL_SECONDS = 900;
+
 /**
  * アクセストークンとリフレッシュトークンのペアを発行する。
  *
@@ -62,7 +65,7 @@ export function buildTokenResponse(
   const response: Record<string, unknown> = {
     access_token: accessToken,
     token_type: 'Bearer',
-    expires_in: 900,
+    expires_in: ACCESS_TOKEN_TTL_SECONDS,
     refresh_token: refreshToken,
   };
   if (idToken) response['id_token'] = idToken;

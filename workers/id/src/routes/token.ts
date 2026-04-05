@@ -458,6 +458,7 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
   if (!service) {
     return c.json({ active: false }, 401);
   }
+  const introspectService = service;
 
   // トークン取得（RFC 7662: application/x-www-form-urlencoded および application/json に対応）
   const body = await parseTokenBody(c.req);
@@ -475,14 +476,14 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
   // 'access_token' ヒントならJWT→リフレッシュトークンの順、それ以外はリフレッシュトークン→JWTの順
   let result: Record<string, unknown> | null;
   if (body.token_type_hint === 'access_token') {
-    result = await introspectJwtToken(c.env.DB, service!, token, c.env);
+    result = await introspectJwtToken(c.env.DB, introspectService, token, c.env);
     if (result === null) {
-      result = await introspectRefreshToken(c.env.DB, service!, tokenHash, c.env.IDP_ORIGIN);
+      result = await introspectRefreshToken(c.env.DB, introspectService, tokenHash, c.env.IDP_ORIGIN);
     }
   } else {
-    result = await introspectRefreshToken(c.env.DB, service!, tokenHash, c.env.IDP_ORIGIN);
+    result = await introspectRefreshToken(c.env.DB, introspectService, tokenHash, c.env.IDP_ORIGIN);
     if (result === null) {
-      result = await introspectJwtToken(c.env.DB, service!, token, c.env);
+      result = await introspectJwtToken(c.env.DB, introspectService, token, c.env);
     }
   }
 
