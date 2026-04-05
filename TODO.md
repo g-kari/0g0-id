@@ -144,6 +144,14 @@
   - `/auth/exchange`（BFF内部用）→ `/api/token`（RFC 6749準拠）に修正（実装変更との整合）
 - 全1452テストパス（変更前: 238失敗 → 変更後: 全パス）
 
+## バグ修正（2026-04-06）
+
+- [x] **well-known: openid-configuration の `authorization_endpoint` が `/auth/login`（BFF専用）を誤って指定**
+  - `/auth/authorize`（RFC 6749 準拠の標準 OAuth 2.0 認可エンドポイント）に修正
+  - `oauth-authorization-server` は既に `/auth/authorize` を正しく指定していた
+  - OIDC Discovery を利用する外部クライアント（MCPクライアント等）が正しい認可エンドポイントを取得できるよう修正
+  - `well-known.test.ts` の対応するアサーションも更新（全テストパス）
+
 ## 新機能追加（2026-04-06）
 
 - [x] **MCPツール: list_user_sessions / revoke_user_sessions 追加**

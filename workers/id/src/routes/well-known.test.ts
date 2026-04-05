@@ -107,7 +107,7 @@ describe('GET /.well-known/openid-configuration', () => {
     expect(res.status).toBe(200);
     const body = await res.json<Record<string, unknown>>();
     expect(body.issuer).toBe('https://id.0g0.xyz');
-    expect(body.authorization_endpoint).toBe('https://id.0g0.xyz/auth/login');
+    expect(body.authorization_endpoint).toBe('https://id.0g0.xyz/auth/authorize');
     expect(body.token_endpoint).toBe('https://id.0g0.xyz/api/token');
     expect(body.jwks_uri).toBe('https://id.0g0.xyz/.well-known/jwks.json');
     expect(body.userinfo_endpoint).toBe('https://id.0g0.xyz/api/userinfo');

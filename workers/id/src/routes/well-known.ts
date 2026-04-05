@@ -18,7 +18,7 @@ app.get('/openid-configuration', (c) => {
   return c.json(
     {
       issuer,
-      authorization_endpoint: `${issuer}/auth/login`,
+      authorization_endpoint: `${issuer}/auth/authorize`,
       token_endpoint: `${issuer}/api/token`,
       jwks_uri: `${issuer}/.well-known/jwks.json`,
       userinfo_endpoint: `${issuer}/api/userinfo`,
