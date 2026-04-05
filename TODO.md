@@ -201,3 +201,16 @@
 - ✅ `workers/id/src/utils/token-recovery.ts` に `attemptUnrevokeToken(db, tokenId, context)` を新設
 - ✅ `token.ts` の3箇所・`auth.ts` の2箇所の重複 try/catch ブロックを `attemptUnrevokeToken` 呼び出しに置換
 - メンテナンス性向上・ログ出力の一貫性確保
+
+## コードレビュー対応 (2026-04-05)
+
+### 対応済み ✅
+- **期限切れトークンの `attemptUnrevokeToken` 削除** (`token.ts`)
+  - 期限切れチェック後に `attemptUnrevokeToken` を呼んで rotation 状態を解除していたが不要かつ危険
+  - 期限切れトークンを revoked_at=NULL に戻すと reuse detection ロジックが誤動作するリスク
+  - 該当行を削除し、期限切れは `invalid_grant` をそのまま返す挙動に統一
+
+- **`introspectRefreshToken` 失効チェック改善** (`token.ts`)
+  - `!refreshToken || revoked_at !== null` を1行で null 返しにしていたのを分離
+  - 失効済みトークン（存在はするが revoked）は `{ active: false }` を返すよう修正
+  - 「見つからない」と「失効済み」を区別し RFC 7662 §2.2 に準拠

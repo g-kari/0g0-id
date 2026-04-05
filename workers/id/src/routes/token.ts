@@ -324,7 +324,6 @@ async function handleRefreshTokenGrant(
     if (currentToken && currentToken.revoked_reason === 'reuse_detected') {
       return c.json({ error: 'invalid_grant', error_description: 'Token reuse detected' }, 400);
     }
-    await attemptUnrevokeToken(c.env.DB, storedToken.id, '[token] expiry check 後');
     return c.json({ error: 'invalid_grant', error_description: 'Refresh token expired' }, 400);
   }
 
@@ -375,9 +374,8 @@ async function introspectRefreshToken(
   issuer: string
 ): Promise<Record<string, unknown> | null> {
   const refreshToken = await findRefreshTokenByHash(db, tokenHash);
-  if (!refreshToken || refreshToken.revoked_at !== null) {
-    return null;
-  }
+  if (!refreshToken) return null;
+  if (refreshToken.revoked_at !== null) return { active: false };
   if (refreshToken.service_id !== service.id) {
     return { active: false };
   }
