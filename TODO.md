@@ -253,7 +253,7 @@ $1
 
 ### 中優先度
 
-- [ ] `token.ts`: `handleRefreshTokenGrant` でサービス所有権不一致・有効期限切れの両方で `findRefreshTokenByHash` が重複呼び出しされている（D1への余分なクエリ）。1回の呼び出しに統合してパフォーマンス改善
+- [x] ~~`token.ts`: `handleRefreshTokenGrant` でサービス所有権不一致・有効期限切れの両方で `findRefreshTokenByHash` が重複呼び出しされている（D1への余分なクエリ）。1回の呼び出しに統合してパフォーマンス改善~~ (2026-04-05, serviceMismatch/isExpiredを事前評価して条件統合)
 
 ### 対応済み（2026-04-05）
 - [x] `auth.ts`: `handleProviderLink` のエラーハンドリングが `err.message.includes('UNIQUE constraint failed')` という文字列マッチングに依存 → `linkProvider` 側で UNIQUE制約エラーをキャッチして `PROVIDER_ALREADY_LINKED` として再throw。`handleProviderLink` は完全一致 `=== 'PROVIDER_ALREADY_LINKED'` のみに簡素化

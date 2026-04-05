@@ -302,25 +302,22 @@ async function handleRefreshTokenGrant(
     return c.json({ error: 'invalid_grant', error_description: 'Invalid refresh token' }, 400);
   }
 
-  // サービス所有権確認
-  if (storedToken.service_id !== service.id) {
-    // 並行リクエストが reuse_detected を発動した可能性をチェック（レース条件対策）
-    const currentToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
-    if (currentToken && currentToken.revoked_reason === 'reuse_detected') {
-      return c.json({ error: 'invalid_grant', error_description: 'Token reuse detected' }, 400);
-    }
-    // 別サービス向けのトークン → 元に戻して拒否
-    await attemptUnrevokeToken(c.env.DB, storedToken.id, '[token] service_id mismatch 後');
-    return c.json({ error: 'invalid_grant', error_description: 'Token was not issued for this client' }, 400);
-  }
+  // サービス所有権確認 & 有効期限チェック（D1クエリを1回に統合）
+  const serviceMismatch = storedToken.service_id !== service.id;
+  const isExpired = new Date(storedToken.expires_at) < new Date();
 
-  // 有効期限チェック
-  if (new Date(storedToken.expires_at) < new Date()) {
+  if (serviceMismatch || isExpired) {
     // 並行リクエストが reuse_detected を発動した可能性をチェック（レース条件対策）
     const currentToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
     if (currentToken && currentToken.revoked_reason === 'reuse_detected') {
       return c.json({ error: 'invalid_grant', error_description: 'Token reuse detected' }, 400);
     }
+    if (serviceMismatch) {
+      // 別サービス向けのトークン → 元に戻して拒否
+      await attemptUnrevokeToken(c.env.DB, storedToken.id, '[token] service_id mismatch 後');
+      return c.json({ error: 'invalid_grant', error_description: 'Token was not issued for this client' }, 400);
+    }
+    // 有効期限切れ
     return c.json({ error: 'invalid_grant', error_description: 'Refresh token expired' }, 400);
   }
 
