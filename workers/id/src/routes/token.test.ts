@@ -24,6 +24,9 @@ vi.mock('@0g0-id/shared', () => ({
   signAccessToken: vi.fn(),
   generateToken: vi.fn(),
   createRefreshToken: vi.fn(),
+  // JTIブロックリスト
+  addRevokedAccessToken: vi.fn(),
+  isAccessTokenRevoked: vi.fn(),
 }));
 
 import {
@@ -46,6 +49,8 @@ import {
   signAccessToken,
   generateToken,
   createRefreshToken,
+  addRevokedAccessToken,
+  isAccessTokenRevoked,
 } from '@0g0-id/shared';
 
 import tokenRoutes from './token';
@@ -97,7 +102,7 @@ const mockRefreshToken = {
   family_id: 'family-1',
   revoked_at: null,
   revoked_reason: null,
-  scope: null,
+  scope: 'profile email',
   expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
   created_at: '2024-01-01T00:00:00Z',
 };
@@ -351,9 +356,10 @@ describe('POST /api/token/introspect', () => {
   });
 
   it('profileスコープのみ → name/pictureを返すがemailは返さない', async () => {
-    vi.mocked(findServiceByClientId).mockResolvedValue({
-      ...mockService,
-      allowed_scopes: JSON.stringify(['profile']),
+    // リフレッシュトークンのscopeがintrospectのクレーム決定に使われる（サービスのallowed_scopesではない）
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      scope: 'profile',
     } as never);
     const res = await sendRequest(app, '/api/token/introspect', {
       body: { token: 'valid-token' },
@@ -367,9 +373,10 @@ describe('POST /api/token/introspect', () => {
   });
 
   it('emailスコープのみ → emailを返すがnameは返さない', async () => {
-    vi.mocked(findServiceByClientId).mockResolvedValue({
-      ...mockService,
-      allowed_scopes: JSON.stringify(['email']),
+    // リフレッシュトークンのscopeがintrospectのクレーム決定に使われる（サービスのallowed_scopesではない）
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      scope: 'email',
     } as never);
     const res = await sendRequest(app, '/api/token/introspect', {
       body: { token: 'valid-token' },
@@ -462,6 +469,20 @@ describe('POST /api/token/introspect', () => {
     expect(body.active).toBe(false);
   });
 
+  it('JTIブロックリストhit → { active: false }（失効済みアクセストークン）', async () => {
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(null);
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockJwtPayload);
+    vi.mocked(isAccessTokenRevoked).mockResolvedValue(true);
+    const res = await sendRequest(app, '/api/token/introspect', {
+      body: { token: 'revoked-jwt', token_type_hint: 'access_token' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ active: boolean }>();
+    expect(body.active).toBe(false);
+    expect(vi.mocked(isAccessTokenRevoked)).toHaveBeenCalledWith(mockEnv.DB, mockJwtPayload.jti);
+  });
+
   it('JWTのユーザーが存在しない → { active: false }', async () => {
     vi.mocked(findRefreshTokenByHash).mockResolvedValue(null);
     vi.mocked(verifyAccessToken).mockResolvedValue(mockJwtPayload);
@@ -506,10 +527,11 @@ describe('POST /api/token/introspect', () => {
     expect(body.email).toBeUndefined();
   });
 
-  it('allowed_scopesのJSONが不正 → fail-closedでスコープなし（ユーザーデータ非公開）', async () => {
-    vi.mocked(findServiceByClientId).mockResolvedValue({
-      ...mockService,
-      allowed_scopes: 'invalid-json',
+  it('リフレッシュトークンのscopeがnull → fail-closedでスコープなし（ユーザーデータ非公開）', async () => {
+    // introspectRefreshTokenはトークン自身のscopeを使用（サービスのallowed_scopesは不使用）
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      scope: null,
     } as never);
     const res = await sendRequest(app, '/api/token/introspect', {
       body: { token: 'valid-token' },
@@ -581,7 +603,7 @@ describe('POST /api/token/introspect', () => {
     expect(res.status).toBe(200);
     const body = await res.json<Record<string, unknown>>();
     expect(body.active).toBe(true);
-    expect(body.token_type).toBeUndefined(); // リフレッシュトークンなのでtoken_typeなし
+    expect(body.token_type).toBe('refresh_token'); // introspectRefreshTokenは token_type: 'refresh_token' を返す
   });
 });
 
@@ -752,6 +774,61 @@ describe('POST /api/token/revoke', () => {
     });
     expect(res.status).toBe(200);
     expect(vi.mocked(revokeRefreshToken)).toHaveBeenCalledOnce();
+  });
+
+  // ─── JWTアクセストークンのrevoke（RFC 7009 §2.1）───────────────────────────
+
+  const mockJwtRevokePayload = {
+    iss: 'https://id.0g0.xyz',
+    sub: 'user-1',
+    aud: 'https://id.0g0.xyz',
+    exp: Math.floor(Date.now() / 1000) + 900,
+    iat: Math.floor(Date.now() / 1000),
+    jti: 'jti-revoke-1',
+    kid: 'kid-1',
+    scope: 'openid profile email',
+    cid: 'test-client-id',
+    role: 'user' as const,
+    email: 'test@example.com',
+  };
+
+  it('JWTアクセストークン（期限内）→ 200 + addRevokedAccessTokenが呼ばれる', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockJwtRevokePayload);
+    vi.mocked(addRevokedAccessToken).mockResolvedValue(undefined);
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'header.payload.signature' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(addRevokedAccessToken)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      mockJwtRevokePayload.jti,
+      mockJwtRevokePayload.exp
+    );
+    expect(vi.mocked(revokeRefreshToken)).not.toHaveBeenCalled();
+  });
+
+  it('JWTアクセストークン（期限切れ）→ 200 + addRevokedAccessTokenは呼ばれない', async () => {
+    const pastExp = Math.floor(Date.now() / 1000) - 100;
+    vi.mocked(verifyAccessToken).mockResolvedValue({ ...mockJwtRevokePayload, exp: pastExp });
+    vi.mocked(addRevokedAccessToken).mockResolvedValue(undefined);
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'header.payload.signature' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(addRevokedAccessToken)).not.toHaveBeenCalled();
+  });
+
+  it('JWT署名が無効な場合 → 200 OK（RFC 7009: エラーを無視）', async () => {
+    vi.mocked(verifyAccessToken).mockRejectedValue(new Error('invalid signature'));
+    vi.mocked(addRevokedAccessToken).mockResolvedValue(undefined);
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'header.payload.invalid_sig' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(addRevokedAccessToken)).not.toHaveBeenCalled();
   });
 
   it('form-encoded: tokenが未指定 → { error: invalid_request } + 400', async () => {
@@ -1075,6 +1152,47 @@ describe('POST /api/token/ — authorization_code grant', () => {
     const body = await res.json<{ access_token: string }>();
     expect(body.access_token).toBe('mock-access-token');
   });
+
+  it('normalizeRedirectUriがnullを返す場合（無効URI）→ { error: invalid_grant } + 400', async () => {
+    vi.mocked(normalizeRedirectUri).mockReturnValue(null);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        redirect_uri: 'javascript:alert(1)',
+        client_id: 'test-client-id',
+        code_verifier: 'a'.repeat(43),
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string; error_description: string }>();
+    expect(body.error).toBe('invalid_grant');
+    expect(body.error_description).toBe('redirect_uri mismatch');
+  });
+
+  it('Confidentialクライアント（Basic認証）+ code_challengeなし → PKCE不要で成功', async () => {
+    vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
+      ...mockAuthCode,
+      code_challenge: null,
+      scope: 'profile email',
+    } as never);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        redirect_uri: 'http://localhost:51234/callback',
+        client_id: 'test-client-id',
+        code_verifier: 'a'.repeat(43),
+      },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ access_token: string; refresh_token: string }>();
+    expect(body.access_token).toBe('mock-access-token');
+    expect(body.refresh_token).toBe('mock-refresh-token');
+  });
 });
 
 // ===== POST /api/token/ — refresh_token grant =====
@@ -1230,7 +1348,7 @@ describe('POST /api/token/ — refresh_token grant', () => {
     expect(vi.mocked(unrevokeRefreshToken)).not.toHaveBeenCalled();
   });
 
-  it('期限切れトークン → unrevokeして { error: invalid_grant } + 400', async () => {
+  it('期限切れトークン → { error: invalid_grant } + 400（unrevokeなし: 期限切れトークンのrotation状態解除は不要）', async () => {
     vi.mocked(findAndRevokeRefreshToken).mockResolvedValue({
       ...mockRefreshToken,
       expires_at: new Date(Date.now() - 1000).toISOString(),
@@ -1246,7 +1364,8 @@ describe('POST /api/token/ — refresh_token grant', () => {
     expect(res.status).toBe(400);
     const body = await res.json<{ error: string }>();
     expect(body.error).toBe('invalid_grant');
-    expect(vi.mocked(unrevokeRefreshToken)).toHaveBeenCalledWith(mockEnv.DB, 'rt-id');
+    // 期限切れトークンはunrevokeせずそのままinvalid_grantを返す（セキュリティ修正: 2026-04-05）
+    expect(vi.mocked(unrevokeRefreshToken)).not.toHaveBeenCalled();
   });
 
   it('期限切れ + 並行reuse_detected → unrevokeせず { error: invalid_grant } + 400', async () => {
@@ -1342,5 +1461,21 @@ describe('POST /api/token/ — refresh_token grant', () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ scope: string }>();
     expect(body.scope).toBe('profile email');
+  });
+
+  it('issueTokenPairが例外をスロー → { error: server_error } + 500', async () => {
+    vi.mocked(signAccessToken).mockRejectedValue(new Error('key not available'));
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'valid-token',
+        client_id: 'test-client-id',
+      },
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: string; error_description: string }>();
+    expect(body.error).toBe('server_error');
+    expect(body.error_description).toBe('Token operation failed');
   });
 });
