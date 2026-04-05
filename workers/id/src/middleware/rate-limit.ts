@@ -76,6 +76,12 @@ function createRateLimitMiddleware(
       return next();
     }
     const key = await getKey(c);
+    // cf-connecting-ip が未設定（ローカル直接アクセス・Cloudflare設定ミス）の場合、
+    // 全リクエストが 'unknown' キーに集約され、誤検知レートリミットが発生しうる。
+    // 本番Cloudflare経由では発生しないが、設定ミス時に即座に検知できるよう警告ログを出す。
+    if (key === 'unknown') {
+      rateLimitLogger.warn(`[rate-limit] ${bindingName}: rate limit key resolved to 'unknown' — cf-connecting-ip may not be set. All requests share the same bucket.`);
+    }
     const { success } = await binding.limit({ key });
     if (!success) {
       return c.json(

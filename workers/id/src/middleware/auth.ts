@@ -1,6 +1,8 @@
 import { createMiddleware } from 'hono/factory';
-import { verifyAccessToken, findUserById, isAccessTokenRevoked } from '@0g0-id/shared';
+import { verifyAccessToken, findUserById, isAccessTokenRevoked, createLogger } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
+
+const authMiddlewareLogger = createLogger('auth-middleware');
 
 type AuthVariables = {
   user: TokenPayload;
@@ -73,7 +75,13 @@ export const rejectBannedUserMiddleware = createMiddleware<{
   } catch {
     return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
   }
-  if (!user || user.banned_at !== null) {
+  if (!user) {
+    authMiddlewareLogger.warn('rejectBannedUser: user not found in DB', { sub: tokenUser.sub });
+    // ユーザー列挙を防ぐため、クライアントには banned と同一レスポンスを返す
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Account suspended or not found' } }, 401);
+  }
+  if (user.banned_at !== null) {
+    authMiddlewareLogger.warn('rejectBannedUser: banned user attempted access', { sub: tokenUser.sub, bannedAt: user.banned_at });
     return c.json({ error: { code: 'UNAUTHORIZED', message: 'Account suspended or not found' } }, 401);
   }
   c.set('dbUser', user);

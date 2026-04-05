@@ -3,6 +3,9 @@ import { Hono } from 'hono';
 
 vi.mock('@0g0-id/shared', () => ({
   verifyAccessToken: vi.fn(),
+  isAccessTokenRevoked: vi.fn().mockResolvedValue(false),
+  findUserById: vi.fn(),
+  createLogger: vi.fn().mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
 import { verifyAccessToken } from '@0g0-id/shared';
