@@ -245,7 +245,6 @@
 - [x] ~~`/revoke` — JWT署名が無効な場合に 200 OK を返すことのテスト~~ (2026-04-05)
 - [x] ~~`/token` (refresh_token grant) — `issueTokenPair` が例外をスローした場合の `server_error` レスポンスのテスト~~ (2026-04-05)
 - [x] ~~`/token` (authorization_code grant) — `normalizeRedirectUri` が `null` を返す場合（無効URI）のテスト~~ (2026-04-05)
-$1
 
 ## コードレビュー指摘事項（未対応）
 

@@ -14,7 +14,7 @@ export const getAuditLogsTool: McpTool = {
       properties: {
         page: { type: 'number', description: 'ページ番号（1始まり、デフォルト: 1）' },
         limit: { type: 'number', description: '1ページあたりの件数（デフォルト: 50、最大: 100）' },
-        action: { type: 'string', description: 'アクション名でフィルタ（例: "user.banned", "service.created"）' },
+        action: { type: 'string', description: 'アクション名でフィルタ（例: "user.ban", "service.create"）' },
         admin_user_id: { type: 'string', description: '操作した管理者のユーザーIDでフィルタ' },
         target_id: { type: 'string', description: '操作対象のIDでフィルタ' },
         status: {

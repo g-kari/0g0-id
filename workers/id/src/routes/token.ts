@@ -323,7 +323,8 @@ async function handleRefreshTokenGrant(
       await attemptUnrevokeToken(c.env.DB, storedToken.id, '[token] service_id mismatch 後');
       return c.json({ error: 'invalid_grant', error_description: 'Token was not issued for this client' }, 400);
     }
-    // 有効期限切れ
+    // 有効期限切れの場合、再提示時のreuse detection誤発動を防ぐため元に戻す
+    await attemptUnrevokeToken(c.env.DB, storedToken.id, '[token] expiry check 後');
     return c.json({ error: 'invalid_grant', error_description: 'Refresh token expired' }, 400);
   }
 

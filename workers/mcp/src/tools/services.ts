@@ -250,7 +250,7 @@ export const rotateServiceSecretTool: McpTool = {
 
     await createAdminAuditLog(context.db, {
       adminUserId: context.userId,
-      action: 'service.rotate_secret',
+      action: 'service.secret_rotated',
       targetType: 'service',
       targetId: serviceId,
       details: { name: service.name },
