@@ -126,6 +126,24 @@
 
 - **対応済み**: `cleanupExpiredRevokedAccessTokens` を実装し、scheduledハンドラー（Cron Trigger）に追加。期限切れエントリを自動削除（2026-04-05）
 
+## コードレビュー対応 + テスト修正（2026-04-06）
+
+- [x] **token.ts: 期限切れトークンの `attemptUnrevokeToken` 呼び出し削除**
+  - `handleRefreshTokenGrant` で期限切れ時に `attemptUnrevokeToken` を呼んでいたのを削除
+  - TODO.md 対応済みとして記録されていたが実装が残っていた状態を修正
+  - テスト (`token.test.ts`) との整合性回復
+- [x] **テストモック修正: `isAccessTokenRevoked` 未モック問題 (6ファイル)**
+  - `authMiddleware` に `isAccessTokenRevoked` が追加されたが、テストモックが未更新だった
+  - 影響: `admin-audit-logs`, `auth`, `metrics`, `services`, `users`, `userinfo` テスト全件が 401 を返す誤動作
+  - 各ファイルに `isAccessTokenRevoked: vi.fn().mockResolvedValue(false)` を追加
+  - `userinfo.test.ts` は `importActual` 方式に変更（`createLogger` 不足も同時解決）
+- [x] **テスト追加: BANユーザーのセキュリティテスト**
+  - `userinfo.test.ts`: BANユーザーが `/api/userinfo` にアクセスした場合 → 401 を返すテスト追加
+  - `external.test.ts`: BANユーザーが `/api/external/users/:sub` で照合された場合 → 404（情報漏洩防止）テスト追加
+- [x] **テスト修正: `well-known.test.ts` の `token_endpoint` 期待値**
+  - `/auth/exchange`（BFF内部用）→ `/api/token`（RFC 6749準拠）に修正（実装変更との整合）
+- 全1452テストパス（変更前: 238失敗 → 変更後: 全パス）
+
 ## 新機能追加（2026-04-06）
 
 - [x] **MCPツール: list_user_sessions / revoke_user_sessions 追加**
