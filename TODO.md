@@ -193,3 +193,11 @@
 - ✅ `token.ts` / `auth.ts` の `throw e` を RFC 6749 §5.2 準拠の `server_error` JSON レスポンスに変更
 - ✅ `unrevokeRefreshToken` の戻り値チェックを追加（`false` 時に `console.error` でログ出力）
 - 並行処理でトークン失効解除が失敗した場合の追跡可能性を改善
+
+## リファクタリング対応済み（2026-04-05）
+
+### コード共通化: unrevokeRefreshToken try/catch の共通ユーティリティ抽出
+
+- ✅ `workers/id/src/utils/token-recovery.ts` に `attemptUnrevokeToken(db, tokenId, context)` を新設
+- ✅ `token.ts` の3箇所・`auth.ts` の2箇所の重複 try/catch ブロックを `attemptUnrevokeToken` 呼び出しに置換
+- メンテナンス性向上・ログ出力の一貫性確保
