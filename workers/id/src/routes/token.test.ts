@@ -620,13 +620,14 @@ describe('POST /api/token/revoke', () => {
     vi.mocked(revokeRefreshToken).mockResolvedValue(undefined);
   });
 
-  it('Authorizationヘッダーなし → { error: invalid_client } + 401', async () => {
+  it('Authorizationヘッダーなし → { error: invalid_client } + 401 + WWW-Authenticate', async () => {
     const res = await sendRequest(app, '/api/token/revoke', {
       body: { token: 'some-token' },
     });
     expect(res.status).toBe(401);
     const body = await res.json<{ error: string }>();
     expect(body.error).toBe('invalid_client');
+    expect(res.headers.get('WWW-Authenticate')).toBe('Basic realm="0g0-id"');
   });
 
   it('Basicでないauth形式 → 401', async () => {
@@ -947,7 +948,7 @@ describe('POST /api/token/ — authorization_code grant', () => {
     expect(body.error).toBe('invalid_request');
   });
 
-  it('存在しないclient_id → { error: invalid_client } + 401', async () => {
+  it('存在しないclient_id → { error: invalid_client } + 401 + WWW-Authenticate', async () => {
     vi.mocked(findServiceByClientId).mockResolvedValue(null);
     const res = await sendRequest(app, '/api/token', {
       method: 'POST',
@@ -962,6 +963,7 @@ describe('POST /api/token/ — authorization_code grant', () => {
     expect(res.status).toBe(401);
     const body = await res.json<{ error: string }>();
     expect(body.error).toBe('invalid_client');
+    expect(res.headers.get('WWW-Authenticate')).toBe('Basic realm="0g0-id"');
   });
 
   it('認可コードが存在しない → { error: invalid_grant } + 400', async () => {
@@ -1227,7 +1229,7 @@ describe('POST /api/token/ — refresh_token grant', () => {
     expect(body.error).toBe('invalid_request');
   });
 
-  it('存在しないclient_id → { error: invalid_client } + 401', async () => {
+  it('存在しないclient_id → { error: invalid_client } + 401 + WWW-Authenticate', async () => {
     vi.mocked(findServiceByClientId).mockResolvedValue(null);
     const res = await sendRequest(app, '/api/token', {
       method: 'POST',
@@ -1240,6 +1242,7 @@ describe('POST /api/token/ — refresh_token grant', () => {
     expect(res.status).toBe(401);
     const body = await res.json<{ error: string }>();
     expect(body.error).toBe('invalid_client');
+    expect(res.headers.get('WWW-Authenticate')).toBe('Basic realm="0g0-id"');
   });
 
   it('トークンが存在しない → { error: invalid_grant } + 400', async () => {

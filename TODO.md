@@ -262,6 +262,6 @@ $1
 
 ### 低優先度（未対応）
 
-- [ ] `token.ts`: RFC 6749 §5.2 準拠 — `invalid_client` で401を返す際に `WWW-Authenticate: Basic realm="..."` ヘッダーが欠落
+- [x] ~~`token.ts`: RFC 6749 §5.2 準拠 — `invalid_client` で401を返す際に `WWW-Authenticate: Basic realm="..."` ヘッダーが欠落~~ (2026-04-05, c.header()で対応)
 - [ ] `rate-limit.ts`: `getClientIp` が `null` を返す際のフォールバック `'unknown'` キーで全リクエストが集約されるリスク（本番Cloudflare経由なら発生しないが、直接アクセス時やテスト環境での挙動注意）
 - [ ] `middleware/auth.ts`: `rejectBannedUserMiddleware` で削除済みユーザーと停止ユーザーが同じ `UNAUTHORIZED` レスポンスになっている（意図通りかもしれないが確認推奨）

@@ -160,7 +160,7 @@ app.post('/', tokenApiRateLimitMiddleware, tokenApiClientRateLimitMiddleware, as
  * authorization_code グラント処理
  */
 async function handleAuthorizationCodeGrant(
-  c: { env: IdpEnv; req: { header: (name: string) => string | undefined }; json: (data: unknown, status?: number) => Response },
+  c: { env: IdpEnv; req: { header: (name: string) => string | undefined }; json: (data: unknown, status?: number) => Response; header: (name: string, value: string) => void },
   params: Record<string, string>
 ): Promise<Response> {
   const code = params['code'];
@@ -181,6 +181,9 @@ async function handleAuthorizationCodeGrant(
   // クライアント認証
   const clientResult = await resolveOAuthClient(c.env.DB, c.req.header('Authorization'), clientId);
   if (!clientResult.ok) {
+    if (clientResult.status === 401 && clientResult.error === 'invalid_client') {
+      c.header('WWW-Authenticate', 'Basic realm="0g0-id"');
+    }
     return c.json({ error: clientResult.error }, clientResult.status);
   }
   const service = clientResult.service;
@@ -267,7 +270,7 @@ async function handleAuthorizationCodeGrant(
  * refresh_token グラント処理
  */
 async function handleRefreshTokenGrant(
-  c: { env: IdpEnv; req: { header: (name: string) => string | undefined }; json: (data: unknown, status?: number) => Response },
+  c: { env: IdpEnv; req: { header: (name: string) => string | undefined }; json: (data: unknown, status?: number) => Response; header: (name: string, value: string) => void },
   params: Record<string, string>
 ): Promise<Response> {
   const refreshTokenRaw = params['refresh_token'];
@@ -280,6 +283,9 @@ async function handleRefreshTokenGrant(
   // クライアント認証
   const clientResult = await resolveOAuthClient(c.env.DB, c.req.header('Authorization'), clientId);
   if (!clientResult.ok) {
+    if (clientResult.status === 401 && clientResult.error === 'invalid_client') {
+      c.header('WWW-Authenticate', 'Basic realm="0g0-id"');
+    }
     return c.json({ error: clientResult.error }, clientResult.status);
   }
   const service = clientResult.service;
@@ -498,6 +504,7 @@ app.post('/revoke', externalApiRateLimitMiddleware, async (c) => {
     return c.json({ error: 'invalid_client' }, 500);
   }
   if (!service) {
+    c.header('WWW-Authenticate', 'Basic realm="0g0-id"');
     return c.json({ error: 'invalid_client' }, 401);
   }
 
