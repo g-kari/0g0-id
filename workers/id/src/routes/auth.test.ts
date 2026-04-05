@@ -54,6 +54,8 @@ vi.mock('@0g0-id/shared', () => ({
   ALL_PROVIDERS: ['google', 'line', 'twitch', 'github', 'x'],
   isValidProvider: (v: string) => ['google', 'line', 'twitch', 'github', 'x'].includes(v),
   normalizeRedirectUri: vi.fn((uri: string) => uri),
+  listRedirectUris: vi.fn(),
+  matchRedirectUri: vi.fn(),
 }));
 
 import {
@@ -96,6 +98,9 @@ import {
   findServiceByClientId,
   timingSafeEqual,
   verifyAccessToken,
+  listRedirectUris,
+  matchRedirectUri,
+  normalizeRedirectUri,
 } from '@0g0-id/shared';
 
 import authRoutes from './auth';
@@ -1810,5 +1815,138 @@ describe('POST /auth/exchange (サービスOAuth)', () => {
       'mock-private-key',
       'mock-public-key'
     );
+  });
+});
+// ===== GET /auth/authorize =====
+describe('GET /auth/authorize', () => {
+  const app = buildApp();
+
+  const mockService = {
+    id: 'service-1',
+    name: 'Test Service',
+    client_id: 'client-abc',
+    client_secret_hash: 'hash',
+    allowed_scopes: 'openid profile email',
+    owner_user_id: 'owner-1',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  };
+
+  const validParams = new URLSearchParams({
+    response_type: 'code',
+    client_id: 'client-abc',
+    redirect_uri: 'https://app.example.com/callback',
+    state: 'random-state-value',
+    code_challenge: 'S256-challenge-value',
+    code_challenge_method: 'S256',
+  });
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(findServiceByClientId).mockResolvedValue(mockService as never);
+    vi.mocked(normalizeRedirectUri).mockImplementation((uri: string) => uri);
+    vi.mocked(listRedirectUris).mockResolvedValue([
+      { id: 'uri-1', service_id: 'service-1', uri: 'https://app.example.com/callback', created_at: '2024-01-01T00:00:00Z' },
+    ] as never);
+    vi.mocked(matchRedirectUri).mockReturnValue(true);
+  });
+
+  it('response_type が code 以外 → 400を返す', async () => {
+    const params = new URLSearchParams(validParams);
+    params.set('response_type', 'token');
+    const res = await sendRequest(app, `/auth/authorize?${params.toString()}`);
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('unsupported_response_type');
+  });
+
+  it('client_id 未指定 → 400を返す', async () => {
+    const params = new URLSearchParams(validParams);
+    params.delete('client_id');
+    const res = await sendRequest(app, `/auth/authorize?${params.toString()}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('state 未指定 → 400を返す', async () => {
+    const params = new URLSearchParams(validParams);
+    params.delete('state');
+    const res = await sendRequest(app, `/auth/authorize?${params.toString()}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('code_challenge 未指定 → 400を返す', async () => {
+    const params = new URLSearchParams(validParams);
+    params.delete('code_challenge');
+    const res = await sendRequest(app, `/auth/authorize?${params.toString()}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('code_challenge_method が S256 以外 → 400を返す', async () => {
+    const params = new URLSearchParams(validParams);
+    params.set('code_challenge_method', 'plain');
+    const res = await sendRequest(app, `/auth/authorize?${params.toString()}`);
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_request');
+  });
+
+  it('未知の client_id → 400を返す', async () => {
+    vi.mocked(findServiceByClientId).mockResolvedValue(null);
+    const res = await sendRequest(app, `/auth/authorize?${validParams.toString()}`);
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_request');
+  });
+
+  it('未登録の redirect_uri → 400を返す', async () => {
+    vi.mocked(matchRedirectUri).mockReturnValue(false);
+    const res = await sendRequest(app, `/auth/authorize?${validParams.toString()}`);
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_request');
+  });
+
+  it('nonce が 128文字超 → 400を返す', async () => {
+    const params = new URLSearchParams(validParams);
+    params.set('nonce', 'a'.repeat(129));
+    const res = await sendRequest(app, `/auth/authorize?${params.toString()}`);
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_request');
+  });
+
+  it('正常: USER_ORIGIN/login にリダイレクトする', async () => {
+    const res = await sendRequest(app, `/auth/authorize?${validParams.toString()}`);
+    expect(res.status).toBe(302);
+    const location = res.headers.get('Location') ?? '';
+    expect(location).toContain('https://user.0g0.xyz/login');
+    expect(location).toContain('client_id=client-abc');
+    expect(location).toContain('state=random-state-value');
+    expect(location).toContain('code_challenge=S256-challenge-value');
+  });
+
+  it('正常: nonce あり → リダイレクト先URLに nonce が含まれる', async () => {
+    const params = new URLSearchParams(validParams);
+    params.set('nonce', 'test-nonce-value');
+    const res = await sendRequest(app, `/auth/authorize?${params.toString()}`);
+    expect(res.status).toBe(302);
+    const location = res.headers.get('Location') ?? '';
+    expect(location).toContain('nonce=test-nonce-value');
+  });
+
+  it('正常: nonce なし → リダイレクト先URLに nonce が含まれない', async () => {
+    const res = await sendRequest(app, `/auth/authorize?${validParams.toString()}`);
+    expect(res.status).toBe(302);
+    const location = res.headers.get('Location') ?? '';
+    expect(location).not.toContain('nonce=');
+  });
+
+  it('正常: scope あり → リダイレクト先URLに scope が含まれる', async () => {
+    const params = new URLSearchParams(validParams);
+    params.set('scope', 'openid profile');
+    const res = await sendRequest(app, `/auth/authorize?${params.toString()}`);
+    expect(res.status).toBe(302);
+    const location = res.headers.get('Location') ?? '';
+    expect(location).toContain('scope=openid+profile');
   });
 });

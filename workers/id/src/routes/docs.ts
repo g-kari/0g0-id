@@ -1532,6 +1532,100 @@ Authorization: Basic <Base64(client_id:client_secret)>
     },
   },
   paths: {
+    '/auth/authorize': {
+      get: {
+        tags: ['認証フロー'],
+        summary: '標準 OAuth 2.0 / OIDC 認可エンドポイント',
+        description:
+          'RFC 6749 / RFC 7636 / OIDC Core 1.0 準拠の認可エンドポイント。\n\n' +
+          'MCPクライアント・ネイティブアプリ等が直接HTTPリクエストで利用する。\n' +
+          'PKCE (S256) 必須。認証後、ユーザーは `redirect_uri` に認可コードとともにリダイレクトされる。\n\n' +
+          '```\nGET {redirect_uri}?code=<code>&state=<state>\n```\n\n' +
+          '発行された認可コードは `/api/token` (authorization_code grant) で交換する。',
+        parameters: [
+          {
+            name: 'response_type',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', enum: ['code'] },
+            description: '`code` 固定（Authorization Code フロー）。',
+          },
+          {
+            name: 'client_id',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', example: 'my_service_client_id' },
+            description: '登録済みサービスの `client_id`。',
+          },
+          {
+            name: 'redirect_uri',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', format: 'uri', example: 'https://myapp.com/auth/callback' },
+            description: '認可コードのコールバックURL。管理者が登録したURIリストと一致する必要がある。',
+          },
+          {
+            name: 'state',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', example: 'random_csrf_state_value' },
+            description: 'CSRF対策用のランダム文字列。コールバック時にそのまま返される。',
+          },
+          {
+            name: 'code_challenge',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', example: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM' },
+            description: 'PKCEコードチャレンジ（`code_verifier` をSHA-256でハッシュしBase64urlエンコード）。',
+          },
+          {
+            name: 'code_challenge_method',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', enum: ['S256'] },
+            description: 'PKCEメソッド。`S256` のみサポート。',
+          },
+          {
+            name: 'scope',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', example: 'openid profile email' },
+            description: 'リクエストするスコープ（スペース区切り）。許可スコープはサービス設定の `allowed_scopes` に制限される。',
+          },
+          {
+            name: 'nonce',
+            in: 'query',
+            required: false,
+            schema: { type: 'string' },
+            description: 'IDトークンに埋め込むランダム値（OIDC Core 1.0 §3.1.2.1）。最大128文字。',
+          },
+        ],
+        responses: {
+          '302': {
+            description:
+              'プロバイダー選択ページ（USER_ORIGIN/login）にリダイレクト。ユーザーがプロバイダーを選択後、IdP経由で認証が完了し `redirect_uri?code=<code>&state=<state>` にリダイレクトされる。',
+          },
+          '400': {
+            description: 'invalid_request — パラメータ不正（`client_id` 無効・`redirect_uri` 未登録・PKCEパラメータ不正など）',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/OAuthError' },
+                example: { error: 'invalid_request', error_description: 'redirect_uri not registered for this client' },
+              },
+            },
+          },
+          '429': {
+            description: 'TOO_MANY_REQUESTS — レートリミット超過',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+                example: { error: { code: 'TOO_MANY_REQUESTS', message: 'Too many requests. Please try again later.' } },
+              },
+            },
+          },
+        },
+      },
+    },
     '/auth/login': {
       get: {
         tags: ['認証フロー'],

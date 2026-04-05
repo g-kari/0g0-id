@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import type { BffEnv } from '@0g0-id/shared';
 import { logger, securityHeaders, bodyLimitMiddleware, bffCorsMiddleware, bffCsrfMiddleware, createLogger } from '@0g0-id/shared';
 import authRoutes from './routes/auth';
+import oauthRoutes from './routes/oauth';
 import profileRoutes from './routes/profile';
 import connectionsRoutes from './routes/connections';
 import providersRoutes from './routes/providers';
@@ -29,6 +30,8 @@ app.use('/auth/logout', bffCsrfMiddleware);
 app.use('/auth/link', bffCsrfMiddleware);
 
 app.route('/auth', authRoutes);
+// OAuth 2.0 / OIDC フロー: IdP の /auth/authorize からリダイレクトされるプロバイダー選択ページ
+app.route('/', oauthRoutes);
 app.route('/api/me', profileRoutes);
 app.route('/api/connections', connectionsRoutes);
 app.route('/api/providers', providersRoutes);

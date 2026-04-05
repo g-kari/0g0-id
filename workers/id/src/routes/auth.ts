@@ -490,6 +490,8 @@ app.get('/authorize', authRateLimitMiddleware, async (c) => {
   const state = c.req.query('state');
   const codeChallenge = c.req.query('code_challenge');
   const codeChallengeMethod = c.req.query('code_challenge_method');
+  // OIDC: nonce は任意パラメータ（ID Token にリプレイ攻撃対策として埋め込む）
+  const nonce = c.req.query('nonce');
 
   // 必須パラメータ検証
   if (responseType !== 'code') {
@@ -520,6 +522,10 @@ app.get('/authorize', authRateLimitMiddleware, async (c) => {
   }
   if (scope && scope.length > 2048) {
     return c.json({ error: 'invalid_request', error_description: 'scope too long' }, 400);
+  }
+  // nonce はOIDCオプション。長さのみ検証（OIDC Core 1.0 §3.1.2.1）
+  if (nonce !== undefined && nonce.length > 128) {
+    return c.json({ error: 'invalid_request', error_description: 'nonce too long' }, 400);
   }
 
   // サービス検証
@@ -552,6 +558,10 @@ app.get('/authorize', authRateLimitMiddleware, async (c) => {
   loginUrl.searchParams.set('code_challenge_method', codeChallengeMethod);
   if (scope) {
     loginUrl.searchParams.set('scope', scope);
+  }
+  // OIDC: nonce を転送（ID Token に埋め込むため USER_ORIGIN/login → IdP /auth/login → auth code → token発行まで引き継ぐ）
+  if (nonce) {
+    loginUrl.searchParams.set('nonce', nonce);
   }
 
   return c.redirect(loginUrl.toString());
