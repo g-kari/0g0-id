@@ -25,7 +25,6 @@ app.get('/openid-configuration', (c) => {
       introspection_endpoint: `${issuer}/api/token/introspect`,
       revocation_endpoint: `${issuer}/api/token/revoke`,
       device_authorization_endpoint: `${issuer}/api/device/code`,
-      end_session_endpoint: `${issuer}/auth/logout`,
       scopes_supported: ['openid', 'profile', 'email', 'phone', 'address'],
       response_types_supported: ['code'],
       grant_types_supported: ['authorization_code', 'refresh_token', 'urn:ietf:params:oauth:grant-type:device_code'],

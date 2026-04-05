@@ -300,8 +300,13 @@ async function handleRefreshTokenGrant(
     const existingToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
     if (existingToken) {
       if (existingToken.revoked_reason === 'rotation') {
-        await revokeTokenFamily(c.env.DB, existingToken.family_id, 'reuse_detected');
-        return c.json({ error: 'invalid_grant', error_description: 'Token reuse detected' }, 400);
+        const revokedAt = existingToken.revoked_at ? new Date(existingToken.revoked_at).getTime() : 0;
+        const gracePeriodMs = 30 * 1000;
+        if (Date.now() - revokedAt > gracePeriodMs) {
+          await revokeTokenFamily(c.env.DB, existingToken.family_id, 'reuse_detected');
+          return c.json({ error: 'invalid_grant', error_description: 'Token reuse detected' }, 400);
+        }
+        return c.json({ error: 'invalid_grant', error_description: 'Token rotation in progress, please retry' }, 400);
       }
       return c.json({ error: 'invalid_grant', error_description: 'Token has been revoked' }, 400);
     }
