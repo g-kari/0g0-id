@@ -202,6 +202,29 @@
 - ✅ `token.ts` の3箇所・`auth.ts` の2箇所の重複 try/catch ブロックを `attemptUnrevokeToken` 呼び出しに置換
 - メンテナンス性向上・ログ出力の一貫性確保
 
+## コードレビュー対応 (2026-04-05, 追記)
+
+### 対応済み ✅
+- **device.ts: normalizeUserCode後の文字セットバリデーション追加**
+  - `USER_CODE_CHARS` 以外の文字が含まれる場合に `BAD_REQUEST` を返すよう修正
+  - `/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/` によるバリデーション追加
+
+- **device.ts: raw SQL → findServiceById に統一**
+  - `/api/device/verify` の inline `prepare/bind/first` を `shared` の `findServiceById` に置き換え
+
+- **device.ts: handleDeviceCodeGrant の空ifブロック修正**
+  - `if (approved_at && user_id) { /* 空 */ } else { ... }` を `if (!approved_at || !user_id) { ... }` に反転して可読性改善
+
+- **token.ts: resolveOAuthClient のDB例外時ステータス修正**
+  - 例外時の `status: 401` を `status: 500` に修正（DB障害はサーバーエラーとして扱う）
+
+- **token.ts: 未使用import findServiceById を削除**
+
+- **token-recovery.ts: console.error → createLogger('token-recovery') に統一**
+  - 他ファイルと同様の構造化ログに変更
+
+---
+
 ## コードレビュー対応 (2026-04-05)
 
 ### 対応済み ✅
