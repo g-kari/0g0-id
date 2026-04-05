@@ -9,6 +9,8 @@ vi.mock('@0g0-id/shared', () => ({
   deleteUser: vi.fn(),
   getUserProviders: vi.fn(),
   getLoginEventsByUserId: vi.fn(),
+  listActiveSessionsByUserId: vi.fn(),
+  revokeUserTokens: vi.fn(),
   createAdminAuditLog: vi.fn(),
 }));
 
@@ -21,6 +23,8 @@ import {
   deleteUser,
   getUserProviders,
   getLoginEventsByUserId,
+  listActiveSessionsByUserId,
+  revokeUserTokens,
   createAdminAuditLog,
 } from '@0g0-id/shared';
 
@@ -32,6 +36,8 @@ import {
   deleteUserTool,
   getUserLoginHistoryTool,
   getUserProvidersTool,
+  listUserSessionsTool,
+  revokeUserSessionsTool,
 } from './users';
 import type { McpContext } from '../mcp';
 
@@ -316,5 +322,110 @@ describe('getUserProvidersTool', () => {
   it('user_id未指定はエラー', async () => {
     const result = await getUserProvidersTool.handler({}, mockContext);
     expect(result.isError).toBe(true);
+  });
+});
+
+// ===== list_user_sessions =====
+describe('listUserSessionsTool', () => {
+  const mockSession = {
+    id: 'token-1',
+    service_id: null,
+    service_name: null,
+    created_at: '2024-01-01T00:00:00Z',
+    expires_at: '2024-01-31T00:00:00Z',
+  };
+
+  it('アクティブセッション一覧を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(listActiveSessionsByUserId).mockResolvedValue([mockSession] as never);
+
+    const result = await listUserSessionsTool.handler({ user_id: 'user-1' }, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.total).toBe(1);
+    expect(parsed.sessions).toHaveLength(1);
+    expect(parsed.sessions[0].id).toBe('token-1');
+    expect(parsed.user.id).toBe('user-1');
+  });
+
+  it('セッションなしの場合は空配列を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(listActiveSessionsByUserId).mockResolvedValue([]);
+
+    const result = await listUserSessionsTool.handler({ user_id: 'user-1' }, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.total).toBe(0);
+    expect(parsed.sessions).toHaveLength(0);
+  });
+
+  it('user_id未指定はエラー', async () => {
+    const result = await listUserSessionsTool.handler({}, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(listActiveSessionsByUserId)).not.toHaveBeenCalled();
+  });
+
+  it('user_idが空文字はエラー', async () => {
+    const result = await listUserSessionsTool.handler({ user_id: '' }, mockContext);
+    expect(result.isError).toBe(true);
+  });
+
+  it('ユーザーが見つからない場合はエラー', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+
+    const result = await listUserSessionsTool.handler({ user_id: 'nonexistent' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('見つかりません');
+    expect(vi.mocked(listActiveSessionsByUserId)).not.toHaveBeenCalled();
+  });
+});
+
+// ===== revoke_user_sessions =====
+describe('revokeUserSessionsTool', () => {
+  it('全セッションを失効させ監査ログを記録する', async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(revokeUserTokens).mockResolvedValue(undefined as never);
+
+    const result = await revokeUserSessionsTool.handler({ user_id: 'user-1' }, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toContain('失効');
+    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(
+      mockContext.db,
+      'user-1',
+      'admin_action',
+    );
+    expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
+      mockContext.db,
+      expect.objectContaining({
+        adminUserId: 'admin-1',
+        action: 'user.sessions_revoked',
+        targetType: 'user',
+        targetId: 'user-1',
+      }),
+    );
+  });
+
+  it('user_id未指定はエラー', async () => {
+    const result = await revokeUserSessionsTool.handler({}, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(revokeUserTokens)).not.toHaveBeenCalled();
+  });
+
+  it('user_idが空文字はエラー', async () => {
+    const result = await revokeUserSessionsTool.handler({ user_id: '' }, mockContext);
+    expect(result.isError).toBe(true);
+  });
+
+  it('ユーザーが見つからない場合はエラー', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+
+    const result = await revokeUserSessionsTool.handler({ user_id: 'nonexistent' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('見つかりません');
+    expect(vi.mocked(revokeUserTokens)).not.toHaveBeenCalled();
+    expect(vi.mocked(createAdminAuditLog)).not.toHaveBeenCalled();
   });
 });

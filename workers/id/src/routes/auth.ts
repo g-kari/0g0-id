@@ -56,7 +56,7 @@ import { authRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middlew
 import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware } from '../middleware/auth';
 import { serviceBindingMiddleware } from '../middleware/service-binding';
 import { resolveEffectiveScope } from '../utils/scopes';
-import { issueTokenPair } from '../utils/token-pair';
+import { issueTokenPair, ACCESS_TOKEN_TTL_SECONDS } from '../utils/token-pair';
 import { attemptUnrevokeToken } from '../utils/token-recovery';
 
 const ExchangeSchema = z.object({
@@ -992,7 +992,7 @@ app.post('/exchange', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asy
       ...(idToken ? { id_token: idToken } : {}),
       refresh_token: refreshTokenRaw,
       token_type: 'Bearer',
-      expires_in: 900, // 15分
+      expires_in: ACCESS_TOKEN_TTL_SECONDS,
       user: {
         id: idTokenSub,
         email: user.email,
@@ -1099,7 +1099,7 @@ app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
       access_token: accessToken,
       refresh_token: newRefreshTokenRaw,
       token_type: 'Bearer',
-      expires_in: 900,
+      expires_in: ACCESS_TOKEN_TTL_SECONDS,
       user: {
         id: user.id,
         email: user.email,

@@ -8,6 +8,8 @@ import {
   deleteUser,
   getUserProviders,
   getLoginEventsByUserId,
+  listActiveSessionsByUserId,
+  revokeUserTokens,
   createAdminAuditLog,
   type UserFilter,
 } from '@0g0-id/shared';
@@ -255,5 +257,83 @@ export const getUserProvidersTool: McpTool = {
 
     const providers = await getUserProviders(context.db, userId);
     return { content: [{ type: 'text', text: JSON.stringify(providers, null, 2) }] };
+  },
+};
+
+export const listUserSessionsTool: McpTool = {
+  definition: {
+    name: 'list_user_sessions',
+    description: 'ユーザーのアクティブセッション一覧を取得する（IdPセッション・サービストークン両方を含む）',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user_id: { type: 'string', description: 'ユーザーID' },
+      },
+      required: ['user_id'],
+    },
+  },
+  handler: async (params, context) => {
+    const userId = params.user_id;
+    if (typeof userId !== 'string' || userId.length === 0) {
+      return { content: [{ type: 'text', text: 'user_id は必須です' }], isError: true };
+    }
+
+    const user = await findUserById(context.db, userId);
+    if (!user) {
+      return { content: [{ type: 'text', text: 'ユーザーが見つかりません' }], isError: true };
+    }
+
+    const sessions = await listActiveSessionsByUserId(context.db, userId);
+
+    const result = {
+      user: { id: user.id, email: user.email, name: user.name },
+      sessions,
+      total: sessions.length,
+    };
+
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  },
+};
+
+export const revokeUserSessionsTool: McpTool = {
+  definition: {
+    name: 'revoke_user_sessions',
+    description: 'ユーザーの全アクティブセッションを失効させる（強制ログアウト）',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user_id: { type: 'string', description: 'セッションを失効させるユーザーのID' },
+      },
+      required: ['user_id'],
+    },
+  },
+  handler: async (params, context) => {
+    const userId = params.user_id;
+    if (typeof userId !== 'string' || userId.length === 0) {
+      return { content: [{ type: 'text', text: 'user_id は必須です' }], isError: true };
+    }
+
+    const user = await findUserById(context.db, userId);
+    if (!user) {
+      return { content: [{ type: 'text', text: 'ユーザーが見つかりません' }], isError: true };
+    }
+
+    await revokeUserTokens(context.db, userId, 'admin_action');
+
+    await createAdminAuditLog(context.db, {
+      adminUserId: context.userId,
+      action: 'user.sessions_revoked',
+      targetType: 'user',
+      targetId: userId,
+    });
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `ユーザー ${user.name} (${user.email}) の全セッションを失効させました。`,
+        },
+      ],
+    };
   },
 };

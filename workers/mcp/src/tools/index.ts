@@ -6,6 +6,8 @@ export {
   deleteUserTool,
   getUserLoginHistoryTool,
   getUserProvidersTool,
+  listUserSessionsTool,
+  revokeUserSessionsTool,
 } from './users';
 
 export {

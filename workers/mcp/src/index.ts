@@ -13,6 +13,8 @@ import {
   deleteUserTool,
   getUserLoginHistoryTool,
   getUserProvidersTool,
+  listUserSessionsTool,
+  revokeUserSessionsTool,
   listServicesTool,
   getServiceTool,
   createServiceTool,
@@ -49,6 +51,8 @@ mcpServer.registerTool(unbanUserTool);
 mcpServer.registerTool(deleteUserTool);
 mcpServer.registerTool(getUserLoginHistoryTool);
 mcpServer.registerTool(getUserProvidersTool);
+mcpServer.registerTool(listUserSessionsTool);
+mcpServer.registerTool(revokeUserSessionsTool);
 
 // サービス管理ツールを登録
 mcpServer.registerTool(listServicesTool);
