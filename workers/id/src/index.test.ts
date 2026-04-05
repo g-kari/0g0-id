@@ -42,10 +42,18 @@ vi.mock('@0g0-id/shared', () => ({
   cleanupExpiredAuthCodes: vi.fn().mockResolvedValue(0),
   deleteExpiredDeviceCodes: vi.fn().mockResolvedValue(undefined),
   cleanupExpiredMcpSessions: vi.fn().mockResolvedValue(0),
+  cleanupExpiredRevokedAccessTokens: vi.fn().mockResolvedValue(0),
+  deleteExpiredRefreshTokens: vi.fn().mockResolvedValue(0),
 }));
 
 import type { IdpEnv } from '@0g0-id/shared';
-import { getJWTKeys, cleanupExpiredAuthCodes, deleteExpiredDeviceCodes } from '@0g0-id/shared';
+import {
+  getJWTKeys,
+  cleanupExpiredAuthCodes,
+  deleteExpiredDeviceCodes,
+  cleanupExpiredRevokedAccessTokens,
+  deleteExpiredRefreshTokens,
+} from '@0g0-id/shared';
 import { app } from './index';
 import worker from './index';
 import { _resetValidationCache } from './utils/env-validation';
@@ -220,6 +228,8 @@ describe('scheduled handler', () => {
   beforeEach(() => {
     vi.mocked(cleanupExpiredAuthCodes).mockClear();
     vi.mocked(deleteExpiredDeviceCodes).mockClear();
+    vi.mocked(cleanupExpiredRevokedAccessTokens).mockClear();
+    vi.mocked(deleteExpiredRefreshTokens).mockClear();
   });
 
   it('認可コードとデバイスコードのクリーンアップを実行する', async () => {
@@ -237,5 +247,7 @@ describe('scheduled handler', () => {
 
     expect(cleanupExpiredAuthCodes).toHaveBeenCalledWith(mockEnv.DB);
     expect(deleteExpiredDeviceCodes).toHaveBeenCalledWith(mockEnv.DB);
+    expect(cleanupExpiredRevokedAccessTokens).toHaveBeenCalledWith(mockEnv.DB);
+    expect(deleteExpiredRefreshTokens).toHaveBeenCalledWith(mockEnv.DB);
   });
 });

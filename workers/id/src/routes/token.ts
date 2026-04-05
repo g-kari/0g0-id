@@ -383,7 +383,8 @@ async function handleRefreshTokenGrant(
 async function introspectRefreshToken(
   db: D1Database,
   service: NonNullable<Awaited<ReturnType<typeof authenticateService>>>,
-  tokenHash: string
+  tokenHash: string,
+  issuer: string
 ): Promise<Record<string, unknown> | null> {
   const refreshToken = await findRefreshTokenByHash(db, tokenHash);
   if (!refreshToken || refreshToken.revoked_at !== null) {
@@ -404,9 +405,11 @@ async function introspectRefreshToken(
   const sub = await sha256(service.client_id + ':' + refreshToken.user_id);
   const response: Record<string, unknown> = {
     active: true,
+    iss: issuer,
     token_type: 'refresh_token',
     sub,
     exp: Math.floor(new Date(refreshToken.expires_at).getTime() / 1000),
+    iat: Math.floor(new Date(refreshToken.created_at).getTime() / 1000),
     scope: scopeStr,
   };
   applyUserClaims(response, user, scopeList);
@@ -447,8 +450,10 @@ async function introspectJwtToken(
   const sub = await sha256(service.client_id + ':' + payload.sub);
   const jwtResponse: Record<string, unknown> = {
     active: true,
+    iss: payload.iss,
     sub,
     exp: payload.exp,
+    iat: payload.iat,
     scope: tokenScopeStr,
     token_type: 'access_token',
   };
@@ -488,10 +493,10 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
   if (body.token_type_hint === 'access_token') {
     result = await introspectJwtToken(c.env.DB, service!, token, c.env);
     if (result === null) {
-      result = await introspectRefreshToken(c.env.DB, service!, tokenHash);
+      result = await introspectRefreshToken(c.env.DB, service!, tokenHash, c.env.IDP_ORIGIN);
     }
   } else {
-    result = await introspectRefreshToken(c.env.DB, service!, tokenHash);
+    result = await introspectRefreshToken(c.env.DB, service!, tokenHash, c.env.IDP_ORIGIN);
     if (result === null) {
       result = await introspectJwtToken(c.env.DB, service!, token, c.env);
     }

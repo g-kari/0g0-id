@@ -80,6 +80,15 @@ export async function unrevokeRefreshToken(
   throw lastError;
 }
 
+export async function deleteExpiredRefreshTokens(db: D1Database): Promise<number> {
+  const result = await db
+    .prepare(
+      "DELETE FROM refresh_tokens WHERE expires_at < datetime('now') OR (revoked_at IS NOT NULL AND revoked_at < datetime('now', '-30 days'))"
+    )
+    .run();
+  return result.meta.changes ?? 0;
+}
+
 export async function createRefreshToken(
   db: D1Database,
   params: {

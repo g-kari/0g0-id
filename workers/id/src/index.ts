@@ -10,6 +10,7 @@ import {
   deleteExpiredDeviceCodes,
   cleanupExpiredMcpSessions,
   cleanupExpiredRevokedAccessTokens,
+  deleteExpiredRefreshTokens,
 } from '@0g0-id/shared';
 import { validateEnv } from './utils/env-validation';
 import authRoutes from './routes/auth';
@@ -95,6 +96,9 @@ export default {
 
         const revokedDeleted = await cleanupExpiredRevokedAccessTokens(env.DB);
         appLogger.info('失効アクセストークンクリーンアップ完了', { deletedCount: revokedDeleted });
+
+        const refreshDeleted = await deleteExpiredRefreshTokens(env.DB);
+        appLogger.info('期限切れリフレッシュトークンクリーンアップ完了', { deletedCount: refreshDeleted });
       })()
     );
   },
