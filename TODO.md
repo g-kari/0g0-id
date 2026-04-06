@@ -1,5 +1,13 @@
 # TODO
 
+## バグ修正（2026-04-06, コードレビュー起因）
+
+- ✅ **MCPツール createServiceTool: `allowed_scopes` がスペース区切り文字列になっていたバグを修正**
+  - `(params.allowed_scopes as string[]).join(' ')` → `JSON.stringify(params.allowed_scopes as string[])` に変更
+  - デフォルト値も `'openid profile email'` → `JSON.stringify(['openid', 'profile', 'email'])` に修正
+  - `parseAllowedScopes` はJSON配列形式を期待するため、MCPで作成したサービスのスコープが常に空配列として扱われていた
+  - テスト修正（`'openid email'` → `'["openid","email"]'`）+ デフォルト値確認テスト追加
+
 ## セキュリティ / アーキテクチャ課題
 
 ### ~~[高] MCPセッションのインメモリ管理がWorkerスケールアウトに非対応~~ ✅
