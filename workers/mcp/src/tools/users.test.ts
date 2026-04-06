@@ -244,6 +244,7 @@ describe('unbanUserTool', () => {
 // ===== delete_user =====
 describe('deleteUserTool', () => {
   it('ユーザーを削除し監査ログを記録する', async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(deleteUser).mockResolvedValue(true as never);
 
     const result = await deleteUserTool.handler({ user_id: 'user-1' }, mockContext);
@@ -266,10 +267,11 @@ describe('deleteUserTool', () => {
   });
 
   it('ユーザーが見つからない場合はエラー', async () => {
-    vi.mocked(deleteUser).mockResolvedValue(false as never);
+    vi.mocked(findUserById).mockResolvedValue(null);
 
     const result = await deleteUserTool.handler({ user_id: 'nonexistent' }, mockContext);
     expect(result.isError).toBe(true);
+    expect(vi.mocked(deleteUser)).not.toHaveBeenCalled();
     expect(vi.mocked(createAdminAuditLog)).not.toHaveBeenCalled();
   });
 });

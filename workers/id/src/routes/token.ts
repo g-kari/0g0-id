@@ -305,13 +305,15 @@ async function handleRefreshTokenGrant(
     const existingToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
     if (existingToken) {
       if (existingToken.revoked_reason === 'rotation') {
+        // 並行リクエスト対策: rotation から 30 秒以内の再提示は BFF の並行リフレッシュ競合の可能性が高い。
+        // この場合はファミリー全失効を行わず、新トークンで再試行させる。
+        // 30 秒を超えた再提示は本物のリプレイ攻撃とみなしてファミリー全失効する。
         const revokedAt = existingToken.revoked_at ? new Date(existingToken.revoked_at).getTime() : 0;
-        const gracePeriodMs = 30 * 1000;
-        if (Date.now() - revokedAt > gracePeriodMs) {
-          await revokeTokenFamily(c.env.DB, existingToken.family_id, 'reuse_detected');
-          return c.json({ error: 'invalid_grant', error_description: 'Token reuse detected' }, 400);
+        if (Date.now() - revokedAt < 30_000) {
+          return c.json({ error: 'invalid_grant', error_description: 'Token rotation in progress, please retry' }, 400);
         }
-        return c.json({ error: 'invalid_grant', error_description: 'Token rotation in progress, please retry' }, 400);
+        await revokeTokenFamily(c.env.DB, existingToken.family_id, 'reuse_detected');
+        return c.json({ error: 'invalid_grant', error_description: 'Token reuse detected' }, 400);
       }
       return c.json({ error: 'invalid_grant', error_description: 'Token has been revoked' }, 400);
     }

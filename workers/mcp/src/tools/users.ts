@@ -118,6 +118,8 @@ export const banUserTool: McpTool = {
     }
 
     const user = await banUser(context.db, userId);
+    await revokeUserTokens(context.db, userId, 'security_event');
+    await deleteMcpSessionsByUser(context.db, userId);
     await createAdminAuditLog(context.db, {
       adminUserId: context.userId,
       action: 'user.ban',
@@ -194,9 +196,17 @@ export const deleteUserTool: McpTool = {
       return { content: [{ type: 'text', text: 'user_id は必須です' }], isError: true };
     }
 
+    const existing = await findUserById(context.db, userId);
+    if (!existing) {
+      return { content: [{ type: 'text', text: 'ユーザーが見つかりません' }], isError: true };
+    }
+
+    await revokeUserTokens(context.db, userId, 'security_event');
+    await deleteMcpSessionsByUser(context.db, userId);
+
     const deleted = await deleteUser(context.db, userId);
     if (!deleted) {
-      return { content: [{ type: 'text', text: 'ユーザーが見つかりません' }], isError: true };
+      return { content: [{ type: 'text', text: 'ユーザーの削除に失敗しました' }], isError: true };
     }
 
     await createAdminAuditLog(context.db, {
