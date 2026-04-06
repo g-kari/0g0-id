@@ -1,4 +1,4 @@
-import { unrevokeRefreshToken, createLogger } from '@0g0-id/shared';
+import { unrevokeRefreshToken, findRefreshTokenById, createLogger } from '@0g0-id/shared';
 
 const recoveryLogger = createLogger('token-recovery');
 
@@ -16,6 +16,13 @@ export async function attemptUnrevokeToken(
   context: string,
 ): Promise<void> {
   try {
+    const token = await findRefreshTokenById(db, tokenId);
+    if (token?.revoked_reason === 'reuse_detected') {
+      recoveryLogger.warn(
+        `${context} token ${tokenId} has revoked_reason='reuse_detected' — skipping unrevoke to preserve security state`,
+      );
+      return;
+    }
     const unrevoked = await unrevokeRefreshToken(db, tokenId);
     if (!unrevoked) {
       recoveryLogger.error(`${context} unrevokeRefreshToken returned false — token may remain revoked:`, tokenId);
