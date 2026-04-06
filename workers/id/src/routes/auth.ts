@@ -874,18 +874,23 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
   const codeHash = await sha256(authCode);
   const expiresAt = new Date(Date.now() + 60 * 1000).toISOString();
 
-  await createAuthCode(c.env.DB, {
-    id: crypto.randomUUID(),
-    userId: user.id,
-    serviceId: stateData.serviceId ?? null,
-    codeHash,
-    redirectTo: stateData.redirectTo,
-    expiresAt,
-    nonce: stateData.nonce ?? null,
-    codeChallenge: stateData.codeChallenge ?? null,
-    codeChallengeMethod: stateData.codeChallengeMethod ?? null,
-    scope: stateData.scope ?? null,
-  });
+  try {
+    await createAuthCode(c.env.DB, {
+      id: crypto.randomUUID(),
+      userId: user.id,
+      serviceId: stateData.serviceId ?? null,
+      codeHash,
+      redirectTo: stateData.redirectTo,
+      expiresAt,
+      nonce: stateData.nonce ?? null,
+      codeChallenge: stateData.codeChallenge ?? null,
+      codeChallengeMethod: stateData.codeChallengeMethod ?? null,
+      scope: stateData.scope ?? null,
+    });
+  } catch (err) {
+    authLogger.error('[callback] Failed to create authorization code', err);
+    return c.json({ error: 'server_error', error_description: 'Failed to create authorization code' }, 500);
+  }
 
   // BFFコールバックへリダイレクト
   const callbackUrl = new URL(stateData.redirectTo);
