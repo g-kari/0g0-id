@@ -313,3 +313,21 @@
   - `docs.ts` に `/auth/authorize` の OpenAPI ドキュメントを追加
   - テスト12件追加（GET /auth/authorize バリデーション・正常系・nonceフォワーディング）
   - 全1464テストパス
+
+## 対応済み（2026-04-06）
+
+### セキュリティ強化: OAuth/OIDCフロー
+- [x] **CSPヘッダー追加**: `workers/user` の OAuth ログインページに `Content-Security-Policy` ヘッダーを追加し、XSS攻撃リスクを低減
+- [x] **refresh token グレースピリオド導入**: リフレッシュトークンに30秒のグレースピリオドを設定。ネットワーク遅延等による正常なリトライを許容しつつ、replay attack を防止
+- [x] **`end_session_endpoint` を discovery から除外**: OIDC Discovery（`/.well-known/openid-configuration`）から `end_session_endpoint` を除外。未実装エンドポイントをクライアントに公開しないことでセキュリティ上の意図を明確化
+
+### バグ修正: `resolveOAuthClient` のパブリッククライアントパス
+- [x] **`token.ts`: `resolveOAuthClient` パブリッククライアントパスに try-catch 追加**
+  - DB例外が発生した場合に確実に `status: 500` を返すよう修正
+  - 例外をキャッチせずに上位に伝播していたケースを解消し、サーバーエラーとして適切にハンドリング
+
+### 設計方針確認: プロバイダーリゾルバーの現状維持
+- [x] **プロバイダーリゾルバーの設計を意図的に維持**
+  - 現状: 呼び出し元マップ方式 + 各プロバイダー固有関数（`resolveGoogleProvider`, `resolveLineProvider` 等）
+  - 統一化を検討したが、各プロバイダーに固有のロジック（スコープ、トークン形式、APIエンドポイント等）が存在するため統一化は不要と判断
+  - 現状の設計を維持することで、プロバイダーごとの柔軟な拡張性を確保
