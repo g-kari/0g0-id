@@ -387,6 +387,14 @@
 - ~~nonce 形式バリデーション（長さのみ → 制御文字等の排除も検討）~~ ✅ (2026-04-06, \x00-\x1F, \x7F を拒否)
 - ~~テスト網羅: グレースピリオドのエッジケース（BAN済みユーザー再BAN等）~~ ✅ (2026-04-06, グレースピリオド内TOKEN_ROTATED + revoked_at null の2ケースを auth.test.ts / token.test.ts に追加)
 
+## テストカバレッジ追加（2026-04-07）
+
+- ✅ **`workers/user/src/routes/device.ts` のテストカバレッジ追加**
+  - `/api/device/verify`（ユーザーコード検証）・`/api/device/approve`（承認/拒否）のテスト22件追加
+  - 認証なし・不正ボディ・不正user_code形式・IdP到達不能・成功系・各種エラーコード引き継ぎを網羅
+  - `toUpperCase()` による小文字入力の自動変換動作もテストで明示
+  - 全1525テストパス
+
 ## リファクタリング（2026-04-07）
 
 - ✅ **`parseJsonBody` の import を shared 版に統一**
