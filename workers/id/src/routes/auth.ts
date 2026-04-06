@@ -1096,9 +1096,13 @@ app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
     accessToken = tokens.accessToken;
     newRefreshTokenRaw = tokens.refreshToken;
   } catch (e) {
+    authLogger.error('handleRefresh: issueTokenPair failed', e);
     // レース条件対策: 並行リクエストがreuse detectionを発動しfamily全体を
     // 失効させた可能性がある。その場合はunrevokeせずTOKEN_REUSEを返す。
-    if (storedToken.revoked_reason === 'reuse_detected') {
+    // findAndRevokeRefreshToken の RETURNING * は更新後の値を返すため storedToken.revoked_reason は
+    // 常に 'rotation' になる。concurrent な reuse_detected への書き換えを検知するには DB を再クエリする必要がある。
+    const currentToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
+    if (currentToken && currentToken.revoked_reason === 'reuse_detected') {
       return c.json({ error: { code: 'TOKEN_REUSE', message: 'Token reuse detected' } }, 401);
     }
     await attemptUnrevokeToken(c.env.DB, storedToken.id, '[auth] issueTokenPair failure 後');

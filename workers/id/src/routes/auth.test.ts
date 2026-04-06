@@ -94,6 +94,7 @@ import {
   findAndRevokeRefreshToken,
   findUserById,
   revokeRefreshToken,
+  unrevokeRefreshToken,
   revokeTokenFamily,
   upsertUser,
   createAuthCode,
@@ -831,6 +832,49 @@ describe('POST /auth/refresh', () => {
     expect(res.status).toBe(401);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('INVALID_TOKEN');
+  });
+
+  it('issueTokenPair失敗 + reuse_detected競合 → TOKEN_REUSE + unrevoke不実施', async () => {
+    // issueTokenPair内でsignAccessTokenを失敗させる
+    vi.mocked(signAccessToken).mockRejectedValue(new Error('key not available'));
+    // 並行リクエストがreuse_detectedを設定した状態をシミュレート
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      revoked_at: new Date().toISOString(),
+      revoked_reason: 'reuse_detected',
+    } as never);
+
+    const res = await sendRequest(app, '/auth/refresh', {
+      method: 'POST',
+      body: { refresh_token: 'valid-token' },
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('TOKEN_REUSE');
+    // reuse_detected時はunrevokeしてはいけない
+    expect(vi.mocked(unrevokeRefreshToken)).not.toHaveBeenCalled();
+  });
+
+  it('issueTokenPair失敗（通常のエラー）→ INTERNAL_ERROR + unrevoke実施', async () => {
+    // issueTokenPair内でsignAccessTokenを失敗させる
+    vi.mocked(signAccessToken).mockRejectedValue(new Error('key not available'));
+    // reuse_detectedではない状態（通常のDB障害シナリオ）
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      revoked_at: new Date().toISOString(),
+      revoked_reason: 'rotation',
+    } as never);
+    vi.mocked(unrevokeRefreshToken).mockResolvedValue(true);
+
+    const res = await sendRequest(app, '/auth/refresh', {
+      method: 'POST',
+      body: { refresh_token: 'valid-token' },
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+    // 通常エラーの場合はunrevokeを試みる
+    expect(vi.mocked(unrevokeRefreshToken)).toHaveBeenCalled();
   });
 });
 
