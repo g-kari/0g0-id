@@ -411,6 +411,8 @@
 - ✅ **token-pair.ts: `scope ?? null` → `scope || null`**
   - `??` はnull/undefinedのみnullに落とすが、空文字列 `''` はfalsy判定されず通過していた
   - `||` に変更することで空文字列もnullに落とし、DBへの空文字列保存を防止
-- ✅ **auth.ts: `POST /refresh` の不要なDB再クエリ削除**
-  - issueTokenPair失敗時のcatchブロックで `findRefreshTokenByHash` を再クエリしていた
-  - 手元の `storedToken.revoked_reason` を直接参照するよう変更し、DBクエリ1回分を削減
+- ~~`auth.ts: POST /refresh の不要なDB再クエリ削除`~~ → **バグだったため revert・修正済み（2026-04-07）**
+  - `findAndRevokeRefreshToken` の `RETURNING *` は更新後の値を返すため `storedToken.revoked_reason` は常に `'rotation'`
+  - `storedToken.revoked_reason === 'reuse_detected'` チェックは dead code だった（race condition 検知不能）
+  - `token.ts` と同じパターン（`findRefreshTokenByHash` 再クエリ）に修正、エラーログも追加
+  - テスト2件追加（issueTokenPair失敗時のreuse_detected競合 + 通常エラー）
