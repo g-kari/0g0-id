@@ -162,6 +162,16 @@
   - `/auth/exchange` と `/auth/refresh` 両エンドポイントで `token-pair.ts` の既存定数を使用
   - `token.ts` の `buildTokenResponse` との一貫性確保
 
+## ドキュメント修正（2026-04-06）
+
+- [x] **docs.ts: well-known エンドポイント記述を実装と一致させる**
+  - `authorization_endpoint` の例 `/auth/login` → `/auth/authorize` に修正
+  - `token_endpoint` の例 `/auth/exchange` → `/api/token` に修正
+  - `token_endpoint_auth_methods_supported` の例 `client_secret_post` → `none` に修正
+  - `grant_types_supported` に `device_code` グラントタイプを追加
+  - `device_authorization_endpoint` フィールドを追加（INTERNAL/EXTERNAL両仕様）
+  - `registration_endpoint`（未実装）を `oauth-authorization-server` から削除
+
 ## 未対応課題
 
 ### ~~[中] introspect時のスコープフォールバック不整合~~ ✅
