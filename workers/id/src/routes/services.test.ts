@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
 
 // @0g0-id/sharedの全関数をモック
-vi.mock('@0g0-id/shared', () => ({
+vi.mock('@0g0-id/shared', async (importOriginal) => {
+  const { parseJsonBody } = await importOriginal<typeof import('@0g0-id/shared')>();
+  return {
+  parseJsonBody,
   createLogger: vi.fn().mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
   listServices: vi.fn(),
   findServiceById: vi.fn(),
@@ -43,7 +46,8 @@ vi.mock('@0g0-id/shared', () => ({
   },
   verifyAccessToken: vi.fn(),
   isAccessTokenRevoked: vi.fn().mockResolvedValue(false),
-}));
+  };
+});
 
 import {
   listServices,

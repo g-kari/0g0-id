@@ -1,7 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { z } from 'zod';
-import { parseJsonBody } from '../utils/parse-body';
+import { parseJsonBody } from '@0g0-id/shared';
 import { authenticateService } from '../utils/service-auth';
 import { getClientIp } from '../utils/ip';
 

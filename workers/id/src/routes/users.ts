@@ -35,7 +35,7 @@ import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
 import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware } from '../middleware/auth';
 import { adminMiddleware } from '../middleware/admin';
 import { csrfMiddleware } from '../middleware/csrf';
-import { parseJsonBody } from '../utils/parse-body';
+import { parseJsonBody } from '@0g0-id/shared';
 import { getClientIp } from '../utils/ip';
 
 const PatchMeSchema = z.object({
