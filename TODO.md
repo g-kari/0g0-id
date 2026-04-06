@@ -375,6 +375,6 @@
 ### 未対応（今後対応予定）
 - `oauth-authorization-server` エンドポイント (RFC 8414) に `claims_supported` / `response_modes_supported` / `subject_types_supported` が未追加（OIDCディスカバリの一貫性）
 - CSPヘッダーに `script-src 'none'` を明示的に追加（`default-src 'none'` からの意図明確化）
-- SQLite `datetime('now')` → `strftime('%Y-%m-%dT%H:%M:%SZ', 'now')` でISO 8601準拠に（Node.jsテスト環境での `new Date()` パース互換性）
+- ~~SQLite `datetime('now')` → `strftime('%Y-%m-%dT%H:%M:%SZ', 'now')` でISO 8601準拠に（Node.jsテスト環境での `new Date()` パース互換性）~~ ✅ (2026-04-06, commit a9d8f25)
 - nonce 形式バリデーション（長さのみ → 制御文字等の排除も検討）
 - テスト網羅: グレースピリオドのエッジケース（BAN済みユーザー再BAN等）
