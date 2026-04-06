@@ -162,6 +162,14 @@
   - `/auth/exchange` と `/auth/refresh` 両エンドポイントで `token-pair.ts` の既存定数を使用
   - `token.ts` の `buildTokenResponse` との一貫性確保
 
+## ドキュメント更新（2026-04-06, 追記）
+
+- [x] **well-known: claims_supported / response_modes_supported 追加**
+  - OIDC Discovery 1.0 Section 3 RECOMMENDED の `claims_supported` フィールドを追加（14クレーム）
+  - RFC 8414 準拠の `response_modes_supported: ['query']` を openid-configuration・oauth-authorization-server 両方に追加
+  - docs.ts（INTERNAL/EXTERNAL OpenAPI）のスキーマ・例を実装と一致させる
+  - well-known.test.ts にテスト2件追加（全12テストパス）
+
 ## ドキュメント修正（2026-04-06）
 
 - [x] **docs.ts: well-known エンドポイント記述を実装と一致させる**
