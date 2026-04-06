@@ -1,5 +1,13 @@
 # TODO
 
+## バグ修正（2026-04-07）
+
+- ✅ **MCP `deleteServiceTool`: サービス削除前にトークン失効が抜けていた**
+  - `revokeAllServiceTokens('service_delete')` を `deleteService` 呼び出し前に追加（REST API と同じ挙動に統一）
+  - 失効件数を監査ログの `details.revoked_token_count` と成功メッセージに含める
+  - テスト2件追加（失効件数 0 件・5 件のケース）
+  - 全1529テストパス
+
 ## リファクタリング（2026-04-07, コードレビュー起因）
 
 - ✅ **`PATCH /api/users/me` の `name` フィールドをオプション化（部分更新対応）**
