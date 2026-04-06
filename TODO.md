@@ -1,5 +1,14 @@
 # TODO
 
+## リファクタリング（2026-04-07, コードレビュー起因）
+
+- ✅ **`PATCH /api/users/me` の `name` フィールドをオプション化（部分更新対応）**
+  - `PatchMeSchema` の `name` を `.optional()` に変更。全フィールド未指定時は refine で 400 を返す
+  - `updateUserProfile` の型を `name?: string` に変更。`name` が未指定の場合は SET 句から除外
+  - 空の更新パラメータ `{}` に対して `'No fields to update'` エラーを追加
+  - テスト追加: nameなし部分更新・フィールド未指定エラーケース
+  - 全1528テストパス
+
 ## バグ修正（2026-04-06, コードレビュー起因）
 
 - ✅ **MCPツール createServiceTool: `allowed_scopes` がスペース区切り文字列になっていたバグを修正**
