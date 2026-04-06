@@ -41,6 +41,9 @@ export function buildGoogleAuthUrl(params: {
 }
 
 import { fetchWithRetry } from './fetch-retry';
+import { createLogger } from './logger';
+
+const logger = createLogger('oauth-google');
 
 /**
  * Googleトークンエンドポイントを呼び出してアクセストークンを取得する
@@ -68,7 +71,7 @@ export async function exchangeGoogleCode(params: {
 
   if (!response.ok) {
     const error = await response.text();
-    console.error(`Google token exchange failed (${response.status}): ${error}`);
+    logger.error(`Google token exchange failed (${response.status})`, error);
     throw new Error('Google token exchange failed');
   }
 

@@ -1,4 +1,7 @@
 import { fetchWithRetry } from './fetch-retry';
+import { createLogger } from './logger';
+
+const logger = createLogger('oauth-x');
 
 const X_AUTH_URL = 'https://twitter.com/i/oauth2/authorize';
 const X_TOKEN_URL = 'https://api.twitter.com/2/oauth2/token';
@@ -72,7 +75,7 @@ export async function exchangeXCode(params: {
 
   if (!response.ok) {
     const error = await response.text();
-    console.error(`X token exchange failed (${response.status}): ${error}`);
+    logger.error(`X token exchange failed (${response.status})`, error);
     throw new Error('X token exchange failed');
   }
 

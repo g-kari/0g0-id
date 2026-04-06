@@ -1,5 +1,8 @@
 import type { RefreshToken, User } from '../types';
 import { escapeLikePattern } from '../lib/sql';
+import { createLogger } from '../lib/logger';
+
+const logger = createLogger('refresh-tokens');
 
 export type RevokeReason =
   | 'user_logout'
@@ -63,16 +66,16 @@ export async function unrevokeRefreshToken(
         .bind(tokenId)
         .run();
       if (result.meta.changes === 0) {
-        console.warn(
-          `[unrevokeRefreshToken] token ${tokenId} was not unrevoked — revoked_reason may have changed concurrently`
+        logger.warn(
+          `unrevokeRefreshToken: token ${tokenId} was not unrevoked — revoked_reason may have changed concurrently`
         );
         return false;
       }
       return true;
     } catch (err) {
       lastError = err;
-      console.error(
-        `[unrevokeRefreshToken] attempt ${attempt + 1}/${maxRetries + 1} failed for token ${tokenId}:`,
+      logger.error(
+        `unrevokeRefreshToken: attempt ${attempt + 1}/${maxRetries + 1} failed for token ${tokenId}`,
         err
       );
     }

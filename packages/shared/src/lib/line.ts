@@ -1,4 +1,7 @@
 import { fetchWithRetry } from './fetch-retry';
+import { createLogger } from './logger';
+
+const logger = createLogger('oauth-line');
 
 const LINE_AUTH_URL = 'https://access.line.me/oauth2/v2.1/authorize';
 const LINE_TOKEN_URL = 'https://api.line.me/oauth2/v2.1/token';
@@ -69,7 +72,7 @@ export async function exchangeLineCode(params: {
 
   if (!response.ok) {
     const error = await response.text();
-    console.error(`LINE token exchange failed (${response.status}): ${error}`);
+    logger.error(`LINE token exchange failed (${response.status})`, error);
     throw new Error('LINE token exchange failed');
   }
 

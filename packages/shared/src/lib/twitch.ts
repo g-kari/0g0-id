@@ -1,4 +1,7 @@
 import { fetchWithRetry } from './fetch-retry';
+import { createLogger } from './logger';
+
+const logger = createLogger('oauth-twitch');
 
 const TWITCH_AUTH_URL = 'https://id.twitch.tv/oauth2/authorize';
 const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
@@ -70,7 +73,7 @@ export async function exchangeTwitchCode(params: {
 
   if (!response.ok) {
     const error = await response.text();
-    console.error(`Twitch token exchange failed (${response.status}): ${error}`);
+    logger.error(`Twitch token exchange failed (${response.status})`, error);
     throw new Error('Twitch token exchange failed');
   }
 

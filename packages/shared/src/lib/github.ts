@@ -1,4 +1,7 @@
 import { fetchWithRetry } from './fetch-retry';
+import { createLogger } from './logger';
+
+const logger = createLogger('oauth-github');
 
 const GITHUB_AUTH_URL = 'https://github.com/login/oauth/authorize';
 const GITHUB_TOKEN_URL = 'https://github.com/login/oauth/access_token';
@@ -73,14 +76,14 @@ export async function exchangeGithubCode(params: {
 
   if (!response.ok) {
     const error = await response.text();
-    console.error(`GitHub token exchange failed (${response.status}): ${error}`);
+    logger.error(`GitHub token exchange failed (${response.status})`, error);
     throw new Error('GitHub token exchange failed');
   }
 
   try {
     const data = (await response.json()) as GithubTokenResponse & { error?: string };
     if (data.error) {
-      console.error(`GitHub token exchange failed: ${data.error}`);
+      logger.error('GitHub token exchange failed', data.error);
       throw new Error('GitHub token exchange failed');
     }
     return data;
