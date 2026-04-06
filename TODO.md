@@ -180,6 +180,13 @@
   - `device_authorization_endpoint` フィールドを追加（INTERNAL/EXTERNAL両仕様）
   - `registration_endpoint`（未実装）を `oauth-authorization-server` から削除
 
+## セキュリティ修正（2026-04-06, 追記）
+
+- [x] **`deleteMcpSessionsByUser` が未使用だったバグを修正**
+  - `revokeUserTokens` を呼ぶすべての箇所（BAN・ロール変更・ユーザー削除・全ログアウト・管理者セッション失効・MCP tool）に `deleteMcpSessionsByUser` を追加
+  - `mcp_sessions` テーブルに FK 制約がないため、リフレッシュトークン失効後も MCPセッションが最大30分残存するリスクがあった
+  - MCP tool `revoke_user_sessions` のテストに `deleteMcpSessionsByUser` 呼び出し検証を追加
+
 ## 未対応課題
 
 ### ~~[中] introspect時のスコープフォールバック不整合~~ ✅
