@@ -10,6 +10,7 @@ import {
   getLoginEventsByUserId,
   listActiveSessionsByUserId,
   revokeUserTokens,
+  deleteMcpSessionsByUser,
   createAdminAuditLog,
   type UserFilter,
 } from '@0g0-id/shared';
@@ -319,6 +320,7 @@ export const revokeUserSessionsTool: McpTool = {
     }
 
     await revokeUserTokens(context.db, userId, 'admin_action');
+    await deleteMcpSessionsByUser(context.db, userId);
 
     await createAdminAuditLog(context.db, {
       adminUserId: context.userId,

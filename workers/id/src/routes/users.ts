@@ -10,6 +10,7 @@ import {
   listUserConnections,
   revokeUserServiceTokens,
   revokeUserTokens,
+  deleteMcpSessionsByUser,
   revokeTokenByIdForUser,
   revokeOtherUserTokens,
   listActiveSessionsByUserId,
@@ -122,6 +123,7 @@ async function performUserDeletion(
     };
   }
   await revokeUserTokens(db, userId, 'admin_action');
+  await deleteMcpSessionsByUser(db, userId);
   await deleteUser(db, userId);
   return null;
 }
@@ -360,6 +362,7 @@ app.delete('/me/tokens/:tokenId', authMiddleware, rejectServiceTokenMiddleware, 
 app.delete('/me/tokens', authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware, csrfMiddleware, async (c) => {
   const tokenUser = c.get('user');
   await revokeUserTokens(c.env.DB, tokenUser.sub, 'user_logout_all');
+  await deleteMcpSessionsByUser(c.env.DB, tokenUser.sub);
   return c.body(null, 204);
 });
 
@@ -520,8 +523,9 @@ app.patch('/:id/role', authMiddleware, adminMiddleware, csrfMiddleware, async (c
   let user;
   try {
     user = await updateUserRole(c.env.DB, targetId, role);
-    // ロール変更後、既存トークンを即時失効（権限変更を即反映）
+    // ロール変更後、既存トークン・MCPセッションを即時失効（権限変更を即反映）
     await revokeUserTokens(c.env.DB, targetId, 'security_event');
+    await deleteMcpSessionsByUser(c.env.DB, targetId);
     await createAdminAuditLog(c.env.DB, {
       adminUserId: tokenUser.sub,
       action: 'user.role_change',
@@ -577,8 +581,9 @@ app.patch('/:id/ban', authMiddleware, adminMiddleware, csrfMiddleware, async (c)
   let updated;
   try {
     updated = await banUser(c.env.DB, targetId);
-    // 停止と同時に全セッション失効
+    // 停止と同時に全セッション・MCPセッション失効
     await revokeUserTokens(c.env.DB, targetId, 'security_event');
+    await deleteMcpSessionsByUser(c.env.DB, targetId);
   } catch (err) {
     try {
       await createAdminAuditLog(c.env.DB, {
@@ -727,6 +732,7 @@ app.delete('/:id/tokens', authMiddleware, adminMiddleware, csrfMiddleware, async
   const ipAddress = getClientIp(c.req.raw);
   try {
     await revokeUserTokens(c.env.DB, targetId, 'admin_action');
+    await deleteMcpSessionsByUser(c.env.DB, targetId);
     await createAdminAuditLog(c.env.DB, {
       adminUserId: tokenUser.sub,
       action: 'user.sessions_revoked',

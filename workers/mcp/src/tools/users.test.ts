@@ -11,6 +11,7 @@ vi.mock('@0g0-id/shared', () => ({
   getLoginEventsByUserId: vi.fn(),
   listActiveSessionsByUserId: vi.fn(),
   revokeUserTokens: vi.fn(),
+  deleteMcpSessionsByUser: vi.fn(),
   createAdminAuditLog: vi.fn(),
 }));
 
@@ -25,6 +26,7 @@ import {
   getLoginEventsByUserId,
   listActiveSessionsByUserId,
   revokeUserTokens,
+  deleteMcpSessionsByUser,
   createAdminAuditLog,
 } from '@0g0-id/shared';
 
@@ -396,6 +398,10 @@ describe('revokeUserSessionsTool', () => {
       mockContext.db,
       'user-1',
       'admin_action',
+    );
+    expect(vi.mocked(deleteMcpSessionsByUser)).toHaveBeenCalledWith(
+      mockContext.db,
+      'user-1',
     );
     expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
       mockContext.db,
