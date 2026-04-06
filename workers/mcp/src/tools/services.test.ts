@@ -6,6 +6,7 @@ vi.mock('@0g0-id/shared', () => ({
   findServiceById: vi.fn(),
   createService: vi.fn(),
   deleteService: vi.fn(),
+  revokeAllServiceTokens: vi.fn(),
   rotateClientSecret: vi.fn(),
   generateClientId: vi.fn(),
   generateClientSecret: vi.fn(),
@@ -19,6 +20,7 @@ import {
   findServiceById,
   createService,
   deleteService,
+  revokeAllServiceTokens,
   rotateClientSecret,
   generateClientId,
   generateClientSecret,
@@ -56,6 +58,7 @@ const mockService = {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(createAdminAuditLog).mockResolvedValue(undefined as never);
+  vi.mocked(revokeAllServiceTokens).mockResolvedValue(0);
 });
 
 // ===== list_services =====
@@ -216,11 +219,35 @@ describe('deleteServiceTool', () => {
 
     expect(result.isError).toBeUndefined();
     expect(result.content[0].text).toContain('削除');
+    // 削除前にトークンを失効させる
+    expect(vi.mocked(revokeAllServiceTokens)).toHaveBeenCalledWith(
+      mockContext.db,
+      'svc-1',
+      'service_delete',
+    );
     expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
       mockContext.db,
       expect.objectContaining({
         action: 'service.delete',
         targetId: 'svc-1',
+        details: expect.objectContaining({ revoked_token_count: 0 }),
+      }),
+    );
+  });
+
+  it('アクティブトークンがある場合は失効件数をメッセージに含める', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(deleteService).mockResolvedValue(undefined as never);
+    vi.mocked(revokeAllServiceTokens).mockResolvedValue(5);
+
+    const result = await deleteServiceTool.handler({ service_id: 'svc-1' }, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toContain('5 件を失効');
+    expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
+      mockContext.db,
+      expect.objectContaining({
+        details: expect.objectContaining({ revoked_token_count: 5 }),
       }),
     );
   });
@@ -229,6 +256,7 @@ describe('deleteServiceTool', () => {
     const result = await deleteServiceTool.handler({}, mockContext);
     expect(result.isError).toBe(true);
     expect(vi.mocked(deleteService)).not.toHaveBeenCalled();
+    expect(vi.mocked(revokeAllServiceTokens)).not.toHaveBeenCalled();
   });
 
   it('サービスが見つからない場合はエラー', async () => {
@@ -237,6 +265,7 @@ describe('deleteServiceTool', () => {
     const result = await deleteServiceTool.handler({ service_id: 'nonexistent' }, mockContext);
     expect(result.isError).toBe(true);
     expect(vi.mocked(deleteService)).not.toHaveBeenCalled();
+    expect(vi.mocked(revokeAllServiceTokens)).not.toHaveBeenCalled();
   });
 });
 

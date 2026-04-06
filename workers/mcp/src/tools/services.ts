@@ -5,6 +5,7 @@ import {
   findServiceById,
   createService,
   deleteService,
+  revokeAllServiceTokens,
   rotateClientSecret,
   generateClientId,
   generateClientSecret,
@@ -197,6 +198,9 @@ export const deleteServiceTool: McpTool = {
       return { content: [{ type: 'text', text: 'サービスが見つかりません' }], isError: true };
     }
 
+    // サービス削除前に全ユーザーのアクティブトークンを失効させる（REST APIと同じ挙動）
+    const revokedCount = await revokeAllServiceTokens(context.db, serviceId, 'service_delete');
+
     await deleteService(context.db, serviceId);
 
     await createAdminAuditLog(context.db, {
@@ -204,14 +208,14 @@ export const deleteServiceTool: McpTool = {
       action: 'service.delete',
       targetType: 'service',
       targetId: serviceId,
-      details: { name: service.name },
+      details: { name: service.name, revoked_token_count: revokedCount },
     });
 
     return {
       content: [
         {
           type: 'text',
-          text: `サービス "${service.name}" (ID: ${serviceId}) を削除しました。`,
+          text: `サービス "${service.name}" (ID: ${serviceId}) を削除しました。${revokedCount > 0 ? `（アクティブトークン ${revokedCount} 件を失効）` : ''}`,
         },
       ],
     };
