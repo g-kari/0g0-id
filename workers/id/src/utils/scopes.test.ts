@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAllowedScopes, resolveEffectiveScope } from './scopes';
+import { parseAllowedScopes, resolveEffectiveScope, validateNonce } from './scopes';
 
 describe('parseAllowedScopes', () => {
   it('JSON配列を正しくパースする', () => {
@@ -17,6 +17,24 @@ describe('parseAllowedScopes', () => {
   it('配列でない値の場合は空配列を返す（フェイルクローズド）', () => {
     expect(parseAllowedScopes('"profile"')).toEqual([]);
     expect(parseAllowedScopes('42')).toEqual([]);
+  });
+
+  it('スペースを含むスコープが除外される', () => {
+    // "in valid" も "also valid" もスペースを含むため除外される
+    expect(parseAllowedScopes('["valid", "in valid", "also valid"]')).toEqual(['valid']);
+  });
+
+  it('制御文字を含むスコープが除外される', () => {
+    // JSON内でUnicodeエスケープ（\\u0000）を使うことで制御文字を含む文字列を正しくパースさせる
+    expect(parseAllowedScopes('["valid", "in\\u0000valid", "also\\u001Fvalid"]')).toEqual(['valid']);
+  });
+
+  it('有効なスコープ（read:users, profile.read, my-scope）が残る', () => {
+    expect(parseAllowedScopes('["read:users","profile.read","my-scope"]')).toEqual([
+      'read:users',
+      'profile.read',
+      'my-scope',
+    ]);
   });
 });
 
@@ -68,5 +86,26 @@ describe('resolveEffectiveScope', () => {
       const manyScopes = '["profile","email","phone","address","custom1","custom2"]';
       expect(resolveEffectiveScope(null, manyScopes)).toBe('openid');
     });
+  });
+});
+
+describe('validateNonce', () => {
+  it('undefined の場合は null を返す', () => {
+    expect(validateNonce(undefined)).toBeNull();
+  });
+
+  it('正常な nonce の場合は null を返す', () => {
+    expect(validateNonce('abc123XYZ')).toBeNull();
+    expect(validateNonce('a'.repeat(128))).toBeNull();
+  });
+
+  it('129文字の nonce はエラーメッセージを返す', () => {
+    expect(validateNonce('a'.repeat(129))).toBe('nonce too long');
+  });
+
+  it('制御文字を含む nonce はエラーメッセージを返す', () => {
+    expect(validateNonce('nonce\x00value')).toBe('nonce contains invalid characters');
+    expect(validateNonce('nonce\x1Fvalue')).toBe('nonce contains invalid characters');
+    expect(validateNonce('nonce\x7Fvalue')).toBe('nonce contains invalid characters');
   });
 });

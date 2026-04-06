@@ -55,7 +55,7 @@ import { type OAuthProvider, PROVIDER_DISPLAY_NAMES, ALL_PROVIDERS, isValidProvi
 import { authRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware } from '../middleware/auth';
 import { serviceBindingMiddleware } from '../middleware/service-binding';
-import { resolveEffectiveScope } from '../utils/scopes';
+import { resolveEffectiveScope, validateNonce } from '../utils/scopes';
 import { issueTokenPair, ACCESS_TOKEN_TTL_SECONDS } from '../utils/token-pair';
 import { attemptUnrevokeToken } from '../utils/token-recovery';
 
@@ -524,11 +524,9 @@ app.get('/authorize', authRateLimitMiddleware, async (c) => {
     return c.json({ error: 'invalid_request', error_description: 'scope too long' }, 400);
   }
   // nonce はOIDCオプション。長さ + 制御文字を検証（OIDC Core 1.0 §3.1.2.1）
-  if (nonce !== undefined && nonce.length > 128) {
-    return c.json({ error: 'invalid_request', error_description: 'nonce too long' }, 400);
-  }
-  if (nonce !== undefined && /[\x00-\x1F\x7F]/.test(nonce)) {
-    return c.json({ error: 'invalid_request', error_description: 'nonce contains invalid characters' }, 400);
+  const nonceError = validateNonce(nonce);
+  if (nonceError) {
+    return c.json({ error: 'invalid_request', error_description: nonceError }, 400);
   }
 
   // サービス検証
@@ -655,11 +653,9 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
   const codeChallenge = c.req.query('code_challenge');
 
   // nonce の長さ・制御文字制限（RFC 7636 に準じて 128 文字まで、制御文字禁止）
-  if (nonce !== undefined && nonce.length > 128) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'nonce too long' } }, 400);
-  }
-  if (nonce !== undefined && /[\x00-\x1F\x7F]/.test(nonce)) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'nonce contains invalid characters' } }, 400);
+  const nonceError = validateNonce(nonce);
+  if (nonceError) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: nonceError } }, 400);
   }
   const codeChallengeMethod = c.req.query('code_challenge_method');
   const scope = c.req.query('scope');
