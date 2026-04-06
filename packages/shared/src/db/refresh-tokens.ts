@@ -35,7 +35,7 @@ export async function findAndRevokeRefreshToken(
   return db
     .prepare(
       `UPDATE refresh_tokens
-       SET revoked_at = datetime('now'), revoked_reason = ?
+       SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ?
        WHERE token_hash = ?
          AND revoked_at IS NULL
        RETURNING *`
@@ -83,7 +83,7 @@ export async function unrevokeRefreshToken(
 export async function deleteExpiredRefreshTokens(db: D1Database): Promise<number> {
   const result = await db
     .prepare(
-      "DELETE FROM refresh_tokens WHERE expires_at < datetime('now') OR (revoked_at IS NOT NULL AND revoked_at < datetime('now', '-30 days'))"
+      "DELETE FROM refresh_tokens WHERE datetime(expires_at) < datetime('now') OR (revoked_at IS NOT NULL AND datetime(revoked_at) < datetime('now', '-30 days'))"
     )
     .run();
   return result.meta.changes ?? 0;
@@ -140,7 +140,7 @@ export async function findUserIdByPairwiseSub(
 
 export async function revokeRefreshToken(db: D1Database, id: string, reason?: RevokeReason): Promise<void> {
   await db
-    .prepare(`UPDATE refresh_tokens SET revoked_at = datetime('now'), revoked_reason = ? WHERE id = ?`)
+    .prepare(`UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ? WHERE id = ?`)
     .bind(reason ?? null, id)
     .run();
 }
@@ -151,7 +151,7 @@ export async function revokeRefreshToken(db: D1Database, id: string, reason?: Re
 export async function revokeTokenFamily(db: D1Database, familyId: string, reason?: RevokeReason): Promise<void> {
   await db
     .prepare(
-      `UPDATE refresh_tokens SET revoked_at = datetime('now'), revoked_reason = ? WHERE family_id = ? AND revoked_at IS NULL`
+      `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ? WHERE family_id = ? AND revoked_at IS NULL`
     )
     .bind(reason ?? null, familyId)
     .run();
@@ -160,7 +160,7 @@ export async function revokeTokenFamily(db: D1Database, familyId: string, reason
 export async function revokeUserTokens(db: D1Database, userId: string, reason?: RevokeReason): Promise<void> {
   await db
     .prepare(
-      `UPDATE refresh_tokens SET revoked_at = datetime('now'), revoked_reason = ? WHERE user_id = ? AND revoked_at IS NULL`
+      `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ? WHERE user_id = ? AND revoked_at IS NULL`
     )
     .bind(reason ?? null, userId)
     .run();
@@ -359,7 +359,7 @@ export async function revokeUserServiceTokens(
 ): Promise<number> {
   const result = await db
     .prepare(
-      `UPDATE refresh_tokens SET revoked_at = datetime('now'), revoked_reason = ?
+      `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ?
        WHERE user_id = ? AND service_id = ? AND revoked_at IS NULL`
     )
     .bind(reason ?? null, userId, serviceId)
@@ -375,7 +375,7 @@ export async function revokeUserServiceTokens(
 export async function revokeAllServiceTokens(db: D1Database, serviceId: string, reason?: RevokeReason): Promise<number> {
   const result = await db
     .prepare(
-      `UPDATE refresh_tokens SET revoked_at = datetime('now'), revoked_reason = ?
+      `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ?
        WHERE service_id = ? AND revoked_at IS NULL`
     )
     .bind(reason ?? null, serviceId)
@@ -395,7 +395,7 @@ export async function revokeOtherUserTokens(
 ): Promise<number> {
   const result = await db
     .prepare(
-      `UPDATE refresh_tokens SET revoked_at = datetime('now'), revoked_reason = ?
+      `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ?
        WHERE user_id = ? AND token_hash != ? AND revoked_at IS NULL`
     )
     .bind(reason ?? null, userId, excludeTokenHash)
@@ -415,7 +415,7 @@ export async function revokeTokenByIdForUser(
 ): Promise<number> {
   const result = await db
     .prepare(
-      `UPDATE refresh_tokens SET revoked_at = datetime('now'), revoked_reason = ?
+      `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ?
        WHERE id = ? AND user_id = ? AND revoked_at IS NULL`
     )
     .bind(reason ?? null, tokenId, userId)

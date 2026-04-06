@@ -108,7 +108,7 @@ export async function updateServiceFields(
   binds.push(id);
   const service = await db
     .prepare(
-      `UPDATE services SET ${sets.join(', ')}, updated_at = datetime('now')
+      `UPDATE services SET ${sets.join(', ')}, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
        WHERE id = ?
        RETURNING *`
     )
@@ -199,7 +199,7 @@ export async function rotateClientSecret(
   invalidateServiceCache(id);
   const service = await db
     .prepare(
-      `UPDATE services SET client_secret_hash = ?, updated_at = datetime('now')
+      `UPDATE services SET client_secret_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
        WHERE id = ?
        RETURNING *`
     )
@@ -219,7 +219,7 @@ export async function transferServiceOwnership(
   invalidateServiceCache(id);
   const service = await db
     .prepare(
-      `UPDATE services SET owner_user_id = ?, updated_at = datetime('now')
+      `UPDATE services SET owner_user_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
        WHERE id = ?
        RETURNING *`
     )

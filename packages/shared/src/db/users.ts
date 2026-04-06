@@ -55,7 +55,7 @@ async function upsertProviderUser(
     if (opts.profileEmailUpdate) {
       const user = await db
         .prepare(
-          `UPDATE users SET email = ?, email_verified = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
+          `UPDATE users SET email = ?, email_verified = ?, name = ?, picture = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ? RETURNING *`
         )
         .bind(
           opts.profileEmailUpdate.email,
@@ -70,7 +70,7 @@ async function upsertProviderUser(
     }
     const user = await db
       .prepare(
-        `UPDATE users SET name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
+        `UPDATE users SET name = ?, picture = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ? RETURNING *`
       )
       .bind(opts.name, opts.picture, existingBySub.id)
       .first<User>();
@@ -85,10 +85,10 @@ async function upsertProviderUser(
       let sql: string;
       let bindings: unknown[];
       if (opts.emailLink.emailVerified !== undefined) {
-        sql = `UPDATE users SET ${subColumn} = ?, email_verified = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`;
+        sql = `UPDATE users SET ${subColumn} = ?, email_verified = ?, name = ?, picture = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ? RETURNING *`;
         bindings = [opts.subValue, opts.emailLink.emailVerified ? 1 : 0, opts.name, opts.picture, existingByEmail.id];
       } else {
-        sql = `UPDATE users SET ${subColumn} = ?, name = ?, picture = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`;
+        sql = `UPDATE users SET ${subColumn} = ?, name = ?, picture = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ? RETURNING *`;
         bindings = [opts.subValue, opts.name, opts.picture, existingByEmail.id];
       }
       const user = await db.prepare(sql).bind(...bindings).first<User>();
@@ -234,7 +234,7 @@ export async function updateUserRole(
   role: 'user' | 'admin'
 ): Promise<User> {
   const user = await db
-    .prepare(`UPDATE users SET role = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`)
+    .prepare(`UPDATE users SET role = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ? RETURNING *`)
     .bind(role, userId)
     .first<User>();
   if (!user) throw new Error('User not found');
@@ -260,7 +260,7 @@ export async function tryBootstrapAdmin(
   const result = await db
     .prepare(
       `UPDATE users
-         SET role = 'admin', updated_at = datetime('now')
+         SET role = 'admin', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
        WHERE id = ?
          AND role != 'admin'
          AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin')`
@@ -290,7 +290,7 @@ export async function updateUserProfile(
     setClauses.push('address = ?');
     values.push(params.address ?? null);
   }
-  setClauses.push("updated_at = datetime('now')");
+  setClauses.push("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
   values.push(userId);
 
   const user = await db
@@ -400,7 +400,7 @@ export async function unlinkProvider(
 ): Promise<void> {
   const col = validateProviderColumn(provider);
   const result = await db
-    .prepare(`UPDATE users SET ${col} = NULL, updated_at = datetime('now') WHERE id = ?`)
+    .prepare(`UPDATE users SET ${col} = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`)
     .bind(userId)
     .run();
   if ((result.meta.changes ?? 0) === 0) throw new Error('User not found');
@@ -408,7 +408,7 @@ export async function unlinkProvider(
 
 export async function banUser(db: D1Database, userId: string): Promise<User> {
   const user = await db
-    .prepare(`UPDATE users SET banned_at = datetime('now'), updated_at = datetime('now') WHERE id = ? RETURNING *`)
+    .prepare(`UPDATE users SET banned_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ? RETURNING *`)
     .bind(userId)
     .first<User>();
   if (!user) throw new Error('User not found');
@@ -417,7 +417,7 @@ export async function banUser(db: D1Database, userId: string): Promise<User> {
 
 export async function unbanUser(db: D1Database, userId: string): Promise<User> {
   const user = await db
-    .prepare(`UPDATE users SET banned_at = NULL, updated_at = datetime('now') WHERE id = ? RETURNING *`)
+    .prepare(`UPDATE users SET banned_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ? RETURNING *`)
     .bind(userId)
     .first<User>();
   if (!user) throw new Error('User not found');
@@ -469,7 +469,7 @@ export async function linkProvider(
   try {
     user = await db
       .prepare(
-        `UPDATE users SET ${col} = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`
+        `UPDATE users SET ${col} = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ? RETURNING *`
       )
       .bind(sub, userId)
       .first<User>();

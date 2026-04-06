@@ -625,7 +625,7 @@ describe('banUser', () => {
     const db = makeD1Mock(bannedUser);
     await banUser(db, 'user-1');
     expect(db.prepare).toHaveBeenCalledWith(
-      expect.stringContaining("banned_at = datetime('now')")
+      expect.stringContaining("banned_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
     );
   });
 });

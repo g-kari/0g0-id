@@ -42,7 +42,7 @@ export async function findAndConsumeAuthCode(
   return db
     .prepare(
       `UPDATE auth_codes
-       SET used_at = datetime('now')
+       SET used_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
        WHERE code_hash = ?
          AND used_at IS NULL
          AND datetime(expires_at) >= datetime('now')

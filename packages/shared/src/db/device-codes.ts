@@ -59,7 +59,7 @@ export async function approveDeviceCode(
 ): Promise<void> {
   await db
     .prepare(
-      `UPDATE device_codes SET user_id = ?, approved_at = datetime('now') WHERE id = ?`
+      `UPDATE device_codes SET user_id = ?, approved_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`
     )
     .bind(userId, id)
     .run();
@@ -67,7 +67,7 @@ export async function approveDeviceCode(
 
 export async function denyDeviceCode(db: D1Database, id: string): Promise<void> {
   await db
-    .prepare(`UPDATE device_codes SET denied_at = datetime('now') WHERE id = ?`)
+    .prepare(`UPDATE device_codes SET denied_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`)
     .bind(id)
     .run();
 }
@@ -102,7 +102,7 @@ export async function updateDeviceCodePolledAt(
   id: string
 ): Promise<void> {
   await db
-    .prepare(`UPDATE device_codes SET last_polled_at = datetime('now') WHERE id = ?`)
+    .prepare(`UPDATE device_codes SET last_polled_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`)
     .bind(id)
     .run();
 }
@@ -128,6 +128,6 @@ export async function deleteApprovedDeviceCode(
 
 export async function deleteExpiredDeviceCodes(db: D1Database): Promise<void> {
   await db
-    .prepare(`DELETE FROM device_codes WHERE expires_at < datetime('now')`)
+    .prepare(`DELETE FROM device_codes WHERE datetime(expires_at) < datetime('now')`)
     .run();
 }
