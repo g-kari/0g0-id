@@ -364,3 +364,17 @@
   - 現状: 呼び出し元マップ方式 + 各プロバイダー固有関数（`resolveGoogleProvider`, `resolveLineProvider` 等）
   - 統一化を検討したが、各プロバイダーに固有のロジック（スコープ、トークン形式、APIエンドポイント等）が存在するため統一化は不要と判断
   - 現状の設計を維持することで、プロバイダーごとの柔軟な拡張性を確保
+
+## 2026-04-06 コードレビュー対応
+
+### 対応済み ✅
+- ✅ MCPツール `banUserTool`: BANユーザーのリフレッシュトークン・MCPセッション失効を追加 (`workers/mcp/src/tools/users.ts`)
+- ✅ MCPツール `deleteUserTool`: 削除前に存在確認・トークン失効・MCPセッション削除を追加 (`workers/mcp/src/tools/users.ts`)
+- ✅ `token.ts` グレースピリオド: 条件判定を `auth.ts` と統一（`>` → `<` に修正）
+
+### 未対応（今後対応予定）
+- `oauth-authorization-server` エンドポイント (RFC 8414) に `claims_supported` / `response_modes_supported` / `subject_types_supported` が未追加（OIDCディスカバリの一貫性）
+- CSPヘッダーに `script-src 'none'` を明示的に追加（`default-src 'none'` からの意図明確化）
+- SQLite `datetime('now')` → `strftime('%Y-%m-%dT%H:%M:%SZ', 'now')` でISO 8601準拠に（Node.jsテスト環境での `new Date()` パース互換性）
+- nonce 形式バリデーション（長さのみ → 制御文字等の排除も検討）
+- テスト網羅: グレースピリオドのエッジケース（BAN済みユーザー再BAN等）
