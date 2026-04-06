@@ -523,9 +523,12 @@ app.get('/authorize', authRateLimitMiddleware, async (c) => {
   if (scope && scope.length > 2048) {
     return c.json({ error: 'invalid_request', error_description: 'scope too long' }, 400);
   }
-  // nonce はOIDCオプション。長さのみ検証（OIDC Core 1.0 §3.1.2.1）
+  // nonce はOIDCオプション。長さ + 制御文字を検証（OIDC Core 1.0 §3.1.2.1）
   if (nonce !== undefined && nonce.length > 128) {
     return c.json({ error: 'invalid_request', error_description: 'nonce too long' }, 400);
+  }
+  if (nonce !== undefined && /[\x00-\x1F\x7F]/.test(nonce)) {
+    return c.json({ error: 'invalid_request', error_description: 'nonce contains invalid characters' }, 400);
   }
 
   // サービス検証
@@ -651,9 +654,12 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
   const nonce = c.req.query('nonce');
   const codeChallenge = c.req.query('code_challenge');
 
-  // nonce の長さ制限（RFC 7636 に準じて 128 文字まで）
+  // nonce の長さ・制御文字制限（RFC 7636 に準じて 128 文字まで、制御文字禁止）
   if (nonce !== undefined && nonce.length > 128) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'nonce too long' } }, 400);
+  }
+  if (nonce !== undefined && /[\x00-\x1F\x7F]/.test(nonce)) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'nonce contains invalid characters' } }, 400);
   }
   const codeChallengeMethod = c.req.query('code_challenge_method');
   const scope = c.req.query('scope');

@@ -1915,6 +1915,25 @@ describe('GET /auth/authorize', () => {
     expect(body.error).toBe('invalid_request');
   });
 
+  it('nonce に制御文字が含まれる → 400を返す', async () => {
+    const params = new URLSearchParams(validParams);
+    params.set('nonce', 'valid-prefix\x00injected');
+    const res = await sendRequest(app, `/auth/authorize?${params.toString()}`);
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string; error_description: string }>();
+    expect(body.error).toBe('invalid_request');
+    expect(body.error_description).toContain('invalid characters');
+  });
+
+  it('nonce に改行文字が含まれる → 400を返す', async () => {
+    const params = new URLSearchParams(validParams);
+    params.set('nonce', 'valid\ninjected');
+    const res = await sendRequest(app, `/auth/authorize?${params.toString()}`);
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_request');
+  });
+
   it('正常: USER_ORIGIN/login にリダイレクトする', async () => {
     const res = await sendRequest(app, `/auth/authorize?${validParams.toString()}`);
     expect(res.status).toBe(302);

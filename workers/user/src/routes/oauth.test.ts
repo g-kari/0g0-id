@@ -49,6 +49,13 @@ describe('OAuth ログインページ — GET /login', () => {
       expect(csp).toContain("img-src 'self'");
     });
 
+    it('CSPヘッダーに script-src none が明示されている', async () => {
+      const app = buildApp();
+      const res = await app.request(`/login${REQUIRED_PARAMS}`);
+      const csp = res.headers.get('Content-Security-Policy') ?? '';
+      expect(csp).toContain("script-src 'none'");
+    });
+
     it('CSPヘッダーに unsafe-inline が含まれない', async () => {
       const app = buildApp();
       const res = await app.request(`/login${REQUIRED_PARAMS}`);
