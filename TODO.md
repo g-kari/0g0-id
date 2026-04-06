@@ -378,3 +378,12 @@
 - ~~SQLite `datetime('now')` → `strftime('%Y-%m-%dT%H:%M:%SZ', 'now')` でISO 8601準拠に（Node.jsテスト環境での `new Date()` パース互換性）~~ ✅ (2026-04-06, commit a9d8f25)
 - ~~nonce 形式バリデーション（長さのみ → 制御文字等の排除も検討）~~ ✅ (2026-04-06, \x00-\x1F, \x7F を拒否)
 - ~~テスト網羅: グレースピリオドのエッジケース（BAN済みユーザー再BAN等）~~ ✅ (2026-04-06, グレースピリオド内TOKEN_ROTATED + revoked_at null の2ケースを auth.test.ts / token.test.ts に追加)
+
+## バグ修正（2026-04-06, コードレビュー起因）
+
+- ✅ **token-pair.ts: `scope ?? null` → `scope || null`**
+  - `??` はnull/undefinedのみnullに落とすが、空文字列 `''` はfalsy判定されず通過していた
+  - `||` に変更することで空文字列もnullに落とし、DBへの空文字列保存を防止
+- ✅ **auth.ts: `POST /refresh` の不要なDB再クエリ削除**
+  - issueTokenPair失敗時のcatchブロックで `findRefreshTokenByHash` を再クエリしていた
+  - 手元の `storedToken.revoked_reason` を直接参照するよう変更し、DBクエリ1回分を削減

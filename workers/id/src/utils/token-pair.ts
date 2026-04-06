@@ -47,7 +47,7 @@ export async function issueTokenPair(
     familyId,
     expiresAt,
     pairwiseSub,
-    scope: scope ?? null,
+    scope: scope || null,
   });
 
   return { accessToken, refreshToken };
