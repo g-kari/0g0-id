@@ -109,16 +109,9 @@ app.post('/code', tokenApiRateLimitMiddleware, async (c) => {
   }
 
   // スコープの検証
-  const allowedScopes = parseAllowedScopes(service.allowed_scopes);
-  let resolvedScope: string | undefined;
-  const requestedScope = params['scope'];
-  if (requestedScope) {
-    const requested = requestedScope.split(' ').filter(Boolean);
-    const valid = requested.filter((s) => s === 'openid' || allowedScopes.includes(s));
-    resolvedScope = valid.length > 0 ? valid.join(' ') : undefined;
-  } else {
-    resolvedScope = ['openid', ...allowedScopes].join(' ');
-  }
+  // スコープ未指定時は最小スコープポリシー（RFC 6749 §3.3）に従い openid のみを付与する。
+  // auth.ts /exchange・token.ts と同様に resolveEffectiveScope に委譲して挙動を統一する。
+  const resolvedScope = resolveEffectiveScope(params['scope'], service.allowed_scopes);
 
   // デバイスコードとユーザーコードの生成
   const deviceCode = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, '');

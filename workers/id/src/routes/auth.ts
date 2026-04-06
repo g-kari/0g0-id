@@ -1144,19 +1144,10 @@ app.post('/link-intent', tokenApiRateLimitMiddleware, authMiddleware, rejectServ
 
 // POST /auth/logout — ログアウト（BFFサーバー間専用）
 app.post('/logout', tokenApiRateLimitMiddleware, serviceBindingMiddleware, async (c) => {
-  let rawBody: unknown;
-  try {
-    rawBody = await c.req.json();
-  } catch {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
-  }
+  const result = await parseJsonBody(c, LogoutSchema);
+  if (!result.ok) return result.response;
 
-  const parsed = LogoutSchema.safeParse(rawBody);
-  if (!parsed.success) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid request body' } }, 400);
-  }
-
-  const { refresh_token: refreshToken } = parsed.data;
+  const { refresh_token: refreshToken } = result.data;
   if (refreshToken) {
     const tokenHash = await sha256(refreshToken);
     const storedToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
