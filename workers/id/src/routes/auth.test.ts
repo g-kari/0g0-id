@@ -704,6 +704,48 @@ describe('POST /auth/refresh', () => {
     );
   });
 
+  it('グレースピリオド内（30秒以内）のrotation再利用 → TOKEN_ROTATED + family失効なし', async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(null);
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      revoked_at: new Date(Date.now() - 10_000).toISOString(), // 10秒前（グレースピリオド内）
+      revoked_reason: 'rotation',
+    } as never);
+
+    const res = await sendRequest(app, '/auth/refresh', {
+      method: 'POST',
+      body: { refresh_token: 'recently-rotated-token' },
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('TOKEN_ROTATED');
+    // グレースピリオド内はfamilyを失効させない
+    expect(vi.mocked(revokeTokenFamily)).not.toHaveBeenCalled();
+  });
+
+  it('rotation + revoked_atがnull → 0時点とみなしグレースピリオド超過 → family全失効', async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(null);
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      revoked_at: null,
+      revoked_reason: 'rotation',
+    } as never);
+    vi.mocked(revokeTokenFamily).mockResolvedValue(undefined as never);
+
+    const res = await sendRequest(app, '/auth/refresh', {
+      method: 'POST',
+      body: { refresh_token: 'null-revokedat-token' },
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('TOKEN_REUSE');
+    expect(vi.mocked(revokeTokenFamily)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      'family-1',
+      'reuse_detected'
+    );
+  });
+
   it('user_logoutで失効済みトークン → family全失効せずINVALID_TOKENを返す', async () => {
     vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(null);
     vi.mocked(findRefreshTokenByHash).mockResolvedValue({

@@ -1286,6 +1286,54 @@ describe('POST /api/token/ — refresh_token grant', () => {
     );
   });
 
+  it('グレースピリオド内（30秒以内）のrotation再利用 → "Token rotation in progress" + family失効なし', async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(null);
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      revoked_at: new Date(Date.now() - 10_000).toISOString(), // 10秒前（グレースピリオド内）
+      revoked_reason: 'rotation',
+    } as never);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'recently-rotated-token',
+        client_id: 'test-client-id',
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string; error_description: string }>();
+    expect(body.error).toBe('invalid_grant');
+    expect(body.error_description).toBe('Token rotation in progress, please retry');
+    // グレースピリオド内はfamilyを失効させない
+    expect(vi.mocked(revokeTokenFamily)).not.toHaveBeenCalled();
+  });
+
+  it('rotation + revoked_atがnull → 0時点とみなしグレースピリオド超過 → family全失効', async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(null);
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      revoked_at: null,
+      revoked_reason: 'rotation',
+    } as never);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'null-revokedat-token',
+        client_id: 'test-client-id',
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_grant');
+    expect(vi.mocked(revokeTokenFamily)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      'family-1',
+      'reuse_detected'
+    );
+  });
+
   it('rotation以外で失効済みトークン → { error: invalid_grant } (family失効なし)', async () => {
     vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(null);
     vi.mocked(findRefreshTokenByHash).mockResolvedValue({
