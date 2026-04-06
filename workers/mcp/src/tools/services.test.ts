@@ -176,7 +176,21 @@ describe('createServiceTool', () => {
 
     expect(vi.mocked(createService)).toHaveBeenCalledWith(
       mockContext.db,
-      expect.objectContaining({ allowedScopes: 'openid email' }),
+      expect.objectContaining({ allowedScopes: '["openid","email"]' }),
+    );
+  });
+
+  it('allowed_scopes未指定時はデフォルトJSON配列形式で保存される', async () => {
+    vi.mocked(generateClientId).mockReturnValue('cid');
+    vi.mocked(generateClientSecret).mockReturnValue('secret');
+    vi.mocked(sha256).mockResolvedValue('hash');
+    vi.mocked(createService).mockResolvedValue(mockService as never);
+
+    await createServiceTool.handler({ name: 'Default Service' }, mockContext);
+
+    expect(vi.mocked(createService)).toHaveBeenCalledWith(
+      mockContext.db,
+      expect.objectContaining({ allowedScopes: '["openid","profile","email"]' }),
     );
   });
 

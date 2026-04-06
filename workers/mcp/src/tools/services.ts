@@ -125,9 +125,10 @@ export const createServiceTool: McpTool = {
       return { content: [{ type: 'text', text: 'name は必須です' }], isError: true };
     }
 
+    // JSON.stringify で配列形式に統一（parseAllowedScopes がJSON配列を期待するため）
     const allowedScopes = Array.isArray(params.allowed_scopes)
-      ? (params.allowed_scopes as string[]).join(' ')
-      : 'openid profile email';
+      ? JSON.stringify(params.allowed_scopes as string[])
+      : JSON.stringify(['openid', 'profile', 'email']);
 
     const id = crypto.randomUUID();
     const clientId = generateClientId();
