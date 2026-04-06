@@ -273,11 +273,15 @@ export async function tryBootstrapAdmin(
 export async function updateUserProfile(
   db: D1Database,
   userId: string,
-  params: { name: string; picture?: string | null; phone?: string | null; address?: string | null }
+  params: { name?: string; picture?: string | null; phone?: string | null; address?: string | null }
 ): Promise<User> {
-  const setClauses: string[] = ['name = ?'];
-  const values: unknown[] = [params.name];
+  const setClauses: string[] = [];
+  const values: unknown[] = [];
 
+  if (params.name !== undefined) {
+    setClauses.push('name = ?');
+    values.push(params.name);
+  }
   if ('picture' in params) {
     setClauses.push('picture = ?');
     values.push(params.picture ?? null);
@@ -289,6 +293,9 @@ export async function updateUserProfile(
   if ('address' in params) {
     setClauses.push('address = ?');
     values.push(params.address ?? null);
+  }
+  if (setClauses.length === 0) {
+    throw new Error('No fields to update');
   }
   setClauses.push("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
   values.push(userId);

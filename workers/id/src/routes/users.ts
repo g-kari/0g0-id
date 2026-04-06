@@ -38,18 +38,27 @@ import { csrfMiddleware } from '../middleware/csrf';
 import { parseJsonBody } from '@0g0-id/shared';
 import { getClientIp } from '../utils/ip';
 
-const PatchMeSchema = z.object({
-  name: z.string().min(1, 'name is required').max(100, 'name must be 100 characters or less'),
-  picture: z
-    .string()
-    .url('picture must be a valid URL')
-    .startsWith('https://', 'picture must use HTTPS')
-    .max(2048, 'picture URL must be 2048 characters or less')
-    .nullable()
-    .optional(),
-  phone: z.string().max(50, 'phone must be 50 characters or less').nullable().optional(),
-  address: z.string().max(500, 'address must be 500 characters or less').nullable().optional(),
-});
+const PatchMeSchema = z
+  .object({
+    name: z.string().min(1, 'name must not be empty').max(100, 'name must be 100 characters or less').optional(),
+    picture: z
+      .string()
+      .url('picture must be a valid URL')
+      .startsWith('https://', 'picture must use HTTPS')
+      .max(2048, 'picture URL must be 2048 characters or less')
+      .nullable()
+      .optional(),
+    phone: z.string().max(50, 'phone must be 50 characters or less').nullable().optional(),
+    address: z.string().max(500, 'address must be 500 characters or less').nullable().optional(),
+  })
+  .refine(
+    (data) =>
+      data.name !== undefined ||
+      data.picture !== undefined ||
+      data.phone !== undefined ||
+      data.address !== undefined,
+    { message: 'At least one field must be provided' }
+  );
 
 const PatchRoleSchema = z.object({
   role: z.enum(['user', 'admin'], { message: 'role must be "user" or "admin"' }),
@@ -179,9 +188,8 @@ app.patch('/me', authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserM
   if (!result.ok) return result.response;
   const body = result.data;
 
-  const profileUpdate: { name: string; picture?: string | null; phone?: string | null; address?: string | null } = {
-    name: body.name.trim(),
-  };
+  const profileUpdate: { name?: string; picture?: string | null; phone?: string | null; address?: string | null } = {};
+  if (body.name !== undefined) profileUpdate.name = body.name.trim();
   if ('picture' in body) profileUpdate.picture = body.picture ? body.picture.trim() || null : null;
   if ('phone' in body) profileUpdate.phone = body.phone ? body.phone.trim() || null : null;
   if ('address' in body) profileUpdate.address = body.address ? body.address.trim() || null : null;

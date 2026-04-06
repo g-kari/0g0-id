@@ -110,6 +110,23 @@ describe('updateUserProfile', () => {
     expect(user.address).toBe('東京都');
   });
 
+  it('nameなしでpictureだけ更新できる', async () => {
+    const updated = { ...baseUser, picture: 'https://example.com/new.jpg' };
+    const db = makeD1Mock(updated);
+    const user = await updateUserProfile(db, 'user-1', {
+      picture: 'https://example.com/new.jpg',
+    });
+    expect(user.picture).toBe('https://example.com/new.jpg');
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).not.toContain('name = ?');
+    expect(sql).toContain('picture = ?');
+  });
+
+  it('フィールドが空の場合はエラーを投げる', async () => {
+    const db = makeD1Mock(baseUser);
+    await expect(updateUserProfile(db, 'user-1', {})).rejects.toThrow('No fields to update');
+  });
+
   it('ユーザーが見つからない場合はエラーを投げる', async () => {
     const db = makeD1Mock(null);
     await expect(updateUserProfile(db, 'not-exist', { name: 'Name' })).rejects.toThrow(

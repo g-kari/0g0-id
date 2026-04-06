@@ -453,13 +453,30 @@ describe('PATCH /api/users/me', () => {
     expect(body.error.code).toBe('BAD_REQUEST');
   });
 
-  it('nameがない場合 → 400を返す', async () => {
+  it('全フィールドが未指定の場合 → 400を返す', async () => {
     const res = await sendRequest(app, '/api/users/me', {
       method: 'PATCH',
       body: {},
       origin: 'https://user.0g0.xyz',
     });
     expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('nameなしでpictureだけ更新できる', async () => {
+    vi.mocked(updateUserProfile).mockResolvedValue({
+      ...mockUser,
+      picture: 'https://cdn.example.com/new-avatar.jpg',
+    });
+    const res = await sendRequest(app, '/api/users/me', {
+      method: 'PATCH',
+      body: { picture: 'https://cdn.example.com/new-avatar.jpg' },
+      origin: 'https://user.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: Record<string, unknown> }>();
+    expect(body.data.picture).toBe('https://cdn.example.com/new-avatar.jpg');
   });
 
   it('不正なJSONボディ → 400を返す', async () => {
