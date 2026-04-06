@@ -387,6 +387,14 @@
 - ~~nonce 形式バリデーション（長さのみ → 制御文字等の排除も検討）~~ ✅ (2026-04-06, \x00-\x1F, \x7F を拒否)
 - ~~テスト網羅: グレースピリオドのエッジケース（BAN済みユーザー再BAN等）~~ ✅ (2026-04-06, グレースピリオド内TOKEN_ROTATED + revoked_at null の2ケースを auth.test.ts / token.test.ts に追加)
 
+## リファクタリング（2026-04-07）
+
+- ✅ **`parseJsonBody` の import を shared 版に統一**
+  - `workers/id/src/routes/{auth,services,users}.ts` の import を `../utils/parse-body` → `@0g0-id/shared` に変更
+  - ローカルコピー `workers/id/src/utils/parse-body.ts` を削除（重複解消）
+  - テストの `vi.mock('@0g0-id/shared')` に `importOriginal` 経由で実際の `parseJsonBody` を追加
+  - 全1501テストパス
+
 ## セキュリティ強化（2026-04-06, コードレビュー起因）
 
 - ✅ **`parseAllowedScopes`: スコープ文字種バリデーション追加**
