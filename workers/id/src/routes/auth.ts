@@ -49,6 +49,8 @@ import {
   insertLoginEvent,
   createLogger,
   matchRedirectUri,
+  signCookie,
+  verifyCookie,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
 import { type OAuthProvider, PROVIDER_DISPLAY_NAMES, ALL_PROVIDERS, isValidProvider } from '@0g0-id/shared';
@@ -691,6 +693,7 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
   const idCodeChallenge = await generateCodeChallenge(idCodeVerifier);
 
   // BFF情報をstate cookieに結びつけて保存（provider / serviceId も含める）
+  // HMAC-SHA256署名付きCookieで改ざんを防止する
   const stateData = JSON.stringify({
     idState,
     bffState,
@@ -702,7 +705,8 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
     ...(codeChallenge ? { codeChallenge, codeChallengeMethod: codeChallengeMethod ?? 'S256' } : {}),
     ...(scope ? { scope } : {}),
   });
-  setSecureCookie(c, STATE_COOKIE, btoa(encodeURIComponent(stateData)), 600); // 10分
+  const signedStateData = await signCookie(stateData, c.env.COOKIE_SECRET);
+  setSecureCookie(c, STATE_COOKIE, signedStateData, 600); // 10分
   setSecureCookie(c, PKCE_COOKIE, idCodeVerifier, 600);
 
   const callbackUri = `${c.env.IDP_ORIGIN}${CALLBACK_PATH}`;
@@ -761,8 +765,18 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
     codeChallengeMethod?: string;
     scope?: string;
   };
+
+  // HMAC-SHA256署名を検証してからpayloadをパースする（Cookie改ざん検知）
+  const verifiedPayload = await verifyCookie(stateCookieRaw, c.env.COOKIE_SECRET);
+  if (!verifiedPayload) {
+    authLogger.error('[oauth-callback] State cookie signature verification failed');
+    deleteCookie(c, STATE_COOKIE, { path: '/', secure: true });
+    deleteCookie(c, PKCE_COOKIE, { path: '/', secure: true });
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid state cookie' } }, 400);
+  }
+
   try {
-    stateData = JSON.parse(decodeURIComponent(atob(stateCookieRaw)));
+    stateData = JSON.parse(verifiedPayload);
   } catch (err) {
     authLogger.error('[oauth-callback] Failed to parse state cookie', err);
     deleteCookie(c, STATE_COOKIE, { path: '/', secure: true });

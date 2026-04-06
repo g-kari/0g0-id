@@ -18,6 +18,7 @@ routes = [
 IDP_ORIGIN = "https://id.0g0.xyz"
 USER_ORIGIN = "https://user.0g0.xyz"
 ADMIN_ORIGIN = "https://admin.0g0.xyz"
+# COOKIE_SECRET はシークレットのため [vars] に記載せず wrangler secret put COOKIE_SECRET で設定すること
 
 [[d1_databases]]
 binding = "DB"

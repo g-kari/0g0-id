@@ -130,6 +130,8 @@ export interface IdpEnv {
   ADMIN_ORIGIN: string;
   /** 追加BFFオリジン（カンマ区切り）。例: "https://rss.0g0.xyz,https://app.0g0.xyz" */
   EXTRA_BFF_ORIGINS?: string;
+  /** state/PKCE Cookie の HMAC-SHA256 署名シークレット */
+  COOKIE_SECRET: string;
   /** /auth/login, /auth/callback 向けレートリミッター（IP単位） */
   RATE_LIMITER_AUTH?: RateLimitBinding;
   /** /api/external/*, /api/token/introspect, /api/userinfo 向けレートリミッター（client_id単位、未取得時はIP） */

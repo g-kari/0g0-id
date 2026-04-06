@@ -454,5 +454,8 @@
 ### 未対応（次回対応候補）
 - ~~**token.ts**: `handleRefreshTokenGrant` で service_id ミスマッチ後の `attemptUnrevokeToken` に `reuse_detected` チェック漏れ → 並行リクエストでトークン状態が矛盾する可能性~~ ✅ **対応済み（2026-04-07）**
   - `findRefreshTokenById` を shared に追加し、`attemptUnrevokeToken` で unrevoke 前に `reuse_detected` チェックを実施するよう修正
-- **auth.ts**: Cookie の `stateData` に署名がない（理論上の改ざんリスク）
+- ~~**auth.ts**: Cookie の `stateData` に署名がない（理論上の改ざんリスク）~~ ✅ **対応済み（2026-04-07）**
+  - `packages/shared/src/lib/cookie.ts` に `signCookie` / `verifyCookie`（HMAC-SHA256、WebCrypto API）を追加
+  - `IdpEnv` に `COOKIE_SECRET: string` を追加、`auth.ts` の stateData 設定・読み取りを署名付き Cookie に移行
+  - 署名検証失敗時は 400 を即時返却。デプロイ時は `wrangler secret put COOKIE_SECRET` が必要
 - **oauth.ts**: クライアントパラメータ（state, scope 等）の長さ検証なし
