@@ -441,3 +441,17 @@
   - `storedToken.revoked_reason === 'reuse_detected'` チェックは dead code だった（race condition 検知不能）
   - `token.ts` と同じパターン（`findRefreshTokenByHash` 再クエリ）に修正、エラーログも追加
   - テスト2件追加（issueTokenPair失敗時のreuse_detected競合 + 通常エラー）
+
+## 2026-04-07（コードレビュー対応）
+
+### ✅ 対応済み
+- **バグ修正: `createAuthCode` 例外未キャッチ** (`workers/id/src/routes/auth.ts`)
+  - `/auth/callback` の `createAuthCode` 呼び出しが try/catch なし → D1 書き込み失敗時に 500 エラー
+  - try/catch で包み、失敗時に `{ error: 'server_error' }` を返すよう修正
+- **セキュリティ修正: `/introspect` 401 時の `WWW-Authenticate` ヘッダー追加** (`workers/id/src/routes/token.ts`)
+  - RFC 7662 §2.2 準拠のため `WWW-Authenticate: Bearer realm="0g0-id"` を追加
+
+### 未対応（次回対応候補）
+- **token.ts**: `handleRefreshTokenGrant` で service_id ミスマッチ後の `attemptUnrevokeToken` に `reuse_detected` チェック漏れ → 並行リクエストでトークン状態が矛盾する可能性
+- **auth.ts**: Cookie の `stateData` に署名がない（理論上の改ざんリスク）
+- **oauth.ts**: クライアントパラメータ（state, scope 等）の長さ検証なし
