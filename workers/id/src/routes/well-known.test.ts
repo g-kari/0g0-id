@@ -210,3 +210,68 @@ describe('GET /.well-known/openid-configuration', () => {
   });
 });
 
+describe('GET /.well-known/oauth-authorization-server', () => {
+  const mockEnvWithOrigin = {
+    ...mockEnv,
+    IDP_ORIGIN: 'https://id.0g0.xyz',
+  };
+
+  function buildAppWithOrigin() {
+    const app = new Hono<{ Bindings: typeof mockEnvWithOrigin }>();
+    app.route('/.well-known', wellKnownRoutes);
+    return app;
+  }
+
+  it('200を返してAuthorization Server Metadataを返す', async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/oauth-authorization-server`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<Record<string, unknown>>();
+    expect(body.issuer).toBe('https://id.0g0.xyz');
+    expect(body.authorization_endpoint).toBe('https://id.0g0.xyz/auth/authorize');
+    expect(body.token_endpoint).toBe('https://id.0g0.xyz/api/token');
+    expect(body.jwks_uri).toBe('https://id.0g0.xyz/.well-known/jwks.json');
+    expect(body.revocation_endpoint).toBe('https://id.0g0.xyz/api/token/revoke');
+    expect(body.introspection_endpoint).toBe('https://id.0g0.xyz/api/token/introspect');
+  });
+
+  it('subject_types_supported に pairwise を含む', async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/oauth-authorization-server`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>
+    );
+    const body = await res.json<{ subject_types_supported: string[] }>();
+    expect(body.subject_types_supported).toContain('pairwise');
+  });
+
+  it('claims_supported に必須クレームを含む', async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/oauth-authorization-server`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>
+    );
+    const body = await res.json<{ claims_supported: string[] }>();
+    const expected = ['sub', 'iss', 'aud', 'exp', 'iat', 'auth_time', 'nonce', 'name', 'picture', 'email', 'email_verified', 'phone_number', 'address', 'updated_at'];
+    for (const claim of expected) {
+      expect(body.claims_supported).toContain(claim);
+    }
+  });
+
+  it('Cache-Controlヘッダーが1日に設定されている', async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/oauth-authorization-server`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>
+    );
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=86400');
+  });
+});
+
