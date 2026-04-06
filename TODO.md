@@ -452,6 +452,7 @@
   - RFC 7662 §2.2 準拠のため `WWW-Authenticate: Bearer realm="0g0-id"` を追加
 
 ### 未対応（次回対応候補）
-- **token.ts**: `handleRefreshTokenGrant` で service_id ミスマッチ後の `attemptUnrevokeToken` に `reuse_detected` チェック漏れ → 並行リクエストでトークン状態が矛盾する可能性
+- ~~**token.ts**: `handleRefreshTokenGrant` で service_id ミスマッチ後の `attemptUnrevokeToken` に `reuse_detected` チェック漏れ → 並行リクエストでトークン状態が矛盾する可能性~~ ✅ **対応済み（2026-04-07）**
+  - `findRefreshTokenById` を shared に追加し、`attemptUnrevokeToken` で unrevoke 前に `reuse_detected` チェックを実施するよう修正
 - **auth.ts**: Cookie の `stateData` に署名がない（理論上の改ざんリスク）
 - **oauth.ts**: クライアントパラメータ（state, scope 等）の長さ検証なし
