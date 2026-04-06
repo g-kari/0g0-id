@@ -183,5 +183,30 @@ describe('GET /.well-known/openid-configuration', () => {
     const body = await res.json<{ subject_types_supported: string[] }>();
     expect(body.subject_types_supported).toContain('pairwise');
   });
+
+  it('response_modes_supported に query を含む', async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/openid-configuration`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>
+    );
+    const body = await res.json<{ response_modes_supported: string[] }>();
+    expect(body.response_modes_supported).toContain('query');
+  });
+
+  it('claims_supported に必須クレームを含む', async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/openid-configuration`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>
+    );
+    const body = await res.json<{ claims_supported: string[] }>();
+    const expected = ['sub', 'iss', 'aud', 'exp', 'iat', 'auth_time', 'nonce', 'name', 'picture', 'email', 'email_verified', 'phone_number', 'address', 'updated_at'];
+    for (const claim of expected) {
+      expect(body.claims_supported).toContain(claim);
+    }
+  });
 });
 

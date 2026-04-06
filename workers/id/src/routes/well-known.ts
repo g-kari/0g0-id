@@ -27,11 +27,18 @@ app.get('/openid-configuration', (c) => {
       device_authorization_endpoint: `${issuer}/api/device/code`,
       scopes_supported: ['openid', 'profile', 'email', 'phone', 'address'],
       response_types_supported: ['code'],
+      response_modes_supported: ['query'],
       grant_types_supported: ['authorization_code', 'refresh_token', 'urn:ietf:params:oauth:grant-type:device_code'],
       subject_types_supported: ['pairwise'],
       id_token_signing_alg_values_supported: ['ES256'],
       token_endpoint_auth_methods_supported: ['client_secret_basic', 'none'],
       code_challenge_methods_supported: ['S256'],
+      // OIDC Discovery 1.0 Section 3 RECOMMENDED: サポートするクレーム一覧
+      claims_supported: [
+        'sub', 'iss', 'aud', 'exp', 'iat', 'auth_time', 'nonce',
+        'name', 'picture', 'email', 'email_verified',
+        'phone_number', 'address', 'updated_at',
+      ],
     },
     200,
     { 'Cache-Control': 'public, max-age=86400' }
@@ -49,6 +56,7 @@ app.get('/oauth-authorization-server', (c) => {
       jwks_uri: `${issuer}/.well-known/jwks.json`,
       scopes_supported: ['openid', 'profile', 'email', 'phone', 'address'],
       response_types_supported: ['code'],
+      response_modes_supported: ['query'],
       grant_types_supported: ['authorization_code', 'refresh_token', 'urn:ietf:params:oauth:grant-type:device_code'],
       token_endpoint_auth_methods_supported: ['client_secret_basic', 'none'],
       code_challenge_methods_supported: ['S256'],
