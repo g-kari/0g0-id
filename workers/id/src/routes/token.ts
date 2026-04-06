@@ -112,7 +112,12 @@ async function resolveOAuthClient(
   if (!bodyClientId) {
     return { ok: false, error: 'invalid_request', status: 400 };
   }
-  const service = await findServiceByClientId(db, bodyClientId);
+  let service: Awaited<ReturnType<typeof findServiceByClientId>>;
+  try {
+    service = await findServiceByClientId(db, bodyClientId);
+  } catch {
+    return { ok: false, error: 'server_error', status: 500 };
+  }
   if (!service) {
     return { ok: false, error: 'invalid_client', status: 401 };
   }
