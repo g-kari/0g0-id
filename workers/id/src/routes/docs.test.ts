@@ -130,5 +130,53 @@ describe('GET /docs — ドキュメントルート', () => {
       expect(params).toContain('provider');
     });
   });
+
+  describe('GET /external.md — 外部API仕様 Markdown版（AI/CLI向け）', () => {
+    it('200を返す', async () => {
+      const res = await app.request(new Request(`${baseUrl}/docs/external.md`));
+      expect(res.status).toBe(200);
+    });
+
+    it('text/markdownコンテンツを返す', async () => {
+      const res = await app.request(new Request(`${baseUrl}/docs/external.md`));
+      const contentType = res.headers.get('Content-Type');
+      expect(contentType).toContain('text/markdown');
+    });
+
+    it('タイトルとエンドポイント情報が含まれる', async () => {
+      const res = await app.request(new Request(`${baseUrl}/docs/external.md`));
+      const text = await res.text();
+      expect(text).toContain('# 0g0 ID');
+      expect(text).toContain('/auth/login');
+      expect(text).toContain('/api/external/users');
+    });
+
+    it('パラメータテーブルが含まれる', async () => {
+      const res = await app.request(new Request(`${baseUrl}/docs/external.md`));
+      const text = await res.text();
+      expect(text).toContain('| 名前 |');
+      expect(text).toContain('client_id');
+    });
+  });
+
+  describe('GET /openapi.md — 内部API仕様 Markdown版（AI/CLI向け）', () => {
+    it('200を返す', async () => {
+      const res = await app.request(new Request(`${baseUrl}/docs/openapi.md`));
+      expect(res.status).toBe(200);
+    });
+
+    it('text/markdownコンテンツを返す', async () => {
+      const res = await app.request(new Request(`${baseUrl}/docs/openapi.md`));
+      const contentType = res.headers.get('Content-Type');
+      expect(contentType).toContain('text/markdown');
+    });
+
+    it('内部APIのエンドポイント情報が含まれる', async () => {
+      const res = await app.request(new Request(`${baseUrl}/docs/openapi.md`));
+      const text = await res.text();
+      expect(text).toContain('# 0g0 ID');
+      expect(text).toContain('/api/users');
+    });
+  });
 });
 
