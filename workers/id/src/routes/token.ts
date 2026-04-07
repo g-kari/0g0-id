@@ -244,6 +244,9 @@ async function handleAuthorizationCodeGrant(
 
     // スコープ計算
     const serviceScope = resolveEffectiveScope(authCode.scope, service.allowed_scopes);
+    if (serviceScope === undefined) {
+      return c.json({ error: 'invalid_scope', error_description: 'No valid scope' }, 400);
+    }
 
     // トークン発行
     const { accessToken, refreshToken } = await issueTokenPair(c.env.DB, c.env, user, {

@@ -996,6 +996,9 @@ app.post('/exchange', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asy
     idTokenAud = service.client_id;
     // サービストークンのスコープ: 要求スコープとサービスの allowed_scopes を交差検証
     serviceScope = resolveEffectiveScope(authCode.scope, service.allowed_scopes);
+    if (serviceScope === undefined) {
+      return c.json({ error: { code: 'INVALID_SCOPE', message: 'No valid scope' } }, 400);
+    }
   }
 
   // アクセストークン・リフレッシュトークン発行

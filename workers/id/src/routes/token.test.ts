@@ -1287,6 +1287,28 @@ describe('POST /api/token/ — authorization_code grant', () => {
     expect(body.refresh_token).toBe('mock-refresh-token');
   });
 
+  it('認可コードのスコープが全て無効 → { error: invalid_scope } + 400', async () => {
+    // authCode.scope に allowed_scopes にも openid にも含まれないスコープを設定
+    vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
+      ...mockAuthCode,
+      scope: 'address',
+    } as never);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        redirect_uri: 'http://localhost:51234/callback',
+        client_id: 'test-client-id',
+        code_verifier: 'a'.repeat(43),
+      },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_scope');
+  });
+
   // handleAuthorizationCodeGrant の try/catch 動作確認
   it('issueTokenPairが例外をスロー → { error: server_error } + 500', async () => {
     // 正常な認可コードを設定した上で、issueTokenPair内部（signAccessToken）がDB例外を投げる

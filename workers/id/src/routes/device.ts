@@ -112,6 +112,9 @@ app.post('/code', tokenApiRateLimitMiddleware, async (c) => {
   // スコープ未指定時は最小スコープポリシー（RFC 6749 §3.3）に従い openid のみを付与する。
   // auth.ts /exchange・token.ts と同様に resolveEffectiveScope に委譲して挙動を統一する。
   const resolvedScope = resolveEffectiveScope(params['scope'], service.allowed_scopes);
+  if (resolvedScope === undefined) {
+    return c.json({ error: 'invalid_scope', error_description: 'No valid scope' }, 400);
+  }
 
   // デバイスコードとユーザーコードの生成
   const deviceCode = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, '');

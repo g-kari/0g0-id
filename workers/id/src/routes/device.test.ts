@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Hono } from 'hono';
 
 // @0g0-id/shared の全関数をモック
 vi.mock('@0g0-id/shared', () => ({
@@ -54,13 +55,15 @@ import {
   findDeviceCodeByHash,
   tryUpdateDeviceCodePolledAt,
   deleteApprovedDeviceCode,
+  createDeviceCode,
+  deleteExpiredDeviceCodes,
   signIdToken,
 } from '@0g0-id/shared';
 
 import { issueTokenPair, buildTokenResponse } from '../utils/token-pair';
 import { resolveEffectiveScope } from '../utils/scopes';
 
-import { handleDeviceCodeGrant } from './device';
+import deviceRoutes, { handleDeviceCodeGrant } from './device';
 
 // IdpEnv の必須フィールドをすべて含むモック環境
 const mockEnv = {
@@ -340,5 +343,69 @@ describe('handleDeviceCodeGrant', () => {
     const c = makeContext();
     await handleDeviceCodeGrant(c as never, baseParams);
     expect(signIdToken).toHaveBeenCalled();
+  });
+});
+
+// ===== POST /api/device/code — デバイス認可リクエスト =====
+describe('POST /api/device/code — デバイス認可リクエスト', () => {
+  const baseUrl = 'https://id.0g0.xyz';
+
+  function buildDeviceApp() {
+    const app = new Hono<{ Bindings: typeof mockEnv }>();
+    app.route('/api/device', deviceRoutes);
+    return app;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(findServiceByClientId).mockResolvedValue(mockService as never);
+    vi.mocked(resolveEffectiveScope).mockImplementation((scope) => scope ?? 'openid');
+    vi.mocked(createDeviceCode).mockResolvedValue(undefined as never);
+    // deleteExpiredDeviceCodes は fire-and-forget なので Promise を返す必要がある
+    vi.mocked(deleteExpiredDeviceCodes).mockResolvedValue(undefined as never);
+  });
+
+  it('全スコープが無効 → { error: invalid_scope } + 400', async () => {
+    // resolveEffectiveScope が undefined を返す（全スコープ無効）
+    vi.mocked(resolveEffectiveScope).mockReturnValue(undefined);
+    const app = buildDeviceApp();
+    const body = new URLSearchParams({
+      client_id: 'test-client-id',
+      scope: 'address',
+    });
+    const res = await app.request(
+      new Request(`${baseUrl}/api/device/code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json<{ error: string; error_description: string }>();
+    expect(json.error).toBe('invalid_scope');
+  });
+
+  it('有効なスコープ → デバイスコードを発行して 200', async () => {
+    vi.mocked(resolveEffectiveScope).mockReturnValue('openid profile');
+    const app = buildDeviceApp();
+    const body = new URLSearchParams({
+      client_id: 'test-client-id',
+      scope: 'openid profile',
+    });
+    const res = await app.request(
+      new Request(`${baseUrl}/api/device/code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json<{ device_code: string; user_code: string }>();
+    expect(json.device_code).toBeTruthy();
+    expect(json.user_code).toBeTruthy();
   });
 });

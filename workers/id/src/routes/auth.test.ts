@@ -1979,6 +1979,40 @@ describe('POST /auth/exchange (サービスOAuth)', () => {
     expect(body.error.code).toBe('UNAUTHORIZED');
   });
 
+  it('認可コードのスコープが全て無効 → { error: { code: INVALID_SCOPE } } + 400', async () => {
+    vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
+      id: 'code-id',
+      user_id: 'user-1',
+      service_id: 'service-1',
+      code_hash: 'hashed-code',
+      redirect_to: 'https://rss.0g0.xyz/api/auth/callback',
+      scope: 'address',
+      expires_at: new Date(Date.now() + 60000).toISOString(),
+      used_at: null,
+      created_at: '2024-01-01T00:00:00Z',
+    } as never);
+    vi.mocked(findServiceByClientId).mockResolvedValue({
+      ...mockService,
+      allowed_scopes: '["profile","email"]',
+    } as never);
+    const credentials = btoa('client-abc:my-secret');
+    const res = await app.request(
+      new Request(`${baseUrl}/auth/exchange`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Basic ${credentials}`,
+        },
+        body: JSON.stringify({ code: 'valid-code', redirect_to: 'https://rss.0g0.xyz/api/auth/callback' }),
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INVALID_SCOPE');
+  });
+
   it('正常なサービスOAuth交換 → ペアワイズsubのIDトークンを含むレスポンスを返す', async () => {
     const credentials = btoa('client-abc:my-secret');
     const res = await app.request(
