@@ -27,6 +27,11 @@ vi.mock('@0g0-id/shared', () => ({
   // JTIブロックリスト
   addRevokedAccessToken: vi.fn(),
   isAccessTokenRevoked: vi.fn(),
+  // HMAC-SHA256署名付きCookie（auth.ts経由の間接利用対策）
+  signCookie: vi.fn(),
+  verifyCookie: vi.fn(),
+  // token-recovery.ts 経由で使用
+  findRefreshTokenById: vi.fn(),
 }));
 
 import {
@@ -51,6 +56,7 @@ import {
   createRefreshToken,
   addRevokedAccessToken,
   isAccessTokenRevoked,
+  findRefreshTokenById,
 } from '@0g0-id/shared';
 
 import tokenRoutes from './token';
@@ -1211,6 +1217,7 @@ describe('POST /api/token/ — refresh_token grant', () => {
     vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(unrevokeRefreshToken).mockResolvedValue(true);
     vi.mocked(revokeTokenFamily).mockResolvedValue(undefined);
+    vi.mocked(findRefreshTokenById).mockResolvedValue(mockRefreshToken as never);
     vi.mocked(signAccessToken).mockResolvedValue('new-access-token');
     vi.mocked(generateToken).mockReturnValue('new-refresh-token');
     vi.mocked(createRefreshToken).mockResolvedValue(undefined);

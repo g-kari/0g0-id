@@ -32,11 +32,11 @@ app.get('/login', async (c) => {
   const PARAM_LIMITS: [string | undefined, number, string][] = [
     [clientId, 128, 'client_id'],
     [redirectUri, 2048, 'redirect_uri'],
-    [state, 2048, 'state'],
+    [state, 1024, 'state'],
     [codeChallenge, 256, 'code_challenge'],
     [codeChallengeMethod, 16, 'code_challenge_method'],
     [scope, 1024, 'scope'],
-    [nonce, 2048, 'nonce'],
+    [nonce, 128, 'nonce'],
   ];
   for (const [value, maxLen, name] of PARAM_LIMITS) {
     if (value !== undefined && value.length > maxLen) {

@@ -141,6 +141,42 @@ describe('OAuth ログインページ — GET /login', () => {
     });
   });
 
+  describe('バリデーション — パラメータ長上限', () => {
+    it('state が1025文字の場合は400を返す', async () => {
+      const app = buildApp();
+      const longState = 'a'.repeat(1025);
+      const res = await app.request(
+        `/login?client_id=client123&redirect_uri=https://app.example.com/callback&state=${longState}&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM`
+      );
+      expect(res.status).toBe(400);
+      expect(await res.text()).toContain('state');
+    });
+
+    it('state が1024文字ちょうどの場合は正常（200）', async () => {
+      const app = buildApp();
+      const maxState = 'a'.repeat(1024);
+      const res = await app.request(
+        `/login?client_id=client123&redirect_uri=https://app.example.com/callback&state=${maxState}&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM`
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it('nonce が129文字の場合は400を返す', async () => {
+      const app = buildApp();
+      const longNonce = 'a'.repeat(129);
+      const res = await app.request(`/login${REQUIRED_PARAMS}&nonce=${longNonce}`);
+      expect(res.status).toBe(400);
+      expect(await res.text()).toContain('nonce');
+    });
+
+    it('nonce が128文字ちょうどの場合は正常（200）', async () => {
+      const app = buildApp();
+      const maxNonce = 'a'.repeat(128);
+      const res = await app.request(`/login${REQUIRED_PARAMS}&nonce=${maxNonce}`);
+      expect(res.status).toBe(200);
+    });
+  });
+
   describe('セキュリティ — HTMLエスケープ', () => {
     it('redirect_uri の特殊文字がHTMLにそのまま出力されない（URLエンコードされる）', async () => {
       const app = buildApp();

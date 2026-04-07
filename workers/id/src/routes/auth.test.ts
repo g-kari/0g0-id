@@ -59,6 +59,13 @@ vi.mock('@0g0-id/shared', async (importOriginal) => {
   normalizeRedirectUri: vi.fn((uri: string) => uri),
   listRedirectUris: vi.fn(),
   matchRedirectUri: vi.fn(),
+  // HMAC-SHA256署名付きCookie（state cookie改ざん検知用）
+  signCookie: vi.fn().mockImplementation(async (payload: string) => btoa(encodeURIComponent(payload))),
+  verifyCookie: vi.fn().mockImplementation(async (value: string) => {
+    try { return decodeURIComponent(atob(decodeURIComponent(value))); } catch { return null; }
+  }),
+  // token-recovery.ts 経由で使用
+  findRefreshTokenById: vi.fn(),
   };
 });
 
@@ -106,6 +113,9 @@ import {
   listRedirectUris,
   matchRedirectUri,
   normalizeRedirectUri,
+  signCookie,
+  verifyCookie,
+  findRefreshTokenById,
 } from '@0g0-id/shared';
 
 import authRoutes from './auth';
@@ -203,6 +213,10 @@ describe('GET /auth/login', () => {
     vi.mocked(buildGoogleAuthUrl).mockReturnValue('https://accounts.google.com/o/oauth2/auth?...');
     vi.mocked(buildLineAuthUrl).mockReturnValue('https://access.line.me/oauth2/v2.1/authorize?...');
     vi.mocked(buildGithubAuthUrl).mockReturnValue('https://github.com/login/oauth/authorize?...');
+    vi.mocked(signCookie).mockImplementation(async (payload: string) => btoa(encodeURIComponent(payload)));
+    vi.mocked(verifyCookie).mockImplementation(async (value: string) => {
+      try { return decodeURIComponent(atob(decodeURIComponent(value))); } catch { return null; }
+    });
   });
 
   it('redirect_toが未指定 → 400を返す', async () => {
@@ -395,6 +409,10 @@ describe('GET /auth/callback', () => {
     } as never);
     // state比較はtimingSafeEqualを使用するためデフォルトでtrueを返す
     vi.mocked(timingSafeEqual).mockReturnValue(true);
+    vi.mocked(signCookie).mockImplementation(async (payload: string) => btoa(encodeURIComponent(payload)));
+    vi.mocked(verifyCookie).mockImplementation(async (value: string) => {
+      try { return decodeURIComponent(atob(decodeURIComponent(value))); } catch { return null; }
+    });
   });
 
   it('errorパラメータあり → 400を返す', async () => {
@@ -647,6 +665,7 @@ describe('POST /auth/refresh', () => {
     vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(signAccessToken).mockResolvedValue('new-access-token');
     vi.mocked(createRefreshToken).mockResolvedValue(undefined as never);
+    vi.mocked(findRefreshTokenById).mockResolvedValue(mockRefreshToken as never);
   });
 
   it('JSONボディが不正 → 400を返す', async () => {
@@ -1035,6 +1054,10 @@ describe('GET /auth/callback - LINEプロバイダー', () => {
       picture: 'https://example.com/line-pic.jpg',
       email: 'line@example.com',
     } as never);
+    vi.mocked(signCookie).mockImplementation(async (payload: string) => btoa(encodeURIComponent(payload)));
+    vi.mocked(verifyCookie).mockImplementation(async (value: string) => {
+      try { return decodeURIComponent(atob(decodeURIComponent(value))); } catch { return null; }
+    });
   });
 
   it('LINE: 正常なコールバック → BFFコールバックへリダイレクト', async () => {
@@ -1134,6 +1157,10 @@ describe('GET /auth/callback - GitHubプロバイダー', () => {
     } as never);
     // 常にEmails APIから検証済みメールを取得する（User APIのemailは未検証の可能性があるため）
     vi.mocked(fetchGithubPrimaryEmail).mockResolvedValue('github@example.com');
+    vi.mocked(signCookie).mockImplementation(async (payload: string) => btoa(encodeURIComponent(payload)));
+    vi.mocked(verifyCookie).mockImplementation(async (value: string) => {
+      try { return decodeURIComponent(atob(decodeURIComponent(value))); } catch { return null; }
+    });
   });
 
   it('GitHub: 正常なコールバック → fetchGithubPrimaryEmailで検証済みメールを取得', async () => {
@@ -1253,6 +1280,10 @@ describe('GET /auth/callback - Twitchプロバイダー', () => {
       email_verified: true,
       picture: 'https://example.com/twitch-pic.jpg',
     } as never);
+    vi.mocked(signCookie).mockImplementation(async (payload: string) => btoa(encodeURIComponent(payload)));
+    vi.mocked(verifyCookie).mockImplementation(async (value: string) => {
+      try { return decodeURIComponent(atob(decodeURIComponent(value))); } catch { return null; }
+    });
   });
 
   it('Twitch: 正常なコールバック → BFFコールバックへリダイレクト', async () => {
@@ -1361,6 +1392,10 @@ describe('GET /auth/callback - Xプロバイダー', () => {
       username: 'xuser',
       profile_image_url: 'https://example.com/x-pic.jpg',
     } as never);
+    vi.mocked(signCookie).mockImplementation(async (payload: string) => btoa(encodeURIComponent(payload)));
+    vi.mocked(verifyCookie).mockImplementation(async (value: string) => {
+      try { return decodeURIComponent(atob(decodeURIComponent(value))); } catch { return null; }
+    });
   });
 
   it('X: 正常なコールバック → 仮メールで登録・BFFコールバックへリダイレクト', async () => {
@@ -1439,6 +1474,10 @@ describe('GET /auth/callback - プロバイダー連携 (linkUserId)', () => {
       name: 'Test User',
       picture: 'https://example.com/pic.jpg',
     } as never);
+    vi.mocked(signCookie).mockImplementation(async (payload: string) => btoa(encodeURIComponent(payload)));
+    vi.mocked(verifyCookie).mockImplementation(async (value: string) => {
+      try { return decodeURIComponent(atob(decodeURIComponent(value))); } catch { return null; }
+    });
   });
 
   it('Google: linkUserId指定 → linkProviderを呼び出す（upsertUserは呼ばない）', async () => {
@@ -1600,6 +1639,10 @@ describe('GET /auth/callback - ブートストラップ管理者', () => {
       ...mockUser,
       email: 'admin@example.com',
       role: 'user',
+    });
+    vi.mocked(signCookie).mockImplementation(async (payload: string) => btoa(encodeURIComponent(payload)));
+    vi.mocked(verifyCookie).mockImplementation(async (value: string) => {
+      try { return decodeURIComponent(atob(decodeURIComponent(value))); } catch { return null; }
     });
   });
 
