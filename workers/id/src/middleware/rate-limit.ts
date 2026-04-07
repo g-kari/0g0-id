@@ -5,7 +5,9 @@ import { createLogger } from '@0g0-id/shared';
 import { getClientIp } from '../utils/ip';
 
 /**
- * バインディング未設定の警告を1ワーカーインスタンスにつき1回だけ出力するための追跡Set。
+ * バインディング未設定の警告を1isolateにつき1回だけ出力するための追跡Set。
+ * Cloudflare Workers の同一isolateはリクエスト間でモジュールレベル状態を共有するが、
+ * isolate再起動（コールドスタート）時はリセットされる。
  * wrangler.toml の設定漏れを本番デプロイ直後のログで即座に検知できる。
  */
 const warnedBindings = new Set<string>();

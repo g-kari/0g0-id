@@ -187,6 +187,11 @@ app.post(
       return c.json({ error: { code: 'BAD_REQUEST', message: 'user_code is required' } }, 400);
     }
 
+    // action が指定されている場合は早期バリデーション（不要なDBアクセスを回避）
+    if (action && action !== 'approve' && action !== 'deny') {
+      return c.json({ error: { code: 'BAD_REQUEST', message: 'action must be "approve" or "deny"' } }, 400);
+    }
+
     const userCode = normalizeUserCode(rawUserCode);
     if (userCode.length !== 8 || !/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/.test(userCode)) {
       return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid user_code format' } }, 400);
@@ -224,11 +229,7 @@ app.post(
       });
     }
 
-    // action付き → 承認/拒否
-    if (action !== 'approve' && action !== 'deny') {
-      return c.json({ error: { code: 'BAD_REQUEST', message: 'action must be "approve" or "deny"' } }, 400);
-    }
-
+    // action付き → 承認/拒否（'approve' か 'deny'、早期バリデーション済み）
     const tokenUser = c.get('user');
 
     if (action === 'approve') {
