@@ -870,6 +870,29 @@ describe('POST /api/token/revoke', () => {
     const body = await res.json<{ error: string }>();
     expect(body.error).toBe('server_error');
   });
+
+  // JWT_PATTERNにマッチするが verifyAccessToken が失敗する場合 → リフレッシュトークン処理へフォールスルー
+  it('JWT形式だがJWT検証失敗 → findRefreshTokenByHashが呼ばれ、リフレッシュトークンとして失効処理が動く', async () => {
+    // aGVhZGVy.cGF5bG9hZA.aW52YWxpZHNpZw はJWT_PATTERNにマッチするBase64url形式だが、verifyAccessTokenは失敗する
+    vi.mocked(verifyAccessToken).mockRejectedValue(new Error('invalid signature'));
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(mockRefreshToken as never);
+    vi.mocked(revokeRefreshToken).mockResolvedValue(undefined);
+
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'aGVhZGVy.cGF5bG9hZA.aW52YWxpZHNpZw' }, // Base64url形式の3セクショントークン
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+
+    expect(res.status).toBe(200);
+    // JWT検証失敗後、リフレッシュトークンのルックアップが呼ばれること（フォールスルー確認）
+    expect(vi.mocked(findRefreshTokenByHash)).toHaveBeenCalled();
+    // 見つかったリフレッシュトークンが有効かつ自サービス所有 → 失効させる
+    expect(vi.mocked(revokeRefreshToken)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      mockRefreshToken.id,
+      'service_revoke'
+    );
+  });
 });
 
 // ===== POST /api/token/ — grant_type 振り分け =====
@@ -1262,6 +1285,27 @@ describe('POST /api/token/ — authorization_code grant', () => {
     const body = await res.json<{ access_token: string; refresh_token: string }>();
     expect(body.access_token).toBe('mock-access-token');
     expect(body.refresh_token).toBe('mock-refresh-token');
+  });
+
+  // handleAuthorizationCodeGrant の try/catch 動作確認
+  it('issueTokenPairが例外をスロー → { error: server_error } + 500', async () => {
+    // 正常な認可コードを設定した上で、issueTokenPair内部（signAccessToken）がDB例外を投げる
+    vi.mocked(signAccessToken).mockRejectedValue(new Error('DB error'));
+
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        redirect_uri: 'http://localhost:51234/callback',
+        client_id: 'test-client-id',
+        code_verifier: 'a'.repeat(43),
+      },
+    });
+
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('server_error');
   });
 });
 

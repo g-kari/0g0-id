@@ -232,48 +232,53 @@ async function handleAuthorizationCodeGrant(
     }
   }
 
-  // ユーザー情報取得
-  const user = await findUserById(c.env.DB, authCode.user_id);
-  if (!user) {
-    return c.json({ error: 'invalid_grant', error_description: 'User not found' }, 400);
+  try {
+    // ユーザー情報取得
+    const user = await findUserById(c.env.DB, authCode.user_id);
+    if (!user) {
+      return c.json({ error: 'invalid_grant', error_description: 'User not found' }, 400);
+    }
+    if (user.banned_at !== null) {
+      return c.json({ error: 'access_denied', error_description: 'Account has been suspended' }, 403);
+    }
+
+    // スコープ計算
+    const serviceScope = resolveEffectiveScope(authCode.scope, service.allowed_scopes);
+
+    // トークン発行
+    const { accessToken, refreshToken } = await issueTokenPair(c.env.DB, c.env, user, {
+      serviceId: service.id,
+      clientId: service.client_id,
+      scope: serviceScope,
+    });
+
+    // OIDC ID トークン発行（openid スコープがある場合）
+    let idToken: string | undefined;
+    if (serviceScope?.split(' ').includes('openid')) {
+      const pairwiseSub = await sha256(`${service.client_id}:${user.id}`);
+      const authTime = Math.floor(Date.now() / 1000);
+      idToken = await signIdToken(
+        {
+          iss: c.env.IDP_ORIGIN,
+          sub: pairwiseSub,
+          aud: service.client_id,
+          email: user.email,
+          name: user.name,
+          picture: user.picture,
+          authTime,
+          nonce: authCode.nonce ?? undefined,
+        },
+        c.env.JWT_PRIVATE_KEY,
+        c.env.JWT_PUBLIC_KEY
+      );
+    }
+
+    // レスポンス (RFC 6749 §5.1)
+    return c.json(buildTokenResponse(accessToken, refreshToken, serviceScope, idToken));
+  } catch (e) {
+    tokenLogger.error('handleAuthorizationCodeGrant: unexpected error', e);
+    return c.json({ error: 'server_error', error_description: 'An unexpected error occurred' }, 500);
   }
-  if (user.banned_at !== null) {
-    return c.json({ error: 'access_denied', error_description: 'Account has been suspended' }, 403);
-  }
-
-  // スコープ計算
-  const serviceScope = resolveEffectiveScope(authCode.scope, service.allowed_scopes);
-
-  // トークン発行
-  const { accessToken, refreshToken } = await issueTokenPair(c.env.DB, c.env, user, {
-    serviceId: service.id,
-    clientId: service.client_id,
-    scope: serviceScope,
-  });
-
-  // OIDC ID トークン発行（openid スコープがある場合）
-  let idToken: string | undefined;
-  if (serviceScope?.split(' ').includes('openid')) {
-    const pairwiseSub = await sha256(`${service.client_id}:${user.id}`);
-    const authTime = Math.floor(Date.now() / 1000);
-    idToken = await signIdToken(
-      {
-        iss: c.env.IDP_ORIGIN,
-        sub: pairwiseSub,
-        aud: service.client_id,
-        email: user.email,
-        name: user.name,
-        picture: user.picture,
-        authTime,
-        nonce: authCode.nonce ?? undefined,
-      },
-      c.env.JWT_PRIVATE_KEY,
-      c.env.JWT_PUBLIC_KEY
-    );
-  }
-
-  // レスポンス (RFC 6749 §5.1)
-  return c.json(buildTokenResponse(accessToken, refreshToken, serviceScope, idToken));
 }
 
 /**
@@ -543,16 +548,20 @@ app.post('/revoke', externalApiRateLimitMiddleware, async (c) => {
   // JWTは header.payload.signature の3セクション形式（Base64url）で識別する
   const JWT_PATTERN = /^[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+$/;
   if (JWT_PATTERN.test(token)) {
+    let jwtVerified = false;
     try {
       const payload = await verifyAccessToken(token, c.env.JWT_PUBLIC_KEY, c.env.IDP_ORIGIN, c.env.IDP_ORIGIN);
       // 自サービスが発行したトークンかつ有効期限内のものだけブロックリストに追加
       if (payload.jti && payload.cid === service.client_id && payload.exp && payload.exp > Math.floor(Date.now() / 1000)) {
         await addRevokedAccessToken(c.env.DB, payload.jti, payload.exp);
       }
+      jwtVerified = true;
     } catch {
-      // JWT検証失敗 → RFC 7009: エラーを無視して 200 OK を返す
+      // JWT検証失敗 → リフレッシュトークン処理へフォールスルー
     }
-    return new Response(null, { status: 200 });
+    if (jwtVerified) {
+      return new Response(null, { status: 200 });
+    }
   }
 
   // リフレッシュトークンの失効処理
