@@ -1068,11 +1068,10 @@ app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
   }
 
   // 有効期限チェック
-  // 期限切れの場合、rotationとして失効済みのトークンを元に戻す。
-  // 元に戻さないと、同じ期限切れトークンの再提示時にreuse detectionが
-  // 誤発動しトークンファミリー全体が無効化されてしまう。
+  // 期限切れトークンは rotation 済みの状態のまま拒否する（unrevoke は不要かつ危険）。
+  // unrevoke すると次回の再提示で reuse detection が誤発動せず、
+  // 失効済みトークンの再利用チェックが機能しなくなるため。
   if (new Date(storedToken.expires_at) < new Date()) {
-    await attemptUnrevokeToken(c.env.DB, storedToken.id, '[auth] expiry check 後');
     return c.json({ error: { code: 'TOKEN_EXPIRED', message: 'Refresh token expired' } }, 401);
   }
 
@@ -1154,13 +1153,17 @@ app.post('/link-intent', tokenApiRateLimitMiddleware, authMiddleware, rejectServ
   const tokenHash = await sha256(linkToken);
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5分
 
-  await createAuthCode(c.env.DB, {
-    id: crypto.randomUUID(),
-    userId: tokenUser.sub,
-    codeHash: tokenHash,
-    redirectTo: 'link-intent', // 連携用の特別な値（通常のコード交換フローと区別する）
-    expiresAt,
-  });
+  try {
+    await createAuthCode(c.env.DB, {
+      id: crypto.randomUUID(),
+      userId: tokenUser.sub,
+      codeHash: tokenHash,
+      redirectTo: 'link-intent', // 連携用の特別な値（通常のコード交換フローと区別する）
+      expiresAt,
+    });
+  } catch {
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to create link token' } }, 500);
+  }
 
   return c.json({ data: { link_token: linkToken } });
 });
