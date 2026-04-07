@@ -1,5 +1,5 @@
 import { createMiddleware } from 'hono/factory';
-import { findUserById } from '@0g0-id/shared';
+import { findUserById, isAccessTokenRevoked } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 
 type AdminVariables = {
@@ -13,6 +13,11 @@ export const adminMiddleware = createMiddleware<{
   const user = c.get('user');
   if (!user || user.role !== 'admin') {
     return c.json({ error: { code: 'FORBIDDEN', message: 'Admin access required' } }, 403);
+  }
+
+  // リボークされたトークンを拒否（JWT有効期限内でも即時無効化）
+  if (user.jti && await isAccessTokenRevoked(c.env.DB, user.jti)) {
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Token has been revoked' } }, 401);
   }
 
   // BANされた管理者のアクセスを即座に遮断（JWT有効期限内でも拒否）

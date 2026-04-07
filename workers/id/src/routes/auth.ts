@@ -682,6 +682,10 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
   if (!codeChallenge && codeChallengeMethod !== undefined) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'code_challenge is required when code_challenge_method is specified' } }, 400);
   }
+  // RFC 7636 §4.2: S256のcode_challengeはBASE64URL(SHA256(code_verifier)) = 43文字
+  if (codeChallenge && !/^[A-Za-z0-9\-_]{43}$/.test(codeChallenge)) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid code_challenge format for S256' } }, 400);
+  }
 
   // link_token の検証（SNSプロバイダー連携フロー）
   let linkUserId: string | undefined;
@@ -867,7 +871,7 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
   }
 
   // 管理者ブートストラップ（管理者が0人の場合のみ・原子的操作）
-  if (c.env.BOOTSTRAP_ADMIN_EMAIL && user.email === c.env.BOOTSTRAP_ADMIN_EMAIL && user.role !== 'admin') {
+  if (c.env.BOOTSTRAP_ADMIN_EMAIL && user.email.toLowerCase() === c.env.BOOTSTRAP_ADMIN_EMAIL.toLowerCase() && user.role !== 'admin') {
     try {
       const elevated = await tryBootstrapAdmin(c.env.DB, user.id);
       if (elevated) user.role = 'admin';

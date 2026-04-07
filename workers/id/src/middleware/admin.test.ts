@@ -4,6 +4,7 @@ import type { TokenPayload } from '@0g0-id/shared';
 
 vi.mock('@0g0-id/shared', () => ({
   findUserById: vi.fn().mockResolvedValue({ id: 'admin-1', email: 'admin@example.com', role: 'admin', banned_at: null }),
+  isAccessTokenRevoked: vi.fn().mockResolvedValue(false),
 }));
 
 import { adminMiddleware } from './admin';
