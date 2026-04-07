@@ -1,5 +1,18 @@
 # TODO
 
+## セキュリティ修正・コードレビュー対応（2026-04-07, 追記）
+
+- ✅ **`/auth/logout`: アクセストークン未失効バグ修正**
+  - Authorization ヘッダーの Bearer トークンを `verifyAccessToken` で検証後、`addRevokedAccessToken` で失効
+  - ログアウト後最大15分間アクセストークンが有効だった状態を解消
+  - JWT検証失敗時は無視してログアウト自体は成功（`/api/token/revoke` と同パターン）
+  - テスト3件追加（有効トークン/無効トークン/ヘッダーなし）
+
+- ✅ **`/api/token/introspect`: `WWW-Authenticate` ヘッダー修正**
+  - `Bearer realm="0g0-id"` → `Basic realm="0g0-id"` （RFC 7662準拠）
+  - introspect は Basic 認証を使うため Bearer は誤りだった
+  - テスト更新: `Basic` ヘッダーの返却を明示的に検証
+
 ## テストカバレッジ追加 + セキュリティ修正（2026-04-07, 追記）
 
 - ✅ **cookie.ts: HMAC署名ユーティリティのテスト20件追加 + バグ修正**
