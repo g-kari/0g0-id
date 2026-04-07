@@ -71,7 +71,7 @@ export async function verifyCookie(signedValue: string, secret: string): Promise
   const payloadEncoded = signedValue.slice(0, dotIndex);
   const signatureEncoded = signedValue.slice(dotIndex + 1);
 
-  if (!payloadEncoded || !signatureEncoded) return null;
+  if (!signatureEncoded) return null;
 
   let signatureBytes: Uint8Array;
   try {
