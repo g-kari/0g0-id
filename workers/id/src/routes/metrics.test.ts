@@ -17,6 +17,9 @@ vi.mock('@0g0-id/shared', () => ({
   getServiceTokenStats: vi.fn(),
   getSuspiciousMultiCountryLogins: vi.fn(),
   getDailyUserRegistrations: vi.fn(),
+  getActiveUserStats: vi.fn(),
+  getDailyActiveUsers: vi.fn(),
+  parseDays: vi.fn(),
 }));
 
 import {
@@ -33,6 +36,9 @@ import {
   getServiceTokenStats,
   getSuspiciousMultiCountryLogins,
   getDailyUserRegistrations,
+  getActiveUserStats,
+  getDailyActiveUsers,
+  parseDays,
 } from '@0g0-id/shared';
 
 import metricsRoutes from './metrics';
@@ -777,5 +783,191 @@ describe('GET /api/metrics/user-registrations', () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ data: unknown[] }>();
     expect(body.data).toEqual([]);
+  });
+});
+
+describe('GET /api/metrics/active-users', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(findUserById).mockResolvedValue({ id: 'admin-user-id', email: 'admin@example.com', role: 'admin', banned_at: null } as any);
+  });
+
+  it('Authorizationヘッダーなしで401を返す', async () => {
+    const res = await app.request(
+      makeRequest('/api/metrics/active-users'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('一般ユーザーのトークンで403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+
+    const res = await app.request(
+      makeRequest('/api/metrics/active-users', 'user-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it('管理者トークンでDAU/WAU/MAUデータを返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getActiveUserStats).mockResolvedValue({ dau: 10, wau: 50, mau: 200 } as any);
+
+    const res = await app.request(
+      makeRequest('/api/metrics/active-users', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: { dau: number; wau: number; mau: number } }>();
+    expect(body.data).toEqual({ dau: 10, wau: 50, mau: 200 });
+  });
+
+  it('getActiveUserStatsをDBと共に呼び出す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getActiveUserStats).mockResolvedValue({ dau: 0, wau: 0, mau: 0 } as any);
+
+    await app.request(
+      makeRequest('/api/metrics/active-users', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+
+    expect(getActiveUserStats).toHaveBeenCalledWith(mockEnv.DB);
+  });
+});
+
+describe('GET /api/metrics/active-users/daily', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(findUserById).mockResolvedValue({ id: 'admin-user-id', email: 'admin@example.com', role: 'admin', banned_at: null } as any);
+  });
+
+  it('Authorizationヘッダーなしで401を返す', async () => {
+    const res = await app.request(
+      makeRequest('/api/metrics/active-users/daily'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('一般ユーザーのトークンで403を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+
+    const res = await app.request(
+      makeRequest('/api/metrics/active-users/daily', 'user-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it('daysパラメータなしでデフォルト30日のデータを返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(parseDays).mockReturnValue(undefined);
+    vi.mocked(getDailyActiveUsers).mockResolvedValue([{ date: '2026-04-01', active_users: 5 }] as any);
+
+    const res = await app.request(
+      makeRequest('/api/metrics/active-users/daily', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown; days: number }>();
+    expect(body.days).toBe(30);
+    expect(body.data).toEqual([{ date: '2026-04-01', active_users: 5 }]);
+  });
+
+  it('days=7で7日分のデータを返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(parseDays).mockReturnValue({ days: 7 });
+    vi.mocked(getDailyActiveUsers).mockResolvedValue([] as any);
+
+    const res = await app.request(
+      makeRequest('/api/metrics/active-users/daily?days=7', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown; days: number }>();
+    expect(body.days).toBe(7);
+    expect(getDailyActiveUsers).toHaveBeenCalledWith(mockEnv.DB, 7);
+  });
+
+  it('daysが非整数文字列の場合400エラーを返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(parseDays).mockReturnValue({
+      error: { code: 'INVALID_REQUEST', message: 'days must be an integer between 1 and 90' },
+    });
+
+    const res = await app.request(
+      makeRequest('/api/metrics/active-users/daily?days=abc', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe('INVALID_REQUEST');
+  });
+
+  it('days=0で範囲外の400エラーを返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(parseDays).mockReturnValue({
+      error: { code: 'INVALID_REQUEST', message: 'days must be an integer between 1 and 90' },
+    });
+
+    const res = await app.request(
+      makeRequest('/api/metrics/active-users/daily?days=0', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe('INVALID_REQUEST');
+  });
+
+  it('days=91で範囲外の400エラーを返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(parseDays).mockReturnValue({
+      error: { code: 'INVALID_REQUEST', message: 'days must be an integer between 1 and 90' },
+    });
+
+    const res = await app.request(
+      makeRequest('/api/metrics/active-users/daily?days=91', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe('INVALID_REQUEST');
+  });
+
+  it('エラー時にgetDailyActiveUsersを呼び出さない', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(parseDays).mockReturnValue({
+      error: { code: 'INVALID_REQUEST', message: 'days must be an integer between 1 and 90' },
+    });
+
+    await app.request(
+      makeRequest('/api/metrics/active-users/daily?days=abc', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+
+    expect(getDailyActiveUsers).not.toHaveBeenCalled();
   });
 });
