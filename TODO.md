@@ -458,4 +458,6 @@
   - `packages/shared/src/lib/cookie.ts` に `signCookie` / `verifyCookie`（HMAC-SHA256、WebCrypto API）を追加
   - `IdpEnv` に `COOKIE_SECRET: string` を追加、`auth.ts` の stateData 設定・読み取りを署名付き Cookie に移行
   - 署名検証失敗時は 400 を即時返却。デプロイ時は `wrangler secret put COOKIE_SECRET` が必要
-- **oauth.ts**: クライアントパラメータ（state, scope 等）の長さ検証なし
+- ~~**oauth.ts**: クライアントパラメータ（state, scope 等）の長さ検証なし~~ ✅ **対応済み（2026-04-07）**
+  - 全クエリパラメータ（client_id: 128, redirect_uri: 2048, state: 2048, code_challenge: 256, code_challenge_method: 16, scope: 1024, nonce: 2048）に長さ上限チェックを追加
+  - 上限超過時は 400 Bad Request を返す（DoS・過大入力対策）

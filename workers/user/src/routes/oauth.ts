@@ -28,6 +28,22 @@ app.get('/login', async (c) => {
   const scope = c.req.query('scope');
   const nonce = c.req.query('nonce');
 
+  // パラメータ長の上限チェック（DoS・過大入力対策）
+  const PARAM_LIMITS: [string | undefined, number, string][] = [
+    [clientId, 128, 'client_id'],
+    [redirectUri, 2048, 'redirect_uri'],
+    [state, 2048, 'state'],
+    [codeChallenge, 256, 'code_challenge'],
+    [codeChallengeMethod, 16, 'code_challenge_method'],
+    [scope, 1024, 'scope'],
+    [nonce, 2048, 'nonce'],
+  ];
+  for (const [value, maxLen, name] of PARAM_LIMITS) {
+    if (value !== undefined && value.length > maxLen) {
+      return c.text(`Invalid parameter: ${name} exceeds maximum length`, 400);
+    }
+  }
+
   // 必須パラメータ未指定の場合は通常のログインページへフォールバック
   if (!clientId || !redirectUri || !state || !codeChallenge) {
     return c.redirect('/');
