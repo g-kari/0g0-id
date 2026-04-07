@@ -848,6 +848,17 @@ describe('POST /api/token/revoke', () => {
     const body = await res.json<{ error: string }>();
     expect(body.error).toBe('invalid_request');
   });
+
+  it('DB例外（authenticateService内部エラー）→ { error: server_error } + 500', async () => {
+    vi.mocked(findServiceByClientId).mockRejectedValue(new Error('DB connection failed'));
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'some-token' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('server_error');
+  });
 });
 
 // ===== POST /api/token/ — grant_type 振り分け =====
@@ -1194,6 +1205,30 @@ describe('POST /api/token/ — authorization_code grant', () => {
         redirect_uri: 'http://localhost:51234/callback',
         client_id: 'test-client-id',
         code_verifier: 'a'.repeat(43),
+      },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ access_token: string; refresh_token: string }>();
+    expect(body.access_token).toBe('mock-access-token');
+    expect(body.refresh_token).toBe('mock-refresh-token');
+  });
+
+  it('Confidentialクライアント + code_challengeなし + code_verifier未送信 → RFC 7636 §4.4 準拠で成功', async () => {
+    // コンフィデンシャルクライアントは PKCE 不要のため、code_verifier なしでも認可コード交換が成立する
+    vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
+      ...mockAuthCode,
+      code_challenge: null,
+      scope: 'profile email',
+    } as never);
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        redirect_uri: 'http://localhost:51234/callback',
+        client_id: 'test-client-id',
+        // code_verifier を意図的に省略
       },
       authHeader: makeBasicAuth('test-client-id', 'secret'),
     });

@@ -1163,7 +1163,8 @@ app.post('/link-intent', tokenApiRateLimitMiddleware, authMiddleware, rejectServ
       redirectTo: 'link-intent', // 連携用の特別な値（通常のコード交換フローと区別する）
       expiresAt,
     });
-  } catch {
+  } catch (err) {
+    authLogger.error('[link-intent] Failed to create link token', err);
     return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to create link token' } }, 500);
   }
 

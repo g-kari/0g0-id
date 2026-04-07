@@ -179,10 +179,6 @@ async function handleAuthorizationCodeGrant(
   if (!redirectUri) {
     return c.json({ error: 'invalid_request', error_description: 'redirect_uri is required' }, 400);
   }
-  if (!codeVerifier) {
-    return c.json({ error: 'invalid_request', error_description: 'code_verifier is required' }, 400);
-  }
-
   // クライアント認証
   const clientResult = await resolveOAuthClient(c.env.DB, c.req.header('Authorization'), clientId);
   if (!clientResult.ok) {
@@ -220,7 +216,12 @@ async function handleAuthorizationCodeGrant(
   }
 
   // PKCE 検証 (S256)
+  // code_challenge が存在する場合のみ code_verifier を必須とする（RFC 7636 §4.4）
+  // コンフィデンシャルクライアントは PKCE 不要のため、code_challenge なしでも許容
   if (authCode.code_challenge) {
+    if (!codeVerifier) {
+      return c.json({ error: 'invalid_request', error_description: 'code_verifier is required' }, 400);
+    }
     const expectedChallenge = await generateCodeChallenge(codeVerifier);
     if (!timingSafeEqual(expectedChallenge, authCode.code_challenge)) {
       return c.json({ error: 'invalid_grant', error_description: 'code_verifier mismatch' }, 400);
@@ -515,7 +516,7 @@ app.post('/revoke', externalApiRateLimitMiddleware, async (c) => {
     service = await authenticateService(c.env.DB, c.req.header('Authorization'));
   } catch (err) {
     tokenLogger.error('Revoke: service authentication failed', err);
-    return c.json({ error: 'invalid_client' }, 500);
+    return c.json({ error: 'server_error' }, 500);
   }
   if (!service) {
     c.header('WWW-Authenticate', 'Basic realm="0g0-id"');
