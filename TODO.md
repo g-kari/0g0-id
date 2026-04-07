@@ -2,6 +2,15 @@
 
 ## テストカバレッジ追加（2026-04-07）
 
+- ✅ **`mcp-sessions.ts`: MCPセッション管理関数のテスト18件追加**
+  - `packages/shared/src/db/mcp-sessions.test.ts` を新規作成
+  - `createMcpSession`: INSERT・パラメーターバインド・created_at/last_active_at 同一タイムスタンプ確認（3テスト）
+  - `validateAndRefreshMcpSession`: 有効セッション→true・期限切れ→false・SQL確認・bind確認（5テスト）
+  - `deleteMcpSession`: DELETE by id・SQL確認（3テスト）
+  - `deleteMcpSessionsByUser`: DELETE by user_id・SQL確認（3テスト）
+  - `cleanupExpiredMcpSessions`: DELETE・cutoff値確認・void確認（4テスト）
+  - 全1591テストパス
+
 - ✅ **`revoked-access-tokens.ts`: JTIブロックリスト関数のテスト11件追加**
   - `packages/shared/src/db/revoked-access-tokens.test.ts` を新規作成
   - `addRevokedAccessToken`: INSERT OR IGNORE の冪等性・パラメーターバインド（3テスト）
