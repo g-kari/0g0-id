@@ -2028,7 +2028,7 @@ describe('GET /auth/authorize', () => {
     client_id: 'client-abc',
     redirect_uri: 'https://app.example.com/callback',
     state: 'random-state-value',
-    code_challenge: 'S256-challenge-value',
+    code_challenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
     code_challenge_method: 'S256',
   });
 
@@ -2079,6 +2079,26 @@ describe('GET /auth/authorize', () => {
     expect(res.status).toBe(400);
     const body = await res.json<{ error: string }>();
     expect(body.error).toBe('invalid_request');
+  });
+
+  it('code_challenge が 43文字未満（RFC 7636 §4.2 違反） → 400を返す', async () => {
+    const params = new URLSearchParams(validParams);
+    params.set('code_challenge', 'short-invalid-challenge');
+    const res = await sendRequest(app, `/auth/authorize?${params.toString()}`);
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string; error_description: string }>();
+    expect(body.error).toBe('invalid_request');
+    expect(body.error_description).toContain('Invalid code_challenge format');
+  });
+
+  it('code_challenge が 43文字超（RFC 7636 §4.2 違反） → 400を返す', async () => {
+    const params = new URLSearchParams(validParams);
+    params.set('code_challenge', 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM-extra');
+    const res = await sendRequest(app, `/auth/authorize?${params.toString()}`);
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string; error_description: string }>();
+    expect(body.error).toBe('invalid_request');
+    expect(body.error_description).toContain('Invalid code_challenge format');
   });
 
   it('未知の client_id → 400を返す', async () => {
@@ -2132,7 +2152,7 @@ describe('GET /auth/authorize', () => {
     expect(location).toContain('https://user.0g0.xyz/login');
     expect(location).toContain('client_id=client-abc');
     expect(location).toContain('state=random-state-value');
-    expect(location).toContain('code_challenge=S256-challenge-value');
+    expect(location).toContain('code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
   });
 
   it('正常: nonce あり → リダイレクト先URLに nonce が含まれる', async () => {

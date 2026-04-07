@@ -140,7 +140,11 @@ app.post('/', tokenApiRateLimitMiddleware, tokenApiClientRateLimitMiddleware, as
         }
       }
     } else if (contentType.includes('application/json')) {
-      params = await c.req.json<Record<string, string>>();
+      const raw = await c.req.json<Record<string, unknown>>();
+      params = {};
+      for (const [key, value] of Object.entries(raw)) {
+        if (typeof value === 'string') params[key] = value;
+      }
     } else {
       return c.json({ error: 'invalid_request', error_description: 'Unsupported Content-Type' }, 400);
     }
@@ -470,7 +474,7 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
     service = await authenticateService(c.env.DB, c.req.header('Authorization'));
   } catch (err) {
     tokenLogger.error('Introspect: service authentication failed', err);
-    return c.json({ active: false }, 500);
+    return c.json({ error: 'server_error' }, 500);
   }
   if (!service) {
     c.header('WWW-Authenticate', 'Basic realm="0g0-id"');

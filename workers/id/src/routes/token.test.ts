@@ -249,6 +249,17 @@ describe('POST /api/token/introspect', () => {
     expect(body.active).toBe(false);
   });
 
+  it('DB例外（authenticateService内部エラー）→ { error: server_error } + 500', async () => {
+    vi.mocked(findServiceByClientId).mockRejectedValue(new Error('DB connection failed'));
+    const res = await sendRequest(app, '/api/token/introspect', {
+      body: { token: 'some-token' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('server_error');
+  });
+
   it('JSONボディが不正 → { active: false } + 400', async () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/api/token/introspect`, {
@@ -880,6 +891,21 @@ describe('POST /api/token/ — 未サポートのgrant_type', () => {
       method: 'POST',
       formBody: { grant_type: 'client_credentials' },
     });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('unsupported_grant_type');
+  });
+
+  it('application/json で grant_type が配列（非string）→ unsupported_grant_type を返す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grant_type: ['authorization_code'], code: 'x' }),
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: string }>();
     expect(body.error).toBe('unsupported_grant_type');

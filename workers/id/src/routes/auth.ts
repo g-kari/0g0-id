@@ -516,6 +516,10 @@ app.get('/authorize', authRateLimitMiddleware, async (c) => {
   if (codeChallengeMethod !== 'S256') {
     return c.json({ error: 'invalid_request', error_description: 'Only code_challenge_method=S256 is supported' }, 400);
   }
+  // RFC 7636 §4.2: S256のcode_challengeはBASE64URL(SHA256(code_verifier)) = 43文字
+  if (!/^[A-Za-z0-9\-_]{43}$/.test(codeChallenge)) {
+    return c.json({ error: 'invalid_request', error_description: 'Invalid code_challenge format for S256' }, 400);
+  }
 
   // パラメータ長制限
   if (redirectUri.length > 2048) {
