@@ -1,5 +1,35 @@
 # TODO
 
+## バグ修正・RFC準拠改善（2026-04-08）
+
+- ✅ **`metrics.ts`: Promise.allにtry-catch追加**
+  - `GET /api/metrics` のDB並列呼び出しが例外ハンドリングなしで500素通りしていた
+  - `{ error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch metrics' } }` を500で返すよう修正
+
+- ✅ **`pagination.ts` / `metrics.ts`: parseDaysのエラーレスポンス形式統一**
+  - `{ error: string }` 形式だったのを `{ error: { code: 'INVALID_REQUEST', message: '...' } }` に統一
+  - 全workspace型チェック・736テストパス確認済み
+
+- ✅ **`device.ts`: `expired_token` → `invalid_grant`（RFC 8628 §3.5準拠）**
+  - `expired_token` は RFC 6749 token エンドポイントの標準エラーコードリストに含まれないため `invalid_grant` に変更
+  - `error_description: 'Device code has expired'` を付与
+
+- ✅ **`device.ts`: `/verify` エンドポイントのtry-catch漏れ修正**
+  - `findDeviceCodeByUserCode` / `findServiceById` 呼び出しがtry-catchなしでDBエラー素通り
+  - 500時に `{ error: 'INTERNAL_ERROR' }` を返すよう修正
+
+- ✅ **`device.ts`: `/code` エンドポイントの `invalid_client` ステータスコード統一**
+  - `400` → `401`（`handleDeviceCodeGrant` の同エラーと統一、RFC 6749 §5.2推奨）
+
+## 残課題（要対応）
+
+- **`/verify` エンドポイントのテストカバレッジ不足**
+  - IdP側（`workers/id`）での approve/deny/期限切れ/承認済み/拒否済み状態のテストが存在しない
+  - `metrics.ts` の `/active-users/daily` エンドポイントもテスト未対応（`parseDays` エラーパス含む）
+
+- **`users.ts` の `PATCH /:id/role` / `PATCH /:id/ban` の自己変更ガード要確認**
+  - `tokenUser.sub`（JWTのsub、ペアワイズ可能性あり）と `targetId`（内部UUID）の比較が正しいか確認が必要
+
 ## テストカバレッジ追加（2026-04-07）
 
 - ✅ **`mcp-sessions.ts`: MCPセッション管理関数のテスト18件追加**
