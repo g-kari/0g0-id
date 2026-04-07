@@ -226,7 +226,7 @@ describe('handleDeviceCodeGrant', () => {
     expect(body.error).toBe('invalid_grant');
   });
 
-  it('期限切れデバイスコード → expired_token + 400', async () => {
+  it('期限切れデバイスコード → invalid_grant + 400', async () => {
     vi.mocked(findDeviceCodeByHash).mockResolvedValue({
       ...mockDeviceCode,
       expires_at: new Date(Date.now() - 1000).toISOString(),
@@ -235,7 +235,7 @@ describe('handleDeviceCodeGrant', () => {
     const res = await handleDeviceCodeGrant(c as never, baseParams);
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
-    expect(body.error).toBe('expired_token');
+    expect(body.error).toBe('invalid_grant');
   });
 
   it('拒否済みデバイスコード → access_denied + 400', async () => {

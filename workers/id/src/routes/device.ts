@@ -105,7 +105,7 @@ app.post('/code', tokenApiRateLimitMiddleware, async (c) => {
   // サービス（クライアント）の存在確認
   const service = await findServiceByClientId(c.env.DB, clientId);
   if (!service) {
-    return c.json({ error: 'invalid_client', error_description: 'Unknown client_id' }, 400);
+    return c.json({ error: 'invalid_client', error_description: 'Unknown client_id' }, 401);
   }
 
   // スコープの検証
@@ -200,47 +200,51 @@ app.post(
       return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid user_code format' } }, 400);
     }
 
-    const deviceCode = await findDeviceCodeByUserCode(c.env.DB, userCode);
-    if (!deviceCode) {
-      return c.json({ error: { code: 'INVALID_CODE', message: 'Unknown or expired user_code' } }, 404);
-    }
+    try {
+      const deviceCode = await findDeviceCodeByUserCode(c.env.DB, userCode);
+      if (!deviceCode) {
+        return c.json({ error: { code: 'INVALID_CODE', message: 'Unknown or expired user_code' } }, 404);
+      }
 
-    // 期限切れチェック
-    if (new Date(deviceCode.expires_at) < new Date()) {
-      return c.json({ error: { code: 'CODE_EXPIRED', message: 'Device code has expired' } }, 400);
-    }
+      // 期限切れチェック
+      if (new Date(deviceCode.expires_at) < new Date()) {
+        return c.json({ error: { code: 'CODE_EXPIRED', message: 'Device code has expired' } }, 400);
+      }
 
-    // 既に承認/拒否済みの場合
-    if (deviceCode.approved_at) {
-      return c.json({ error: { code: 'CODE_ALREADY_USED', message: 'Device code already approved' } }, 400);
-    }
-    if (deviceCode.denied_at) {
-      return c.json({ error: { code: 'CODE_ALREADY_USED', message: 'Device code already denied' } }, 400);
-    }
+      // 既に承認/拒否済みの場合
+      if (deviceCode.approved_at) {
+        return c.json({ error: { code: 'CODE_ALREADY_USED', message: 'Device code already approved' } }, 400);
+      }
+      if (deviceCode.denied_at) {
+        return c.json({ error: { code: 'CODE_ALREADY_USED', message: 'Device code already denied' } }, 400);
+      }
 
-    // actionなし → 情報取得のみ（BFFの検証ステップ用）
-    if (!action) {
-      const serviceInfo = await findServiceById(c.env.DB, deviceCode.service_id);
-      const scopes = serviceInfo?.allowed_scopes
-        ? parseAllowedScopes(serviceInfo.allowed_scopes)
-        : [];
-      return c.json({
-        data: {
-          service_name: serviceInfo?.name ?? 'Unknown',
-          scopes,
-        },
-      });
-    }
+      // actionなし → 情報取得のみ（BFFの検証ステップ用）
+      if (!action) {
+        const serviceInfo = await findServiceById(c.env.DB, deviceCode.service_id);
+        const scopes = serviceInfo?.allowed_scopes
+          ? parseAllowedScopes(serviceInfo.allowed_scopes)
+          : [];
+        return c.json({
+          data: {
+            service_name: serviceInfo?.name ?? 'Unknown',
+            scopes,
+          },
+        });
+      }
 
-    // action付き → 承認/拒否（'approve' か 'deny'、早期バリデーション済み）
-    const tokenUser = c.get('user');
+      // action付き → 承認/拒否（'approve' か 'deny'、早期バリデーション済み）
+      const tokenUser = c.get('user');
 
-    if (action === 'approve') {
-      await approveDeviceCode(c.env.DB, deviceCode.id, tokenUser.sub);
-      return c.json({ status: 'approved' });
-    } else {
-      await denyDeviceCode(c.env.DB, deviceCode.id);
-      return c.json({ status: 'denied' });
+      if (action === 'approve') {
+        await approveDeviceCode(c.env.DB, deviceCode.id, tokenUser.sub);
+        return c.json({ status: 'approved' });
+      } else {
+        await denyDeviceCode(c.env.DB, deviceCode.id);
+        return c.json({ status: 'denied' });
+      }
+    } catch {
+      return c.json({ error: 'INTERNAL_ERROR' }, 500);
     }
   }
 );
@@ -285,7 +289,7 @@ export async function handleDeviceCodeGrant(
   if (new Date(deviceCode.expires_at) < new Date()) {
     // 期限切れのレコードを削除
     await deleteDeviceCode(c.env.DB, deviceCode.id);
-    return c.json({ error: 'expired_token' }, 400);
+    return c.json({ error: 'invalid_grant', error_description: 'Device code has expired' }, 400);
   }
 
   // 拒否済みチェック

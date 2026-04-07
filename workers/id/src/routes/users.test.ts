@@ -36,7 +36,7 @@ vi.mock('@0g0-id/shared', async (importOriginal) => {
     const { minDays = 1, maxDays = 90 } = options;
     const days = parseInt(daysParam, 10);
     if (!Number.isInteger(days) || days < minDays || days > maxDays) {
-      return { error: `days must be an integer between ${minDays} and ${maxDays}` };
+      return { error: { code: 'INVALID_REQUEST', message: `days must be an integer between ${minDays} and ${maxDays}` } };
     }
     return { days };
   },

@@ -28,7 +28,7 @@ export function parsePagination(
   };
 }
 
-export type DaysResult = { days: number } | { error: string };
+export type DaysResult = { days: number } | { error: { code: string; message: string } };
 
 /**
  * クエリパラメータから days をパースし、バリデーションする。
@@ -42,11 +42,11 @@ export function parseDays(
   if (daysParam === undefined) return undefined;
   const { minDays = 1, maxDays = 90 } = options;
   if (!/^\d+$/.test(daysParam)) {
-    return { error: `days must be an integer between ${minDays} and ${maxDays}` };
+    return { error: { code: 'INVALID_REQUEST', message: `days must be an integer between ${minDays} and ${maxDays}` } };
   }
   const days = parseInt(daysParam, 10);
   if (days < minDays || days > maxDays) {
-    return { error: `days must be an integer between ${minDays} and ${maxDays}` };
+    return { error: { code: 'INVALID_REQUEST', message: `days must be an integer between ${minDays} and ${maxDays}` } };
   }
   return { days };
 }
