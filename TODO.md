@@ -34,6 +34,19 @@
   - `parseDays` エラーパス含む正常系・異常系を網羅
   - `GET /api/metrics/active-users` および `GET /api/metrics/active-users/daily` の全ケースカバレッジ追加
 
+- ✅ **`device-codes.ts`: デバイスコード管理関数のテスト21件追加（2026-04-08）**
+  - `packages/shared/src/db/device-codes.test.ts` を新規作成
+  - `createDeviceCode`: INSERT・scope null対応（2テスト）
+  - `findDeviceCodeByUserCode`: 正常系・null返却・bindアサーション（3テスト）
+  - `findDeviceCodeByHash`: 正常系・null返却・bindアサーション（3テスト）
+  - `approveDeviceCode`: approved_at/user_id設定確認（1テスト）
+  - `denyDeviceCode`: denied_at設定確認（1テスト）
+  - `tryUpdateDeviceCodePolledAt`: true/false・meta.changes undefined・SQL・bindアサーション（4テスト）
+  - `deleteDeviceCode`: DELETE SQL確認（1テスト）
+  - `deleteApprovedDeviceCode`: true/false・SQL条件・bindアサーション（3テスト）
+  - `deleteExpiredDeviceCodes`: SQL確認・run呼び出し（1テスト）
+  - 全1662テストパス
+
 ## 残課題（要対応）
 
 ## テストカバレッジ追加（2026-04-07）
