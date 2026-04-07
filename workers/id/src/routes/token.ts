@@ -89,7 +89,7 @@ async function resolveOAuthClient(
   db: D1Database,
   authHeader: string | undefined,
   bodyClientId: string | undefined
-): Promise<{ ok: true; service: NonNullable<Awaited<ReturnType<typeof findServiceByClientId>>> } | { ok: false; error: string; status: 400 | 401 | 500 }> {
+): Promise<{ ok: true; service: NonNullable<Awaited<ReturnType<typeof findServiceByClientId>>>; isPublicClient: boolean } | { ok: false; error: string; status: 400 | 401 | 500 }> {
   if (authHeader?.startsWith('Basic ')) {
     // Confidential client: client_secret_basic
     let service: Awaited<ReturnType<typeof authenticateService>>;
@@ -105,7 +105,7 @@ async function resolveOAuthClient(
     if (bodyClientId && bodyClientId !== service.client_id) {
       return { ok: false, error: 'invalid_client', status: 401 };
     }
-    return { ok: true, service };
+    return { ok: true, service, isPublicClient: false };
   }
 
   // Public client: client_id のみで識別（client_secret なし）
@@ -121,7 +121,7 @@ async function resolveOAuthClient(
   if (!service) {
     return { ok: false, error: 'invalid_client', status: 401 };
   }
-  return { ok: true, service };
+  return { ok: true, service, isPublicClient: true };
 }
 
 // POST /api/token — 標準 OAuth 2.0 トークンエンドポイント (RFC 6749)
@@ -191,7 +191,7 @@ async function handleAuthorizationCodeGrant(
     }
     return c.json({ error: clientResult.error }, clientResult.status);
   }
-  const service = clientResult.service;
+  const { service, isPublicClient } = clientResult;
 
   // 認可コード検証
   const codeHash = await sha256(code);
@@ -210,9 +210,6 @@ async function handleAuthorizationCodeGrant(
   if (!normalizedRedirectUri || !matchRedirectUri(authCode.redirect_to, normalizedRedirectUri)) {
     return c.json({ error: 'invalid_grant', error_description: 'redirect_uri mismatch' }, 400);
   }
-
-  // パブリッククライアント判定（Authorizationヘッダーがない = パブリッククライアント）
-  const isPublicClient = !c.req.header('Authorization')?.startsWith('Basic ');
 
   // パブリッククライアントはPKCEを必須とする（RFC 7636 §4.4 / OAuth 2.1）
   if (isPublicClient && !authCode.code_challenge) {
