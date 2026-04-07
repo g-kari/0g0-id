@@ -1208,9 +1208,20 @@ app.post('/logout', tokenApiRateLimitMiddleware, serviceBindingMiddleware, async
   const { refresh_token: refreshToken } = result.data;
   if (refreshToken) {
     const tokenHash = await sha256(refreshToken);
-    const storedToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
+    let storedToken: Awaited<ReturnType<typeof findRefreshTokenByHash>>;
+    try {
+      storedToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
+    } catch (err) {
+      authLogger.error('[logout] Failed to find refresh token', err);
+      return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to process logout' } }, 500);
+    }
     if (storedToken && storedToken.revoked_at === null) {
-      await revokeRefreshToken(c.env.DB, storedToken.id, 'user_logout');
+      try {
+        await revokeRefreshToken(c.env.DB, storedToken.id, 'user_logout');
+      } catch (err) {
+        authLogger.error('[logout] Failed to revoke refresh token', err);
+        return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to revoke token' } }, 500);
+      }
     }
   }
 

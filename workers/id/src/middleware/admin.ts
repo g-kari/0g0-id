@@ -15,8 +15,13 @@ export const adminMiddleware = createMiddleware<{
     return c.json({ error: { code: 'FORBIDDEN', message: 'Admin access required' } }, 403);
   }
 
+  // jtiが存在しないトークンは管理者エンドポイントでは拒否（リボークチェック必須）
+  if (!user.jti) {
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid token: missing jti' } }, 401);
+  }
+
   // リボークされたトークンを拒否（JWT有効期限内でも即時無効化）
-  if (user.jti && await isAccessTokenRevoked(c.env.DB, user.jti)) {
+  if (await isAccessTokenRevoked(c.env.DB, user.jti)) {
     return c.json({ error: { code: 'UNAUTHORIZED', message: 'Token has been revoked' } }, 401);
   }
 
