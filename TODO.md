@@ -1,5 +1,19 @@
 # TODO
 
+## バグ修正・コードレビュー対応（2026-04-07, 追記）
+
+- ✅ **oauth.ts: state/nonce パラメータ長上限を IdP 側と統一**
+  - `state`: 2048 → 1024 文字（auth.ts の `/auth/authorize` と一致）
+  - `nonce`: 2048 → 128 文字（scopes.ts の `validateNonce` と一致）
+  - BFF で緩い値を許容していたため、IdP で拒否される入力を渡してしまう可能性があった
+  - 境界値テスト4件追加（正常/異常各2件）
+
+- ✅ **テストモック不備修正（HMAC Cookie 導入後の欠落）**
+  - `auth.test.ts`: `signCookie`/`verifyCookie` モック追加（各 `beforeEach` 内で再設定）
+  - `auth.test.ts`: `findRefreshTokenById` モック追加（`attemptUnrevokeToken` 経由で try-catch に飲まれていた）
+  - `token.test.ts`: `signCookie`/`verifyCookie`/`findRefreshTokenById` モック追加
+  - 全1533テストパス（修正前: 20件以上失敗）
+
 ## バグ修正（2026-04-07）
 
 - ✅ **MCP `deleteServiceTool`: サービス削除前にトークン失効が抜けていた**
