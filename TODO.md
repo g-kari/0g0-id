@@ -1,5 +1,21 @@
 # TODO
 
+## テストカバレッジ追加 + セキュリティ修正（2026-04-07, 追記）
+
+- ✅ **cookie.ts: HMAC署名ユーティリティのテスト20件追加 + バグ修正**
+  - `packages/shared/src/lib/cookie.test.ts` を新規作成
+  - signCookie: 8テスト（形式・URLセーフ・決定性・JSON・特殊文字等）
+  - verifyCookie: 12テスト（ラウンドトリップ・改ざん検知・エッジケース等）
+  - バグ修正: `verifyCookie` の `!payloadEncoded` チェックを削除
+    - 空文字列ペイロードが誤って null を返していた（falsy 判定の誤用）
+  - 全1553テストパス
+
+- ✅ **vite 7.3.1 → 7.3.2 へアップデート（Dependabot脆弱性対応）**
+  - GHSA-4w7w-66w2-5vf9: Path Traversal in Optimized Deps `.map` Handling（High）
+  - GHSA-v2wj-q39q-566r: `server.fs.deny` bypassed with queries（High）
+  - GHSA-p9ff-h696-f583: Arbitrary File Read via Vite Dev Server WebSocket（Moderate）
+  - `npm audit` で0件を確認済み
+
 ## バグ修正・コードレビュー対応（2026-04-07, 追記）
 
 - ✅ **oauth.ts: state/nonce パラメータ長上限を IdP 側と統一**
