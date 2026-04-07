@@ -633,4 +633,4 @@
   - テスト3件追加（findRefreshTokenByHash例外・isAccessTokenRevoked例外・findUserById例外）
 - パブリッククライアント判定ロジックの分散（`resolveOAuthClient` 戻り値にクライアント種別を含める）
 - `handleAuthorizationCodeGrant` / `handleRefreshTokenGrant` の型定義冗長化（型エイリアス導入）
-- `/revoke` でJWT形式のリフレッシュトークン（JWT_PATTERNマッチ、JWT検証失敗）のテスト補強
+- ✅ `/revoke` でJWT形式のリフレッシュトークン（JWT_PATTERNマッチ、JWT検証失敗）のテスト補強（5件追加: DB不存在・失効済み・他サービス所有・jtiなし・cid不一致）

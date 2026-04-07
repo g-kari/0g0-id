@@ -929,6 +929,78 @@ describe('POST /api/token/revoke', () => {
       'service_revoke'
     );
   });
+
+  it('JWT形式だがJWT検証失敗 + DBにも存在しない → revokeRefreshToken呼ばれない', async () => {
+    vi.mocked(verifyAccessToken).mockRejectedValue(new Error('invalid signature'));
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(null as never);
+
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'aGVhZGVy.cGF5bG9hZA.aW52YWxpZHNpZw' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(findRefreshTokenByHash)).toHaveBeenCalled();
+    expect(vi.mocked(revokeRefreshToken)).not.toHaveBeenCalled();
+  });
+
+  it('JWT形式だがJWT検証失敗 + 失効済みリフレッシュトークン → revokeRefreshToken呼ばれない', async () => {
+    vi.mocked(verifyAccessToken).mockRejectedValue(new Error('invalid signature'));
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      revoked_at: '2026-01-01T00:00:00Z',
+    } as never);
+
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'aGVhZGVy.cGF5bG9hZA.aW52YWxpZHNpZw' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(revokeRefreshToken)).not.toHaveBeenCalled();
+  });
+
+  it('JWT形式だがJWT検証失敗 + 他サービス所有のリフレッシュトークン → revokeRefreshToken呼ばれない', async () => {
+    vi.mocked(verifyAccessToken).mockRejectedValue(new Error('invalid signature'));
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockRefreshToken,
+      service_id: 'other-service-id',
+    } as never);
+
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'aGVhZGVy.cGF5bG9hZA.aW52YWxpZHNpZw' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(revokeRefreshToken)).not.toHaveBeenCalled();
+  });
+
+  it('JWT検証成功 + jtiなし → addRevokedAccessToken呼ばれない + 200', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue({ ...mockJwtRevokePayload, jti: undefined } as never);
+    vi.mocked(addRevokedAccessToken).mockResolvedValue(undefined);
+
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'header.payload.signature' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(addRevokedAccessToken)).not.toHaveBeenCalled();
+  });
+
+  it('JWT検証成功 + 他サービスのCID → addRevokedAccessToken呼ばれない + 200', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue({ ...mockJwtRevokePayload, cid: 'other-client-id' } as never);
+    vi.mocked(addRevokedAccessToken).mockResolvedValue(undefined);
+
+    const res = await sendRequest(app, '/api/token/revoke', {
+      body: { token: 'header.payload.signature' },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(addRevokedAccessToken)).not.toHaveBeenCalled();
+  });
 });
 
 // ===== POST /api/token/ — grant_type 振り分け =====
