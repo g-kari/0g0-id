@@ -1,5 +1,23 @@
 # TODO
 
+## セキュリティ修正・RFC準拠改善（2026-04-07, コードレビュー起因②）
+
+- ✅ **`/auth/authorize`: `code_challenge` フォーマット検証追加（RFC 7636 §4.2）**
+  - S256 の `code_challenge` は `BASE64URL(SHA256(code_verifier))` = 43文字の Base64url 文字列
+  - `/^[A-Za-z0-9\-_]{43}$/` で不正フォーマットを早期拒否（ストレージ DOS 対策）
+  - テスト2件追加（短すぎる・長すぎる code_challenge）
+
+- ✅ **`/api/token`: JSON ボディの非 string 値をフィルタリング**
+  - `Record<string, string>` 型アサーションのみで実行時バリデーションがなかった
+  - `typeof value === 'string'` チェックで配列・数値等を除外（urlencoded ブランチと統一）
+  - テスト1件追加（配列型 grant_type → unsupported_grant_type）
+
+- ✅ **`/api/token/introspect`: DB 例外時レスポンスを `{ error: 'server_error' }` に統一**
+  - `{ active: false }` + 500 はクライアントに「トークン無効」と誤解させる（RFC 7662 違反）
+  - `{ error: 'server_error' }` + 500 に変更（`/api/token/revoke` の DB エラー対応と統一）
+  - テスト1件追加
+  - 全1562テストパス
+
 ## バグ修正・RFC準拠改善（2026-04-07, 追記）
 
 - ✅ **`/api/token/revoke`: DB例外時に `invalid_client` (RFC違反) → `server_error` 500 に修正**
