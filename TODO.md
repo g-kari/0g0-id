@@ -631,6 +631,9 @@
 - ~~`introspectRefreshToken` / `introspectJwtToken` 内部の例外処理追加（DB障害時に active: false を返すべき）~~ ✅ **対応済み（2026-04-07）**
   - 両関数に try/catch を追加、DB障害時は `tokenLogger.error` でログ出力し `{ active: false }` を返す
   - テスト3件追加（findRefreshTokenByHash例外・isAccessTokenRevoked例外・findUserById例外）
-- パブリッククライアント判定ロジックの分散（`resolveOAuthClient` 戻り値にクライアント種別を含める）
+- ~~パブリッククライアント判定ロジックの分散（`resolveOAuthClient` 戻り値にクライアント種別を含める）~~ ✅ **対応済み（2026-04-08）**
+  - `resolveOAuthClient` の `ok: true` 戻り値に `isPublicClient: boolean` を追加
+  - Confidentialクライアントは `isPublicClient: false`、Publicクライアントは `isPublicClient: true`
+  - `handleAuthorizationCodeGrant` での重複判定（`!c.req.header('Authorization')?.startsWith('Basic ')`）を削除
 - `handleAuthorizationCodeGrant` / `handleRefreshTokenGrant` の型定義冗長化（型エイリアス導入）
 - ✅ `/revoke` でJWT形式のリフレッシュトークン（JWT_PATTERNマッチ、JWT検証失敗）のテスト補強（5件追加: DB不存在・失効済み・他サービス所有・jtiなし・cid不一致）
