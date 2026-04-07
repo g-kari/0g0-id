@@ -624,9 +624,11 @@
   - `issueTokenPair` / `signIdToken` 例外時に 500 server_error を返すよう修正
 - 上記2件のテスト追加（計91テスト）
 
+### 対応済み ✅
+- ~~`resolveEffectiveScope` が undefined 返却時のスコープ空トークン発行問題~~ → `invalid_scope` + 400 を返すよう修正（token.ts / auth.ts / device.ts 3箇所、テスト+11件、1602テストパス）
+
 ### 未対応・今後検討 📝
 - `introspectRefreshToken` / `introspectJwtToken` 内部の例外処理追加（DB障害時に active: false を返すべき）
-- `resolveEffectiveScope` が undefined 返却時のスコープ空トークン発行問題（invalid_scope を返すべき）
 - パブリッククライアント判定ロジックの分散（`resolveOAuthClient` 戻り値にクライアント種別を含める）
 - `handleAuthorizationCodeGrant` / `handleRefreshTokenGrant` の型定義冗長化（型エイリアス導入）
 - `/revoke` でJWT形式のリフレッシュトークン（JWT_PATTERNマッチ、JWT検証失敗）のテスト補強
