@@ -472,7 +472,7 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
     return c.json({ active: false }, 500);
   }
   if (!service) {
-    c.header('WWW-Authenticate', 'Bearer realm="0g0-id"');
+    c.header('WWW-Authenticate', 'Basic realm="0g0-id"');
     return c.json({ active: false }, 401);
   }
   const introspectService = service;

@@ -187,13 +187,14 @@ describe('POST /api/token/introspect', () => {
     vi.mocked(verifyAccessToken).mockRejectedValue(new Error('not a JWT'));
   });
 
-  it('Authorizationヘッダーなし → { active: false } + 401', async () => {
+  it('Authorizationヘッダーなし → { active: false } + 401 + WWW-Authenticate: Basic', async () => {
     const res = await sendRequest(app, '/api/token/introspect', {
       body: { token: 'some-token' },
     });
     expect(res.status).toBe(401);
     const body = await res.json<{ active: boolean }>();
     expect(body.active).toBe(false);
+    expect(res.headers.get('WWW-Authenticate')).toBe('Basic realm="0g0-id"');
   });
 
   it('Basicでないauth形式 → { active: false } + 401', async () => {

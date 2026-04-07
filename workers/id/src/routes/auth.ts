@@ -51,6 +51,8 @@ import {
   matchRedirectUri,
   signCookie,
   verifyCookie,
+  verifyAccessToken,
+  addRevokedAccessToken,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
 import { type OAuthProvider, PROVIDER_DISPLAY_NAMES, ALL_PROVIDERS, isValidProvider } from '@0g0-id/shared';
@@ -1172,6 +1174,20 @@ app.post('/link-intent', tokenApiRateLimitMiddleware, authMiddleware, rejectServ
 app.post('/logout', tokenApiRateLimitMiddleware, serviceBindingMiddleware, async (c) => {
   const result = await parseJsonBody(c, LogoutSchema);
   if (!result.ok) return result.response;
+
+  // アクセストークンの失効処理（Authorizationヘッダーから取得）
+  const authHeader = c.req.header('Authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    const accessToken = authHeader.slice(7);
+    try {
+      const payload = await verifyAccessToken(accessToken, c.env.JWT_PUBLIC_KEY, c.env.IDP_ORIGIN, c.env.IDP_ORIGIN);
+      if (payload.jti && payload.exp && payload.exp > Math.floor(Date.now() / 1000)) {
+        await addRevokedAccessToken(c.env.DB, payload.jti, payload.exp);
+      }
+    } catch {
+      // JWT検証失敗は無視してログアウトを続行
+    }
+  }
 
   const { refresh_token: refreshToken } = result.data;
   if (refreshToken) {

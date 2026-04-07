@@ -66,6 +66,8 @@ vi.mock('@0g0-id/shared', async (importOriginal) => {
   }),
   // token-recovery.ts 経由で使用
   findRefreshTokenById: vi.fn(),
+  // JTIブロックリスト
+  addRevokedAccessToken: vi.fn(),
   };
 });
 
@@ -116,6 +118,7 @@ import {
   signCookie,
   verifyCookie,
   findRefreshTokenById,
+  addRevokedAccessToken,
 } from '@0g0-id/shared';
 
 import authRoutes from './auth';
@@ -965,6 +968,61 @@ describe('POST /auth/logout', () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ data: { success: boolean } }>();
     expect(body.data.success).toBe(true);
+  });
+
+  it('有効なアクセストークンをAuthorizationヘッダーに含む → addRevokedAccessTokenがJTIで呼ばれる', async () => {
+    const mockJti = 'jti-access-123';
+    const mockExp = Math.floor(Date.now() / 1000) + 900;
+    vi.mocked(verifyAccessToken).mockResolvedValue({
+      sub: 'user-1',
+      email: 'test@example.com',
+      role: 'user',
+      iss: 'https://id.0g0.xyz',
+      aud: 'https://id.0g0.xyz',
+      exp: mockExp,
+      iat: Math.floor(Date.now() / 1000),
+      jti: mockJti,
+      kid: 'kid-1',
+    } as never);
+    vi.mocked(addRevokedAccessToken).mockResolvedValue(undefined as never);
+
+    const res = await sendRequest(app, '/auth/logout', {
+      method: 'POST',
+      body: {},
+      headers: { Authorization: 'Bearer valid-access-token' },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: { success: boolean } }>();
+    expect(body.data.success).toBe(true);
+    expect(vi.mocked(addRevokedAccessToken)).toHaveBeenCalledWith(mockEnv.DB, mockJti, mockExp);
+  });
+
+  it('無効/期限切れのアクセストークンをAuthorizationヘッダーに含む → verifyAccessToken失敗でも成功を返す・addRevokedAccessToken未呼び出し', async () => {
+    vi.mocked(verifyAccessToken).mockRejectedValue(new Error('JWT verification failed'));
+    vi.mocked(addRevokedAccessToken).mockResolvedValue(undefined as never);
+
+    const res = await sendRequest(app, '/auth/logout', {
+      method: 'POST',
+      body: {},
+      headers: { Authorization: 'Bearer invalid-or-expired-token' },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: { success: boolean } }>();
+    expect(body.data.success).toBe(true);
+    expect(vi.mocked(addRevokedAccessToken)).not.toHaveBeenCalled();
+  });
+
+  it('Authorizationヘッダーなし → 成功を返す・addRevokedAccessToken未呼び出し', async () => {
+    vi.mocked(addRevokedAccessToken).mockResolvedValue(undefined as never);
+
+    const res = await sendRequest(app, '/auth/logout', {
+      method: 'POST',
+      body: {},
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: { success: boolean } }>();
+    expect(body.data.success).toBe(true);
+    expect(vi.mocked(addRevokedAccessToken)).not.toHaveBeenCalled();
   });
 
   it('INTERNAL_SERVICE_SECRET設定時にヘッダーなし → 403を返す', async () => {
