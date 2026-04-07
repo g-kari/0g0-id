@@ -67,6 +67,7 @@ const mockEnv = {
   IDP_ORIGIN: 'https://id.0g0.xyz',
   USER_ORIGIN: 'https://user.0g0.xyz',
   ADMIN_ORIGIN: 'https://admin.0g0.xyz',
+  COOKIE_SECRET: 'mock-cookie-secret-for-testing-32chars!!',
 };
 
 describe('GET /api/health', () => {

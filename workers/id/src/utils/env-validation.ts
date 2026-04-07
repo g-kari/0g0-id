@@ -6,7 +6,8 @@ import type { IdpEnv } from '@0g0-id/shared';
  *
  * 必須: DB, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
  *       JWT_PRIVATE_KEY, JWT_PUBLIC_KEY,
- *       IDP_ORIGIN, USER_ORIGIN, ADMIN_ORIGIN
+ *       IDP_ORIGIN, USER_ORIGIN, ADMIN_ORIGIN,
+ *       COOKIE_SECRET（state cookie の HMAC-SHA256 署名用）
  *
  * オプション: LINE/Twitch/GitHub/X の CLIENT_ID と CLIENT_SECRET は
  *             両方設定するか、両方未設定にすること（片方だけは不可）
@@ -19,6 +20,7 @@ const envSchema = z.object({
   IDP_ORIGIN: z.url('IDP_ORIGIN は有効なURLである必要があります'),
   USER_ORIGIN: z.url('USER_ORIGIN は有効なURLである必要があります'),
   ADMIN_ORIGIN: z.url('ADMIN_ORIGIN は有効なURLである必要があります'),
+  COOKIE_SECRET: z.string().min(32, 'COOKIE_SECRET は32文字以上の安全なランダム値が必要です'),
 });
 
 type EnvValidationResult =
