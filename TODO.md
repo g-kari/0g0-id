@@ -1,5 +1,14 @@
 # TODO
 
+## テストカバレッジ追加（2026-04-07）
+
+- ✅ **`revoked-access-tokens.ts`: JTIブロックリスト関数のテスト11件追加**
+  - `packages/shared/src/db/revoked-access-tokens.test.ts` を新規作成
+  - `addRevokedAccessToken`: INSERT OR IGNORE の冪等性・パラメーターバインド（3テスト）
+  - `isAccessTokenRevoked`: ブロックリストヒット/ミス・期限切れフィルタ・SQLアサーション（4テスト）
+  - `cleanupExpiredRevokedAccessTokens`: 削除件数・meta.changes undefined ケース（4テスト）
+  - 全1573テストパス
+
 ## セキュリティ修正・RFC準拠改善（2026-04-07, コードレビュー起因②）
 
 - ✅ **`/auth/authorize`: `code_challenge` フォーマット検証追加（RFC 7636 §4.2）**
