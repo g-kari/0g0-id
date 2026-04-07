@@ -30,11 +30,11 @@
   - `tokenUser.sub`（内部UUID）と `targetId`（内部UUID）は同じ空間で比較されており、バグなし
   - 自己変更ガードは正しく機能している（2026-04-08）
 
-## 残課題（要対応）
+- ✅ **`metrics/active-users`・`metrics/active-users/daily` のテストカバレッジ追加（11ケース、2026-04-08）**
+  - `parseDays` エラーパス含む正常系・異常系を網羅
+  - `GET /api/metrics/active-users` および `GET /api/metrics/active-users/daily` の全ケースカバレッジ追加
 
-- **`metrics.ts` の `/active-users/daily` エンドポイントのテスト未対応**
-  - `parseDays` エラーパス含めテストが存在しない
-  - `GET /api/metrics/active-users/daily` の正常系・異常系カバレッジ追加が必要
+## 残課題（要対応）
 
 ## テストカバレッジ追加（2026-04-07）
 
