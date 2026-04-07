@@ -1095,7 +1095,7 @@ app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
   // ユーザー情報取得
   const user = await findUserById(c.env.DB, storedToken.user_id);
   if (!user) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+    return c.json({ error: 'invalid_grant', error_description: 'User not found' }, 401);
   }
 
   // BANされたユーザーのトークン更新を拒否

@@ -806,16 +806,16 @@ describe('POST /auth/refresh', () => {
     expect(body.error.code).toBe('TOKEN_EXPIRED');
   });
 
-  it('ユーザー不存在 → 404を返す', async () => {
+  it('ユーザー不存在 → 401を返す', async () => {
     // findAndRevokeRefreshToken はデフォルトで mockRefreshToken を返す（beforeEach設定済み）
     vi.mocked(findUserById).mockResolvedValue(null);
     const res = await sendRequest(app, '/auth/refresh', {
       method: 'POST',
       body: { refresh_token: 'valid-token' },
     });
-    expect(res.status).toBe(404);
-    const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe('NOT_FOUND');
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_grant');
   });
 
   it('正常なリフレッシュ → 新しいトークンペアを返す', async () => {
