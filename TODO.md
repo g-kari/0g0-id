@@ -49,6 +49,21 @@
 
 ## 残課題（要対応）
 
+## コードレビューで発見した問題（2026-04-08）
+
+**セキュリティ（要確認）**
+- `token.ts` `/api/token/revoke`: `cid` クレームが未設定の旧トークンでリボークが機能しない可能性（`payload.cid === service.client_id` が常に false）
+- `auth.ts` `isAllowedRedirectTo`: Public Suffix List非対応（現状の `0g0.xyz` では問題なし、ドメイン変更時に潜在的 open redirect）
+- `auth.ts` `/auth/refresh`: ユーザー未存在時に 404 を返している（RFC 6749 準拠なら 401 `invalid_token`）
+
+**リファクタリング**
+- `auth.ts` + `token.ts`: リフレッシュトークンのリプレイ攻撃検知・ローテーションロジックが3箇所に重複 → `performRefreshTokenRotation` ユーティリティへ抽出
+- `auth.ts`: `StateData` 型がハンドラ内にインライン重複定義 → 共通インターフェース化
+- `auth.ts`: `oauthError` ヘルパーと `c.json({ error: ... })` 直接使用が混在 → 統一
+
+**テスト**
+- `token.ts` `handleRefreshTokenGrant`: パブリッククライアントのリフレッシュトークンフローにPKCE相当の保護がないことのテスト追加・仕様決定
+
 ## テストカバレッジ追加（2026-04-07）
 
 - ✅ **`mcp-sessions.ts`: MCPセッション管理関数のテスト18件追加**
