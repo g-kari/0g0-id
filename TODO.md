@@ -583,3 +583,34 @@
 **修正内容**:
 - `createAuthCode` を try/catch で囲み、失敗時に `INTERNAL_ERROR` 500 を返すように修正
 - `/auth/callback` の対応（2026-04-07 対応①）と挙動を統一
+
+---
+
+## コードレビュー対応（2026-04-07）
+
+### resolveXProvider isPlaceholderEmail フラグ追加（✅ 対応済み）
+
+**問題**: `resolveXProvider` で `upsertXUser` に `isPlaceholderEmail` フラグを渡していなかった。LINE/GitHub/Twitch等では `isPlaceholderEmail: true` を渡して `emailLink` と `newUserEmailVerified` を制御しているが、X（Twitter）では漏れていた。
+
+**修正内容**:
+- `upsertXUser` 呼び出しに `isPlaceholderEmail: true` を追加（`workers/id/src/routes/auth.ts`）
+- `packages/shared/src/db/users.ts` の `upsertXUser` params型に `isPlaceholderEmail: boolean` を追加し処理を統一
+- 関連テスト3件を更新（`packages/shared/src/db/users.test.ts`）
+
+### GET /auth/callback の provider フォールバック削除（✅ 対応済み）
+
+**問題**: `stateData.provider ?? 'google'` という実装があり、Cookie内にproviderフィールドがない場合に誤ってgoogleプロバイダーとして処理されるリスクがあった。
+
+**修正内容**:
+- `stateData.provider` が未定義の場合は `BAD_REQUEST: 'Missing provider in state'` を返すように変更
+- Cookie署名検証済みであっても、不正フォーマットへの防御的処理として適切
+
+### ip.ts 単体テスト追加（✅ 対応済み）
+
+**問題**: `workers/id/src/utils/ip.ts` の `getClientIp` 関数にテストファイルが存在しなかった。
+
+**修正内容**:
+- `workers/id/src/utils/ip.test.ts` を新規作成、5件のテスト追加
+- CF-Connecting-IP優先・ヘッダーなし時のnull返却・XFF単体はnull・IPv6対応を確認
+
+**テスト総数**: 720件（715 → 720）
