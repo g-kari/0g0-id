@@ -6,6 +6,7 @@ vi.mock('@0g0-id/shared', () => ({
   createLogger: vi.fn().mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
   sha256: vi.fn(),
   findServiceByClientId: vi.fn(),
+  findServiceById: vi.fn(),
   findUserById: vi.fn(),
   createDeviceCode: vi.fn(),
   findDeviceCodeByUserCode: vi.fn(),
@@ -43,7 +44,10 @@ vi.mock('../middleware/rate-limit', () => ({
   deviceVerifyRateLimitMiddleware: vi.fn((_c: unknown, next: () => Promise<void>) => next()),
 }));
 vi.mock('../middleware/auth', () => ({
-  authMiddleware: vi.fn((_c: unknown, next: () => Promise<void>) => next()),
+  authMiddleware: vi.fn((c: { set: (key: string, value: unknown) => void }, next: () => Promise<void>) => {
+    c.set('user', { sub: 'user-1', email: 'test@example.com', name: 'Test User' });
+    return next();
+  }),
   rejectServiceTokenMiddleware: vi.fn((_c: unknown, next: () => Promise<void>) => next()),
   rejectBannedUserMiddleware: vi.fn((_c: unknown, next: () => Promise<void>) => next()),
 }));
@@ -51,14 +55,19 @@ vi.mock('../middleware/auth', () => ({
 import {
   sha256,
   findServiceByClientId,
+  findServiceById,
   findUserById,
   findDeviceCodeByHash,
+  findDeviceCodeByUserCode,
   tryUpdateDeviceCodePolledAt,
   deleteApprovedDeviceCode,
+  approveDeviceCode,
+  denyDeviceCode,
   createDeviceCode,
   deleteExpiredDeviceCodes,
   signIdToken,
 } from '@0g0-id/shared';
+import { parseAllowedScopes } from '../utils/scopes';
 
 import { issueTokenPair, buildTokenResponse } from '../utils/token-pair';
 import { resolveEffectiveScope } from '../utils/scopes';
@@ -407,5 +416,183 @@ describe('POST /api/device/code — デバイス認可リクエスト', () => {
     const json = await res.json<{ device_code: string; user_code: string }>();
     expect(json.device_code).toBeTruthy();
     expect(json.user_code).toBeTruthy();
+  });
+});
+
+// ===== POST /api/device/verify — デバイスコード承認/拒否 =====
+describe('POST /api/device/verify', () => {
+  const baseUrl = 'https://id.0g0.xyz';
+
+  function buildDeviceApp() {
+    const app = new Hono<{ Bindings: typeof mockEnv }>();
+    app.route('/api/device', deviceRoutes);
+    return app;
+  }
+
+  const validUserCode = 'ABCD-EFGH'; // ハイフン付き → 正規化後 ABCDEFGH
+  const normalizedUserCode = 'ABCDEFGH';
+
+  const mockDeviceCodeForVerify = {
+    id: 'dc-verify-id',
+    device_code_hash: 'hashed-device-code',
+    user_code: normalizedUserCode,
+    service_id: 'service-1',
+    user_id: null as string | null,
+    scope: 'openid profile' as string | null,
+    approved_at: null as string | null,
+    denied_at: null as string | null,
+    expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+    polled_at: null as string | null,
+    created_at: '2024-01-01T00:00:00Z',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(findDeviceCodeByUserCode).mockResolvedValue(mockDeviceCodeForVerify as never);
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(approveDeviceCode).mockResolvedValue(undefined as never);
+    vi.mocked(denyDeviceCode).mockResolvedValue(undefined as never);
+    vi.mocked(parseAllowedScopes).mockReturnValue(['openid', 'profile'] as never);
+  });
+
+  async function postVerify(body: Record<string, unknown>) {
+    const app = buildDeviceApp();
+    return app.request(
+      new Request(`${baseUrl}/api/device/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+  }
+
+  // 1. ボディパース失敗 → 400 BAD_REQUEST
+  it('ボディパース失敗 → 400 BAD_REQUEST', async () => {
+    const app = buildDeviceApp();
+    const res = await app.request(
+      new Request(`${baseUrl}/api/device/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: 'not-json{{{',
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json<{ error: { code: string } }>();
+    expect(json.error.code).toBe('BAD_REQUEST');
+  });
+
+  // 2. user_code 未指定 → 400 BAD_REQUEST
+  it('user_code 未指定 → 400 BAD_REQUEST', async () => {
+    const res = await postVerify({});
+    expect(res.status).toBe(400);
+    const json = await res.json<{ error: { code: string } }>();
+    expect(json.error.code).toBe('BAD_REQUEST');
+  });
+
+  // 3. action 不正値（"cancel"）→ 400 BAD_REQUEST（早期バリデーション）
+  it('action 不正値 → 400 BAD_REQUEST（DBアクセス前に弾く）', async () => {
+    const res = await postVerify({ user_code: validUserCode, action: 'cancel' });
+    expect(res.status).toBe(400);
+    const json = await res.json<{ error: { code: string } }>();
+    expect(json.error.code).toBe('BAD_REQUEST');
+    // 不正なactionは早期バリデーションで弾かれるため、DBアクセスは不要
+    expect(findDeviceCodeByUserCode).not.toHaveBeenCalled();
+  });
+
+  // 4. user_code フォーマット不正 → 400 BAD_REQUEST
+  it('user_code フォーマット不正 → 400 BAD_REQUEST', async () => {
+    const res = await postVerify({ user_code: 'INVALID!' });
+    expect(res.status).toBe(400);
+    const json = await res.json<{ error: { code: string } }>();
+    expect(json.error.code).toBe('BAD_REQUEST');
+  });
+
+  // 5. user_code 不存在 → 404 INVALID_CODE
+  it('user_code 不存在 → 404 INVALID_CODE', async () => {
+    vi.mocked(findDeviceCodeByUserCode).mockResolvedValue(null);
+    const res = await postVerify({ user_code: validUserCode });
+    expect(res.status).toBe(404);
+    const json = await res.json<{ error: { code: string } }>();
+    expect(json.error.code).toBe('INVALID_CODE');
+  });
+
+  // 6. 期限切れ → 400 CODE_EXPIRED
+  it('期限切れ → 400 CODE_EXPIRED', async () => {
+    vi.mocked(findDeviceCodeByUserCode).mockResolvedValue({
+      ...mockDeviceCodeForVerify,
+      expires_at: new Date(Date.now() - 1000).toISOString(),
+    } as never);
+    const res = await postVerify({ user_code: validUserCode });
+    expect(res.status).toBe(400);
+    const json = await res.json<{ error: { code: string } }>();
+    expect(json.error.code).toBe('CODE_EXPIRED');
+  });
+
+  // 7. 承認済み状態（approved_at 設定済み）→ 400 CODE_ALREADY_USED
+  it('承認済み状態 → 400 CODE_ALREADY_USED', async () => {
+    vi.mocked(findDeviceCodeByUserCode).mockResolvedValue({
+      ...mockDeviceCodeForVerify,
+      approved_at: '2024-01-01T00:00:00Z',
+      user_id: 'user-1',
+    } as never);
+    const res = await postVerify({ user_code: validUserCode });
+    expect(res.status).toBe(400);
+    const json = await res.json<{ error: { code: string } }>();
+    expect(json.error.code).toBe('CODE_ALREADY_USED');
+  });
+
+  // 8. 拒否済み状態（denied_at 設定済み）→ 400 CODE_ALREADY_USED
+  it('拒否済み状態 → 400 CODE_ALREADY_USED', async () => {
+    vi.mocked(findDeviceCodeByUserCode).mockResolvedValue({
+      ...mockDeviceCodeForVerify,
+      denied_at: '2024-01-01T00:00:00Z',
+    } as never);
+    const res = await postVerify({ user_code: validUserCode });
+    expect(res.status).toBe(400);
+    const json = await res.json<{ error: { code: string } }>();
+    expect(json.error.code).toBe('CODE_ALREADY_USED');
+  });
+
+  // 9. action なし（情報取得）→ 200 { data: { service_name, scopes } }
+  it('action なし → 200 サービス情報を返す', async () => {
+    const res = await postVerify({ user_code: validUserCode });
+    expect(res.status).toBe(200);
+    const json = await res.json<{ data: { service_name: string; scopes: string[] } }>();
+    expect(json.data.service_name).toBe('Test Service');
+    expect(Array.isArray(json.data.scopes)).toBe(true);
+  });
+
+  // 10. action = "approve" → 200 { status: "approved" }
+  it('action = "approve" → 200 approved', async () => {
+    const res = await postVerify({ user_code: validUserCode, action: 'approve' });
+    expect(res.status).toBe(200);
+    const json = await res.json<{ status: string }>();
+    expect(json.status).toBe('approved');
+    expect(approveDeviceCode).toHaveBeenCalledWith(
+      mockEnv.DB,
+      mockDeviceCodeForVerify.id,
+      expect.any(String)
+    );
+  });
+
+  // 11. action = "deny" → 200 { status: "denied" }
+  it('action = "deny" → 200 denied', async () => {
+    const res = await postVerify({ user_code: validUserCode, action: 'deny' });
+    expect(res.status).toBe(200);
+    const json = await res.json<{ status: string }>();
+    expect(json.status).toBe('denied');
+    expect(denyDeviceCode).toHaveBeenCalledWith(mockEnv.DB, mockDeviceCodeForVerify.id);
+  });
+
+  // 12. ハイフン付き user_code の正規化（"ABCD-EFGH" → 正常処理）
+  it('ハイフン付き user_code を正規化して正常処理', async () => {
+    const res = await postVerify({ user_code: 'ABCD-EFGH' });
+    expect(res.status).toBe(200);
+    // findDeviceCodeByUserCode には正規化後（ハイフンなし）の値が渡される
+    expect(findDeviceCodeByUserCode).toHaveBeenCalledWith(mockEnv.DB, 'ABCDEFGH');
   });
 });
