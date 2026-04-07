@@ -483,3 +483,22 @@
 - ~~**oauth.ts**: クライアントパラメータ（state, scope 等）の長さ検証なし~~ ✅ **対応済み（2026-04-07）**
   - 全クエリパラメータ（client_id: 128, redirect_uri: 2048, state: 2048, code_challenge: 256, code_challenge_method: 16, scope: 1024, nonce: 2048）に長さ上限チェックを追加
   - 上限超過時は 400 Bad Request を返す（DoS・過大入力対策）
+
+## 2026-04-07 コードレビュー対応②
+
+### auth.ts 期限切れトークン unrevoke 削除（✅ 対応済み）
+
+**問題**: `POST /auth/refresh` エンドポイントで、期限切れトークンに対して `attemptUnrevokeToken` を呼んでいた。`token.ts` の `handleRefreshTokenGrant` では意図的に削除済みの呼び出しが残存していた。
+
+**修正内容**:
+- 期限切れ時の `attemptUnrevokeToken` 呼び出しを削除
+- コメントを `token.ts` の意図と揃えて更新
+- これにより、失効済み期限切れトークンの再提示で reuse detection が正しく機能するようになる
+
+### auth.ts link-intent エラーハンドリング追加（✅ 対応済み）
+
+**問題**: `/auth/link-intent` エンドポイントで `createAuthCode` が try/catch なしで呼ばれており、D1 書き込み失敗時に 500 エラーが素通りしていた。
+
+**修正内容**:
+- `createAuthCode` を try/catch で囲み、失敗時に `INTERNAL_ERROR` 500 を返すように修正
+- `/auth/callback` の対応（2026-04-07 対応①）と挙動を統一
