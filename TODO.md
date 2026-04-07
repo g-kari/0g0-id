@@ -21,14 +21,20 @@
 - ✅ **`device.ts`: `/code` エンドポイントの `invalid_client` ステータスコード統一**
   - `400` → `401`（`handleDeviceCodeGrant` の同エラーと統一、RFC 6749 §5.2推奨）
 
+- ✅ **`/verify` エンドポイントのテストカバレッジ追加**
+  - IdP側（`workers/id`）での approve/deny/期限切れ/承認済み/拒否済み状態のテストを追加
+  - 各状態の正常系・異常系を網羅的にカバー（2026-04-08）
+
+- ✅ **`users.ts` の `PATCH /:id/role` / `PATCH /:id/ban` の自己変更ガード調査**
+  - アクセストークンの `sub` は内部UUID（ペアワイズsubではない）であることを確認
+  - `tokenUser.sub`（内部UUID）と `targetId`（内部UUID）は同じ空間で比較されており、バグなし
+  - 自己変更ガードは正しく機能している（2026-04-08）
+
 ## 残課題（要対応）
 
-- **`/verify` エンドポイントのテストカバレッジ不足**
-  - IdP側（`workers/id`）での approve/deny/期限切れ/承認済み/拒否済み状態のテストが存在しない
-  - `metrics.ts` の `/active-users/daily` エンドポイントもテスト未対応（`parseDays` エラーパス含む）
-
-- **`users.ts` の `PATCH /:id/role` / `PATCH /:id/ban` の自己変更ガード要確認**
-  - `tokenUser.sub`（JWTのsub、ペアワイズ可能性あり）と `targetId`（内部UUID）の比較が正しいか確認が必要
+- **`metrics.ts` の `/active-users/daily` エンドポイントのテスト未対応**
+  - `parseDays` エラーパス含めテストが存在しない
+  - `GET /api/metrics/active-users/daily` の正常系・異常系カバレッジ追加が必要
 
 ## テストカバレッジ追加（2026-04-07）
 
