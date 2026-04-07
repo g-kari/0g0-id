@@ -456,6 +456,14 @@
   - `token.ts` と同じパターン（`findRefreshTokenByHash` 再クエリ）に修正、エラーログも追加
   - テスト2件追加（issueTokenPair失敗時のreuse_detected競合 + 通常エラー）
 
+## コードレビュー対応（2026-04-07, 追記）
+
+- ✅ **device.ts: POST /api/device/verify の action 早期バリデーション**
+  - `action` が `'approve'`/`'deny'` 以外の不正値のとき、DB問い合わせより前に 400 を返すよう修正
+  - 不要な `findDeviceCodeByUserCode` クエリを排除し、後続の重複チェックを削除
+- ✅ **rate-limit.ts: `warnedBindings` コメントを Cloudflare Workers isolate の実態に合わせて修正**
+  - 「1ワーカーインスタンスにつき1回」→ isolate内リクエスト間で状態共有・コールドスタートでリセットされる旨を明記
+
 ## 2026-04-07（コードレビュー対応）
 
 ### ✅ 対応済み
