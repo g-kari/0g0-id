@@ -474,6 +474,7 @@ async function resolveXProvider(
         id,
         xSub: xUser.id,
         email: xEmail,
+        isPlaceholderEmail: true,
         name: xUser.name ?? xUser.username,
         picture: xUser.profile_image_url ?? null,
       }),
@@ -804,7 +805,10 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
   const callbackUri = `${c.env.IDP_ORIGIN}${CALLBACK_PATH}`;
 
   // providerの検証（Cookie改ざん対策）
-  const provider: OAuthProvider = stateData.provider ?? 'google';
+  if (!stateData.provider) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Missing provider in state' } }, 400);
+  }
+  const provider: OAuthProvider = stateData.provider;
   if (!isValidProvider(provider)) {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid provider in state' } }, 400);
   }

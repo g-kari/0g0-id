@@ -211,6 +211,7 @@ export async function upsertXUser(
     id: string;
     xSub: string;
     email: string; // X APIは有料プランでないとメール取得不可のため常に仮メール
+    isPlaceholderEmail: boolean;
     name: string;
     picture: string | null;
   }
@@ -223,8 +224,8 @@ export async function upsertXUser(
     name: params.name,
     picture: params.picture,
     profileEmailUpdate: undefined,
-    emailLink: undefined,
-    newUserEmailVerified: false,
+    emailLink: params.isPlaceholderEmail ? undefined : {},
+    newUserEmailVerified: !params.isPlaceholderEmail,
   });
 }
 

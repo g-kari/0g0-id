@@ -420,6 +420,7 @@ describe('upsertXUser', () => {
       id: 'user-new',
       xSub: 'x-sub-1',
       email: 'x_1@x.placeholder',
+      isPlaceholderEmail: true,
       name: 'X User',
       picture: null,
     });
@@ -433,6 +434,7 @@ describe('upsertXUser', () => {
       id: 'user-new',
       xSub: 'x-sub-1',
       email: 'x_1@x.placeholder',
+      isPlaceholderEmail: true,
       name: 'New X User',
       picture: 'https://example.com/avatar.jpg',
     });
@@ -446,6 +448,7 @@ describe('upsertXUser', () => {
         id: 'user-new',
         xSub: 'x-sub-new',
         email: 'x_new@x.placeholder',
+        isPlaceholderEmail: true,
         name: 'Name',
         picture: null,
       })
