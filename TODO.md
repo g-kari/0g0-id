@@ -1,5 +1,21 @@
 # TODO
 
+## バグ修正・RFC準拠改善（2026-04-07, 追記）
+
+- ✅ **`/api/token/revoke`: DB例外時に `invalid_client` (RFC違反) → `server_error` 500 に修正**
+  - `authenticateService` が例外をスローした場合、ステータス500なのに `invalid_client` を返していた（RFC 6749 §5.2 違反）
+  - `{ error: 'server_error' }` 500 に修正
+  - テスト1件追加（findServiceByClientId throws → server_error 500）
+
+- ✅ **`handleAuthorizationCodeGrant`: `code_verifier` 必須チェックを RFC 7636 §4.4 準拠に修正**
+  - `code_verifier` を無条件で必須チェックしていたため、PKCE を使わないコンフィデンシャルクライアントが弾かれていた
+  - `authCode.code_challenge` が存在する場合のみ `code_verifier` を必須化するよう変更
+  - テスト1件追加（Confidentialクライアント + code_challenge なし + code_verifier 未送信 → 200 成功）
+
+- ✅ **`/auth/link-intent`: catch ブロックにログ追加**
+  - `createAuthCode` 失敗時の catch ブロックで `authLogger.error` が呼ばれていなかった
+  - `authLogger.error('[link-intent] Failed to create link token', err)` を追加（他エンドポイントと統一）
+
 ## セキュリティ修正・コードレビュー対応（2026-04-07, 追記）
 
 - ✅ **`/auth/logout`: アクセストークン未失効バグ修正**
