@@ -22,7 +22,7 @@
 
 - ✅ **`/auth/authorize`: `code_challenge` フォーマット検証追加（RFC 7636 §4.2）**
   - S256 の `code_challenge` は `BASE64URL(SHA256(code_verifier))` = 43文字の Base64url 文字列
-  - `/^[A-Za-z0-9\-_]{43}$/` で不正フォーマットを早期拒否（ストレージ DOS 対策）
+  - `/^[A-Za-z0-9\\-_]{43}$/` で不正フォーマットを早期拒否（ストレージ DOS 対策）
   - テスト2件追加（短すぎる・長すぎる code_challenge）
 
 - ✅ **`/api/token`: JSON ボディの非 string 値をフィルタリング**
@@ -61,7 +61,7 @@
   - テスト3件追加（有効トークン/無効トークン/ヘッダーなし）
 
 - ✅ **`/api/token/introspect`: `WWW-Authenticate` ヘッダー修正**
-  - `Bearer realm="0g0-id"` → `Basic realm="0g0-id"` （RFC 7662準拠）
+  - `Bearer realm=\"0g0-id\"` → `Basic realm=\"0g0-id\"` （RFC 7662準拠）
   - introspect は Basic 認証を使うため Bearer は誤りだった
   - テスト更新: `Basic` ヘッダーの返却を明示的に検証
 
@@ -118,7 +118,7 @@
   - `(params.allowed_scopes as string[]).join(' ')` → `JSON.stringify(params.allowed_scopes as string[])` に変更
   - デフォルト値も `'openid profile email'` → `JSON.stringify(['openid', 'profile', 'email'])` に修正
   - `parseAllowedScopes` はJSON配列形式を期待するため、MCPで作成したサービスのスコープが常に空配列として扱われていた
-  - テスト修正（`'openid email'` → `'["openid","email"]'`）+ デフォルト値確認テスト追加
+  - テスト修正（`'openid email'` → `'[\"openid\",\"email\"]'`）+ デフォルト値確認テスト追加
 
 ## セキュリティ / アーキテクチャ課題
 
@@ -442,7 +442,7 @@
 
 ### 低優先度（未対応）
 
-- [x] ~~`token.ts`: RFC 6749 §5.2 準拠 — `invalid_client` で401を返す際に `WWW-Authenticate: Basic realm="..."` ヘッダーが欠落~~ (2026-04-05, c.header()で対応)
+- [x] ~~`token.ts`: RFC 6749 §5.2 準拠 — `invalid_client` で401を返す際に `WWW-Authenticate: Basic realm=\"...\"` ヘッダーが欠落~~ (2026-04-05, c.header()で対応)
 - [x] ~~`rate-limit.ts`: `getClientIp` が `null` を返す際のフォールバック `'unknown'` キーで全リクエストが集約されるリスク~~ ✅ (2026-04-05, `key === 'unknown'` 時に warn ログ追加。挙動はX-Forwarded-For偽装防止の意図的設計)
 - [x] ~~`middleware/auth.ts`: `rejectBannedUserMiddleware` で削除済みユーザーと停止ユーザーが同じ `UNAUTHORIZED` レスポンスになっている~~ ✅ (2026-04-05, クライアントレスポンスは同一のまま。サーバーサイドで warn ログにより区別可能に)
 
@@ -496,7 +496,7 @@
 - ~~`oauth-authorization-server` エンドポイント (RFC 8414) に `claims_supported` / `response_modes_supported` / `subject_types_supported` が未追加（OIDCディスカバリの一貫性）~~ ✅ (2026-04-06, subject_types_supported / claims_supported 追加、テスト4件追加)
 - ~~CSPヘッダーに `script-src 'none'` を明示的に追加（`default-src 'none'` からの意図明確化）~~ ✅ (2026-04-06)
 - ~~SQLite `datetime('now')` → `strftime('%Y-%m-%dT%H:%M:%SZ', 'now')` でISO 8601準拠に（Node.jsテスト環境での `new Date()` パース互換性）~~ ✅ (2026-04-06, commit a9d8f25)
-- ~~nonce 形式バリデーション（長さのみ → 制御文字等の排除も検討）~~ ✅ (2026-04-06, \x00-\x1F, \x7F を拒否)
+- ~~nonce 形式バリデーション（長さのみ → 制御文字等の排除も検討）~~ ✅ (2026-04-06, \\x00-\\x1F, \\x7F を拒否)
 - ~~テスト網羅: グレースピリオドのエッジケース（BAN済みユーザー再BAN等）~~ ✅ (2026-04-06, グレースピリオド内TOKEN_ROTATED + revoked_at null の2ケースを auth.test.ts / token.test.ts に追加)
 
 ## テストカバレッジ追加（2026-04-07）
@@ -518,7 +518,7 @@
 ## セキュリティ強化（2026-04-06, コードレビュー起因）
 
 - ✅ **`parseAllowedScopes`: スコープ文字種バリデーション追加**
-  - `VALID_SCOPE_RE = /^[\w:.\-]+$/` を追加し、空白・制御文字を含む要素を除外
+  - `VALID_SCOPE_RE = /^[\\w:.\\-]+$/` を追加し、空白・制御文字を含む要素を除外
   - 悪意あるスコープ文字列（スペース混入、制御文字）がサービス設定に混入するリスクを排除
   - RFC 6749 §3.3 準拠
 - ✅ **`validateNonce` 関数を `scopes.ts` に追加 + nonce バリデーション共通化**
@@ -552,7 +552,7 @@
   - `/auth/callback` の `createAuthCode` 呼び出しが try/catch なし → D1 書き込み失敗時に 500 エラー
   - try/catch で包み、失敗時に `{ error: 'server_error' }` を返すよう修正
 - **セキュリティ修正: `/introspect` 401 時の `WWW-Authenticate` ヘッダー追加** (`workers/id/src/routes/token.ts`)
-  - RFC 7662 §2.2 準拠のため `WWW-Authenticate: Bearer realm="0g0-id"` を追加
+  - RFC 7662 §2.2 準拠のため `WWW-Authenticate: Bearer realm=\"0g0-id\"` を追加
 
 ### 未対応（次回対応候補）
 - ~~**token.ts**: `handleRefreshTokenGrant` で service_id ミスマッチ後の `attemptUnrevokeToken` に `reuse_detected` チェック漏れ → 並行リクエストでトークン状態が矛盾する可能性~~ ✅ **対応済み（2026-04-07）**
@@ -614,3 +614,19 @@
 - CF-Connecting-IP優先・ヘッダーなし時のnull返却・XFF単体はnull・IPv6対応を確認
 
 **テスト総数**: 720件（715 → 720）
+
+## 2026-04-07 コードレビュー対応（token.ts）
+
+### 対応済み ✅
+- `/revoke` JWT_PATTERNマッチ時のリフレッシュトークン失効スキップバグ修正
+  - JWT検証失敗時もリフレッシュトークン処理へフォールスルーするよう修正
+- `handleAuthorizationCodeGrant` 例外処理追加
+  - `issueTokenPair` / `signIdToken` 例外時に 500 server_error を返すよう修正
+- 上記2件のテスト追加（計91テスト）
+
+### 未対応・今後検討 📝
+- `introspectRefreshToken` / `introspectJwtToken` 内部の例外処理追加（DB障害時に active: false を返すべき）
+- `resolveEffectiveScope` が undefined 返却時のスコープ空トークン発行問題（invalid_scope を返すべき）
+- パブリッククライアント判定ロジックの分散（`resolveOAuthClient` 戻り値にクライアント種別を含める）
+- `handleAuthorizationCodeGrant` / `handleRefreshTokenGrant` の型定義冗長化（型エイリアス導入）
+- `/revoke` でJWT形式のリフレッシュトークン（JWT_PATTERNマッチ、JWT検証失敗）のテスト補強
