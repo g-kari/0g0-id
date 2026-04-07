@@ -2367,10 +2367,14 @@ type OpenApiSpec = {
  * OpenAPI 仕様オブジェクトをAI/人間が読みやすいMarkdownに変換する。
  * JSなしで参照可能な /docs/external.md / /docs/openapi.md エンドポイント向け。
  */
-function openApiToMarkdown(spec: OpenApiSpec): string {
+function openApiToMarkdown(spec: OpenApiSpec, htmlUrl?: string): string {
   const lines: string[] = [];
   lines.push(`# ${spec.info.title}`);
   lines.push('');
+  if (htmlUrl) {
+    lines.push(`> インタラクティブ版（Swagger UI）: [${htmlUrl}](${htmlUrl})`);
+    lines.push('');
+  }
   if (spec.info.description) {
     lines.push(spec.info.description);
     lines.push('');
@@ -2437,15 +2441,20 @@ function openApiToMarkdown(spec: OpenApiSpec): string {
 }
 
 // ─── Scalar HTML テンプレート ────────────────────────────────────────
-function scalarHtml(specUrl: string, title: string): string {
+function scalarHtml(specUrl: string, title: string, markdownUrl: string): string {
   return `<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
+  <style>
+    #ai-link { position: fixed; bottom: 16px; right: 16px; z-index: 9999; background: #1a1a1a; color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px; text-decoration: none; font-family: sans-serif; opacity: 0.8; }
+    #ai-link:hover { opacity: 1; }
+  </style>
 </head>
 <body>
+  <a id="ai-link" href="${markdownUrl}">📄 Markdown版 (AI向け)</a>
   <script id="api-reference" data-url="${specUrl}"></script>
   <script src="${SCALAR_CDN}" crossorigin="anonymous"></script>
 </body>
@@ -2456,26 +2465,26 @@ function scalarHtml(specUrl: string, title: string): string {
 // IdP 開発者向け: 全API（内部利用）
 app.get('/', (c) => {
   c.header('Content-Security-Policy', DOCS_CSP);
-  return c.html(scalarHtml('/docs/openapi.json', '0g0 ID API — IdP 開発者向け'));
+  return c.html(scalarHtml('/docs/openapi.json', '0g0 ID API — IdP 開発者向け', '/docs/openapi.md'));
 });
 // 内部向け仕様は開発者ネットワーク内での参照を想定。本番では Cloudflare Access 等で保護すること
 app.get('/openapi.json', (c) => c.json(INTERNAL_OPENAPI));
 // AI・CLIツール向けMarkdown版（JSなしで参照可能）
 app.get('/openapi.md', (c) => {
   c.header('Content-Type', 'text/markdown; charset=utf-8');
-  return c.body(openApiToMarkdown(INTERNAL_OPENAPI as OpenApiSpec));
+  return c.body(openApiToMarkdown(INTERNAL_OPENAPI as OpenApiSpec, 'https://id.0g0.xyz/docs'));
 });
 
 // 外部連携サービス向け: 外部API + 連携フロー
 app.get('/external', (c) => {
   c.header('Content-Security-Policy', DOCS_CSP);
-  return c.html(scalarHtml('/docs/external/openapi.json', '0g0 ID API — 外部連携サービス向け'));
+  return c.html(scalarHtml('/docs/external/openapi.json', '0g0 ID API — 外部連携サービス向け', '/docs/external.md'));
 });
 app.get('/external/openapi.json', (c) => c.json(EXTERNAL_OPENAPI));
 // AI・CLIツール向けMarkdown版（JSなしで参照可能）
 app.get('/external.md', (c) => {
   c.header('Content-Type', 'text/markdown; charset=utf-8');
-  return c.body(openApiToMarkdown(EXTERNAL_OPENAPI as OpenApiSpec));
+  return c.body(openApiToMarkdown(EXTERNAL_OPENAPI as OpenApiSpec, 'https://id.0g0.xyz/docs/external'));
 });
 
 export default app;
