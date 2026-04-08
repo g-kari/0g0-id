@@ -57,6 +57,20 @@
 
 ## 残課題（要対応）
 
+## テストカバレッジ追加（2026-04-09）
+
+- ✅ **`token-recovery.ts` / `refresh-token-rotation.ts`: ユニットテスト14件追加**
+  - `workers/id/src/utils/token-recovery.test.ts` を新規作成（5テスト）
+    - `reuse_detected` トークン → unrevokeRefreshToken 未呼び出し
+    - null トークン → unrevokeRefreshToken 呼び出し
+    - `rotation` トークン → unrevokeRefreshToken 呼び出し
+    - `unrevokeRefreshToken` が false を返しても例外なし
+    - DB例外時も reject せず resolve
+  - `workers/id/src/utils/refresh-token-rotation.test.ts` を新規作成（9テスト）
+    - `validateAndRevokeRefreshToken`: 正常系・未存在・TOKEN_ROTATED（30秒以内）・TOKEN_REUSE（30秒超）・rotation以外失効
+    - `issueTokenPairWithRecovery`: 成功・TOKEN_REUSE・INTERNAL_ERROR（rotation）・INTERNAL_ERROR（null）
+  - 全1701テストパス
+
 ## コードレビュー（2026-04-09）
 
 - ✅ **`services.ts`: `createAdminAuditLog` try-catch 統一**
