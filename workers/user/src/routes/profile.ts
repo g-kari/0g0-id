@@ -41,7 +41,7 @@ app.get('/login-stats', async (c) => {
   const daysResult = parseDays(c.req.query('days'), { maxDays: 365 });
   if (daysResult !== undefined) {
     if ('error' in daysResult) {
-      return c.json({ error: { code: 'INVALID_PARAMETER', message: daysResult.error } }, 400);
+      return c.json({ error: { code: 'INVALID_PARAMETER', message: daysResult.error.message } }, 400);
     }
     url.searchParams.set('days', String(daysResult.days));
   }

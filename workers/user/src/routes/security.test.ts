@@ -180,7 +180,7 @@ describe('user BFF — /api/me/security', () => {
 
     it('IdPが400を返した場合はそのまま伝播する', async () => {
       const idpFetch = mockIdp(400, {
-        error: { code: 'BAD_REQUEST', message: 'days は1〜90の整数で指定してください' },
+        error: { code: 'BAD_REQUEST', message: 'days は1〜365の整数で指定してください' },
       });
       const app = buildApp(idpFetch);
 
@@ -189,6 +189,127 @@ describe('user BFF — /api/me/security', () => {
       });
 
       expect(res.status).toBe(400);
+    });
+
+    it('days=100はBFFで拒否されずIdPに転送する（maxDays=365）', async () => {
+      const idpFetch = mockIdp(200, { ...mockLoginStats, days: 100 });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/security/login-stats?days=100', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(new URL(calledReq.url).searchParams.get('days')).toBe('100');
+    });
+
+    it('days=366はBFFで400を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/security/login-stats?days=366', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(400);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /login-trends — ログイントレンド取得', () => {
+    const mockLoginTrends = {
+      data: [
+        { date: '2024-01-01', count: 5 },
+        { date: '2024-01-02', count: 3 },
+      ],
+      days: 30,
+    };
+
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/security/login-trends');
+
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('セッションありでIdPへプロキシしてログイントレンドを返す', async () => {
+      const idpFetch = mockIdp(200, mockLoginTrends);
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/security/login-trends', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<typeof mockLoginTrends>();
+      expect(body.data).toHaveLength(2);
+      expect(body.days).toBe(30);
+    });
+
+    it('IdPの /api/users/me/login-trends エンドポイントを呼び出す', async () => {
+      const idpFetch = mockIdp(200, mockLoginTrends);
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/me/security/login-trends', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(new URL(calledReq.url).pathname).toBe('/api/users/me/login-trends');
+      expect(calledReq.headers.get('Authorization')).toBe('Bearer mock-access-token');
+    });
+
+    it('daysクエリパラメータをIdPに転送する', async () => {
+      const idpFetch = mockIdp(200, { ...mockLoginTrends, days: 14 });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/me/security/login-trends?days=14', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(new URL(calledReq.url).searchParams.get('days')).toBe('14');
+    });
+
+    it('daysパラメータなしの場合はURLに余分なパラメータを含まない', async () => {
+      const idpFetch = mockIdp(200, mockLoginTrends);
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/me/security/login-trends', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(new URL(calledReq.url).searchParams.has('days')).toBe(false);
+    });
+
+    it('days=100はBFFで拒否されずIdPに転送する（maxDays=365）', async () => {
+      const idpFetch = mockIdp(200, { ...mockLoginTrends, days: 100 });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/security/login-trends?days=100', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(new URL(calledReq.url).searchParams.get('days')).toBe('100');
+    });
+
+    it('days=366はBFFで400を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/security/login-trends?days=366', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(400);
+      expect(idpFetch).not.toHaveBeenCalled();
     });
   });
 });

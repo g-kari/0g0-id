@@ -15,13 +15,13 @@ app.get('/summary', async (c) => {
   return proxyResponse(res);
 });
 
-// GET /api/me/security/login-stats — プロバイダー別ログイン統計（days: 1〜90、デフォルト30）
+// GET /api/me/security/login-stats — プロバイダー別ログイン統計（days: 1〜365、デフォルト30）
 app.get('/login-stats', async (c) => {
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/me/login-stats`);
-  const daysResult = parseDays(c.req.query('days'));
+  const daysResult = parseDays(c.req.query('days'), { maxDays: 365 });
   if (daysResult !== undefined) {
     if ('error' in daysResult) {
-      return c.json({ error: { code: 'INVALID_PARAMETER', message: daysResult.error } }, 400);
+      return c.json({ error: { code: 'INVALID_PARAMETER', message: daysResult.error.message } }, 400);
     }
     url.searchParams.set('days', String(daysResult.days));
   }
@@ -29,13 +29,13 @@ app.get('/login-stats', async (c) => {
   return proxyResponse(res);
 });
 
-// GET /api/me/security/login-trends — 日別ログイントレンド（days: 1〜90、デフォルト30）
+// GET /api/me/security/login-trends — 日別ログイントレンド（days: 1〜365、デフォルト30）
 app.get('/login-trends', async (c) => {
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/me/login-trends`);
-  const daysResult = parseDays(c.req.query('days'));
+  const daysResult = parseDays(c.req.query('days'), { maxDays: 365 });
   if (daysResult !== undefined) {
     if ('error' in daysResult) {
-      return c.json({ error: { code: 'INVALID_PARAMETER', message: daysResult.error } }, 400);
+      return c.json({ error: { code: 'INVALID_PARAMETER', message: daysResult.error.message } }, 400);
     }
     url.searchParams.set('days', String(daysResult.days));
   }
