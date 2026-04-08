@@ -551,7 +551,8 @@ app.post('/revoke', externalApiRateLimitMiddleware, async (c) => {
     try {
       const payload = await verifyAccessToken(token, c.env.JWT_PUBLIC_KEY, c.env.IDP_ORIGIN, c.env.IDP_ORIGIN);
       // 自サービスが発行したトークンかつ有効期限内のものだけブロックリストに追加
-      if (payload.jti && payload.cid === service.client_id && payload.exp && payload.exp > Math.floor(Date.now() / 1000)) {
+      // cidが未設定の旧BFFセッショントークンはスキップ（introspectと同じ設計）
+      if (payload.jti && payload.cid && payload.cid === service.client_id && payload.exp && payload.exp > Math.floor(Date.now() / 1000)) {
         await addRevokedAccessToken(c.env.DB, payload.jti, payload.exp);
       }
       jwtVerified = true;
