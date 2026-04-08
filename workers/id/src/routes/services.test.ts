@@ -907,6 +907,47 @@ describe('POST /api/services/:id/redirect-uris', () => {
     });
     expect(vi.mocked(createAdminAuditLog)).not.toHaveBeenCalled();
   });
+
+  it('http:// URI（非localhost）は登録を拒否して400を返す', async () => {
+    const res = await sendRequest(app, '/api/services/service-1/redirect-uris', {
+      method: 'POST',
+      body: { uri: 'http://app.example.com/callback' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('https:// URI（非localhost）は登録を許可する', async () => {
+    vi.mocked(normalizeRedirectUri).mockReturnValue('https://app.example.com/callback');
+    const res = await sendRequest(app, '/api/services/service-1/redirect-uris', {
+      method: 'POST',
+      body: { uri: 'https://app.example.com/callback' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('http://localhost の URI は開発用として登録を許可する', async () => {
+    vi.mocked(normalizeRedirectUri).mockReturnValue('http://localhost:3000/callback');
+    const res = await sendRequest(app, '/api/services/service-1/redirect-uris', {
+      method: 'POST',
+      body: { uri: 'http://localhost:3000/callback' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('http://127.0.0.1 の URI は開発用として登録を許可する', async () => {
+    vi.mocked(normalizeRedirectUri).mockReturnValue('http://127.0.0.1:8080/callback');
+    const res = await sendRequest(app, '/api/services/service-1/redirect-uris', {
+      method: 'POST',
+      body: { uri: 'http://127.0.0.1:8080/callback' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(201);
+  });
 });
 
 // ===== POST /api/services/:id/rotate-secret（管理者のみ）=====
