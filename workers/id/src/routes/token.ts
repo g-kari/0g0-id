@@ -31,6 +31,17 @@ const tokenLogger = createLogger('token');
 const app = new Hono<{ Bindings: IdpEnv }>();
 
 /**
+ * `handleAuthorizationCodeGrant` / `handleRefreshTokenGrant` で共通利用するコンテキスト型。
+ * Hono の Context から必要な最小インターフェースのみ抽出。
+ */
+type TokenHandlerContext = {
+  env: IdpEnv;
+  req: { header: (name: string) => string | undefined };
+  json: (data: unknown, status?: number) => Response;
+  header: (name: string, value: string) => void;
+};
+
+/**
  * RFC 7009 / RFC 7662 準拠: リクエストボディのパース。
  * application/x-www-form-urlencoded（RFC標準）と application/json（後方互換）の両方に対応。
  */
@@ -168,7 +179,7 @@ app.post('/', tokenApiRateLimitMiddleware, tokenApiClientRateLimitMiddleware, as
  * authorization_code グラント処理
  */
 async function handleAuthorizationCodeGrant(
-  c: { env: IdpEnv; req: { header: (name: string) => string | undefined }; json: (data: unknown, status?: number) => Response; header: (name: string, value: string) => void },
+  c: TokenHandlerContext,
   params: Record<string, string>
 ): Promise<Response> {
   const code = params['code'];
@@ -284,7 +295,7 @@ async function handleAuthorizationCodeGrant(
  * refresh_token グラント処理
  */
 async function handleRefreshTokenGrant(
-  c: { env: IdpEnv; req: { header: (name: string) => string | undefined }; json: (data: unknown, status?: number) => Response; header: (name: string, value: string) => void },
+  c: TokenHandlerContext,
   params: Record<string, string>
 ): Promise<Response> {
   const refreshTokenRaw = params['refresh_token'];
