@@ -28,10 +28,8 @@ import {
   sha256,
   signIdToken,
   findRefreshTokenByHash,
-  findAndRevokeRefreshToken,
   findUserById,
   revokeRefreshToken,
-  revokeTokenFamily,
   upsertUser,
   upsertLineUser,
   upsertTwitchUser,
@@ -61,7 +59,7 @@ import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddlewar
 import { serviceBindingMiddleware } from '../middleware/service-binding';
 import { resolveEffectiveScope, validateNonce } from '../utils/scopes';
 import { issueTokenPair, ACCESS_TOKEN_TTL_SECONDS } from '../utils/token-pair';
-import { attemptUnrevokeToken } from '../utils/token-recovery';
+import { validateAndRevokeRefreshToken, issueTokenPairWithRecovery } from '../utils/refresh-token-rotation';
 
 const ExchangeSchema = z.object({
   code: z.string().min(1, 'code is required'),
@@ -1059,30 +1057,17 @@ app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
 
   const tokenHash = await sha256(result.data.refresh_token);
 
-  // アトミックに失効させる（TOCTOU競合状態防止: RFC 6819 §5.2.2.3）
-  const storedToken = await findAndRevokeRefreshToken(c.env.DB, tokenHash, 'rotation');
-
-  if (!storedToken) {
-    // null の場合: 存在しないか既に失効済み → reuse detection チェック
-    const existingToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
-    if (existingToken) {
-      // rotationで失効済み = 過去に正常ローテーションされたトークンの再利用 → リプレイ攻撃
-      // それ以外の理由（user_logout, admin_revoke等）で失効 → 正当な失効なのでfamily全失効は不要
-      if (existingToken.revoked_reason === 'rotation') {
-        // 並行リクエスト対策: rotation から 30 秒以内の再提示は BFF の並行リフレッシュ競合の可能性が高い。
-        // この場合はファミリー全失効を行わず、新トークンで再試行させる。
-        // 30 秒を超えた再提示は本物のリプレイ攻撃とみなしてファミリー全失効する。
-        const revokedMs = existingToken.revoked_at ? new Date(existingToken.revoked_at).getTime() : 0;
-        if (Date.now() - revokedMs < 30_000) {
-          return c.json({ error: { code: 'TOKEN_ROTATED', message: 'Token already rotated, retry with new token' } }, 401);
-        }
-        await revokeTokenFamily(c.env.DB, existingToken.family_id, 'reuse_detected');
-        return c.json({ error: { code: 'TOKEN_REUSE', message: 'Token reuse detected' } }, 401);
-      }
-      return c.json({ error: { code: 'INVALID_TOKEN', message: 'Token has been revoked' } }, 401);
+  const validationResult = await validateAndRevokeRefreshToken(c.env.DB, tokenHash);
+  if (!validationResult.ok) {
+    if (validationResult.reason === 'TOKEN_ROTATED') {
+      return c.json({ error: { code: 'TOKEN_ROTATED', message: 'Token already rotated, retry with new token' } }, 401);
+    }
+    if (validationResult.reason === 'TOKEN_REUSE') {
+      return c.json({ error: { code: 'TOKEN_REUSE', message: 'Token reuse detected' } }, 401);
     }
     return c.json({ error: { code: 'INVALID_TOKEN', message: 'Token not found' } }, 401);
   }
+  const storedToken = validationResult.storedToken;
 
   // 有効期限チェック
   // 期限切れトークンは rotation 済みの状態のまま拒否する（unrevoke は不要かつ危険）。
@@ -1117,32 +1102,29 @@ app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
     refreshScope = storedToken.scope ?? resolveEffectiveScope(null, refreshService.allowed_scopes);
   }
 
-  // 新アクセストークン・リフレッシュトークン発行（ローテーション、同じfamily_id）
-  // issueTokenPair失敗時は旧トークンの失効を取り消してセッション消失を防止
-  let accessToken: string;
-  let newRefreshTokenRaw: string;
-  try {
-    const tokens = await issueTokenPair(c.env.DB, c.env, user, {
+  const issueResult = await issueTokenPairWithRecovery(
+    c.env.DB,
+    c.env,
+    user,
+    {
       serviceId: storedToken.service_id,
       clientId: refreshService?.client_id,
       familyId: storedToken.family_id,
       scope: refreshScope,
-    });
-    accessToken = tokens.accessToken;
-    newRefreshTokenRaw = tokens.refreshToken;
-  } catch (e) {
-    authLogger.error('handleRefresh: issueTokenPair failed', e);
-    // レース条件対策: 並行リクエストがreuse detectionを発動しfamily全体を
-    // 失効させた可能性がある。その場合はunrevokeせずTOKEN_REUSEを返す。
-    // findAndRevokeRefreshToken の RETURNING * は更新後の値を返すため storedToken.revoked_reason は
-    // 常に 'rotation' になる。concurrent な reuse_detected への書き換えを検知するには DB を再クエリする必要がある。
-    const currentToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
-    if (currentToken && currentToken.revoked_reason === 'reuse_detected') {
+    },
+    storedToken.id,
+    tokenHash,
+    authLogger,
+    'handleRefresh',
+  );
+  if (!issueResult.ok) {
+    if (issueResult.reason === 'TOKEN_REUSE') {
       return c.json({ error: { code: 'TOKEN_REUSE', message: 'Token reuse detected' } }, 401);
     }
-    await attemptUnrevokeToken(c.env.DB, storedToken.id, '[auth] issueTokenPair failure 後');
     return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Token operation failed' } }, 500);
   }
+  const accessToken = issueResult.accessToken;
+  const newRefreshTokenRaw = issueResult.refreshToken;
 
   return c.json({
     data: {
