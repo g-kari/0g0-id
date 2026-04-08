@@ -1,5 +1,13 @@
 # TODO
 
+## テストカバレッジ追加（2026-04-08）
+
+- ✅ **`service-auth.ts`: authenticateService / serviceAuthMiddleware ユニットテスト13件追加**
+  - `workers/id/src/utils/service-auth.test.ts` を新規作成
+  - `authenticateService`: ヘッダーなし・非Basicスキーム・無効Base64・コロンなし・サービス未発見・シークレット不一致・コロン複数・正常認証・DB障害（9テスト）
+  - `serviceAuthMiddleware`: DB障害→500・認証失敗→401・ヘッダーなし→401・正常認証→serviceをcontext設定（4テスト）
+  - 全1677テストパス
+
 ## バグ修正・RFC準拠改善（2026-04-08）
 
 - ✅ **`metrics.ts`: Promise.allにtry-catch追加**
