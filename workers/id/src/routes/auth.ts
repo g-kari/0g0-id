@@ -703,7 +703,7 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
 
   // BFF情報をstate cookieに結びつけて保存（provider / serviceId も含める）
   // HMAC-SHA256署名付きCookieで改ざんを防止する
-  const stateData = JSON.stringify({
+  const statePayload: OAuthStateCookieData = {
     idState,
     bffState,
     redirectTo,
@@ -713,7 +713,8 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
     ...(nonce ? { nonce } : {}),
     ...(codeChallenge ? { codeChallenge, codeChallengeMethod: codeChallengeMethod ?? 'S256' } : {}),
     ...(scope ? { scope } : {}),
-  });
+  };
+  const stateData = JSON.stringify(statePayload);
   const signedStateData = await signCookie(stateData, c.env.COOKIE_SECRET);
   setSecureCookie(c, STATE_COOKIE, signedStateData, 600); // 10分
   setSecureCookie(c, PKCE_COOKIE, idCodeVerifier, 600);
@@ -904,7 +905,7 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
     });
   } catch (err) {
     authLogger.error('[callback] Failed to create authorization code', err);
-    return c.json({ error: 'server_error', error_description: 'Failed to create authorization code' }, 500);
+    return c.json({ error: { code: 'SERVER_ERROR', message: 'Failed to create authorization code' } }, 500);
   }
 
   // BFFコールバックへリダイレクト
@@ -1069,7 +1070,7 @@ app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
   // ユーザー情報取得
   const user = await findUserById(c.env.DB, storedToken.user_id);
   if (!user) {
-    return c.json({ error: 'invalid_grant', error_description: 'User not found' }, 401);
+    return c.json({ error: { code: 'INVALID_GRANT', message: 'User not found' } }, 401);
   }
 
   // BANされたユーザーのトークン更新を拒否

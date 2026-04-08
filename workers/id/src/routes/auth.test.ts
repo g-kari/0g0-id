@@ -814,8 +814,8 @@ describe('POST /auth/refresh', () => {
       body: { refresh_token: 'valid-token' },
     });
     expect(res.status).toBe(401);
-    const body = await res.json<{ error: string }>();
-    expect(body.error).toBe('invalid_grant');
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INVALID_GRANT');
   });
 
   it('正常なリフレッシュ → 新しいトークンペアを返す', async () => {
