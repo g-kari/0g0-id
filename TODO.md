@@ -57,6 +57,14 @@
 
 ## 残課題（要対応）
 
+## コードレビュー（2026-04-09）
+
+- ✅ **`services.ts`: `createAdminAuditLog` try-catch 統一**
+  - `service.create` / `service.update` / `service.secret_rotated` / `service.owner_transferred` の4ハンドラで try-catch なしだった
+  - `service.delete` / `service.redirect_uri_added` 等と不一致を解消
+  - テスト4件追加（監査ログ失敗時も本来のレスポンスを返すことを確認）
+  - 全1681テストパス
+
 ## コードレビューで発見した問題（2026-04-08）
 
 **セキュリティ（要確認）**
