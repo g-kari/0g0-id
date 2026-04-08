@@ -52,7 +52,7 @@ import {
   verifyAccessToken,
   addRevokedAccessToken,
 } from '@0g0-id/shared';
-import type { IdpEnv, TokenPayload, User } from '@0g0-id/shared';
+import type { IdpEnv, TokenPayload, User, OAuthStateCookieData } from '@0g0-id/shared';
 import { type OAuthProvider, PROVIDER_DISPLAY_NAMES, ALL_PROVIDERS, isValidProvider } from '@0g0-id/shared';
 import { authRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware } from '../middleware/auth';
@@ -271,7 +271,7 @@ function oauthError(
   c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
   message: string,
   code: string = 'OAUTH_ERROR'
-): ProviderResolution {
+): { ok: false; response: Response } {
   return { ok: false, response: c.json({ error: { code, message } }, 400) };
 }
 
@@ -293,7 +293,7 @@ async function exchangeAndFetchUserInfo<TTokenResponse extends { access_token: s
     tokens = await exchangeFn();
   } catch (err) {
     authLogger.error(`[oauth-${providerKey}] Failed to exchange code`, err);
-    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: `Failed to exchange ${displayName} code` } }, 400) };
+    return oauthError(c, `Failed to exchange ${displayName} code`);
   }
 
   let userInfo: TUserInfo;
@@ -301,7 +301,7 @@ async function exchangeAndFetchUserInfo<TTokenResponse extends { access_token: s
     userInfo = await fetchFn(tokens.access_token);
   } catch (err) {
     authLogger.error(`[oauth-${providerKey}] Failed to fetch user info`, err);
-    return { ok: false, response: c.json({ error: { code: 'OAUTH_ERROR', message: `Failed to fetch ${displayName} user info` } }, 400) };
+    return oauthError(c, `Failed to fetch ${displayName} user info`);
   }
 
   return { ok: true, tokenResponse: tokens, userInfo };
@@ -429,7 +429,7 @@ async function resolveGithubProvider(
     email = await fetchGithubPrimaryEmail(tokenResponse.access_token);
   } catch (err) {
     authLogger.error('[oauth-github] Failed to fetch primary email', err);
-    return { ok: false as const, response: c.json({ error: { code: 'OAUTH_ERROR', message: 'Failed to fetch GitHub email' } }, 400) };
+    return oauthError(c, 'Failed to fetch GitHub email');
   }
   const isPlaceholderEmail = !email;
   const finalEmail = email ?? `github_${githubSub}@github.placeholder`;
@@ -762,18 +762,7 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'Missing session cookies' } }, 400);
   }
 
-  let stateData: {
-    idState: string;
-    bffState: string;
-    redirectTo: string;
-    provider: OAuthProvider;
-    linkUserId?: string;
-    serviceId?: string;
-    nonce?: string;
-    codeChallenge?: string;
-    codeChallengeMethod?: string;
-    scope?: string;
-  };
+  let stateData: OAuthStateCookieData;
 
   // HMAC-SHA256署名を検証してからpayloadをパースする（Cookie改ざん検知）
   const verifiedPayload = await verifyCookie(stateCookieRaw, c.env.COOKIE_SECRET);

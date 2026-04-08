@@ -1,3 +1,5 @@
+import type { OAuthProvider } from './lib/providers';
+
 export interface User {
   id: string;
   google_sub: string | null;
@@ -155,4 +157,21 @@ export interface BffEnv {
   SESSION_SECRET: string;
   /** BFF→IdP間のService Bindings呼び出しを検証する共有シークレット */
   INTERNAL_SERVICE_SECRET?: string;
+}
+
+/**
+ * OAuth認可フロー中にCookieで保持するstateデータの型。
+ * `/auth/login` でJSON.stringifyして保存し、`/auth/callback` でパースして利用する。
+ */
+export interface OAuthStateCookieData {
+  idState: string;
+  bffState: string;
+  redirectTo: string;
+  provider: OAuthProvider;
+  linkUserId?: string;
+  serviceId?: string;
+  nonce?: string;
+  codeChallenge?: string;
+  codeChallengeMethod?: string;
+  scope?: string;
 }
