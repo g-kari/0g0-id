@@ -746,5 +746,6 @@
   - `resolveOAuthClient` の `ok: true` 戻り値に `isPublicClient: boolean` を追加
   - Confidentialクライアントは `isPublicClient: false`、Publicクライアントは `isPublicClient: true`
   - `handleAuthorizationCodeGrant` での重複判定（`!c.req.header('Authorization')?.startsWith('Basic ')`）を削除
-- `handleAuthorizationCodeGrant` / `handleRefreshTokenGrant` の型定義冗長化（型エイリアス導入）
+- ✅ `handleAuthorizationCodeGrant` / `handleRefreshTokenGrant` の型定義冗長化（型エイリアス導入）
+  - `TokenHandlerContext` 型エイリアスを `token.ts` に追加し、両関数のインライン型定義を置き換え（2026-04-09）
 - ✅ `/revoke` でJWT形式のリフレッシュトークン（JWT_PATTERNマッチ、JWT検証失敗）のテスト補強（5件追加: DB不存在・失効済み・他サービス所有・jtiなし・cid不一致）
