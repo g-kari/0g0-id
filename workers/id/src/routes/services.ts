@@ -140,15 +140,19 @@ app.post('/', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
     ownerUserId: tokenUser.sub,
   });
 
-  await createAdminAuditLog(c.env.DB, {
-    adminUserId: tokenUser.sub,
-    action: 'service.create',
-    targetType: 'service',
-    targetId: service.id,
-    details: { name: service.name, allowed_scopes: body.allowed_scopes ?? ['profile', 'email'] },
-    ipAddress: getClientIp(c.req.raw),
-    status: 'success',
-  });
+  try {
+    await createAdminAuditLog(c.env.DB, {
+      adminUserId: tokenUser.sub,
+      action: 'service.create',
+      targetType: 'service',
+      targetId: service.id,
+      details: { name: service.name, allowed_scopes: body.allowed_scopes ?? ['profile', 'email'] },
+      ipAddress: getClientIp(c.req.raw),
+      status: 'success',
+    });
+  } catch (err) {
+    servicesLogger.error('[services] Failed to create audit log for service.create', err);
+  }
 
   // client_secretは作成時のみ返却
   return c.json(
@@ -184,18 +188,22 @@ app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => 
   }
 
   const tokenUser = c.get('user');
-  await createAdminAuditLog(c.env.DB, {
-    adminUserId: tokenUser.sub,
-    action: 'service.update',
-    targetType: 'service',
-    targetId: serviceId,
-    details: {
-      ...(name !== undefined ? { name } : {}),
-      ...(allowed_scopes !== undefined ? { allowed_scopes } : {}),
-    },
-    ipAddress: getClientIp(c.req.raw),
-    status: 'success',
-  });
+  try {
+    await createAdminAuditLog(c.env.DB, {
+      adminUserId: tokenUser.sub,
+      action: 'service.update',
+      targetType: 'service',
+      targetId: serviceId,
+      details: {
+        ...(name !== undefined ? { name } : {}),
+        ...(allowed_scopes !== undefined ? { allowed_scopes } : {}),
+      },
+      ipAddress: getClientIp(c.req.raw),
+      status: 'success',
+    });
+  } catch (err) {
+    servicesLogger.error('[services] Failed to create audit log for service.update', err);
+  }
 
   return c.json({
     data: {
@@ -319,14 +327,18 @@ app.post('/:id/rotate-secret', authMiddleware, adminMiddleware, csrfMiddleware, 
   }
 
   const tokenUser = c.get('user');
-  await createAdminAuditLog(c.env.DB, {
-    adminUserId: tokenUser.sub,
-    action: 'service.secret_rotated',
-    targetType: 'service',
-    targetId: serviceId,
-    ipAddress: getClientIp(c.req.raw),
-    status: 'success',
-  });
+  try {
+    await createAdminAuditLog(c.env.DB, {
+      adminUserId: tokenUser.sub,
+      action: 'service.secret_rotated',
+      targetType: 'service',
+      targetId: serviceId,
+      ipAddress: getClientIp(c.req.raw),
+      status: 'success',
+    });
+  } catch (err) {
+    servicesLogger.error('[services] Failed to create audit log for service.secret_rotated', err);
+  }
 
   return c.json({
     data: {
@@ -362,15 +374,19 @@ app.patch('/:id/owner', authMiddleware, adminMiddleware, csrfMiddleware, async (
   }
 
   const tokenUser = c.get('user');
-  await createAdminAuditLog(c.env.DB, {
-    adminUserId: tokenUser.sub,
-    action: 'service.owner_transferred',
-    targetType: 'service',
-    targetId: serviceId,
-    details: { from: service.owner_user_id, to: new_owner_user_id },
-    ipAddress: getClientIp(c.req.raw),
-    status: 'success',
-  });
+  try {
+    await createAdminAuditLog(c.env.DB, {
+      adminUserId: tokenUser.sub,
+      action: 'service.owner_transferred',
+      targetType: 'service',
+      targetId: serviceId,
+      details: { from: service.owner_user_id, to: new_owner_user_id },
+      ipAddress: getClientIp(c.req.raw),
+      status: 'success',
+    });
+  } catch (err) {
+    servicesLogger.error('[services] Failed to create audit log for service.owner_transferred', err);
+  }
 
   return c.json({
     data: {

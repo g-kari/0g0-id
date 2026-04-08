@@ -517,6 +517,16 @@ describe('POST /api/services', () => {
       })
     );
   });
+
+  it('監査ログ記録が失敗しても201を返す', async () => {
+    vi.mocked(createAdminAuditLog).mockRejectedValue(new Error('DB error'));
+    const res = await sendRequest(app, '/api/services', {
+      method: 'POST',
+      body: { name: 'New Service' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(201);
+  });
 });
 
 // ===== PATCH /api/services/:id（管理者のみ）=====
@@ -686,6 +696,16 @@ describe('PATCH /api/services/:id', () => {
         targetId: 'service-1',
       })
     );
+  });
+
+  it('監査ログ記録が失敗しても200を返す', async () => {
+    vi.mocked(createAdminAuditLog).mockRejectedValue(new Error('DB error'));
+    const res = await sendRequest(app, '/api/services/service-1', {
+      method: 'PATCH',
+      body: { name: '新しい名前' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
   });
 });
 
@@ -983,6 +1003,15 @@ describe('POST /api/services/:id/rotate-secret', () => {
       })
     );
   });
+
+  it('監査ログ記録が失敗しても200を返す', async () => {
+    vi.mocked(createAdminAuditLog).mockRejectedValue(new Error('DB error'));
+    const res = await sendRequest(app, '/api/services/service-1/rotate-secret', {
+      method: 'POST',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
+  });
 });
 
 // ===== PATCH /api/services/:id/owner（管理者のみ）=====
@@ -1143,6 +1172,16 @@ describe('PATCH /api/services/:id/owner', () => {
         details: { from: 'admin-user-id', to: 'new-owner-id' },
       })
     );
+  });
+
+  it('監査ログ記録が失敗しても200を返す', async () => {
+    vi.mocked(createAdminAuditLog).mockRejectedValue(new Error('DB error'));
+    const res = await sendRequest(app, '/api/services/service-1/owner', {
+      method: 'PATCH',
+      body: { new_owner_user_id: 'new-owner-id' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(200);
   });
 });
 
