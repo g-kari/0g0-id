@@ -66,8 +66,11 @@
 
 **リファクタリング**
 - ✅ `auth.ts` + `token.ts`: リフレッシュトークンのリプレイ攻撃検知・ローテーションロジックが重複 → `validateAndRevokeRefreshToken` / `issueTokenPairWithRecovery` ユーティリティへ抽出済み（2026-04-08）
-- `auth.ts`: `StateData` 型がハンドラ内にインライン重複定義 → 共通インターフェース化
-- `auth.ts`: `oauthError` ヘルパーと `c.json({ error: ... })` 直接使用が混在 → 統一
+- ✅ `auth.ts`: `/login` ハンドラの statePayload に `OAuthStateCookieData` 型注釈を明示（インライン無型オブジェクトを型安全な変数に分離、2026-04-08）
+- ✅ `auth.ts`: `oauthError` ヘルパーと `c.json({ error: ... })` 直接使用の混在を解消（2026-04-08）
+  - `/callback` の `createAuthCode` 失敗 → `{ error: { code: 'SERVER_ERROR', message } }` 形式に統一
+  - `/refresh` のユーザー不存在 → `{ error: { code: 'INVALID_GRANT', message } }` 形式に統一
+  - 対応テスト更新済み
 
 **テスト**
 - ✅ `token.ts` `handleRefreshTokenGrant`: パブリッククライアントのリフレッシュトークンフローにPKCE相当の保護がないことのテスト追加・仕様決定（2026-04-08）
