@@ -52,7 +52,7 @@
 ## コードレビューで発見した問題（2026-04-08）
 
 **セキュリティ（要確認）**
-- `token.ts` `/api/token/revoke`: `cid` クレームが未設定の旧トークンでリボークが機能しない可能性（`payload.cid === service.client_id` が常に false）
+- ✅ `token.ts` `/api/token/revoke`: `cid` クレームが未設定の旧トークンでリボークが機能しない問題 → `payload.cid &&` を追加してintrospectと同じ設計に統一（コミット: `275d01e`）
 - `auth.ts` `isAllowedRedirectTo`: Public Suffix List非対応（現状の `0g0.xyz` では問題なし、ドメイン変更時に潜在的 open redirect）
 - ✅ `auth.ts` `/auth/refresh`: ユーザー未存在時に 404 を返している（RFC 6749 準拠なら 401 `invalid_grant`）→ 修正済み
 
