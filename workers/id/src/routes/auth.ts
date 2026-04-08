@@ -955,7 +955,7 @@ app.post('/exchange', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asy
   // ユーザー情報取得
   const user = await findUserById(c.env.DB, authCode.user_id);
   if (!user) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+    return c.json({ error: 'invalid_grant', error_description: 'User not found' }, 400);
   }
 
   // BANされたユーザーのトークン発行を拒否

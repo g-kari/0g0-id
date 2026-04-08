@@ -775,3 +775,13 @@
 - **修正**: DB エラー時は `throw err` で伝播し、ルートハンドラで 500 + `{ error: 'server_error' }` を返すよう変更（RFC 7662 §2.2 準拠）
 - **テスト更新**: 旧挙動を期待していた 3 件のテストを新挙動に合わせて修正
 - **コミット**: c0654b3
+
+## 完了済み（2026-04-09）
+
+- ✅ **`routes/token.ts`: `POST /revoke` リフレッシュトークン処理に try/catch 追加（D1トランジェントエラー対策）**
+
+- ✅ **`routes/token.ts`: `/introspect` サービス認証失敗レスポンスを `{ active: false }` → `{ error: 'invalid_client' }` に修正（RFC 7662 §2.3準拠）**
+
+- ✅ **`routes/device.ts`: `handleDeviceCodeGrant` のパラメータ型を ad-hoc → `TokenHandlerContext` に統一**
+
+- ✅ **`routes/auth.ts`: `/exchange` ユーザー未発見時を 404 → 400 (`invalid_grant`) に修正（OAuth 2.0準拠）**

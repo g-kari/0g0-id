@@ -17,6 +17,7 @@ import {
   signIdToken,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
+import type { TokenHandlerContext } from './token';
 import { tokenApiRateLimitMiddleware, deviceVerifyRateLimitMiddleware } from '../middleware/rate-limit';
 import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware } from '../middleware/auth';
 import { parseAllowedScopes, resolveEffectiveScope } from '../utils/scopes';
@@ -254,7 +255,7 @@ app.post(
  * token.ts の POST /api/token から呼ばれる。
  */
 export async function handleDeviceCodeGrant(
-  c: { env: IdpEnv; req: { header: (name: string) => string | undefined }; json: (data: unknown, status?: number, headers?: Record<string, string>) => Response },
+  c: TokenHandlerContext,
   params: Record<string, string>
 ): Promise<Response> {
   const rawDeviceCode = params['device_code'];

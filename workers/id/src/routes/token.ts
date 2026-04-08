@@ -34,10 +34,10 @@ const app = new Hono<{ Bindings: IdpEnv }>();
  * `handleAuthorizationCodeGrant` / `handleRefreshTokenGrant` で共通利用するコンテキスト型。
  * Hono の Context から必要な最小インターフェースのみ抽出。
  */
-type TokenHandlerContext = {
+export type TokenHandlerContext = {
   env: IdpEnv;
   req: { header: (name: string) => string | undefined };
-  json: (data: unknown, status?: number) => Response;
+  json: (data: unknown, status?: number, headers?: Record<string, string>) => Response;
   header: (name: string, value: string) => void;
 };
 
@@ -497,7 +497,7 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
   }
   if (!service) {
     c.header('WWW-Authenticate', 'Basic realm="0g0-id"');
-    return c.json({ active: false }, 401);
+    return c.json({ error: 'invalid_client' }, 401);
   }
   const introspectService = service;
 
@@ -591,12 +591,17 @@ app.post('/revoke', externalApiRateLimitMiddleware, async (c) => {
 
   // リフレッシュトークンの失効処理
   const tokenHash = await sha256(token);
-  const refreshToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
+  try {
+    const refreshToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
 
-  // RFC 7009: トークンが存在しない・失効済みでも 200 OK を返す（情報漏洩防止）
-  // 自サービスが発行したトークンのみ失効可能
-  if (refreshToken && refreshToken.revoked_at === null && refreshToken.service_id === service.id) {
-    await revokeRefreshToken(c.env.DB, refreshToken.id, 'service_revoke');
+    // RFC 7009: トークンが存在しない・失効済みでも 200 OK を返す（情報漏洩防止）
+    // 自サービスが発行したトークンのみ失効可能
+    if (refreshToken && refreshToken.revoked_at === null && refreshToken.service_id === service.id) {
+      await revokeRefreshToken(c.env.DB, refreshToken.id, 'service_revoke');
+    }
+  } catch (err) {
+    tokenLogger.error('Revoke: failed to process refresh token', err);
+    return c.json({ error: 'server_error' }, 500);
   }
 
   return new Response(null, { status: 200 });
