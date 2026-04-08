@@ -71,6 +71,16 @@
     - `issueTokenPairWithRecovery`: 成功・TOKEN_REUSE・INTERNAL_ERROR（rotation）・INTERNAL_ERROR（null）
   - 全1701テストパス
 
+- ✅ **`token-pair.ts`: `issueTokenPair` / `buildTokenResponse` のユニットテスト20件追加（全819テストパス）**
+  - accessToken/refreshToken の返却確認
+  - signAccessToken へのペイロード検証（iss/sub/aud/email/role/scope/cid）
+  - clientId 有無による pairwiseSub の生成/null
+  - familyId の明示指定と自動生成（randomUUID）
+  - expiresAt が REFRESH_TOKEN_TTL_MS 後の ISO 文字列
+  - tokenHash として sha256(refreshToken) が使われる
+  - scope/serviceId null の正しいパススルー
+  - buildTokenResponse: id_token/scope の条件付き付与、expires_in=900
+
 ## コードレビュー（2026-04-09）
 
 - ✅ **`services.ts`: `createAdminAuditLog` try-catch 統一**
