@@ -1835,6 +1835,21 @@ describe('isAllowedRedirectTo', () => {
       isAllowedRedirectTo('https://localhost:5173/callback', IDP_IPV6, 'https://localhost:5173')
     ).toBe(true);
   });
+
+  it('Public Suffix List 対応: github.io のような PSL エントリは別登録ドメイン扱い', () => {
+    // github.io は PSL 上の public suffix なので evil.github.io と good.github.io は別ドメイン
+    // IDP が id.github.io であっても evil.github.io は許可しない
+    const IDP_GITHUB_IO = 'https://id.github.io';
+    expect(isAllowedRedirectTo('https://id.github.io/callback', IDP_GITHUB_IO)).toBe(true);
+    expect(isAllowedRedirectTo('https://evil.github.io/callback', IDP_GITHUB_IO)).toBe(false);
+  });
+
+  it('Public Suffix List 対応: co.uk のような 2 段 TLD でも正しい登録ドメインを使う', () => {
+    // example.co.uk の IDP → *.example.co.uk は許可、evil.co.uk は拒否
+    const IDP_CO_UK = 'https://id.example.co.uk';
+    expect(isAllowedRedirectTo('https://app.example.co.uk/callback', IDP_CO_UK)).toBe(true);
+    expect(isAllowedRedirectTo('https://evil.co.uk/callback', IDP_CO_UK)).toBe(false);
+  });
 });
 
 // ===== POST /auth/exchange — サービスOAuthフロー =====

@@ -60,6 +60,7 @@ import { serviceBindingMiddleware } from '../middleware/service-binding';
 import { resolveEffectiveScope, validateNonce } from '../utils/scopes';
 import { issueTokenPair, ACCESS_TOKEN_TTL_SECONDS } from '../utils/token-pair';
 import { validateAndRevokeRefreshToken, issueTokenPairWithRecovery } from '../utils/refresh-token-rotation';
+import { parse as parseDomain } from 'tldts';
 
 const ExchangeSchema = z.object({
   code: z.string().min(1, 'code is required'),
@@ -163,7 +164,7 @@ export function isAllowedRedirectTo(
   // HTTPS のみ許可
   if (redirectUrl.protocol !== 'https:') return false;
 
-  // IDP_ORIGIN から親ドメインを導出して *.parentDomain を許可
+  // IDP_ORIGIN から登録可能ドメインを導出して同一登録ドメインを許可
   try {
     const idpUrl = new URL(idpOrigin);
     const idpHostname = idpUrl.hostname;
@@ -176,12 +177,17 @@ export function isAllowedRedirectTo(
       (idpHostname.startsWith('[') && idpHostname.endsWith(']')); // IPv6 (URL仕様上 [] で囲まれる)
 
     if (!isIp) {
-      const parts = idpHostname.split('.');
-      // ラベルが3つ以上 (e.g. id.0g0.xyz) なら第1ラベルを除いた親ドメインを使用
-      // ラベルが2つ以下 (e.g. 0g0.xyz) ならそのまま使用
-      const parentDomain = parts.length > 2 ? parts.slice(1).join('.') : parts.join('.');
-      const host = redirectUrl.hostname;
-      if (host === parentDomain || host.endsWith('.' + parentDomain)) {
+      // Public Suffix List を使って登録可能ドメイン (registrable domain) を比較
+      // allowPrivateDomains: true で github.io・amazonaws.com 等の private PSL エントリも考慮
+      // 例: id.0g0.xyz → 0g0.xyz、user.0g0.xyz → 0g0.xyz（同一なので許可）
+      // 例: evil.github.io → evil.github.io（github.io は PSL private suffix）
+      const pslOpts = { allowPrivateDomains: true };
+      const idpParsed = parseDomain(idpHostname, pslOpts);
+      const redirectParsed = parseDomain(redirectUrl.hostname, pslOpts);
+      const idpRegistrable = idpParsed.domain; // e.g., "0g0.xyz"
+      const redirectRegistrable = redirectParsed.domain; // e.g., "0g0.xyz" or "evil.com"
+
+      if (idpRegistrable && redirectRegistrable && idpRegistrable === redirectRegistrable) {
         return true;
       }
     }
