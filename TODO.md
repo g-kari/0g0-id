@@ -55,6 +55,17 @@
   - `deleteExpiredDeviceCodes`: SQL確認・run呼び出し（1テスト）
   - 全1662テストパス
 
+## バグ修正（2026-04-09）
+
+- ✅ **`security.ts`: parseDays maxDays 不一致バグ修正 + login-trends テスト追加**
+  - `GET /api/me/security/login-stats` / `GET /api/me/security/login-trends` で `parseDays` のデフォルト `maxDays: 90` を使用していた
+  - IdP 側は `maxDays: 365` のため、`days=100〜365` の有効リクエストを BFF が誤って 400 拒否するバグを修正
+  - `parseDays` 呼び出しを `{ maxDays: 365 }` に統一
+  - `profile.ts` の同種バグ (`message: daysResult.error` → `message: daysResult.error.message`) も修正
+  - `security.test.ts`: `login-trends` エンドポイントのテスト7件追加
+  - `security.test.ts`: `login-stats` に days=100 通過・days=366 拒否テスト2件追加
+  - 全 1730 テストパス
+
 ## 残課題（要対応）
 
 ## テストカバレッジ追加（2026-04-09）
