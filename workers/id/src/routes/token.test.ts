@@ -624,30 +624,30 @@ describe('POST /api/token/introspect', () => {
     expect(body.token_type).toBe('refresh_token'); // introspectRefreshTokenは token_type: 'refresh_token' を返す
   });
 
-  it('introspectRefreshToken: DB例外時 → { active: false } + 200', async () => {
+  it('introspectRefreshToken: DB例外時 → { error: server_error } + 500（RFC 7662 §2.2）', async () => {
     vi.mocked(findRefreshTokenByHash).mockRejectedValue(new Error('D1 connection error'));
     const res = await sendRequest(app, '/api/token/introspect', {
       body: { token: 'some-token' },
       authHeader: makeBasicAuth('test-client-id', 'secret'),
     });
-    expect(res.status).toBe(200);
-    const body = await res.json<{ active: boolean }>();
-    expect(body.active).toBe(false);
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('server_error');
   });
 
-  it('introspectJwtToken: DB例外（isAccessTokenRevoked）時 → { active: false } + 200', async () => {
+  it('introspectJwtToken: DB例外（isAccessTokenRevoked）時 → { error: server_error } + 500（RFC 7662 §2.2）', async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockJwtPayload);
     vi.mocked(isAccessTokenRevoked).mockRejectedValue(new Error('D1 connection error'));
     const res = await sendRequest(app, '/api/token/introspect', {
       body: { token: 'valid-jwt', token_type_hint: 'access_token' },
       authHeader: makeBasicAuth('test-client-id', 'secret'),
     });
-    expect(res.status).toBe(200);
-    const body = await res.json<{ active: boolean }>();
-    expect(body.active).toBe(false);
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('server_error');
   });
 
-  it('introspectJwtToken: DB例外（findUserById）時 → { active: false } + 200', async () => {
+  it('introspectJwtToken: DB例外（findUserById）時 → { error: server_error } + 500（RFC 7662 §2.2）', async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockJwtPayload);
     vi.mocked(isAccessTokenRevoked).mockResolvedValue(false);
     vi.mocked(findUserById).mockRejectedValue(new Error('D1 connection error'));
@@ -655,9 +655,9 @@ describe('POST /api/token/introspect', () => {
       body: { token: 'valid-jwt', token_type_hint: 'access_token' },
       authHeader: makeBasicAuth('test-client-id', 'secret'),
     });
-    expect(res.status).toBe(200);
-    const body = await res.json<{ active: boolean }>();
-    expect(body.active).toBe(false);
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('server_error');
   });
 });
 

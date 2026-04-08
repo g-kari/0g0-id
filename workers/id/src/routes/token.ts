@@ -397,8 +397,10 @@ async function introspectRefreshToken(
   tokenHash: string,
   issuer: string
 ): Promise<Record<string, unknown> | null> {
+  let refreshToken: Awaited<ReturnType<typeof findRefreshTokenByHash>>;
+  let user: Awaited<ReturnType<typeof findUserById>> | undefined;
   try {
-    const refreshToken = await findRefreshTokenByHash(db, tokenHash);
+    refreshToken = await findRefreshTokenByHash(db, tokenHash);
     if (!refreshToken) return null;
     if (refreshToken.revoked_at !== null) return { active: false };
     if (refreshToken.service_id !== service.id) {
@@ -407,28 +409,29 @@ async function introspectRefreshToken(
     if (new Date(refreshToken.expires_at) < new Date()) {
       return { active: false };
     }
-    const user = await findUserById(db, refreshToken.user_id);
-    if (!user || user.banned_at !== null) {
-      return { active: false };
-    }
-    const scopeStr = refreshToken.scope ?? '';
-    const scopeList = scopeStr.split(' ').filter((s: string) => s !== 'openid' && s !== '');
-    const sub = await sha256(service.client_id + ':' + refreshToken.user_id);
-    const response: Record<string, unknown> = {
-      active: true,
-      iss: issuer,
-      token_type: 'refresh_token',
-      sub,
-      exp: Math.floor(new Date(refreshToken.expires_at).getTime() / 1000),
-      iat: Math.floor(new Date(refreshToken.created_at).getTime() / 1000),
-      scope: scopeStr,
-    };
-    applyUserClaims(response, user, scopeList);
-    return response;
+    user = await findUserById(db, refreshToken.user_id);
   } catch (err) {
     tokenLogger.error('Introspect: DB error in introspectRefreshToken', err);
+    // RFC 7662 §2.2: サーバーエラーは呼び出し側で 500 を返せるよう throw する
+    throw err;
+  }
+  if (!user || user.banned_at !== null) {
     return { active: false };
   }
+  const scopeStr = refreshToken.scope ?? '';
+  const scopeList = scopeStr.split(' ').filter((s: string) => s !== 'openid' && s !== '');
+  const sub = await sha256(service.client_id + ':' + refreshToken.user_id);
+  const response: Record<string, unknown> = {
+    active: true,
+    iss: issuer,
+    token_type: 'refresh_token',
+    sub,
+    exp: Math.floor(new Date(refreshToken.expires_at).getTime() / 1000),
+    iat: Math.floor(new Date(refreshToken.created_at).getTime() / 1000),
+    scope: scopeStr,
+  };
+  applyUserClaims(response, user, scopeList);
+  return response;
 }
 
 // イントロスペクション: JWTアクセストークンの検証ヘルパー（RFC 7662）
@@ -477,7 +480,8 @@ async function introspectJwtToken(
     return jwtResponse;
   } catch (err) {
     tokenLogger.error('Introspect: DB error in introspectJwtToken', err);
-    return { active: false };
+    // RFC 7662 §2.2: サーバーエラーは呼び出し側で 500 を返せるよう throw する
+    throw err;
   }
 }
 
@@ -512,16 +516,22 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
   // token_type_hint に従って検索順を最適化（RFC 7662 §2.1 推奨）
   // 'access_token' ヒントならJWT→リフレッシュトークンの順、それ以外はリフレッシュトークン→JWTの順
   let result: Record<string, unknown> | null;
-  if (body.token_type_hint === 'access_token') {
-    result = await introspectJwtToken(c.env.DB, introspectService, token, c.env);
-    if (result === null) {
-      result = await introspectRefreshToken(c.env.DB, introspectService, tokenHash, c.env.IDP_ORIGIN);
-    }
-  } else {
-    result = await introspectRefreshToken(c.env.DB, introspectService, tokenHash, c.env.IDP_ORIGIN);
-    if (result === null) {
+  try {
+    if (body.token_type_hint === 'access_token') {
       result = await introspectJwtToken(c.env.DB, introspectService, token, c.env);
+      if (result === null) {
+        result = await introspectRefreshToken(c.env.DB, introspectService, tokenHash, c.env.IDP_ORIGIN);
+      }
+    } else {
+      result = await introspectRefreshToken(c.env.DB, introspectService, tokenHash, c.env.IDP_ORIGIN);
+      if (result === null) {
+        result = await introspectJwtToken(c.env.DB, introspectService, token, c.env);
+      }
     }
+  } catch (err) {
+    tokenLogger.error('Introspect: unexpected server error', err);
+    // RFC 7662 §2.2: サーバーエラー時は 500 を返す（{ active: false } との混同を防ぐ）
+    return c.json({ error: 'server_error' }, 500);
   }
 
   return c.json(result ?? { active: false });
@@ -558,19 +568,23 @@ app.post('/revoke', externalApiRateLimitMiddleware, async (c) => {
   // JWTは header.payload.signature の3セクション形式（Base64url）で識別する
   const JWT_PATTERN = /^[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+$/;
   if (JWT_PATTERN.test(token)) {
-    let jwtVerified = false;
+    let payload: Awaited<ReturnType<typeof verifyAccessToken>> | null = null;
     try {
-      const payload = await verifyAccessToken(token, c.env.JWT_PUBLIC_KEY, c.env.IDP_ORIGIN, c.env.IDP_ORIGIN);
-      // 自サービスが発行したトークンかつ有効期限内のものだけブロックリストに追加
-      // cidが未設定の旧BFFセッショントークンはスキップ（introspectと同じ設計）
-      if (payload.jti && payload.cid && payload.cid === service.client_id && payload.exp && payload.exp > Math.floor(Date.now() / 1000)) {
-        await addRevokedAccessToken(c.env.DB, payload.jti, payload.exp);
-      }
-      jwtVerified = true;
+      payload = await verifyAccessToken(token, c.env.JWT_PUBLIC_KEY, c.env.IDP_ORIGIN, c.env.IDP_ORIGIN);
     } catch {
       // JWT検証失敗 → リフレッシュトークン処理へフォールスルー
     }
-    if (jwtVerified) {
+    if (payload !== null) {
+      // 自サービスが発行したトークンかつ有効期限内のものだけブロックリストに追加
+      // cidが未設定の旧BFFセッショントークンはスキップ（introspectと同じ設計）
+      if (payload.jti && payload.cid && payload.cid === service.client_id && payload.exp && payload.exp > Math.floor(Date.now() / 1000)) {
+        try {
+          await addRevokedAccessToken(c.env.DB, payload.jti, payload.exp);
+        } catch (err) {
+          tokenLogger.error('Revoke: failed to add revoked access token to blocklist', err);
+          return c.json({ error: 'server_error' }, 500);
+        }
+      }
       return new Response(null, { status: 200 });
     }
   }
