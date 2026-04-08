@@ -1772,4 +1772,44 @@ describe('POST /api/token/ — refresh_token grant', () => {
     expect(body.error).toBe('server_error');
     expect(body.error_description).toBe('Token operation failed');
   });
+
+  // 仕様決定: パブリッククライアントのリフレッシュトークンフローにおけるPKCE相当の保護
+  // PKCEはauthorization_codeグラントの認可コード横取り攻撃対策であり、refresh_tokenグラントには適用されない。
+  // OAuth 2.1 §6.1 / RFC 6749 §6 に基づき、リフレッシュトークンフローでの保護は
+  // トークンローテーション + reuse detection（family全失効）で実現する。
+  // したがってパブリッククライアントもcode_verifierなしでリフレッシュトークングラントを利用できる。
+  it('パブリッククライアントはリフレッシュトークングラントでPKCE不要（ローテーションが保護）', async () => {
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'valid-token',
+        client_id: 'test-client-id',
+        // code_verifier は意図的に省略（refresh_token グラントでは PKCE 不要）
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ access_token: string; refresh_token: string; token_type: string }>();
+    expect(body.access_token).toBe('new-access-token');
+    expect(body.refresh_token).toBe('new-refresh-token');
+    expect(body.token_type).toBe('Bearer');
+  });
+
+  it('コンフィデンシャルクライアント（Basic認証）でのリフレッシュトークングラント → 正常ローテーション', async () => {
+    // Bodyにclient_idを含めずBasic認証ヘッダーのみでクライアントを識別する
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'valid-token',
+        // client_id は省略（Basic認証ヘッダーで識別）
+      },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ access_token: string; refresh_token: string; token_type: string }>();
+    expect(body.access_token).toBe('new-access-token');
+    expect(body.refresh_token).toBe('new-refresh-token');
+    expect(body.token_type).toBe('Bearer');
+  });
 });

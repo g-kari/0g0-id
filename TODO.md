@@ -62,7 +62,11 @@
 - `auth.ts`: `oauthError` ヘルパーと `c.json({ error: ... })` 直接使用が混在 → 統一
 
 **テスト**
-- `token.ts` `handleRefreshTokenGrant`: パブリッククライアントのリフレッシュトークンフローにPKCE相当の保護がないことのテスト追加・仕様決定
+- ✅ `token.ts` `handleRefreshTokenGrant`: パブリッククライアントのリフレッシュトークンフローにPKCE相当の保護がないことのテスト追加・仕様決定（2026-04-08）
+  - 仕様決定: PKCEはauthorization_codeグラントの認可コード横取り攻撃対策であり、refresh_tokenグラントには適用されない
+  - OAuth 2.1 §6.1 / RFC 6749 §6 に基づき、リフレッシュトークンフローの保護はローテーション + reuse detectionで実現
+  - パブリッククライアント（PKCE不要）+ コンフィデンシャルクライアント（Basic認証）の両経路をテストで明示化（計2ケース追加）
+  - 全102テスト（token.test.ts）パス確認済み
 
 ## テストカバレッジ追加（2026-04-07）
 
