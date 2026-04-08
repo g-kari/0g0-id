@@ -57,7 +57,7 @@
 - ✅ `auth.ts` `/auth/refresh`: ユーザー未存在時に 404 を返している（RFC 6749 準拠なら 401 `invalid_grant`）→ 修正済み
 
 **リファクタリング**
-- `auth.ts` + `token.ts`: リフレッシュトークンのリプレイ攻撃検知・ローテーションロジックが3箇所に重複 → `performRefreshTokenRotation` ユーティリティへ抽出
+- ✅ `auth.ts` + `token.ts`: リフレッシュトークンのリプレイ攻撃検知・ローテーションロジックが重複 → `validateAndRevokeRefreshToken` / `issueTokenPairWithRecovery` ユーティリティへ抽出済み（2026-04-08）
 - `auth.ts`: `StateData` 型がハンドラ内にインライン重複定義 → 共通インターフェース化
 - `auth.ts`: `oauthError` ヘルパーと `c.json({ error: ... })` 直接使用が混在 → 統一
 
