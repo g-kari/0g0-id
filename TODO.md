@@ -749,3 +749,18 @@
 - ✅ `handleAuthorizationCodeGrant` / `handleRefreshTokenGrant` の型定義冗長化（型エイリアス導入）
   - `TokenHandlerContext` 型エイリアスを `token.ts` に追加し、両関数のインライン型定義を置き換え（2026-04-09）
 - ✅ `/revoke` でJWT形式のリフレッシュトークン（JWT_PATTERNマッチ、JWT検証失敗）のテスト補強（5件追加: DB不存在・失効済み・他サービス所有・jtiなし・cid不一致）
+
+## 2026-04-09 追加対応 ✅
+
+### コードレビュー: token.ts エラーハンドリング修正
+
+#### バグ修正1: `addRevokedAccessToken()` の try-catch 漏れ（revoke エンドポイント）
+- **問題**: `/token/revoke` で `verifyAccessToken()` と `addRevokedAccessToken()` が同一 try ブロックに入っており、DB エラー時に `jwtVerified=false` のまま RT 処理へフォールスルーし 200 OK が返るバグがあった
+- **修正**: `verifyAccessToken()` の try を分離し、`addRevokedAccessToken()` は独立した try-catch で囲み DB エラー時に 500 を返すよう変更
+- **コミット**: c0654b3
+
+#### バグ修正2: `introspectRefreshToken()` / `introspectJwtToken()` RFC 7662 非準拠
+- **問題**: DB エラー時に `{ active: false }` を返しており、トークン無効とサーバーエラーの区別がつかなかった
+- **修正**: DB エラー時は `throw err` で伝播し、ルートハンドラで 500 + `{ error: 'server_error' }` を返すよう変更（RFC 7662 §2.2 準拠）
+- **テスト更新**: 旧挙動を期待していた 3 件のテストを新挙動に合わせて修正
+- **コミット**: c0654b3
