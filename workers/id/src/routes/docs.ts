@@ -1742,7 +1742,10 @@ Authorization: Basic <Base64(client_id:client_secret)>
         description:
           'ログイン後にコールバックで受け取ったワンタイムコードを、アクセストークン（15分）とリフレッシュトークン（30日）に交換する。\n\n' +
           'このエンドポイントはサーバーサイドから呼び出すこと（コードは1回しか使えない）。\n\n' +
-          '`redirect_to` には `/auth/login` に渡したのと同じコールバックURLを指定する。',
+          '`redirect_to` には `/auth/login` に渡したのと同じコールバックURLを指定する。\n\n' +
+          '**認証**: `Authorization: Basic <Base64(client_id:client_secret)>` ヘッダーが必須。\n\n' +
+          '**PKCE**: `/auth/login` に `code_challenge` を渡した場合（PKCE使用時）は `code_verifier` も必須。',
+        security: [{ BasicAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -1752,10 +1755,25 @@ Authorization: Basic <Base64(client_id:client_secret)>
                 properties: {
                   code: { type: 'string', description: 'コールバックで受け取ったワンタイムコード' },
                   redirect_to: { type: 'string', description: 'コールバックURL（/auth/loginに渡したものと一致が必要）' },
+                  code_verifier: {
+                    type: 'string',
+                    description: 'PKCEコードベリファイア（`/auth/login` に `code_challenge` を渡した場合は必須。43〜128文字のランダム文字列）',
+                    minLength: 43,
+                    maxLength: 128,
+                  },
                 },
                 required: ['code', 'redirect_to'],
               },
-              example: { code: 'abc123xyz...', redirect_to: 'https://myapp.com/auth/callback' },
+              examples: {
+                without_pkce: {
+                  summary: 'PKCEなし',
+                  value: { code: 'abc123xyz...', redirect_to: 'https://myapp.com/auth/callback' },
+                },
+                with_pkce: {
+                  summary: 'PKCE（S256）使用時',
+                  value: { code: 'abc123xyz...', redirect_to: 'https://myapp.com/auth/callback', code_verifier: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk' },
+                },
+              },
             },
           },
         },
@@ -1791,7 +1809,9 @@ Authorization: Basic <Base64(client_id:client_secret)>
               },
             },
           },
-          '400': { description: 'BAD_REQUEST — コード不正または redirect_to 不一致' },
+          '400': { description: 'BAD_REQUEST — コード不正・redirect_to 不一致・code_verifier 未指定または不一致（PKCE使用時）' },
+          '401': { description: 'UNAUTHORIZED — Basic 認証失敗（client_id/client_secret 不正）' },
+          '403': { description: 'FORBIDDEN — Authorization ヘッダーなし' },
           '404': { description: 'NOT_FOUND — ユーザー未存在' },
         },
       },
@@ -1803,7 +1823,9 @@ Authorization: Basic <Base64(client_id:client_secret)>
         description:
           'リフレッシュトークンを使って新しいアクセストークンとリフレッシュトークンを発行する（トークンローテーション）。\n\n' +
           '⚠️ **旧リフレッシュトークンは即時無効化される**。必ず新しいリフレッシュトークンを保存すること。\n\n' +
-          '同じリフレッシュトークンを2回使った場合（再使用検出）、そのファミリー全体が失効する（セキュリティ機能）。',
+          '同じリフレッシュトークンを2回使った場合（再使用検出）、そのファミリー全体が失効する（セキュリティ機能）。\n\n' +
+          '**認証**: `Authorization: Basic <Base64(client_id:client_secret)>` ヘッダーが必須。',
+        security: [{ BasicAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -1840,7 +1862,8 @@ Authorization: Basic <Base64(client_id:client_secret)>
               },
             },
           },
-          '401': { description: 'UNAUTHORIZED — トークン無効・期限切れ・再使用検出' },
+          '401': { description: 'UNAUTHORIZED — トークン無効・期限切れ・再使用検出・Basic 認証失敗' },
+          '403': { description: 'FORBIDDEN — Authorization ヘッダーなし' },
         },
       },
     },
@@ -1848,7 +1871,10 @@ Authorization: Basic <Base64(client_id:client_secret)>
       post: {
         tags: ['認証フロー'],
         summary: 'ログアウト',
-        description: 'リフレッシュトークンファミリー全体を失効させる。ユーザーのログアウト処理で呼び出すこと。',
+        description:
+          'リフレッシュトークンファミリー全体を失効させる。ユーザーのログアウト処理で呼び出すこと。\n\n' +
+          '**認証**: `Authorization: Basic <Base64(client_id:client_secret)>` ヘッダーが必須。',
+        security: [{ BasicAuth: [] }],
         requestBody: {
           content: {
             'application/json': {
@@ -1863,6 +1889,7 @@ Authorization: Basic <Base64(client_id:client_secret)>
         },
         responses: {
           '200': { description: 'ログアウト成功' },
+          '403': { description: 'FORBIDDEN — Authorization ヘッダーなし' },
         },
       },
     },
