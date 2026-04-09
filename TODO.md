@@ -2,6 +2,11 @@
 
 ## テストカバレッジ追加（2026-04-10）
 
+- ✅ **`login-history.test.ts`: provider・境界値テスト7件追加**
+  - `workers/user/src/routes/login-history.ts` の provider フィルターと limit/offset バリデーションのテストが未カバーだった
+  - 有効provider（google/github）転送・無効provider（facebook）400・limit=0エラー・offset=-1エラー・provider+pagination組み合わせを網羅
+  - 全186テストパス（login-history.test.ts: 8件 → 15件）
+
 - ✅ **`sessions.test.ts`: DELETE /others テスト8件追加**
   - `workers/user/src/routes/sessions.ts` の「現在のセッション以外の全セッションを終了」エンドポイントにテストが存在しなかった
   - セッションなし401・IdP呼び出し確認・token_hash（SHA256(refresh_token)）送信・各ヘッダー確認・IdP応答伝播を網羅
