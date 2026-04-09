@@ -128,6 +128,25 @@
   - `security.test.ts`: `login-stats` に days=100 通過・days=366 拒否テスト2件追加
   - 全 1730 テストパス
 
+## コードレビュー修正（2026-04-10）
+
+### services.ts 全エンドポイントにDB例外ハンドリング追加
+
+- ✅ **`GET /api/services`: `Promise.all([listServices, countServices])` を try-catch で囲み、DB障害時に `INTERNAL_ERROR` 500 を返す**
+- ✅ **`GET /api/services/:id`: `findServiceById` を try-catch で囲み、DB障害時に `INTERNAL_ERROR` 500 を返す**
+- ✅ **`POST /api/services`: `createService` を try-catch で囲み、DB障害時に `INTERNAL_ERROR` 500 を返す**
+- ✅ **`PATCH /api/services/:id`: `updateServiceFields` を try-catch で囲み、DB障害時に `INTERNAL_ERROR` 500 を返す**
+- ✅ **`DELETE /api/services/:id`: `findServiceById`、`revokeAllServiceTokens`、`deleteService` をそれぞれ try-catch で囲む**
+- ✅ **`GET /api/services/:id/redirect-uris`: `findServiceById` と `listRedirectUris` を `Promise.all` + try-catch で統合**
+- ✅ **`POST /api/services/:id/redirect-uris`: `findServiceById` を try-catch で囲む**
+- ✅ **`POST /api/services/:id/rotate-secret`: `findServiceById`、`rotateClientSecret` を try-catch で囲む**
+- ✅ **`PATCH /api/services/:id/owner`: `findServiceById` + `findUserById` を `Promise.all` + try-catch で統合、`transferServiceOwnership` も try-catch で囲む**
+- ✅ **`GET /api/services/:id/users`: `findServiceById` + `Promise.all([listUsers, countUsers])` を try-catch で統合**
+- ✅ **`DELETE /api/services/:id/users/:userId`: `findServiceById` + `findUserById` を `Promise.all` + try-catch で統合、`revokeUserServiceTokens` も try-catch で囲む**
+- ✅ **`DELETE /api/services/:id/redirect-uris/:uriId`: `findServiceById` + `findRedirectUriById` を `Promise.all` + try-catch で統合、`deleteRedirectUri` も try-catch で囲む**
+- **テスト**: DB例外テスト11件追加（全852テストパス）
+- **背景**: `createAdminAuditLog` の try-catch は対応済みだったが、主要なビジネスロジックのDBアクセスが未保護で、D1障害時に非JSON500が素通りしていた
+
 ## 残課題（要対応）
 
 なし
