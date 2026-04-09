@@ -1,5 +1,15 @@
 # TODO
 
+## コードレビュー修正（2026-04-09）
+
+### users.ts Promise.all DB例外ハンドリング追加
+
+- ✅ **`GET /api/users/me/data-export`: `Promise.all` を try-catch で囲み、DB障害時に `INTERNAL_ERROR` 500 を返す**
+- ✅ **`GET /api/users/me/security-summary`: 同上（`INTERNAL_ERROR` 500 を返す）**
+- ✅ **`GET /api/users`: 管理者ユーザー一覧の `Promise.all` も同様に修正**
+- **背景**: `metrics.ts` で同パターン修正済みだったが、`users.ts` の3エンドポイントで漏れていた。DB障害時に JSON レスポンスなしで 500 が素通りしていた
+- **テスト**: DB例外テスト3件追加（全832テストパス）
+
 ## セキュリティ修正（2026-04-09）
 
 - ✅ **MCPワーカー `transport.ts`: `c.req.json()` のtry-catchなし問題を修正 → JSON-RPC ParseError(-32700)を正しく返却**
