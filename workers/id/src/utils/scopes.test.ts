@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAllowedScopes, resolveEffectiveScope, validateNonce } from './scopes';
+import { parseAllowedScopes, resolveEffectiveScope, validateNonce, validateCodeChallenge } from './scopes';
 
 describe('parseAllowedScopes', () => {
   it('JSON配列を正しくパースする', () => {
@@ -107,5 +107,40 @@ describe('validateNonce', () => {
     expect(validateNonce('nonce\x00value')).toBe('nonce contains invalid characters');
     expect(validateNonce('nonce\x1Fvalue')).toBe('nonce contains invalid characters');
     expect(validateNonce('nonce\x7Fvalue')).toBe('nonce contains invalid characters');
+  });
+});
+
+describe('validateCodeChallenge', () => {
+  it('undefined の場合は null を返す', () => {
+    expect(validateCodeChallenge(undefined)).toBeNull();
+  });
+
+  it('正常な43文字のBASE64URL code_challenge は null を返す', () => {
+    const valid = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
+    expect(validateCodeChallenge(valid)).toBeNull();
+  });
+
+  it('42文字の code_challenge はエラーメッセージを返す', () => {
+    const tooShort = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-c';
+    expect(validateCodeChallenge(tooShort)).toBe('Invalid code_challenge format for S256');
+  });
+
+  it('44文字の code_challenge はエラーメッセージを返す', () => {
+    const tooLong = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cMX';
+    expect(validateCodeChallenge(tooLong)).toBe('Invalid code_challenge format for S256');
+  });
+
+  it('BASE64URLに不正な文字（+, /, =）を含む場合はエラーメッセージを返す', () => {
+    // BASE64標準文字（+/=）はBASE64URLでは無効
+    const withPlus = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw+cM';
+    const withSlash = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw/cM';
+    const withPadding = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw=cM';
+    expect(validateCodeChallenge(withPlus)).toBe('Invalid code_challenge format for S256');
+    expect(validateCodeChallenge(withSlash)).toBe('Invalid code_challenge format for S256');
+    expect(validateCodeChallenge(withPadding)).toBe('Invalid code_challenge format for S256');
+  });
+
+  it('空文字はエラーメッセージを返す', () => {
+    expect(validateCodeChallenge('')).toBe('Invalid code_challenge format for S256');
   });
 });

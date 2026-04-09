@@ -57,7 +57,7 @@ import { type OAuthProvider, PROVIDER_DISPLAY_NAMES, ALL_PROVIDERS, isValidProvi
 import { authRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware } from '../middleware/auth';
 import { serviceBindingMiddleware } from '../middleware/service-binding';
-import { resolveEffectiveScope, validateNonce } from '../utils/scopes';
+import { resolveEffectiveScope, validateNonce, validateCodeChallenge } from '../utils/scopes';
 import { issueTokenPair, ACCESS_TOKEN_TTL_SECONDS } from '../utils/token-pair';
 import { validateAndRevokeRefreshToken, issueTokenPairWithRecovery } from '../utils/refresh-token-rotation';
 import { parse as parseDomain } from 'tldts';
@@ -522,8 +522,9 @@ app.get('/authorize', authRateLimitMiddleware, async (c) => {
     return c.json({ error: 'invalid_request', error_description: 'Only code_challenge_method=S256 is supported' }, 400);
   }
   // RFC 7636 §4.2: S256のcode_challengeはBASE64URL(SHA256(code_verifier)) = 43文字
-  if (!/^[A-Za-z0-9\-_]{43}$/.test(codeChallenge)) {
-    return c.json({ error: 'invalid_request', error_description: 'Invalid code_challenge format for S256' }, 400);
+  const codeChallengeError = validateCodeChallenge(codeChallenge);
+  if (codeChallengeError) {
+    return c.json({ error: 'invalid_request', error_description: codeChallengeError }, 400);
   }
 
   // パラメータ長制限
@@ -687,8 +688,9 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
     return c.json({ error: { code: 'BAD_REQUEST', message: 'code_challenge is required when code_challenge_method is specified' } }, 400);
   }
   // RFC 7636 §4.2: S256のcode_challengeはBASE64URL(SHA256(code_verifier)) = 43文字
-  if (codeChallenge && !/^[A-Za-z0-9\-_]{43}$/.test(codeChallenge)) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid code_challenge format for S256' } }, 400);
+  const codeChallengeError = validateCodeChallenge(codeChallenge);
+  if (codeChallengeError) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: codeChallengeError } }, 400);
   }
 
   // link_token の検証（SNSプロバイダー連携フロー）

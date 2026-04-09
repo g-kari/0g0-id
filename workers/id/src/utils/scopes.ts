@@ -52,3 +52,17 @@ export function validateNonce(nonce: string | undefined): string | null {
   if (/[\x00-\x1F\x7F]/.test(nonce)) return 'nonce contains invalid characters';
   return null;
 }
+
+/**
+ * PKCE code_challenge パラメータのバリデーションを行い、エラーメッセージを返す。
+ * 問題なければ null を返す。
+ *
+ * - undefined の場合はバリデーションをスキップ（オプションパラメータ）
+ * - RFC 7636 §4.2: S256 の code_challenge は BASE64URL(SHA256(code_verifier)) = 43文字
+ * - 許可文字: [A-Za-z0-9\-_]（BASE64URL アルファベット、パディングなし）
+ */
+export function validateCodeChallenge(codeChallenge: string | undefined): string | null {
+  if (codeChallenge === undefined) return null;
+  if (!/^[A-Za-z0-9\-_]{43}$/.test(codeChallenge)) return 'Invalid code_challenge format for S256';
+  return null;
+}
