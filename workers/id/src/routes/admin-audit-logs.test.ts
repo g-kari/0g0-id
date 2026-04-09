@@ -125,14 +125,32 @@ describe('GET /api/admin/audit-logs', () => {
     vi.mocked(listAdminAuditLogs).mockResolvedValue({ logs: [], total: 0 });
 
     const app = createApp();
-    await app.request(makeRequest('/api/admin/audit-logs?admin_user_id=admin-user-id'), undefined, mockEnv);
+    await app.request(
+      makeRequest('/api/admin/audit-logs?admin_user_id=00000000-0000-0000-0000-000000000099'),
+      undefined,
+      mockEnv
+    );
 
     expect(listAdminAuditLogs).toHaveBeenCalledWith(
       mockEnv.DB,
       50,
       0,
-      expect.objectContaining({ adminUserId: 'admin-user-id' })
+      expect.objectContaining({ adminUserId: '00000000-0000-0000-0000-000000000099' })
     );
+  });
+
+  it('非UUID形式の admin_user_id は 400 を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+
+    const app = createApp();
+    const res = await app.request(
+      makeRequest('/api/admin/audit-logs?admin_user_id=not-a-uuid'),
+      undefined,
+      mockEnv
+    );
+
+    expect(res.status).toBe(400);
+    expect(listAdminAuditLogs).not.toHaveBeenCalled();
   });
 
   it('target_id フィルタが渡される', async () => {
@@ -140,14 +158,58 @@ describe('GET /api/admin/audit-logs', () => {
     vi.mocked(listAdminAuditLogs).mockResolvedValue({ logs: [], total: 0 });
 
     const app = createApp();
-    await app.request(makeRequest('/api/admin/audit-logs?target_id=target-user-id'), undefined, mockEnv);
+    await app.request(
+      makeRequest('/api/admin/audit-logs?target_id=00000000-0000-0000-0000-000000000001'),
+      undefined,
+      mockEnv
+    );
 
     expect(listAdminAuditLogs).toHaveBeenCalledWith(
       mockEnv.DB,
       50,
       0,
-      expect.objectContaining({ targetId: 'target-user-id' })
+      expect.objectContaining({ targetId: '00000000-0000-0000-0000-000000000001' })
     );
+  });
+
+  it('非UUID形式の target_id は 400 を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+
+    const app = createApp();
+    const res = await app.request(
+      makeRequest('/api/admin/audit-logs?target_id=not-a-uuid'),
+      undefined,
+      mockEnv
+    );
+
+    expect(res.status).toBe(400);
+    expect(listAdminAuditLogs).not.toHaveBeenCalled();
+  });
+
+  it('不正な action 形式は 400 を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+
+    const app = createApp();
+    const res = await app.request(
+      makeRequest('/api/admin/audit-logs?action=INVALID_FORMAT'),
+      undefined,
+      mockEnv
+    );
+
+    expect(res.status).toBe(400);
+    expect(listAdminAuditLogs).not.toHaveBeenCalled();
+  });
+
+  it('DB例外時に500を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(listAdminAuditLogs).mockRejectedValue(new Error('DB connection error'));
+
+    const app = createApp();
+    const res = await app.request(makeRequest('/api/admin/audit-logs'), undefined, mockEnv);
+
+    expect(res.status).toBe(500);
+    const body = await res.json() as { error: { code: string } };
+    expect(body.error.code).toBe('INTERNAL_ERROR');
   });
 
   it('action フィルタが渡される', async () => {
@@ -308,5 +370,17 @@ describe('GET /api/admin/audit-logs/stats', () => {
     const res = await app.request(makeRequest('/api/admin/audit-logs/stats', { withAuth: false }), undefined, mockEnv);
 
     expect(res.status).toBe(401);
+  });
+
+  it('DB例外時に500を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getAuditLogStats).mockRejectedValue(new Error('DB connection error'));
+
+    const app = createApp();
+    const res = await app.request(makeRequest('/api/admin/audit-logs/stats'), undefined, mockEnv);
+
+    expect(res.status).toBe(500);
+    const body = await res.json() as { error: { code: string } };
+    expect(body.error.code).toBe('INTERNAL_ERROR');
   });
 });

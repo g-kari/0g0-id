@@ -155,6 +155,14 @@ describe('GET /api/userinfo', () => {
       expect(body.error).toBe('invalid_token');
     });
 
+    it('DB例外時に500（server_error）を返す', async () => {
+      vi.mocked(findUserById).mockRejectedValue(new Error('DB connection error'));
+      const res = await requestUserInfo(app);
+      expect(res.status).toBe(500);
+      const body = await res.json<{ error: string }>();
+      expect(body.error).toBe('server_error');
+    });
+
     it('BANされたユーザー → 401を返す', async () => {
       vi.mocked(findUserById).mockResolvedValue({ ...mockUser, banned_at: '2024-06-01T00:00:00Z' });
       const res = await requestUserInfo(app);

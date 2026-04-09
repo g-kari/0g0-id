@@ -17,7 +17,12 @@ const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 async function handleUserInfo(c: AppContext): Promise<Response> {
   const tokenUser = c.get('user');
 
-  const user = await findUserById(c.env.DB, tokenUser.sub);
+  let user;
+  try {
+    user = await findUserById(c.env.DB, tokenUser.sub);
+  } catch {
+    return c.json({ error: 'server_error', error_description: 'Internal server error' }, 500);
+  }
   if (!user) {
     return c.json({ error: 'invalid_token', error_description: 'User not found' }, 401);
   }

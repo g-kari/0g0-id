@@ -16,8 +16,12 @@ app.get('/stats', authMiddleware, adminMiddleware, async (c) => {
   }
   const days = daysResult?.days ?? 30;
 
-  const stats = await getAuditLogStats(c.env.DB, days);
-  return c.json({ data: stats, days });
+  try {
+    const stats = await getAuditLogStats(c.env.DB, days);
+    return c.json({ data: stats, days });
+  } catch {
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
 });
 
 // GET /api/admin/audit-logs — 管理者操作の監査ログ一覧（管理者のみ）
@@ -31,20 +35,34 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
   }
   const { limit, offset } = pagination;
 
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const adminUserId = c.req.query('admin_user_id');
   const targetId = c.req.query('target_id');
   const action = c.req.query('action');
 
-  const { logs, total } = await listAdminAuditLogs(c.env.DB, limit, offset, {
-    adminUserId,
-    targetId,
-    action,
-  });
+  if (adminUserId !== undefined && !UUID_RE.test(adminUserId)) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid admin_user_id format' } }, 400);
+  }
+  if (targetId !== undefined && !UUID_RE.test(targetId)) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid target_id format' } }, 400);
+  }
+  if (action !== undefined && !/^[a-z]+\.[a-z_]+$/.test(action)) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid action format' } }, 400);
+  }
 
-  return c.json({
-    data: logs,
-    pagination: { total, limit, offset },
-  });
+  try {
+    const { logs, total } = await listAdminAuditLogs(c.env.DB, limit, offset, {
+      adminUserId,
+      targetId,
+      action,
+    });
+    return c.json({
+      data: logs,
+      pagination: { total, limit, offset },
+    });
+  } catch {
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
 });
 
 export default app;
