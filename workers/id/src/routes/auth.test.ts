@@ -320,21 +320,15 @@ describe('GET /auth/login', () => {
   });
 
   it('有効なlink_token → linkUserIdをstate cookieに設定してリダイレクト', async () => {
-    vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
-      id: 'link-code-id',
-      user_id: 'existing-user-id',
-      code_hash: 'hashed-link-token',
-      redirect_to: 'link-intent',
-      expires_at: new Date(Date.now() + 60000).toISOString(),
-      used_at: null,
-      created_at: '2024-01-01T00:00:00Z',
-    } as never);
+    // verifyCookieモックはdecodeURIComponent(atob(decodeURIComponent(value)))を返す
+    // signCookieモックはbtoa(encodeURIComponent(payload))を返すため、その形式でトークンを作成
+    const validPayload = JSON.stringify({ sub: 'existing-user-id', exp: Date.now() + 60000 });
+    const validToken = btoa(encodeURIComponent(validPayload));
     const res = await sendRequest(
       app,
-      '/auth/login?redirect_to=https://user.0g0.xyz/callback&state=bff-state&provider=google&link_token=valid-link-token'
+      `/auth/login?redirect_to=https://user.0g0.xyz/callback&state=bff-state&provider=google&link_token=${encodeURIComponent(validToken)}`
     );
     expect(res.status).toBe(302);
-    expect(vi.mocked(findAndConsumeAuthCode)).toHaveBeenCalled();
     // state cookieにlinkUserIdが含まれることを確認
     const cookies = res.headers.get('set-cookie') ?? '';
     const stateCookieMatch = cookies.match(/__Host-oauth-state=([^;]+)/);
@@ -344,8 +338,8 @@ describe('GET /auth/login', () => {
     }
   });
 
-  it('無効なlink_token → 400を返す', async () => {
-    vi.mocked(findAndConsumeAuthCode).mockResolvedValue(null);
+  it('無効なlink_token（HMAC署名検証失敗）→ 400を返す', async () => {
+    // verifyCookieモックはatob失敗時にnullを返す
     const res = await sendRequest(
       app,
       '/auth/login?redirect_to=https://user.0g0.xyz/callback&state=bff-state&provider=google&link_token=invalid-token'
@@ -355,19 +349,13 @@ describe('GET /auth/login', () => {
     expect(body.error.code).toBe('INVALID_LINK_TOKEN');
   });
 
-  it('link_tokenのredirect_toが"link-intent"以外 → 400を返す（コード交換トークンの流用防止）', async () => {
-    vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
-      id: 'code-id',
-      user_id: 'user-1',
-      code_hash: 'hashed-code',
-      redirect_to: 'https://user.0g0.xyz/auth/callback', // 通常の認証コードを流用しようとしている
-      expires_at: new Date(Date.now() + 60000).toISOString(),
-      used_at: null,
-      created_at: '2024-01-01T00:00:00Z',
-    } as never);
+  it('期限切れlink_token → 400を返す', async () => {
+    // 期限切れペイロードをverifyCookieが返す場合
+    const expiredPayload = JSON.stringify({ sub: 'user-1', exp: Date.now() - 1000 });
+    const expiredToken = btoa(encodeURIComponent(expiredPayload));
     const res = await sendRequest(
       app,
-      '/auth/login?redirect_to=https://user.0g0.xyz/callback&state=bff-state&provider=google&link_token=auth-code-token'
+      `/auth/login?redirect_to=https://user.0g0.xyz/callback&state=bff-state&provider=google&link_token=${encodeURIComponent(expiredToken)}`
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -1085,10 +1073,8 @@ describe('POST /auth/link-intent', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(generateToken).mockReturnValue('mock-link-token');
-    vi.mocked(sha256).mockResolvedValue('hashed-link-token');
-    vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
     vi.mocked(findUserById).mockResolvedValue({ id: 'user-1', banned_at: null } as never);
+    vi.mocked(signCookie).mockImplementation(async (payload: string) => btoa(encodeURIComponent(payload)));
     vi.mocked(verifyAccessToken).mockResolvedValue({
       sub: 'user-1',
       email: 'test@example.com',
@@ -1107,7 +1093,7 @@ describe('POST /auth/link-intent', () => {
     expect(res.status).toBe(401);
   });
 
-  it('有効なBearerトークン → link_tokenを返す', async () => {
+  it('有効なBearerトークン → HMAC署名済みlink_tokenを返す', async () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/link-intent`, {
         method: 'POST',
@@ -1118,15 +1104,14 @@ describe('POST /auth/link-intent', () => {
     );
     expect(res.status).toBe(200);
     const body = await res.json<{ data: { link_token: string } }>();
-    expect(body.data.link_token).toBe('mock-link-token');
-    // redirect_to が 'link-intent' のauth codeが作成されることを確認
-    expect(vi.mocked(createAuthCode)).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        userId: 'user-1',
-        redirectTo: 'link-intent',
-      })
+    // signCookieが呼ばれ、sub: 'user-1'を含むペイロードで署名されることを確認
+    expect(vi.mocked(signCookie)).toHaveBeenCalledWith(
+      expect.stringContaining('"sub":"user-1"'),
+      mockEnv.COOKIE_SECRET
     );
+    // 返されたlink_tokenはsignCookieの戻り値（DBへの保存は不要）
+    expect(body.data.link_token).toBeTruthy();
+    expect(vi.mocked(createAuthCode)).not.toHaveBeenCalled();
   });
 });
 

@@ -913,9 +913,10 @@
 #### 優先度2
 - [ ] `routes/auth.ts`: プロバイダーごとの `resolve*Provider` 関数の重複削減
   - `PROVIDERS` テーブル（設定オブジェクト）に集約する設計へ
-- [ ] `routes/auth.ts`: `link_token` の署名方式を SHA-256 ハッシュから HMAC 署名 Cookie パターンに変更
-  - 現在: `sha256(linkToken)` でDB検索
-  - 改善案: `signCookie` / `verifyCookie` パターン（state Cookie と同じ）
+- ✅ `routes/auth.ts`: `link_token` の署名方式を SHA-256 ハッシュから HMAC 署名 Cookie パターンに変更（2026-04-09）
+  - `/link-intent`: `generateToken` + `sha256` + `createAuthCode` → `signCookie({ sub, exp })` に置換（DBアクセス不要）
+  - `/login` link_token検証: `sha256` + `findAndConsumeAuthCode` → `verifyCookie` + JSON.parse + 期限チェックに置換
+  - テスト: 期限切れlink_token→400テスト追加、createAuthCode呼び出し確認を削除（840テストパス）
 
 #### 優先度3（設計改善）
 - [ ] `routes/auth.ts`: bootstrap admin 昇格失敗時の挙動を改善

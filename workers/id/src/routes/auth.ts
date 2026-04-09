@@ -732,14 +732,23 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
   }
 
   // link_token の検証（SNSプロバイダー連携フロー）
+  // HMAC-SHA256署名付きトークン（signCookie/verifyCookieパターン）で検証する（DBアクセス不要）
   let linkUserId: string | undefined;
   if (linkToken) {
-    const tokenHash = await sha256(linkToken);
-    const linkCode = await findAndConsumeAuthCode(c.env.DB, tokenHash);
-    if (!linkCode || linkCode.redirect_to !== 'link-intent') {
+    const payload = await verifyCookie(linkToken, c.env.COOKIE_SECRET);
+    if (!payload) {
       return c.json({ error: { code: 'INVALID_LINK_TOKEN', message: 'Invalid or expired link token' } }, 400);
     }
-    linkUserId = linkCode.user_id;
+    let parsed: { sub: string; exp: number };
+    try {
+      parsed = JSON.parse(payload) as { sub: string; exp: number };
+    } catch {
+      return c.json({ error: { code: 'INVALID_LINK_TOKEN', message: 'Invalid or expired link token' } }, 400);
+    }
+    if (!parsed.sub || typeof parsed.exp !== 'number' || parsed.exp < Date.now()) {
+      return c.json({ error: { code: 'INVALID_LINK_TOKEN', message: 'Invalid or expired link token' } }, 400);
+    }
+    linkUserId = parsed.sub;
   }
 
   // id側のstate/PKCEを生成
@@ -1198,22 +1207,12 @@ app.post('/refresh', tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
 app.post('/link-intent', tokenApiRateLimitMiddleware, authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware, async (c) => {
   const tokenUser = c.get('user');
 
-  const linkToken = generateToken(32);
-  const tokenHash = await sha256(linkToken);
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5分
-
-  try {
-    await createAuthCode(c.env.DB, {
-      id: crypto.randomUUID(),
-      userId: tokenUser.sub,
-      codeHash: tokenHash,
-      redirectTo: 'link-intent', // 連携用の特別な値（通常のコード交換フローと区別する）
-      expiresAt,
-    });
-  } catch (err) {
-    authLogger.error('[link-intent] Failed to create link token', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to create link token' } }, 500);
-  }
+  // HMAC-SHA256署名付きトークンを生成（DBアクセス不要、自己完結型）
+  const tokenPayload = JSON.stringify({
+    sub: tokenUser.sub,
+    exp: Date.now() + 5 * 60 * 1000, // 5分
+  });
+  const linkToken = await signCookie(tokenPayload, c.env.COOKIE_SECRET);
 
   return c.json({ data: { link_token: linkToken } });
 });
