@@ -2229,3 +2229,163 @@ describe('GET /auth/authorize', () => {
     expect(location).toContain('scope=openid+profile');
   });
 });
+
+// ===== Authorization Code Flow E2E (State Cookie Round-trip) =====
+describe('Authorization Code Flow E2E (State Cookie Round-trip)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    // Cookie署名モック（base64エンコード/デコードで署名をシミュレート）
+    vi.mocked(signCookie).mockImplementation(async (payload: string) => btoa(encodeURIComponent(payload)));
+    vi.mocked(verifyCookie).mockImplementation(async (value: string) => {
+      try { return decodeURIComponent(atob(decodeURIComponent(value))); } catch { return null; }
+    });
+    // generateToken: 最初の呼び出し（login → idState）、以降（callback → auth code）
+    vi.mocked(generateToken)
+      .mockReturnValueOnce('e2e-id-state')
+      .mockReturnValue('e2e-auth-code');
+    vi.mocked(generateCodeVerifier).mockReturnValue('e2e-code-verifier');
+    vi.mocked(generateCodeChallenge).mockResolvedValue('e2e-code-challenge');
+    vi.mocked(buildGoogleAuthUrl).mockReturnValue('https://accounts.google.com/o/oauth2/auth?state=e2e-id-state');
+    // OAuthプロバイダーモック
+    vi.mocked(exchangeGoogleCode).mockResolvedValue({ access_token: 'google-access-token' } as never);
+    vi.mocked(fetchGoogleUserInfo).mockResolvedValue({
+      sub: 'google-sub-1',
+      email: 'test@example.com',
+      email_verified: true,
+      name: 'Test User',
+      picture: 'https://example.com/pic.jpg',
+    } as never);
+    // callbackのDBモック
+    vi.mocked(upsertUser).mockResolvedValue(mockUser);
+    vi.mocked(tryBootstrapAdmin).mockResolvedValue(false);
+    vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
+    // timingSafeEqualは実際の文字列比較を実行（state round-trip検証のため）
+    vi.mocked(timingSafeEqual).mockImplementation(((a: string, b: string) => a === b) as never);
+    vi.mocked(sha256).mockResolvedValue('e2e-hashed-value');
+    // exchangeのDBモック
+    vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
+      id: 'code-id',
+      user_id: 'user-1',
+      service_id: null,
+      code_hash: 'e2e-hashed-value',
+      redirect_to: 'https://user.0g0.xyz/callback',
+      expires_at: new Date(Date.now() + 60000).toISOString(),
+      used_at: null,
+      created_at: '2024-01-01T00:00:00Z',
+    } as never);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(signAccessToken).mockResolvedValue('e2e-access-token');
+    vi.mocked(signIdToken).mockResolvedValue('e2e-id-token');
+    vi.mocked(createRefreshToken).mockResolvedValue(undefined as never);
+  });
+
+  it('/auth/login → /auth/callback → /auth/exchange: 完全なBFFフローでトークンが発行される', async () => {
+    const app = buildApp();
+    const bffState = 'bff-test-state';
+    const redirectTo = 'https://user.0g0.xyz/callback';
+
+    // Step 1: GET /auth/login
+    const loginRes = await sendRequest(
+      app,
+      `/auth/login?redirect_to=${encodeURIComponent(redirectTo)}&state=${bffState}&provider=google`
+    );
+    expect(loginRes.status).toBe(302);
+    expect(loginRes.headers.get('location')).toContain('accounts.google.com');
+
+    // Set-Cookieヘッダーからstate/pkce cookieを取得
+    const setCookieHeader = loginRes.headers.get('set-cookie') ?? '';
+    const stateCookieMatch = setCookieHeader.match(/__Host-oauth-state=([^;]+)/);
+    const pkceCookieMatch = setCookieHeader.match(/__Host-oauth-pkce=([^;]+)/);
+    expect(stateCookieMatch).not.toBeNull();
+    expect(pkceCookieMatch).not.toBeNull();
+    const stateCookieValue = stateCookieMatch![1];
+    const pkceCookieValue = pkceCookieMatch![1];
+
+    // Cookie内のstate情報を検証（sign/verify round-trip確認）
+    const decodedState = JSON.parse(decodeURIComponent(atob(decodeURIComponent(stateCookieValue))));
+    expect(decodedState.idState).toBe('e2e-id-state');
+    expect(decodedState.bffState).toBe(bffState);
+    expect(decodedState.redirectTo).toBe(redirectTo);
+    expect(decodedState.provider).toBe('google');
+
+    // Step 2: GET /auth/callback（OAuthプロバイダーからのコールバックをシミュレート）
+    const callbackRes = await app.request(
+      new Request(`${baseUrl}/auth/callback?code=google-oauth-code&state=e2e-id-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateCookieValue}; __Host-oauth-pkce=${pkceCookieValue}`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(callbackRes.status).toBe(302);
+    const callbackLocation = callbackRes.headers.get('location') ?? '';
+    expect(callbackLocation).toContain(redirectTo);
+    expect(callbackLocation).toContain(`state=${bffState}`);
+
+    // auth codeをリダイレクトURLから抽出
+    const callbackUrl = new URL(callbackLocation);
+    const authCode = callbackUrl.searchParams.get('code');
+    expect(authCode).toBe('e2e-auth-code');
+
+    // createAuthCodeがcallback時に呼ばれたことを確認
+    expect(vi.mocked(createAuthCode)).toHaveBeenCalled();
+
+    // Step 3: POST /auth/exchange（BFFがauth codeをトークンに交換）
+    const exchangeRes = await sendRequest(app, '/auth/exchange', {
+      method: 'POST',
+      body: { code: authCode, redirect_to: redirectTo },
+    });
+    expect(exchangeRes.status).toBe(200);
+    const exchangeBody = await exchangeRes.json<{
+      data: {
+        access_token: string;
+        id_token: string;
+        token_type: string;
+        expires_in: number;
+        user: { id: string; email: string };
+      };
+    }>();
+    expect(exchangeBody.data.access_token).toBe('e2e-access-token');
+    expect(exchangeBody.data.id_token).toBe('e2e-id-token');
+    expect(exchangeBody.data.token_type).toBe('Bearer');
+    expect(exchangeBody.data.user.id).toBe('user-1');
+    expect(exchangeBody.data.user.email).toBe('test@example.com');
+  });
+
+  it('/auth/login → /auth/callback（state不一致）: CSRF攻撃シミュレーションで400を返す', async () => {
+    const app = buildApp();
+    const redirectTo = 'https://user.0g0.xyz/callback';
+
+    // Step 1: GET /auth/login（正規フロー）
+    const loginRes = await sendRequest(
+      app,
+      `/auth/login?redirect_to=${encodeURIComponent(redirectTo)}&state=legitimate-bff-state&provider=google`
+    );
+    expect(loginRes.status).toBe(302);
+
+    const setCookieHeader = loginRes.headers.get('set-cookie') ?? '';
+    const stateCookieMatch = setCookieHeader.match(/__Host-oauth-state=([^;]+)/);
+    const pkceCookieMatch = setCookieHeader.match(/__Host-oauth-pkce=([^;]+)/);
+    expect(stateCookieMatch).not.toBeNull();
+    const stateCookieValue = stateCookieMatch![1];
+    const pkceCookieValue = pkceCookieMatch?.[1] ?? 'dummy-pkce';
+
+    // Step 2: 攻撃者が異なるstateでコールバックを送信（CSRF攻撃）
+    const callbackRes = await app.request(
+      new Request(`${baseUrl}/auth/callback?code=google-oauth-code&state=attacker-injected-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateCookieValue}; __Host-oauth-pkce=${pkceCookieValue}`,
+        },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    // state不一致（idState='e2e-id-state' vs 'attacker-injected-state'）で400を返すこと
+    expect(callbackRes.status).toBe(400);
+    const body = await callbackRes.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+    // トークン発行が呼ばれないことを確認
+    expect(vi.mocked(createAuthCode)).not.toHaveBeenCalled();
+  });
+});

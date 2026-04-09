@@ -497,7 +497,7 @@ app.post('/introspect', externalApiRateLimitMiddleware, async (c) => {
   }
   if (!service) {
     c.header('WWW-Authenticate', 'Basic realm="0g0-id"');
-    return c.json({ error: 'invalid_client' }, 401);
+    return c.json({ active: false }, 401);
   }
   const introspectService = service;
 
