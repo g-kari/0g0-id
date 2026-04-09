@@ -5,6 +5,22 @@ import { SESSION_COOKIE } from './auth';
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// ユーザーID形式検証ミドルウェア（:id パラメータを持つすべてのルートに適用）
+app.use('/:id', async (c, next) => {
+  if (!UUID_RE.test(c.req.param('id'))) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid user ID format' } }, 400);
+  }
+  await next();
+});
+app.use('/:id/*', async (c, next) => {
+  if (!UUID_RE.test(c.req.param('id'))) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid user ID format' } }, 400);
+  }
+  await next();
+});
+
 // GET /api/users
 app.get('/', async (c) => {
   const pagination = parsePagination(
@@ -133,10 +149,14 @@ app.get('/:id/tokens', async (c) => {
 
 // DELETE /api/users/:id/tokens/:tokenId — ユーザーの特定セッションを失効
 app.delete('/:id/tokens/:tokenId', async (c) => {
+  const tokenId = c.req.param('tokenId');
+  if (!UUID_RE.test(tokenId)) {
+    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid token ID format' } }, 400);
+  }
   return proxyMutate(
     c,
     SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/tokens/${c.req.param('tokenId')}`
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param('id')}/tokens/${tokenId}`
   );
 });
 
