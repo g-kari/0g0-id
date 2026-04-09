@@ -923,6 +923,6 @@
   - テスト: 期限切れlink_token→400テスト追加、createAuthCode呼び出し確認を削除（840テストパス）
 
 #### 優先度3（設計改善）
-- [ ] `routes/auth.ts`: bootstrap admin 昇格失敗時の挙動を改善
-  - 現在: 昇格失敗してもユーザーは `role: 'user'` でログイン継続
-  - 改善案: 昇格失敗時は警告フラグ付きトークンを発行するか、管理者に通知
+- ✅ `routes/auth.ts`: bootstrap admin 昇格失敗時の挙動を改善（2026-04-09）
+  - 修正: DB例外時に `{ error: { code: 'INTERNAL_ERROR' } }` 500 を返すよう変更（silent failureを排除）
+  - テスト: DB例外→500ケース追加（全841テストパス）
