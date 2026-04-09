@@ -2263,6 +2263,24 @@ describe('GET /auth/authorize', () => {
     const location = res.headers.get('Location') ?? '';
     expect(location).toContain('scope=openid+profile');
   });
+
+  it('findServiceByClientId がDB例外をスロー → RFC 6749形式のserver_error 500を返す', async () => {
+    vi.mocked(findServiceByClientId).mockRejectedValue(new Error('D1_ERROR: database unavailable'));
+    const res = await sendRequest(app, `/auth/authorize?${validParams.toString()}`);
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: string; error_description: string }>();
+    expect(body.error).toBe('server_error');
+    expect(body.error_description).toBe('Internal server error');
+  });
+
+  it('listRedirectUris がDB例外をスロー → RFC 6749形式のserver_error 500を返す', async () => {
+    vi.mocked(listRedirectUris).mockRejectedValue(new Error('D1_ERROR: database unavailable'));
+    const res = await sendRequest(app, `/auth/authorize?${validParams.toString()}`);
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: string; error_description: string }>();
+    expect(body.error).toBe('server_error');
+    expect(body.error_description).toBe('Internal server error');
+  });
 });
 
 // ===== Authorization Code Flow E2E (State Cookie Round-trip) =====

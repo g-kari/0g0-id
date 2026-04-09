@@ -544,7 +544,12 @@ app.get('/authorize', authRateLimitMiddleware, async (c) => {
   }
 
   // サービス検証
-  const service = await findServiceByClientId(c.env.DB, clientId);
+  let service: Awaited<ReturnType<typeof findServiceByClientId>>;
+  try {
+    service = await findServiceByClientId(c.env.DB, clientId);
+  } catch {
+    return c.json({ error: 'server_error', error_description: 'Internal server error' }, 500);
+  }
   if (!service) {
     return c.json({ error: 'invalid_request', error_description: 'Unknown client_id' }, 400);
   }
@@ -556,7 +561,12 @@ app.get('/authorize', authRateLimitMiddleware, async (c) => {
   }
 
   // 登録済みredirect_uriを取得して、matchRedirectUriで比較
-  const registeredUris = await listRedirectUris(c.env.DB, service.id);
+  let registeredUris: Awaited<ReturnType<typeof listRedirectUris>>;
+  try {
+    registeredUris = await listRedirectUris(c.env.DB, service.id);
+  } catch {
+    return c.json({ error: 'server_error', error_description: 'Internal server error' }, 500);
+  }
   const matched = registeredUris.some((ru) => matchRedirectUri(ru.uri, normalizedRequested));
   if (!matched) {
     return c.json({ error: 'invalid_request', error_description: 'redirect_uri not registered for this client' }, 400);
