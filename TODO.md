@@ -158,6 +158,13 @@
   - workers/id, workers/mcp, packages/shared の 3 パッケージを更新
   - 全テストパス（852 + 475 + 195 + 172 + 83 件）
 
+- ✅ **cloudflare グループ 3 パッケージ更新**
+  - @cloudflare/workers-types: 4.20260317.1 → 4.20260409.1
+  - @cloudflare/vite-plugin: 1.29.1 → 1.31.2（I/O コンテキストエラー修正含む）
+  - wrangler: 4.75.0 → 4.81.1
+  - workers/admin, workers/id, workers/mcp, workers/user, packages/shared 全ワークスペース更新
+  - 全テストパス確認済み
+
 ## コードレビュー修正（2026-04-09）
 
 ### userinfo.ts / admin-audit-logs.ts DB例外ハンドリング追加
