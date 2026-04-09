@@ -1793,6 +1793,29 @@ describe('GET /auth/callback - ブートストラップ管理者', () => {
     expect(res.status).toBe(302);
     expect(vi.mocked(tryBootstrapAdmin)).not.toHaveBeenCalled();
   });
+
+  it('BOOTSTRAP_ADMIN_EMAIL一致・tryBootstrapAdminがDB例外 → 500を返す', async () => {
+    vi.mocked(tryBootstrapAdmin).mockRejectedValue(new Error('D1_ERROR: database is locked'));
+    const envWithBootstrap = { ...mockEnv, BOOTSTRAP_ADMIN_EMAIL: 'admin@example.com' };
+    const stateData = buildStateCookie({
+      idState: 'correct-state',
+      bffState: 'bff-state',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'google',
+    });
+    const res = await buildApp().request(
+      new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
+        headers: {
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+        },
+      }),
+      undefined,
+      envWithBootstrap as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+  });
 });
 
 // ===== isAllowedRedirectTo =====
