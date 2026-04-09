@@ -1,5 +1,25 @@
 # TODO
 
+## コードレビュー修正（2026-04-09）
+
+- ✅ **`device.ts`: `POST /code` および `handleDeviceCodeGrant` のDB例外ハンドリング追加**
+  - `findServiceByClientId` 等のDBアクセスを try/catch で囲み、500エラーを適切に返すよう修正
+
+- ✅ **`token.ts`: `handleRefreshTokenGrant` の `refreshScope` undefined フォールバック追加**
+  - `resolveEffectiveScope(null, ...)` が undefined を返すケースに `?? ''` を追加
+
+- ✅ **`metrics.ts`: `/login-trends`・`/user-registrations` の `parseDays` 統一（maxDays: 365）**
+  - 手書きの `parseInt` + `Math.min/max` ロジックを `parseDays` に置き換え
+
+- ✅ **`well-known.ts`: OIDC Discovery Document に `end_session_endpoint` を追加**
+  - `${issuer}/auth/logout` を `end_session_endpoint` として公開（OIDC Discovery 1.0 RECOMMENDED）
+
+- ✅ **セキュリティ調査: UUID/推測困難な値での認可代替パターン（問題なし）**
+  - device verify: `authMiddleware` による JWT 認証必須を確認
+  - external API: `serviceAuthMiddleware` による client_secret 認証必須を確認
+  - admin API: `adminMiddleware` による role チェック必須を確認
+  - auth code: `findAndConsumeAuthCode` によるワンタイム消費を確認
+
 ## バグ修正・テスト追加（2026-04-09）
 
 - ✅ **Authorization Code Flow E2E テスト2件追加（State Cookie Round-trip）**
