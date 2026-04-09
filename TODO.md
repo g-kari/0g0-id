@@ -104,9 +104,23 @@
 
 ## 残課題（要対応）
 
-- `auth.ts` `/auth/callback`: OAuthコールバックエラーを `redirect_uri` へリダイレクト転送（RFC 6749 §4.1.2.1 準拠）
 - `token.ts` `POST /api/token`: `application/json` 受付は RFC 6749 非標準 — 要検討
-- dependabot: 5件のmoderate脆弱性（GitHub Security）
+
+## 対応済み（2026-04-09）
+
+- ✅ **`auth.ts` `/auth/callback`: OAuthコールバックエラーをBFFへリダイレクト転送（RFC 6749 §4.1.2.1）**
+  - state cookieが有効な場合はBFFのredirectTo URLへ error/state パラメータ付きでリダイレクト
+  - 未知のエラーコードはaccess_deniedにサニタイズ（内部情報漏洩防止）
+  - cookie無効/未設定の場合はJSONエラーフォールバック
+  - テスト2件追加（全823テストパス）
+
+- ✅ **dependabot: hono 4.12.8 → 4.12.12 アップデート（5件のmoderate脆弱性修正）**
+  - GHSA-26pp-8wgv-hjvm: setCookie() クッキー名バリデーション欠如
+  - GHSA-r5rp-j6wh-rvv4: getCookie() ノーブレークスペースバイパス
+  - GHSA-xpcf-pg52-r92g: ipRestriction() IPv4マップドIPv6誤判定
+  - GHSA-xf4j-xp2r-rqqx: toSSG() パストラバーサル
+  - GHSA-wmmm-f939-6g9c: serveStatic 連続スラッシュミドルウェアバイパス
+  - `npm audit` 0件確認済み
 
 ## テストカバレッジ追加（2026-04-09）
 
