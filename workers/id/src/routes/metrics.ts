@@ -72,9 +72,11 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
 
 // GET /api/metrics/login-trends?days=30
 app.get('/login-trends', authMiddleware, adminMiddleware, async (c) => {
-  const daysStr = c.req.query('days');
-  const parsed = daysStr !== undefined ? parseInt(daysStr, 10) : NaN;
-  const days = Math.min(Math.max(Number.isNaN(parsed) ? 30 : parsed, 1), 90);
+  const daysResult = parseDays(c.req.query('days'), { maxDays: 365 });
+  if (daysResult && 'error' in daysResult) {
+    return c.json({ error: daysResult.error }, 400);
+  }
+  const days = daysResult?.days ?? 30;
 
   const trends = await getDailyLoginTrends(c.env.DB, days);
 
@@ -105,9 +107,11 @@ app.get('/suspicious-logins', authMiddleware, adminMiddleware, async (c) => {
 
 // GET /api/metrics/user-registrations?days=30 — 日別新規ユーザー登録数
 app.get('/user-registrations', authMiddleware, adminMiddleware, async (c) => {
-  const daysStr = c.req.query('days');
-  const parsed = daysStr !== undefined ? parseInt(daysStr, 10) : NaN;
-  const days = Math.min(Math.max(Number.isNaN(parsed) ? 30 : parsed, 1), 90);
+  const daysResult = parseDays(c.req.query('days'), { maxDays: 365 });
+  if (daysResult && 'error' in daysResult) {
+    return c.json({ error: daysResult.error }, 400);
+  }
+  const days = daysResult?.days ?? 30;
 
   const registrations = await getDailyUserRegistrations(c.env.DB, days);
 

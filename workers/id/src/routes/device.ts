@@ -104,7 +104,13 @@ app.post('/code', tokenApiRateLimitMiddleware, async (c) => {
   }
 
   // サービス（クライアント）の存在確認
-  const service = await findServiceByClientId(c.env.DB, clientId);
+  let service: Awaited<ReturnType<typeof findServiceByClientId>>;
+  try {
+    service = await findServiceByClientId(c.env.DB, clientId);
+  } catch (err) {
+    deviceLogger.error('POST /api/device/code: findServiceByClientId failed', err);
+    return c.json({ error: 'server_error', error_description: 'An unexpected error occurred' }, 500);
+  }
   if (!service) {
     return c.json({ error: 'invalid_client', error_description: 'Unknown client_id' }, 401);
   }
@@ -269,13 +275,26 @@ export async function handleDeviceCodeGrant(
   }
 
   // クライアント確認
-  const service = await findServiceByClientId(c.env.DB, clientId);
+  let service: Awaited<ReturnType<typeof findServiceByClientId>>;
+  try {
+    service = await findServiceByClientId(c.env.DB, clientId);
+  } catch (err) {
+    deviceLogger.error('handleDeviceCodeGrant: findServiceByClientId failed', err);
+    return c.json({ error: 'server_error', error_description: 'An unexpected error occurred' }, 500);
+  }
   if (!service) {
     return c.json({ error: 'invalid_client' }, 401);
   }
 
   const deviceCodeHash = await sha256(rawDeviceCode);
-  const deviceCode = await findDeviceCodeByHash(c.env.DB, deviceCodeHash);
+
+  let deviceCode: Awaited<ReturnType<typeof findDeviceCodeByHash>>;
+  try {
+    deviceCode = await findDeviceCodeByHash(c.env.DB, deviceCodeHash);
+  } catch (err) {
+    deviceLogger.error('handleDeviceCodeGrant: findDeviceCodeByHash failed', err);
+    return c.json({ error: 'server_error', error_description: 'An unexpected error occurred' }, 500);
+  }
 
   if (!deviceCode) {
     return c.json({ error: 'invalid_grant', error_description: 'Invalid device code' }, 400);
@@ -289,7 +308,11 @@ export async function handleDeviceCodeGrant(
   // 期限切れチェック
   if (new Date(deviceCode.expires_at) < new Date()) {
     // 期限切れのレコードを削除
-    await deleteDeviceCode(c.env.DB, deviceCode.id);
+    try {
+      await deleteDeviceCode(c.env.DB, deviceCode.id);
+    } catch (err) {
+      deviceLogger.warn('handleDeviceCodeGrant: deleteDeviceCode (expired) failed', err);
+    }
     return c.json({ error: 'invalid_grant', error_description: 'Device code has expired' }, 400);
   }
 
@@ -306,7 +329,13 @@ export async function handleDeviceCodeGrant(
   // 承認済みチェックをslow_downの前に実施（承認済みなのに余分な待機を強いるのを防止）
   if (!deviceCode.approved_at || !deviceCode.user_id) {
     // まだ承認されていない場合のみポーリング間隔チェック
-    const pollingAllowed = await tryUpdateDeviceCodePolledAt(c.env.DB, deviceCode.id, POLLING_INTERVAL_SEC);
+    let pollingAllowed: boolean;
+    try {
+      pollingAllowed = await tryUpdateDeviceCodePolledAt(c.env.DB, deviceCode.id, POLLING_INTERVAL_SEC);
+    } catch (err) {
+      deviceLogger.error('handleDeviceCodeGrant: tryUpdateDeviceCodePolledAt failed', err);
+      return c.json({ error: 'server_error', error_description: 'An unexpected error occurred' }, 500);
+    }
     if (!pollingAllowed) {
       // RFC 8628 §3.5: slow_down には Retry-After ヘッダーを付与する
       return c.json({ error: 'slow_down' }, 400, { 'Retry-After': String(POLLING_INTERVAL_SEC) });
@@ -315,18 +344,34 @@ export async function handleDeviceCodeGrant(
   }
 
   // 承認済みユーザー取得とBANチェック（不可逆な削除の前に実施）
-  const user = await findUserById(c.env.DB, deviceCode.user_id);
+  let user: Awaited<ReturnType<typeof findUserById>>;
+  try {
+    user = await findUserById(c.env.DB, deviceCode.user_id);
+  } catch (err) {
+    deviceLogger.error('handleDeviceCodeGrant: findUserById failed', err);
+    return c.json({ error: 'server_error', error_description: 'An unexpected error occurred' }, 500);
+  }
   if (!user) {
     return c.json({ error: 'invalid_grant', error_description: 'User not found' }, 400);
   }
   if (user.banned_at !== null) {
     // BAN済みユーザーのdevice codeは失効させる
-    await deleteDeviceCode(c.env.DB, deviceCode.id);
+    try {
+      await deleteDeviceCode(c.env.DB, deviceCode.id);
+    } catch (err) {
+      deviceLogger.warn('handleDeviceCodeGrant: deleteDeviceCode (banned) failed', err);
+    }
     return c.json({ error: 'access_denied', error_description: 'Account has been suspended' }, 403);
   }
 
   // 全チェック通過後にアトミック削除で二重トークン発行を防止
-  const deleted = await deleteApprovedDeviceCode(c.env.DB, deviceCode.id);
+  let deleted: boolean;
+  try {
+    deleted = await deleteApprovedDeviceCode(c.env.DB, deviceCode.id);
+  } catch (err) {
+    deviceLogger.error('handleDeviceCodeGrant: deleteApprovedDeviceCode failed', err);
+    return c.json({ error: 'server_error', error_description: 'An unexpected error occurred' }, 500);
+  }
   if (!deleted) {
     // 他のリクエストが先にトークンを発行済み
     return c.json({ error: 'invalid_grant', error_description: 'Device code already consumed' }, 400);

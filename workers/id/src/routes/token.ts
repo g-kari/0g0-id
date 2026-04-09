@@ -359,7 +359,7 @@ async function handleRefreshTokenGrant(
   }
 
   // スコープ引き継ぎ
-  const refreshScope = storedToken.scope ?? resolveEffectiveScope(null, service.allowed_scopes);
+  const refreshScope = storedToken.scope ?? resolveEffectiveScope(null, service.allowed_scopes) ?? '';
 
   const issueResult = await issueTokenPairWithRecovery(
     c.env.DB,
