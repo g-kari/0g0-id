@@ -253,6 +253,34 @@ function setSecureCookie(
 }
 
 /**
+ * state Cookie を安全に検証・パースする
+ * 検証失敗または不正な JSON の場合は null を返す
+ */
+async function parseStateFromCookie(
+  stateCookieRaw: string,
+  secret: string
+): Promise<OAuthStateCookieData | null> {
+  const verifiedPayload = await verifyCookie(stateCookieRaw, secret);
+  if (!verifiedPayload) return null;
+
+  try {
+    const parsed: unknown = JSON.parse(verifiedPayload);
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'idState' in parsed &&
+      'redirectTo' in parsed &&
+      'bffState' in parsed
+    ) {
+      return parsed as OAuthStateCookieData;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * SNSプロバイダー連携のラッパー。
  * PROVIDER_ALREADY_LINKEDエラーを捕捉し、判別可能な戻り値として返す。
  */
@@ -767,24 +795,17 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
     deleteCookie(c, PKCE_COOKIE, { path: '/', secure: true });
 
     if (stateCookieRaw) {
-      const verifiedPayload = await verifyCookie(stateCookieRaw, c.env.COOKIE_SECRET);
-      if (verifiedPayload) {
-        try {
-          const parsedState: OAuthStateCookieData = JSON.parse(verifiedPayload);
-          // 未知のエラーコードはaccess_deniedにサニタイズ（プロバイダー内部情報漏洩防止）
-          const safeErrorCode = error in OAUTH_ERROR_MAP ? error : 'access_denied';
-          const errorUrl = new URL(parsedState.redirectTo);
-          errorUrl.searchParams.set('error', safeErrorCode);
-          errorUrl.searchParams.set('state', parsedState.bffState);
-          return c.redirect(errorUrl.toString());
-        } catch {
-          // Cookie parse失敗: フォールバックへ
-        }
+      const stateData = await parseStateFromCookie(stateCookieRaw, c.env.COOKIE_SECRET);
+      if (stateData) {
+        const safeErrorCode = error in OAUTH_ERROR_MAP ? error : 'access_denied';
+        const errorUrl = new URL(stateData.redirectTo);
+        errorUrl.searchParams.set('error', safeErrorCode);
+        errorUrl.searchParams.set('state', stateData.bffState);
+        return c.redirect(errorUrl.toString());
       }
     }
 
-    // フォールバック: state cookieなし/無効の場合はJSONエラー
-    const safeMessage = OAUTH_ERROR_MAP[error] ?? 'Authentication failed';
+    const safeMessage = OAUTH_ERROR_MAP[error as keyof typeof OAUTH_ERROR_MAP] ?? 'Authentication failed';
     return c.json({ error: { code: 'OAUTH_ERROR', message: safeMessage } }, 400);
   }
 
