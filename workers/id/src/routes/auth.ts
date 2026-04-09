@@ -336,6 +336,17 @@ async function exchangeAndFetchUserInfo<TTokenResponse extends { access_token: s
 
 // ─── プロバイダー固有の認証解決関数 ──────────────────────────────────────────
 
+function makePlaceholderEmail(
+  provider: string,
+  sub: string,
+  rawEmail?: string | null
+): { email: string; isPlaceholderEmail: boolean } {
+  return {
+    email: rawEmail || `${provider}_${sub}@${provider}.placeholder`,
+    isPlaceholderEmail: !rawEmail,
+  };
+}
+
 /** OAuthプロバイダーのコード交換・ユーザー情報取得・upsert関数を一元化 */
 async function resolveProvider(
   c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
@@ -377,8 +388,7 @@ async function resolveProvider(
       );
       if (!result.ok) return result;
       const { userInfo } = result;
-      const isPlaceholderEmail = !userInfo.email;
-      const email = userInfo.email ?? `line_${userInfo.sub}@line.placeholder`;
+      const { email, isPlaceholderEmail } = makePlaceholderEmail('line', userInfo.sub, userInfo.email);
       return {
         ok: true,
         sub: userInfo.sub,
@@ -401,8 +411,7 @@ async function resolveProvider(
       );
       if (!result.ok) return result;
       const { userInfo } = result;
-      const isPlaceholderEmail = !userInfo.email;
-      const email = userInfo.email ?? `twitch_${userInfo.sub}@twitch.placeholder`;
+      const { email, isPlaceholderEmail } = makePlaceholderEmail('twitch', userInfo.sub, userInfo.email);
       if (!isPlaceholderEmail && !(userInfo.email_verified ?? false)) {
         return oauthError(c, 'Email not verified', 'UNVERIFIED_EMAIL');
       }
@@ -439,8 +448,7 @@ async function resolveProvider(
         authLogger.error('[oauth-github] Failed to fetch primary email', err);
         return oauthError(c, 'Failed to fetch GitHub email');
       }
-      const isPlaceholderEmail = !email;
-      const finalEmail = email ?? `github_${githubSub}@github.placeholder`;
+      const { email: finalEmail, isPlaceholderEmail } = makePlaceholderEmail('github', githubSub, email);
       return {
         ok: true,
         sub: githubSub,
@@ -463,7 +471,7 @@ async function resolveProvider(
       );
       if (!result.ok) return result;
       const { userInfo: xUser } = result;
-      const xEmail = `x_${xUser.id}@x.placeholder`;
+      const { email: xEmail } = makePlaceholderEmail('x', xUser.id);
       return {
         ok: true,
         sub: xUser.id,
