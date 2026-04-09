@@ -1539,3 +1539,129 @@ describe('DELETE /api/services/:id/redirect-uris/:uriId', () => {
     );
   });
 });
+
+// ===== DB例外ハンドリング =====
+describe('DB例外ハンドリング', () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockAdminUser);
+  });
+
+  it('GET / — listServices例外 → 500を返す', async () => {
+    vi.mocked(listServices).mockRejectedValue(new Error('DB error'));
+    const res = await sendRequest(app, '/api/services');
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('GET /:id — findServiceById例外 → 500を返す', async () => {
+    vi.mocked(findServiceById).mockRejectedValue(new Error('DB error'));
+    const res = await sendRequest(app, '/api/services/service-1');
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('POST / — createService例外 → 500を返す', async () => {
+    vi.mocked(generateClientId).mockReturnValue('new-client-id');
+    vi.mocked(generateClientSecret).mockReturnValue('new-secret');
+    vi.mocked(sha256).mockResolvedValue('hash');
+    vi.mocked(createService).mockRejectedValue(new Error('DB error'));
+    const res = await sendRequest(app, '/api/services', {
+      method: 'POST',
+      body: { name: 'New Service' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('PATCH /:id — updateServiceFields例外 → 500を返す', async () => {
+    vi.mocked(updateServiceFields).mockRejectedValue(new Error('DB error'));
+    const res = await sendRequest(app, '/api/services/service-1', {
+      method: 'PATCH',
+      body: { name: 'Updated' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('DELETE /:id — findServiceById例外 → 500を返す', async () => {
+    vi.mocked(findServiceById).mockRejectedValue(new Error('DB error'));
+    const res = await sendRequest(app, '/api/services/service-1', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('GET /:id/redirect-uris — DB例外 → 500を返す', async () => {
+    vi.mocked(findServiceById).mockRejectedValue(new Error('DB error'));
+    const res = await sendRequest(app, '/api/services/service-1/redirect-uris');
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('POST /:id/rotate-secret — findServiceById例外 → 500を返す', async () => {
+    vi.mocked(findServiceById).mockRejectedValue(new Error('DB error'));
+    const res = await sendRequest(app, '/api/services/service-1/rotate-secret', {
+      method: 'POST',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('PATCH /:id/owner — findServiceById例外 → 500を返す', async () => {
+    vi.mocked(findServiceById).mockRejectedValue(new Error('DB error'));
+    const res = await sendRequest(app, '/api/services/service-1/owner', {
+      method: 'PATCH',
+      body: { new_owner_user_id: 'new-owner' },
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('GET /:id/users — DB例外 → 500を返す', async () => {
+    vi.mocked(findServiceById).mockRejectedValue(new Error('DB error'));
+    const res = await sendRequest(app, '/api/services/service-1/users');
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('DELETE /:id/users/:userId — DB例外 → 500を返す', async () => {
+    vi.mocked(findServiceById).mockRejectedValue(new Error('DB error'));
+    const res = await sendRequest(app, '/api/services/service-1/users/user-1', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('DELETE /:id/redirect-uris/:uriId — DB例外 → 500を返す', async () => {
+    vi.mocked(findServiceById).mockRejectedValue(new Error('DB error'));
+    const res = await sendRequest(app, '/api/services/service-1/redirect-uris/uri-1', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+  });
+});

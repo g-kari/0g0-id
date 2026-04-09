@@ -91,10 +91,17 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
   }
   const { limit, offset } = pagination;
 
-  const [services, total] = await Promise.all([
-    listServices(c.env.DB, { name, limit, offset }),
-    countServices(c.env.DB, { name }),
-  ]);
+  let services: Awaited<ReturnType<typeof listServices>>;
+  let total: number;
+  try {
+    [services, total] = await Promise.all([
+      listServices(c.env.DB, { name, limit, offset }),
+      countServices(c.env.DB, { name }),
+    ]);
+  } catch (err) {
+    servicesLogger.error('[services] Failed to list services', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
 
   return c.json({
     data: services.map((s) => ({
@@ -114,7 +121,13 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
 // GET /api/services/:id
 app.get('/:id', authMiddleware, adminMiddleware, async (c) => {
   const serviceId = c.req.param('id');
-  const service = await findServiceById(c.env.DB, serviceId);
+  let service: Awaited<ReturnType<typeof findServiceById>>;
+  try {
+    service = await findServiceById(c.env.DB, serviceId);
+  } catch (err) {
+    servicesLogger.error('[services] Failed to fetch service', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
   if (!service) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
@@ -144,14 +157,20 @@ app.post('/', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const clientSecretHash = await sha256(clientSecret);
   const allowedScopes = JSON.stringify(body.allowed_scopes ?? ['profile', 'email']);
 
-  const service = await createService(c.env.DB, {
-    id: crypto.randomUUID(),
-    name: body.name.trim(),
-    clientId,
-    clientSecretHash,
-    allowedScopes,
-    ownerUserId: tokenUser.sub,
-  });
+  let service: Awaited<ReturnType<typeof createService>>;
+  try {
+    service = await createService(c.env.DB, {
+      id: crypto.randomUUID(),
+      name: body.name.trim(),
+      clientId,
+      clientSecretHash,
+      allowedScopes,
+      ownerUserId: tokenUser.sub,
+    });
+  } catch (err) {
+    servicesLogger.error('[services] Failed to create service', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
 
   try {
     await createAdminAuditLog(c.env.DB, {
@@ -191,10 +210,16 @@ app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => 
   if (!result.ok) return result.response;
   const { name, allowed_scopes } = result.data;
 
-  const updated = await updateServiceFields(c.env.DB, serviceId, {
-    ...(name !== undefined ? { name: name.trim() } : {}),
-    ...(allowed_scopes !== undefined ? { allowedScopes: JSON.stringify(allowed_scopes) } : {}),
-  });
+  let updated: Awaited<ReturnType<typeof updateServiceFields>>;
+  try {
+    updated = await updateServiceFields(c.env.DB, serviceId, {
+      ...(name !== undefined ? { name: name.trim() } : {}),
+      ...(allowed_scopes !== undefined ? { allowedScopes: JSON.stringify(allowed_scopes) } : {}),
+    });
+  } catch (err) {
+    servicesLogger.error('[services] Failed to update service', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
 
   if (!updated) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
@@ -233,7 +258,13 @@ app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => 
 // DELETE /api/services/:id
 app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const serviceId = c.req.param('id');
-  const service = await findServiceById(c.env.DB, serviceId);
+  let service: Awaited<ReturnType<typeof findServiceById>>;
+  try {
+    service = await findServiceById(c.env.DB, serviceId);
+  } catch (err) {
+    servicesLogger.error('[services] Failed to fetch service for deletion', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
   if (!service) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
@@ -241,12 +272,23 @@ app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
   const tokenUser = c.get('user');
 
   // サービス削除前に全ユーザーのアクティブトークンを失効させる
-  const revokedCount = await revokeAllServiceTokens(c.env.DB, serviceId, 'service_delete');
+  let revokedCount: number;
+  try {
+    revokedCount = await revokeAllServiceTokens(c.env.DB, serviceId, 'service_delete');
+  } catch (err) {
+    servicesLogger.error('[services] Failed to revoke tokens before deletion', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
   if (revokedCount > 0) {
     servicesLogger.info(`[services] Revoked ${revokedCount} active tokens before deleting service ${serviceId}`);
   }
 
-  await deleteService(c.env.DB, serviceId);
+  try {
+    await deleteService(c.env.DB, serviceId);
+  } catch (err) {
+    servicesLogger.error('[services] Failed to delete service', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
 
   try {
     await createAdminAuditLog(c.env.DB, {
@@ -268,19 +310,34 @@ app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
 // GET /api/services/:id/redirect-uris
 app.get('/:id/redirect-uris', authMiddleware, adminMiddleware, async (c) => {
   const serviceId = c.req.param('id');
-  const service = await findServiceById(c.env.DB, serviceId);
+  let service: Awaited<ReturnType<typeof findServiceById>>;
+  let uris: Awaited<ReturnType<typeof listRedirectUris>>;
+  try {
+    [service, uris] = await Promise.all([
+      findServiceById(c.env.DB, serviceId),
+      listRedirectUris(c.env.DB, serviceId),
+    ]);
+  } catch (err) {
+    servicesLogger.error('[services] Failed to fetch redirect URIs', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
   if (!service) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
 
-  const uris = await listRedirectUris(c.env.DB, serviceId);
   return c.json({ data: uris });
 });
 
 // POST /api/services/:id/redirect-uris
 app.post('/:id/redirect-uris', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const serviceId = c.req.param('id');
-  const service = await findServiceById(c.env.DB, serviceId);
+  let service: Awaited<ReturnType<typeof findServiceById>>;
+  try {
+    service = await findServiceById(c.env.DB, serviceId);
+  } catch (err) {
+    servicesLogger.error('[services] Failed to fetch service for redirect URI', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
   if (!service) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
@@ -326,7 +383,13 @@ app.post('/:id/redirect-uris', authMiddleware, adminMiddleware, csrfMiddleware, 
 // POST /api/services/:id/rotate-secret — client_secretの再発行
 app.post('/:id/rotate-secret', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const serviceId = c.req.param('id');
-  const service = await findServiceById(c.env.DB, serviceId);
+  let service: Awaited<ReturnType<typeof findServiceById>>;
+  try {
+    service = await findServiceById(c.env.DB, serviceId);
+  } catch (err) {
+    servicesLogger.error('[services] Failed to fetch service for secret rotation', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
   if (!service) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
@@ -334,7 +397,13 @@ app.post('/:id/rotate-secret', authMiddleware, adminMiddleware, csrfMiddleware, 
   const newClientSecret = generateClientSecret();
   const newClientSecretHash = await sha256(newClientSecret);
 
-  const updated = await rotateClientSecret(c.env.DB, serviceId, newClientSecretHash);
+  let updated: Awaited<ReturnType<typeof rotateClientSecret>>;
+  try {
+    updated = await rotateClientSecret(c.env.DB, serviceId, newClientSecretHash);
+  } catch (err) {
+    servicesLogger.error('[services] Failed to rotate client secret', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
   if (!updated) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
@@ -371,17 +440,31 @@ app.patch('/:id/owner', authMiddleware, adminMiddleware, csrfMiddleware, async (
   if (!result.ok) return result.response;
   const { new_owner_user_id } = result.data;
 
-  const service = await findServiceById(c.env.DB, serviceId);
+  let service: Awaited<ReturnType<typeof findServiceById>>;
+  let newOwner: Awaited<ReturnType<typeof findUserById>>;
+  try {
+    [service, newOwner] = await Promise.all([
+      findServiceById(c.env.DB, serviceId),
+      findUserById(c.env.DB, new_owner_user_id),
+    ]);
+  } catch (err) {
+    servicesLogger.error('[services] Failed to fetch service/user for ownership transfer', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
   if (!service) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
-
-  const newOwner = await findUserById(c.env.DB, new_owner_user_id);
   if (!newOwner) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'New owner user not found' } }, 404);
   }
 
-  const updated = await transferServiceOwnership(c.env.DB, serviceId, new_owner_user_id);
+  let updated: Awaited<ReturnType<typeof transferServiceOwnership>>;
+  try {
+    updated = await transferServiceOwnership(c.env.DB, serviceId, new_owner_user_id);
+  } catch (err) {
+    servicesLogger.error('[services] Failed to transfer service ownership', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
   if (!updated) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
@@ -424,15 +507,24 @@ app.get('/:id/users', authMiddleware, adminMiddleware, async (c) => {
   }
   const { limit, offset } = pagination;
 
-  const service = await findServiceById(c.env.DB, serviceId);
+  let service: Awaited<ReturnType<typeof findServiceById>>;
+  let users: Awaited<ReturnType<typeof listUsersAuthorizedForService>>;
+  let total: number;
+  try {
+    [service, [users, total]] = await Promise.all([
+      findServiceById(c.env.DB, serviceId),
+      Promise.all([
+        listUsersAuthorizedForService(c.env.DB, serviceId, limit, offset),
+        countUsersAuthorizedForService(c.env.DB, serviceId),
+      ]),
+    ]);
+  } catch (err) {
+    servicesLogger.error('[services] Failed to fetch service users', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
   if (!service) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
-
-  const [users, total] = await Promise.all([
-    listUsersAuthorizedForService(c.env.DB, serviceId, limit, offset),
-    countUsersAuthorizedForService(c.env.DB, serviceId),
-  ]);
 
   return c.json({
     data: users.map((u) => ({
@@ -452,17 +544,31 @@ app.delete('/:id/users/:userId', authMiddleware, adminMiddleware, csrfMiddleware
   const serviceId = c.req.param('id');
   const userId = c.req.param('userId');
 
-  const service = await findServiceById(c.env.DB, serviceId);
+  let service: Awaited<ReturnType<typeof findServiceById>>;
+  let user: Awaited<ReturnType<typeof findUserById>>;
+  try {
+    [service, user] = await Promise.all([
+      findServiceById(c.env.DB, serviceId),
+      findUserById(c.env.DB, userId),
+    ]);
+  } catch (err) {
+    servicesLogger.error('[services] Failed to fetch service/user for access revocation', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
   if (!service) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
-
-  const user = await findUserById(c.env.DB, userId);
   if (!user) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
   }
 
-  const revokedCount = await revokeUserServiceTokens(c.env.DB, userId, serviceId, 'admin_action');
+  let revokedCount: number;
+  try {
+    revokedCount = await revokeUserServiceTokens(c.env.DB, userId, serviceId, 'admin_action');
+  } catch (err) {
+    servicesLogger.error('[services] Failed to revoke user service tokens', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
   if (revokedCount === 0) {
     return c.json(
       { error: { code: 'NOT_FOUND', message: 'User has no active authorization for this service' } },
@@ -493,18 +599,31 @@ app.delete('/:id/redirect-uris/:uriId', authMiddleware, adminMiddleware, csrfMid
   const serviceId = c.req.param('id');
   const uriId = c.req.param('uriId');
 
-  const service = await findServiceById(c.env.DB, serviceId);
+  let service: Awaited<ReturnType<typeof findServiceById>>;
+  let redirectUri: Awaited<ReturnType<typeof findRedirectUriById>>;
+  try {
+    [service, redirectUri] = await Promise.all([
+      findServiceById(c.env.DB, serviceId),
+      findRedirectUriById(c.env.DB, uriId, serviceId),
+    ]);
+  } catch (err) {
+    servicesLogger.error('[services] Failed to fetch service/redirect URI for deletion', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
   if (!service) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
   }
-
-  const redirectUri = await findRedirectUriById(c.env.DB, uriId, serviceId);
   if (!redirectUri) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Redirect URI not found' } }, 404);
   }
 
   const tokenUser = c.get('user');
-  await deleteRedirectUri(c.env.DB, uriId, serviceId);
+  try {
+    await deleteRedirectUri(c.env.DB, uriId, serviceId);
+  } catch (err) {
+    servicesLogger.error('[services] Failed to delete redirect URI', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  }
 
   try {
     await createAdminAuditLog(c.env.DB, {
