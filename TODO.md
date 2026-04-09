@@ -1,5 +1,21 @@
 # TODO
 
+## バグ修正・テスト追加（2026-04-09）
+
+- ✅ **Authorization Code Flow E2E テスト2件追加（State Cookie Round-trip）**
+  - `/auth/login → /auth/callback → /auth/exchange` の完全なBFFフロー検証
+  - CSRF攻撃シミュレーション（state不一致で400を返すことを確認）
+  - `timingSafeEqual` を実際の文字列比較でモックし、idState の round-trip を検証
+  - 全821テストパス確認済み
+
+- ✅ **`auth.ts`: `/auth/exchange` ユーザー不存在時レスポンス修正**
+  - `400 { error: 'invalid_grant' }` → `404 { error: { code: 'NOT_FOUND' } }` に統一
+  - API設計規約に準拠（標準エラーフォーマット）
+
+- ✅ **`token.ts`: `/api/token/introspect` 認証失敗レスポンス修正**
+  - `{ error: 'invalid_client' }` → `{ active: false }` に変更（RFC 7662 準拠）
+  - `WWW-Authenticate: Basic realm="0g0-id"` ヘッダーは引き続き設定
+
 ## テストカバレッジ追加（2026-04-08）
 
 - ✅ **`service-auth.ts`: authenticateService / serviceAuthMiddleware ユニットテスト13件追加**
