@@ -913,8 +913,10 @@
   - テストモックに `PROVIDER_CREDENTIALS`・`COOKIE_SECRET` を追加（840テストパス）
 
 #### 優先度2
-- [ ] `routes/auth.ts`: プロバイダーごとの `resolve*Provider` 関数の重複削減
-  - `PROVIDERS` テーブル（設定オブジェクト）に集約する設計へ
+- ✅ `routes/auth.ts`: プロバイダーごとの `resolve*Provider` 関数の重複削減（2026-04-09）
+  - `resolveGoogleProvider` / `resolveLineProvider` / `resolveTwitchProvider` / `resolveGithubProvider` / `resolveXProvider` の5関数を廃止
+  - 単一の `resolveProvider(c, provider, code, pkceVerifier, callbackUri)` に統合し switch/case で管理
+  - `/auth/callback` の `resolvers` マップも削除（7行削減）
 - ✅ `routes/auth.ts`: `link_token` の署名方式を SHA-256 ハッシュから HMAC 署名 Cookie パターンに変更（2026-04-09）
   - `/link-intent`: `generateToken` + `sha256` + `createAuthCode` → `signCookie({ sub, exp })` に置換（DBアクセス不要）
   - `/login` link_token検証: `sha256` + `findAndConsumeAuthCode` → `verifyCookie` + JSON.parse + 期限チェックに置換
