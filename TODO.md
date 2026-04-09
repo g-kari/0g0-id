@@ -1,5 +1,13 @@
 # TODO
 
+## セキュリティ修正（2026-04-09）
+
+### /auth/authorize DB例外時のRFC 6749エラー形式統一
+
+- ✅ **`GET /auth/authorize`: `findServiceByClientId` / `listRedirectUris` を try-catch で囲み、DB障害時に `{ error: 'server_error', error_description: 'Internal server error' }` 500 を返す**
+- **背景**: `/auth/authorize` は RFC 6749 形式（`{ error: '...', error_description: '...' }`）でエラーを返すが、DB例外がスローされると global `onError` ハンドラーが `{ error: { code: 'INTERNAL_ERROR' } }` 形式（非RFC 6749）を返す不一致があった。MCP クライアント等の OAuth 準拠クライアントがエラーレスポンスをパースできなくなる問題を修正
+- **テスト**: DB例外テスト2件追加（全840テストパス）
+
 ## コードレビュー修正（2026-04-09）
 
 ### users.ts Promise.all DB例外ハンドリング追加
