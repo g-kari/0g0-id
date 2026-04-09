@@ -903,6 +903,7 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
       if (elevated) user.role = 'admin';
     } catch (err) {
       authLogger.error('[bootstrap] Failed to elevate bootstrap admin', err);
+      return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to elevate bootstrap admin. Please try again.' } }, 500);
     }
   }
 
