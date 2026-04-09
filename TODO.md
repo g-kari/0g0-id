@@ -894,3 +894,30 @@
 - `token.ts`: `handleRefreshTokenGrant` のスコープ空文字列フォールバック（`?? ''`）を削除（`auth.ts` と整合） ✅
 - `token.ts`: `introspectRefreshToken` の `service_id` 不一致時にセキュリティ警告ログ追加 ✅
 - `metrics.test.ts`: `parseDays` モックの戻り値を明示設定してテスト修正（全821テストパス） ✅
+
+## 2026-04-09 コードレビュー (auth.ts)
+
+### 完了
+- ✅ `routes/auth.ts`: `/auth/callback` の state Cookie 検証・パースを `parseStateFromCookie` ヘルパーに抽出
+  - `verifyCookie` → `JSON.parse` → フィールド検証の責務を一元化
+  - ネスト3段 → 1段に整理
+  - テスト: 111 passed
+
+### 残課題（優先度順）
+
+#### 優先度1
+- [ ] `routes/auth.ts`: プロバイダー認証情報（OPTIONAL_PROVIDER_CREDENTIALS）を `packages/shared` の PROVIDER_CREDENTIALS として一元管理化
+  - 新プロバイダー追加時の更新漏れリスク軽減
+  - `satisfies Record<OAuthProvider, ...>` による型チェックを共通化
+
+#### 優先度2
+- [ ] `routes/auth.ts`: プロバイダーごとの `resolve*Provider` 関数の重複削減
+  - `PROVIDERS` テーブル（設定オブジェクト）に集約する設計へ
+- [ ] `routes/auth.ts`: `link_token` の署名方式を SHA-256 ハッシュから HMAC 署名 Cookie パターンに変更
+  - 現在: `sha256(linkToken)` でDB検索
+  - 改善案: `signCookie` / `verifyCookie` パターン（state Cookie と同じ）
+
+#### 優先度3（設計改善）
+- [ ] `routes/auth.ts`: bootstrap admin 昇格失敗時の挙動を改善
+  - 現在: 昇格失敗してもユーザーは `role: 'user'` でログイン継続
+  - 改善案: 昇格失敗時は警告フラグ付きトークンを発行するか、管理者に通知
