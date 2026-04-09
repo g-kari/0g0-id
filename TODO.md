@@ -2,6 +2,10 @@
 
 ## 依存関係更新（2026-04-10）
 
+- ✅ **vite 7.3.1 → 8.0.3 アップデート**
+  - 全ワークスペース（workers/id・admin・mcp・user）の vite を 8.0.3 に更新
+  - 全テスト（1779件）・typecheck パス確認済み
+
 - ✅ **TypeScript 5.9.3 → 6.0.2 アップデート**
   - TS6.0 で `baseUrl` が deprecated になったため、全ワークスペースの tsconfig.json から `baseUrl` を削除
   - `packages/shared`: `baseUrl` と空の `paths: {}` を削除
