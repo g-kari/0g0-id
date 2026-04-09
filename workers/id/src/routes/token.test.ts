@@ -1027,7 +1027,7 @@ describe('POST /api/token/ — 未サポートのgrant_type', () => {
     expect(body.error).toBe('unsupported_grant_type');
   });
 
-  it('application/json で grant_type が配列（非string）→ unsupported_grant_type を返す', async () => {
+  it('application/json → RFC 6749 非準拠のため invalid_request を返す', async () => {
     const res = await app.request(
       new Request(`${baseUrl}/api/token`, {
         method: 'POST',
@@ -1039,7 +1039,7 @@ describe('POST /api/token/ — 未サポートのgrant_type', () => {
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: string }>();
-    expect(body.error).toBe('unsupported_grant_type');
+    expect(body.error).toBe('invalid_request');
   });
 
   it('Content-Type未サポート → { error: invalid_request } + 400', async () => {
@@ -1314,7 +1314,7 @@ describe('POST /api/token/ — authorization_code grant', () => {
     expect(body.error_description).toBe('PKCE is required for public clients');
   });
 
-  it('application/json形式でも動作する', async () => {
+  it('application/json形式 → RFC 6749 非準拠のため invalid_request + 400', async () => {
     const res = await sendRequest(app, '/api/token', {
       method: 'POST',
       body: {
@@ -1325,9 +1325,9 @@ describe('POST /api/token/ — authorization_code grant', () => {
         code_verifier: 'a'.repeat(43),
       },
     });
-    expect(res.status).toBe(200);
-    const body = await res.json<{ access_token: string }>();
-    expect(body.access_token).toBe('mock-access-token');
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_request');
   });
 
   it('normalizeRedirectUriがnullを返す場合（無効URI）→ { error: invalid_grant } + 400', async () => {

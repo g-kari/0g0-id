@@ -137,26 +137,19 @@ async function resolveOAuthClient(
 // POST /api/token — 標準 OAuth 2.0 トークンエンドポイント (RFC 6749)
 // MCPクライアント等のネイティブアプリが直接HTTPリクエストで利用する
 app.post('/', tokenApiRateLimitMiddleware, tokenApiClientRateLimitMiddleware, async (c) => {
-  // application/x-www-form-urlencoded をパース
+  // RFC 6749 §4.1.3: application/x-www-form-urlencoded のみ受け付ける
   const contentType = c.req.header('Content-Type') ?? '';
+  if (!contentType.includes('application/x-www-form-urlencoded')) {
+    return c.json({ error: 'invalid_request', error_description: 'Content-Type must be application/x-www-form-urlencoded' }, 400);
+  }
   let params: Record<string, string>;
   try {
-    if (contentType.includes('application/x-www-form-urlencoded')) {
-      const body = await c.req.parseBody();
-      params = {};
-      for (const [key, value] of Object.entries(body)) {
-        if (typeof value === 'string') {
-          params[key] = value;
-        }
+    const body = await c.req.parseBody();
+    params = {};
+    for (const [key, value] of Object.entries(body)) {
+      if (typeof value === 'string') {
+        params[key] = value;
       }
-    } else if (contentType.includes('application/json')) {
-      const raw = await c.req.json<Record<string, unknown>>();
-      params = {};
-      for (const [key, value] of Object.entries(raw)) {
-        if (typeof value === 'string') params[key] = value;
-      }
-    } else {
-      return c.json({ error: 'invalid_request', error_description: 'Unsupported Content-Type' }, 400);
     }
   } catch {
     return c.json({ error: 'invalid_request', error_description: 'Failed to parse request body' }, 400);

@@ -104,7 +104,7 @@
 
 ## 残課題（要対応）
 
-- `token.ts` `POST /api/token`: `application/json` 受付は RFC 6749 非標準 — 要検討
+なし
 
 ## コードレビュー修正（2026-04-09）
 
