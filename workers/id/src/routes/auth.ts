@@ -336,174 +336,149 @@ async function exchangeAndFetchUserInfo<TTokenResponse extends { access_token: s
 
 // ─── プロバイダー固有の認証解決関数 ──────────────────────────────────────────
 
-async function resolveGoogleProvider(
+/** OAuthプロバイダーのコード交換・ユーザー情報取得・upsert関数を一元化 */
+async function resolveProvider(
   c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
+  provider: OAuthProvider,
   code: string,
   pkceVerifier: string,
   callbackUri: string
 ): Promise<ProviderResolution> {
-  const result = await exchangeAndFetchUserInfo(c, 'google', 'Google',
-    () => exchangeGoogleCode({ code, clientId: c.env.GOOGLE_CLIENT_ID, clientSecret: c.env.GOOGLE_CLIENT_SECRET, redirectUri: callbackUri, codeVerifier: pkceVerifier }),
-    fetchGoogleUserInfo
-  );
-  if (!result.ok) return result;
-  const { userInfo } = result;
+  switch (provider) {
+    case 'google': {
+      const result = await exchangeAndFetchUserInfo(c, 'google', 'Google',
+        () => exchangeGoogleCode({ code, clientId: c.env.GOOGLE_CLIENT_ID, clientSecret: c.env.GOOGLE_CLIENT_SECRET, redirectUri: callbackUri, codeVerifier: pkceVerifier }),
+        fetchGoogleUserInfo
+      );
+      if (!result.ok) return result;
+      const { userInfo } = result;
+      if (!userInfo.email_verified) {
+        return oauthError(c, 'Email not verified', 'UNVERIFIED_EMAIL');
+      }
+      return {
+        ok: true,
+        sub: userInfo.sub,
+        upsert: (db, id) =>
+          upsertUser(db, {
+            id,
+            googleSub: userInfo.sub,
+            email: userInfo.email,
+            emailVerified: userInfo.email_verified,
+            name: userInfo.name,
+            picture: userInfo.picture ?? null,
+          }),
+      };
+    }
 
-  if (!userInfo.email_verified) {
-    return oauthError(c, 'Email not verified', 'UNVERIFIED_EMAIL');
+    case 'line': {
+      const result = await exchangeAndFetchUserInfo(c, 'line', 'LINE',
+        () => exchangeLineCode({ code, clientId: c.env.LINE_CLIENT_ID!, clientSecret: c.env.LINE_CLIENT_SECRET!, redirectUri: callbackUri, codeVerifier: pkceVerifier }),
+        fetchLineUserInfo
+      );
+      if (!result.ok) return result;
+      const { userInfo } = result;
+      const isPlaceholderEmail = !userInfo.email;
+      const email = userInfo.email ?? `line_${userInfo.sub}@line.placeholder`;
+      return {
+        ok: true,
+        sub: userInfo.sub,
+        upsert: (db, id) =>
+          upsertLineUser(db, {
+            id,
+            lineSub: userInfo.sub,
+            email,
+            isPlaceholderEmail,
+            name: userInfo.name,
+            picture: userInfo.picture ?? null,
+          }),
+      };
+    }
+
+    case 'twitch': {
+      const result = await exchangeAndFetchUserInfo(c, 'twitch', 'Twitch',
+        () => exchangeTwitchCode({ code, clientId: c.env.TWITCH_CLIENT_ID!, clientSecret: c.env.TWITCH_CLIENT_SECRET!, redirectUri: callbackUri, codeVerifier: pkceVerifier }),
+        fetchTwitchUserInfo
+      );
+      if (!result.ok) return result;
+      const { userInfo } = result;
+      const isPlaceholderEmail = !userInfo.email;
+      const email = userInfo.email ?? `twitch_${userInfo.sub}@twitch.placeholder`;
+      if (!isPlaceholderEmail && !(userInfo.email_verified ?? false)) {
+        return oauthError(c, 'Email not verified', 'UNVERIFIED_EMAIL');
+      }
+      return {
+        ok: true,
+        sub: userInfo.sub,
+        upsert: (db, id) =>
+          upsertTwitchUser(db, {
+            id,
+            twitchSub: userInfo.sub,
+            email,
+            isPlaceholderEmail,
+            emailVerified: userInfo.email_verified ?? false,
+            name: userInfo.preferred_username,
+            picture: userInfo.picture ?? null,
+          }),
+      };
+    }
+
+    case 'github': {
+      const result = await exchangeAndFetchUserInfo(c, 'github', 'GitHub',
+        () => exchangeGithubCode({ code, clientId: c.env.GITHUB_CLIENT_ID!, clientSecret: c.env.GITHUB_CLIENT_SECRET!, redirectUri: callbackUri, codeVerifier: pkceVerifier }),
+        fetchGithubUserInfo
+      );
+      if (!result.ok) return result;
+      const { tokenResponse, userInfo: githubUser } = result;
+      const githubSub = String(githubUser.id);
+      // GitHub User APIのemailフィールドは検証済みとは限らないため、
+      // 常にEmails APIから検証済みプライマリメールを取得する
+      let email: string | null;
+      try {
+        email = await fetchGithubPrimaryEmail(tokenResponse.access_token);
+      } catch (err) {
+        authLogger.error('[oauth-github] Failed to fetch primary email', err);
+        return oauthError(c, 'Failed to fetch GitHub email');
+      }
+      const isPlaceholderEmail = !email;
+      const finalEmail = email ?? `github_${githubSub}@github.placeholder`;
+      return {
+        ok: true,
+        sub: githubSub,
+        upsert: (db, id) =>
+          upsertGithubUser(db, {
+            id,
+            githubSub,
+            email: finalEmail,
+            isPlaceholderEmail,
+            name: githubUser.name ?? githubUser.login,
+            picture: githubUser.avatar_url,
+          }),
+      };
+    }
+
+    case 'x': {
+      const result = await exchangeAndFetchUserInfo(c, 'x', 'X',
+        () => exchangeXCode({ code, clientId: c.env.X_CLIENT_ID!, clientSecret: c.env.X_CLIENT_SECRET!, redirectUri: callbackUri, codeVerifier: pkceVerifier }),
+        fetchXUserInfo
+      );
+      if (!result.ok) return result;
+      const { userInfo: xUser } = result;
+      const xEmail = `x_${xUser.id}@x.placeholder`;
+      return {
+        ok: true,
+        sub: xUser.id,
+        upsert: (db, id) =>
+          upsertXUser(db, {
+            id,
+            xSub: xUser.id,
+            email: xEmail,
+            isPlaceholderEmail: true,
+            name: xUser.name ?? xUser.username,
+            picture: xUser.profile_image_url ?? null,
+          }),
+      };
+    }
   }
-
-  return {
-    ok: true,
-    sub: userInfo.sub,
-    upsert: (db, id) =>
-      upsertUser(db, {
-        id,
-        googleSub: userInfo.sub,
-        email: userInfo.email,
-        emailVerified: userInfo.email_verified,
-        name: userInfo.name,
-        picture: userInfo.picture ?? null,
-      }),
-  };
-}
-
-async function resolveLineProvider(
-  c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
-  code: string,
-  pkceVerifier: string,
-  callbackUri: string
-): Promise<ProviderResolution> {
-  const result = await exchangeAndFetchUserInfo(c, 'line', 'LINE',
-    () => exchangeLineCode({ code, clientId: c.env.LINE_CLIENT_ID!, clientSecret: c.env.LINE_CLIENT_SECRET!, redirectUri: callbackUri, codeVerifier: pkceVerifier }),
-    fetchLineUserInfo
-  );
-  if (!result.ok) return result;
-  const { userInfo } = result;
-
-  const isPlaceholderEmail = !userInfo.email;
-  const email = userInfo.email ?? `line_${userInfo.sub}@line.placeholder`;
-
-  return {
-    ok: true,
-    sub: userInfo.sub,
-    upsert: (db, id) =>
-      upsertLineUser(db, {
-        id,
-        lineSub: userInfo.sub,
-        email,
-        isPlaceholderEmail,
-        name: userInfo.name,
-        picture: userInfo.picture ?? null,
-      }),
-  };
-}
-
-async function resolveTwitchProvider(
-  c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
-  code: string,
-  pkceVerifier: string,
-  callbackUri: string
-): Promise<ProviderResolution> {
-  const result = await exchangeAndFetchUserInfo(c, 'twitch', 'Twitch',
-    () => exchangeTwitchCode({ code, clientId: c.env.TWITCH_CLIENT_ID!, clientSecret: c.env.TWITCH_CLIENT_SECRET!, redirectUri: callbackUri, codeVerifier: pkceVerifier }),
-    fetchTwitchUserInfo
-  );
-  if (!result.ok) return result;
-  const { userInfo } = result;
-
-  const isPlaceholderEmail = !userInfo.email;
-  const email = userInfo.email ?? `twitch_${userInfo.sub}@twitch.placeholder`;
-
-  if (!isPlaceholderEmail && !(userInfo.email_verified ?? false)) {
-    return oauthError(c, 'Email not verified', 'UNVERIFIED_EMAIL');
-  }
-
-  return {
-    ok: true,
-    sub: userInfo.sub,
-    upsert: (db, id) =>
-      upsertTwitchUser(db, {
-        id,
-        twitchSub: userInfo.sub,
-        email,
-        isPlaceholderEmail,
-        emailVerified: userInfo.email_verified ?? false,
-        name: userInfo.preferred_username,
-        picture: userInfo.picture ?? null,
-      }),
-  };
-}
-
-async function resolveGithubProvider(
-  c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
-  code: string,
-  pkceVerifier: string,
-  callbackUri: string
-): Promise<ProviderResolution> {
-  const result = await exchangeAndFetchUserInfo(c, 'github', 'GitHub',
-    () => exchangeGithubCode({ code, clientId: c.env.GITHUB_CLIENT_ID!, clientSecret: c.env.GITHUB_CLIENT_SECRET!, redirectUri: callbackUri, codeVerifier: pkceVerifier }),
-    fetchGithubUserInfo
-  );
-  if (!result.ok) return result;
-  const { tokenResponse, userInfo: githubUser } = result;
-
-  const githubSub = String(githubUser.id);
-  // GitHub User APIのemailフィールドは検証済みとは限らないため、
-  // 常にEmails APIから検証済みプライマリメールを取得する
-  let email: string | null;
-  try {
-    email = await fetchGithubPrimaryEmail(tokenResponse.access_token);
-  } catch (err) {
-    authLogger.error('[oauth-github] Failed to fetch primary email', err);
-    return oauthError(c, 'Failed to fetch GitHub email');
-  }
-  const isPlaceholderEmail = !email;
-  const finalEmail = email ?? `github_${githubSub}@github.placeholder`;
-
-  return {
-    ok: true,
-    sub: githubSub,
-    upsert: (db, id) =>
-      upsertGithubUser(db, {
-        id,
-        githubSub,
-        email: finalEmail,
-        isPlaceholderEmail,
-        name: githubUser.name ?? githubUser.login,
-        picture: githubUser.avatar_url,
-      }),
-  };
-}
-
-async function resolveXProvider(
-  c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
-  code: string,
-  pkceVerifier: string,
-  callbackUri: string
-): Promise<ProviderResolution> {
-  const result = await exchangeAndFetchUserInfo(c, 'x', 'X',
-    () => exchangeXCode({ code, clientId: c.env.X_CLIENT_ID!, clientSecret: c.env.X_CLIENT_SECRET!, redirectUri: callbackUri, codeVerifier: pkceVerifier }),
-    fetchXUserInfo
-  );
-  if (!result.ok) return result;
-  const { userInfo: xUser } = result;
-
-  const xEmail = `x_${xUser.id}@x.placeholder`;
-
-  return {
-    ok: true,
-    sub: xUser.id,
-    upsert: (db, id) =>
-      upsertXUser(db, {
-        id,
-        xSub: xUser.id,
-        email: xEmail,
-        isPlaceholderEmail: true,
-        name: xUser.name ?? xUser.username,
-        picture: xUser.profile_image_url ?? null,
-      }),
-  };
 }
 
 
@@ -879,14 +854,7 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
   }
 
   // プロバイダー固有の認証処理（コード交換・ユーザー情報取得）
-  const resolvers: Record<OAuthProvider, () => Promise<ProviderResolution>> = {
-    google: () => resolveGoogleProvider(c, code, pkceVerifier, callbackUri),
-    line: () => resolveLineProvider(c, code, pkceVerifier, callbackUri),
-    twitch: () => resolveTwitchProvider(c, code, pkceVerifier, callbackUri),
-    github: () => resolveGithubProvider(c, code, pkceVerifier, callbackUri),
-    x: () => resolveXProvider(c, code, pkceVerifier, callbackUri),
-  };
-  const resolved = await resolvers[provider]();
+  const resolved = await resolveProvider(c, provider, code, pkceVerifier, callbackUri);
   if (!resolved.ok) return resolved.response;
 
   // アカウント連携またはユーザー作成/更新
