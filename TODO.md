@@ -153,6 +153,13 @@
 
 ## 依存関係更新（2026-04-10）
 
+- ✅ **vitest 3.2.4 → 4.1.4 アップデート**
+  - vitest 4.x で describe() をテスト関数内から呼び出す制約が追加
+  - `packages/shared/src/db/refresh-tokens.test.ts` の describe ネスト構造バグを修正
+  - 全テストパス（852 + 477 + 195 + 83 + 172 = 1779 件）
+
+## 依存関係更新（2026-04-10）
+
 - ✅ **jose 6.2.1 → 6.2.2 アップデート**
   - JWEInvalid エラーによる不正な decompression 失敗の修正（セキュリティ修正）
   - workers/id, workers/mcp, packages/shared の 3 パッケージを更新
