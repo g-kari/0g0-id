@@ -106,6 +106,19 @@
 
 - `token.ts` `POST /api/token`: `application/json` 受付は RFC 6749 非標準 — 要検討
 
+## コードレビュー修正（2026-04-09）
+
+### userinfo.ts / admin-audit-logs.ts DB例外ハンドリング追加
+
+- **問題**: `findUserById`（userinfo.ts）、`getAuditLogStats` / `listAdminAuditLogs`（admin-audit-logs.ts）がtry-catchなしでDB呼び出しており、DB障害時に例外がそのままスローされていた
+- **修正**:
+  - `userinfo.ts`: `findUserById` を try-catch で囲み、DB例外時に `{ error: 'server_error' }` 500 を返す
+  - `admin-audit-logs.ts`: 両DB関数を try-catch で囲み、DB例外時に `{ error: { code: 'INTERNAL_ERROR' } }` 500 を返す
+  - `admin-audit-logs.ts`: `admin_user_id` / `target_id` のUUID形式バリデーション追加（IdP側にも多層防御として適用）
+  - `admin-audit-logs.ts`: `action` パラメータの形式バリデーション追加（`^[a-z]+\.[a-z_]+$`）
+- **テスト追加**: 計6件（DB例外→500 × 3、非UUID→400 × 2、不正action→400 × 1）
+- **全829テストパス確認**
+
 ## セキュリティ修正（2026-04-09）
 
 ### admin BFF: /api/users/:id UUID形式バリデーション追加
