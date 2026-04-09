@@ -1,5 +1,12 @@
 # TODO
 
+## テストカバレッジ追加（2026-04-10）
+
+- ✅ **`sessions.test.ts`: DELETE /others テスト8件追加**
+  - `workers/user/src/routes/sessions.ts` の「現在のセッション以外の全セッションを終了」エンドポイントにテストが存在しなかった
+  - セッションなし401・IdP呼び出し確認・token_hash（SHA256(refresh_token)）送信・各ヘッダー確認・IdP応答伝播を網羅
+  - 全180テストパス（sessions.test.ts: 16件 → 24件）
+
 ## 依存関係更新（2026-04-10）
 
 - ✅ **vite 7.3.1 → 8.0.3 アップデート**
