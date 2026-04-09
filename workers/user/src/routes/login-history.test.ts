@@ -165,6 +165,91 @@ describe('user BFF — /api/login-history', () => {
       expect(res.status).toBe(400);
     });
 
+    it('limit=0 はバリデーションエラーで400を返す（IdP呼び出しなし）', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/login-history?limit=0', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('BAD_REQUEST');
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('offset=-1 はバリデーションエラーで400を返す（IdP呼び出しなし）', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/login-history?offset=-1', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('BAD_REQUEST');
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('有効なprovider（google）クエリをIdPに転送する', async () => {
+      const idpFetch = mockIdp(200, { data: [mockLoginEvents[0]], total: 1 });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/login-history?provider=google', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.get('provider')).toBe('google');
+    });
+
+    it('有効なprovider（github）クエリをIdPに転送する', async () => {
+      const idpFetch = mockIdp(200, { data: [mockLoginEvents[1]], total: 1 });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/login-history?provider=github', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.get('provider')).toBe('github');
+    });
+
+    it('無効なprovider（facebook）で400を返す（IdP呼び出しなし）', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/login-history?provider=facebook', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string; message: string } }>();
+      expect(body.error.code).toBe('BAD_REQUEST');
+      expect(body.error.message).toBe('Invalid provider');
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('providerとpaginationを組み合わせてIdPに転送する', async () => {
+      const idpFetch = mockIdp(200, { data: [], total: 0 });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/login-history?provider=line&limit=5&offset=10', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const url = new URL(calledReq.url);
+      expect(url.searchParams.get('provider')).toBe('line');
+      expect(url.searchParams.get('limit')).toBe('5');
+      expect(url.searchParams.get('offset')).toBe('10');
+    });
+
     it('IdPが500を返した場合はそのまま伝播する', async () => {
       const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR' } });
       const app = buildApp(idpFetch);
