@@ -24,8 +24,12 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
   // POST /mcp — JSON-RPCリクエスト処理
   app.post('/', async (c): Promise<Response> => {
     const sessionId = c.req.header('mcp-session-id');
-    const body: JsonRpcRequest | JsonRpcNotification | (JsonRpcRequest | JsonRpcNotification)[] =
-      await c.req.json();
+    let body: JsonRpcRequest | JsonRpcNotification | (JsonRpcRequest | JsonRpcNotification)[];
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }, 400);
+    }
 
     // バッチリクエスト対応
     const requests: (JsonRpcRequest | JsonRpcNotification)[] = Array.isArray(body) ? body : [body];

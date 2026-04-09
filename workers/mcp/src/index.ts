@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { createLogger } from '@0g0-id/shared';
-import type { TokenPayload } from '@0g0-id/shared';
+import type { TokenPayload, RateLimitBinding } from '@0g0-id/shared';
 import { McpServer, createMcpRoutes, type McpContext } from './mcp';
 import wellKnownRoutes from './routes/well-known';
 import { mcpAuthMiddleware, mcpAdminMiddleware, mcpRejectBannedUserMiddleware } from './middleware/auth';
+import { mcpRateLimitMiddleware } from './middleware/rate-limit';
 import {
   listUsersTool,
   getUserTool,
@@ -31,6 +32,7 @@ type Env = {
     IDP: Fetcher;
     IDP_ORIGIN: string;
     MCP_ORIGIN: string;
+    RATE_LIMITER_MCP?: RateLimitBinding;
   };
   Variables: {
     mcpContext: McpContext;
@@ -89,7 +91,8 @@ app.get('/health', (c): Response => {
 // Protected Resource Metadata (RFC 9728)
 app.route('/.well-known', wellKnownRoutes);
 
-// MCP ルート: Bearer token 認証 + 管理者ロール必須 + BAN拒否 + コンテキスト設定
+// MCP ルート: レートリミット + Bearer token 認証 + 管理者ロール必須 + BAN拒否 + コンテキスト設定
+app.use('/mcp/*', mcpRateLimitMiddleware);
 app.use('/mcp/*', mcpAuthMiddleware);
 app.use('/mcp/*', mcpRejectBannedUserMiddleware);
 app.use('/mcp/*', mcpAdminMiddleware);

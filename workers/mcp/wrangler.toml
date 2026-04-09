@@ -24,3 +24,9 @@ binding = "DB"
 database_name = "0g0-id-db"
 database_id = "f13d6e85-7a42-463f-b07e-5201423dc840"
 migrations_dir = "../../migrations"
+
+[[unsafe.bindings]]
+name = "RATE_LIMITER_MCP"
+type = "ratelimit"
+namespace_id = "1010"
+simple = { limit = 60, period = 60 }
