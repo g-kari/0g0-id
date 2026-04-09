@@ -151,6 +151,13 @@
 
 なし
 
+## 依存関係更新（2026-04-10）
+
+- ✅ **jose 6.2.1 → 6.2.2 アップデート**
+  - JWEInvalid エラーによる不正な decompression 失敗の修正（セキュリティ修正）
+  - workers/id, workers/mcp, packages/shared の 3 パッケージを更新
+  - 全テストパス（852 + 475 + 195 + 172 + 83 件）
+
 ## コードレビュー修正（2026-04-09）
 
 ### userinfo.ts / admin-audit-logs.ts DB例外ハンドリング追加
