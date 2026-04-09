@@ -104,6 +104,10 @@
 
 ## 残課題（要対応）
 
+- `auth.ts` `/auth/callback`: OAuthコールバックエラーを `redirect_uri` へリダイレクト転送（RFC 6749 §4.1.2.1 準拠）
+- `token.ts` `POST /api/token`: `application/json` 受付は RFC 6749 非標準 — 要検討
+- dependabot: 5件のmoderate脆弱性（GitHub Security）
+
 ## テストカバレッジ追加（2026-04-09）
 
 - ✅ **`token-recovery.ts` / `refresh-token-rotation.ts`: ユニットテスト14件追加**
@@ -821,3 +825,8 @@
 - ✅ **`routes/device.ts`: `handleDeviceCodeGrant` のパラメータ型を ad-hoc → `TokenHandlerContext` に統一**
 
 - ✅ **`routes/auth.ts`: `/exchange` ユーザー未発見時を 404 → 400 (`invalid_grant`) に修正（OAuth 2.0準拠）**
+
+- `auth.ts`: `ExchangeSchema` の `code_verifier` に RFC 7636 §4.1 準拠の文字セット検証（`[A-Za-z0-9\-._~]`）追加 ✅
+- `token.ts`: `handleRefreshTokenGrant` のスコープ空文字列フォールバック（`?? ''`）を削除（`auth.ts` と整合） ✅
+- `token.ts`: `introspectRefreshToken` の `service_id` 不一致時にセキュリティ警告ログ追加 ✅
+- `metrics.test.ts`: `parseDays` モックの戻り値を明示設定してテスト修正（全821テストパス） ✅
