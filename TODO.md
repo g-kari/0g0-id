@@ -1,5 +1,13 @@
 # TODO
 
+## セキュリティ修正（2026-04-09）
+
+- ✅ **MCPワーカー `transport.ts`: `c.req.json()` のtry-catchなし問題を修正 → JSON-RPC ParseError(-32700)を正しく返却**
+- ✅ **MCPワーカー `rate-limit.ts`: IPベースのレートリミッターミドルウェア新規追加 (60リクエスト/分)**
+- ✅ **MCPワーカー `index.ts`: レートリミットを認証より前に適用するよう設定**
+- ✅ **MCPワーカー `wrangler.toml`: `RATE_LIMITER_MCP` バインディング追加**
+
+
 ## コードレビュー修正（2026-04-09）
 
 - ✅ **`device.ts`: `POST /code` および `handleDeviceCodeGrant` のDB例外ハンドリング追加**
