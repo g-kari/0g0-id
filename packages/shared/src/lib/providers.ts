@@ -32,3 +32,14 @@ export const PROVIDER_COLUMN: Record<OAuthProvider, string> = {
   github: 'github_sub',
   x: 'x_sub',
 };
+
+/**
+ * Google以外のオプションプロバイダーの環境変数名と表示名の定義。
+ * 新しいプロバイダーを追加する際はここだけ更新すれば良い。
+ */
+export const PROVIDER_CREDENTIALS = {
+  line: { id: 'LINE_CLIENT_ID' as const, secret: 'LINE_CLIENT_SECRET' as const, name: 'LINE' },
+  twitch: { id: 'TWITCH_CLIENT_ID' as const, secret: 'TWITCH_CLIENT_SECRET' as const, name: 'Twitch' },
+  github: { id: 'GITHUB_CLIENT_ID' as const, secret: 'GITHUB_CLIENT_SECRET' as const, name: 'GitHub' },
+  x: { id: 'X_CLIENT_ID' as const, secret: 'X_CLIENT_SECRET' as const, name: 'X' },
+} satisfies Record<Exclude<OAuthProvider, 'google'>, { id: string; secret: string; name: string }>;

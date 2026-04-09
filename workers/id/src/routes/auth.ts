@@ -53,7 +53,7 @@ import {
   addRevokedAccessToken,
 } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload, User, OAuthStateCookieData } from '@0g0-id/shared';
-import { type OAuthProvider, PROVIDER_DISPLAY_NAMES, ALL_PROVIDERS, isValidProvider } from '@0g0-id/shared';
+import { type OAuthProvider, PROVIDER_DISPLAY_NAMES, ALL_PROVIDERS, isValidProvider, PROVIDER_CREDENTIALS } from '@0g0-id/shared';
 import { authRateLimitMiddleware, tokenApiRateLimitMiddleware } from '../middleware/rate-limit';
 import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware } from '../middleware/auth';
 import { serviceBindingMiddleware } from '../middleware/service-binding';
@@ -106,13 +106,6 @@ const OAUTH_ERROR_MAP: Record<string, string> = {
 const STATE_COOKIE = '__Host-oauth-state';
 const PKCE_COOKIE = '__Host-oauth-pkce';
 
-// Google以外のプロバイダーの資格情報キー（オプション設定）
-const OPTIONAL_PROVIDER_CREDENTIALS = {
-  line: { id: 'LINE_CLIENT_ID' as const, secret: 'LINE_CLIENT_SECRET' as const, name: 'LINE' },
-  twitch: { id: 'TWITCH_CLIENT_ID' as const, secret: 'TWITCH_CLIENT_SECRET' as const, name: 'Twitch' },
-  github: { id: 'GITHUB_CLIENT_ID' as const, secret: 'GITHUB_CLIENT_SECRET' as const, name: 'GitHub' },
-  x: { id: 'X_CLIENT_ID' as const, secret: 'X_CLIENT_SECRET' as const, name: 'X' },
-} satisfies Record<Exclude<OAuthProvider, 'google'>, { id: keyof IdpEnv; secret: keyof IdpEnv; name: string }>;
 
 /** プロバイダー認証の解決結果 */
 type ProviderResolution =
@@ -653,7 +646,7 @@ app.get('/login', authRateLimitMiddleware, async (c) => {
 
   // プロバイダー資格情報の確認（Google以外はオプション設定）
   if (provider !== 'google') {
-    const creds = OPTIONAL_PROVIDER_CREDENTIALS[provider];
+    const creds = PROVIDER_CREDENTIALS[provider];
     if (!c.env[creds.id] || !c.env[creds.secret]) {
       return c.json(
         { error: { code: 'PROVIDER_NOT_CONFIGURED', message: `${creds.name} provider is not configured` } },
@@ -876,7 +869,7 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
 
   // Google以外はオプション設定のため資格情報の存在を確認
   if (provider !== 'google') {
-    const creds = OPTIONAL_PROVIDER_CREDENTIALS[provider];
+    const creds = PROVIDER_CREDENTIALS[provider];
     if (!c.env[creds.id] || !c.env[creds.secret]) {
       return c.json(
         { error: { code: 'PROVIDER_NOT_CONFIGURED', message: `${creds.name} provider is not configured` } },

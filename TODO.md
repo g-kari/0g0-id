@@ -906,9 +906,11 @@
 ### 残課題（優先度順）
 
 #### 優先度1
-- [ ] `routes/auth.ts`: プロバイダー認証情報（OPTIONAL_PROVIDER_CREDENTIALS）を `packages/shared` の PROVIDER_CREDENTIALS として一元管理化
-  - 新プロバイダー追加時の更新漏れリスク軽減
-  - `satisfies Record<OAuthProvider, ...>` による型チェックを共通化
+- ✅ `routes/auth.ts`: プロバイダー認証情報（OPTIONAL_PROVIDER_CREDENTIALS）を `packages/shared` の PROVIDER_CREDENTIALS として一元管理化（2026-04-09）
+  - `packages/shared/src/lib/providers.ts` に `PROVIDER_CREDENTIALS` を追加・export
+  - `auth.ts` のローカル定義を削除し `@0g0-id/shared` からのインポートに変更
+  - 新プロバイダー追加時は `providers.ts` だけ更新すれば良い状態に
+  - テストモックに `PROVIDER_CREDENTIALS`・`COOKIE_SECRET` を追加（840テストパス）
 
 #### 優先度2
 - [ ] `routes/auth.ts`: プロバイダーごとの `resolve*Provider` 関数の重複削減

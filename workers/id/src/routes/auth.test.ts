@@ -9,6 +9,12 @@ vi.mock('@0g0-id/shared', async (importOriginal) => {
   parseJsonBody,
   createLogger: vi.fn().mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
   PROVIDER_DISPLAY_NAMES: { google: 'Google', line: 'LINE', twitch: 'Twitch', github: 'GitHub', x: 'X' },
+  PROVIDER_CREDENTIALS: {
+    line: { id: 'LINE_CLIENT_ID', secret: 'LINE_CLIENT_SECRET', name: 'LINE' },
+    twitch: { id: 'TWITCH_CLIENT_ID', secret: 'TWITCH_CLIENT_SECRET', name: 'Twitch' },
+    github: { id: 'GITHUB_CLIENT_ID', secret: 'GITHUB_CLIENT_SECRET', name: 'GitHub' },
+    x: { id: 'X_CLIENT_ID', secret: 'X_CLIENT_SECRET', name: 'X' },
+  },
   buildGoogleAuthUrl: vi.fn(),
   exchangeGoogleCode: vi.fn(),
   fetchGoogleUserInfo: vi.fn(),
@@ -142,6 +148,7 @@ const mockEnv = {
   X_CLIENT_SECRET: 'x-client-secret',
   JWT_PRIVATE_KEY: 'mock-private-key',
   JWT_PUBLIC_KEY: 'mock-public-key',
+  COOKIE_SECRET: 'mock-cookie-secret',
 };
 
 const mockUser = {
