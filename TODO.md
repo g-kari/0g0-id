@@ -106,6 +106,17 @@
 
 - `token.ts` `POST /api/token`: `application/json` 受付は RFC 6749 非標準 — 要検討
 
+## セキュリティ修正（2026-04-09）
+
+### admin BFF: /api/users/:id UUID形式バリデーション追加
+
+- **問題**: `audit-logs.ts` にはUUID形式検証があったが、`users.ts` の `:id` パラメータには検証がなく不一致
+- **修正**: `workers/admin/src/routes/users.ts` に UUID 検証ミドルウェアを追加
+  - `/:id` および `/:id/*` 全ルートに適用（認証前にバリデーション）
+  - `DELETE /:id/tokens/:tokenId` の `tokenId` も UUID 検証を追加
+- **テスト**: 各エンドポイントに「非UUID形式のIDで400を返す」ケース追加（計12件）
+- **全テストパス確認**: admin 195件, user 172件, id 823件
+
 ## 対応済み（2026-04-09）
 
 - ✅ **`auth.ts` `/auth/callback`: OAuthコールバックエラーをBFFへリダイレクト転送（RFC 6749 §4.1.2.1）**
