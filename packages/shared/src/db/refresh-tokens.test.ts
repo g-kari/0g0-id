@@ -384,6 +384,8 @@ describe('revokeOtherUserTokens', () => {
     expect(sql).toContain('token_hash != ?');
     expect(sql).toContain('revoked_at IS NULL');
     expect(sql).toContain('user_id = ?');
+  });
+});
 
 describe('getServiceTokenStats', () => {
   it('全サービスのトークン統計を返す', async () => {
@@ -411,8 +413,6 @@ describe('getServiceTokenStats', () => {
     const db = makeD1Mock(null, []);
     const result = await getServiceTokenStats(db);
     expect(result).toEqual([]);
-  });
-});
   });
 });
 
