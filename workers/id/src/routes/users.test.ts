@@ -311,6 +311,14 @@ describe('GET /api/users/me/data-export', () => {
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('UNAUTHORIZED');
   });
+
+  it('DB例外時 → 500 INTERNAL_ERROR を返す', async () => {
+    vi.mocked(getUserProviders).mockRejectedValue(new Error('D1 error'));
+    const res = await sendRequest(app, '/api/users/me/data-export');
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+  });
 });
 
 // ===== GET /api/users/me/security-summary =====
@@ -406,6 +414,14 @@ describe('GET /api/users/me/security-summary', () => {
   it('認証なしで401を返す', async () => {
     const res = await sendRequest(app, '/api/users/me/security-summary', { withAuth: false });
     expect(res.status).toBe(401);
+  });
+
+  it('DB例外時 → 500 INTERNAL_ERROR を返す', async () => {
+    vi.mocked(listActiveSessionsByUserId).mockRejectedValue(new Error('D1 error'));
+    const res = await sendRequest(app, '/api/users/me/security-summary');
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
   });
 });
 
@@ -1164,6 +1180,14 @@ describe('GET /api/users', () => {
       expect.anything(), 50, 0,
       expect.objectContaining<UserFilter>({ email: 'test', role: 'user', name: 'Alice' })
     );
+  });
+
+  it('DB例外時 → 500 INTERNAL_ERROR を返す', async () => {
+    vi.mocked(listUsers).mockRejectedValue(new Error('D1 error'));
+    const res = await sendRequest(app, '/api/users');
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
   });
 });
 

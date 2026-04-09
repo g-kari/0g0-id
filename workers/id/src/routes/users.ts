@@ -150,12 +150,18 @@ app.get('/me/data-export', authMiddleware, rejectServiceTokenMiddleware, rejectB
   const user = c.get('dbUser');
   const userId = user.id;
 
-  const [providers, connections, { events: loginHistory }, sessions] = await Promise.all([
-    getUserProviders(c.env.DB, userId),
-    listUserConnections(c.env.DB, userId),
-    getLoginEventsByUserId(c.env.DB, userId, 1000, 0),
-    listActiveSessionsByUserId(c.env.DB, userId),
-  ]);
+  let providers, connections, loginHistory, sessions;
+  try {
+    [providers, connections, { events: loginHistory }, sessions] = await Promise.all([
+      getUserProviders(c.env.DB, userId),
+      listUserConnections(c.env.DB, userId),
+      getLoginEventsByUserId(c.env.DB, userId, 1000, 0),
+      listActiveSessionsByUserId(c.env.DB, userId),
+    ]);
+  } catch (err) {
+    usersLogger.error('[data-export] Failed to fetch user data', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch user data' } }, 500);
+  }
 
   return c.json({
     data: {
@@ -271,12 +277,18 @@ app.get('/me/security-summary', authMiddleware, rejectServiceTokenMiddleware, re
   const user = c.get('dbUser');
   const userId = user.id;
 
-  const [sessions, connections, loginHistory, providers] = await Promise.all([
-    listActiveSessionsByUserId(c.env.DB, userId),
-    listUserConnections(c.env.DB, userId),
-    getLoginEventsByUserId(c.env.DB, userId, 1, 0),
-    getUserProviders(c.env.DB, userId),
-  ]);
+  let sessions, connections, loginHistory, providers;
+  try {
+    [sessions, connections, loginHistory, providers] = await Promise.all([
+      listActiveSessionsByUserId(c.env.DB, userId),
+      listUserConnections(c.env.DB, userId),
+      getLoginEventsByUserId(c.env.DB, userId, 1, 0),
+      getUserProviders(c.env.DB, userId),
+    ]);
+  } catch (err) {
+    usersLogger.error('[security-summary] Failed to fetch user data', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch security data' } }, 500);
+  }
 
   const linkedProviders = providers.filter((p) => p.connected).map((p) => p.provider);
   const lastLoginEvent = loginHistory.events[0] ?? null;
@@ -826,10 +838,16 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
   if (bannedQuery === 'true') filter.banned = true;
   else if (bannedQuery === 'false') filter.banned = false;
 
-  const [users, total] = await Promise.all([
-    listUsers(c.env.DB, limit, offset, filter),
-    countUsers(c.env.DB, filter),
-  ]);
+  let users, total;
+  try {
+    [users, total] = await Promise.all([
+      listUsers(c.env.DB, limit, offset, filter),
+      countUsers(c.env.DB, filter),
+    ]);
+  } catch (err) {
+    usersLogger.error('[users] Failed to fetch users', err);
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch users' } }, 500);
+  }
   return c.json({ data: users.map(formatAdminUserSummary), total });
 });
 
