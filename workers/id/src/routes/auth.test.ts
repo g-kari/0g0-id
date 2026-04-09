@@ -418,11 +418,46 @@ describe('GET /auth/callback', () => {
     });
   });
 
-  it('errorパラメータあり → 400を返す', async () => {
+  it('errorパラメータあり + Cookieなし → 400フォールバック', async () => {
     const res = await sendRequest(app, '/auth/callback?error=access_denied');
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe('OAUTH_ERROR');
+  });
+
+  it('errorパラメータあり + 有効Cookie → BFFへリダイレクト（RFC 6749 §4.1.2.1）', async () => {
+    const stateData = buildStateCookie({
+      idState: 'id-state',
+      bffState: 'bff-state-abc',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'google',
+    });
+    const res = await sendRequest(app, '/auth/callback?error=access_denied', {
+      headers: { Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier` },
+    });
+    expect(res.status).toBe(302);
+    const location = res.headers.get('Location') ?? '';
+    const redirectUrl = new URL(location);
+    expect(redirectUrl.searchParams.get('error')).toBe('access_denied');
+    expect(redirectUrl.searchParams.get('state')).toBe('bff-state-abc');
+    expect(redirectUrl.pathname).toBe('/callback');
+  });
+
+  it('errorパラメータが未知の値 → access_deniedにサニタイズしてリダイレクト', async () => {
+    const stateData = buildStateCookie({
+      idState: 'id-state',
+      bffState: 'bff-state-xyz',
+      redirectTo: 'https://user.0g0.xyz/callback',
+      provider: 'google',
+    });
+    const res = await sendRequest(app, '/auth/callback?error=unknown_internal_error', {
+      headers: { Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier` },
+    });
+    expect(res.status).toBe(302);
+    const location = res.headers.get('Location') ?? '';
+    const redirectUrl = new URL(location);
+    expect(redirectUrl.searchParams.get('error')).toBe('access_denied');
+    expect(redirectUrl.searchParams.get('state')).toBe('bff-state-xyz');
   });
 
   it('codeまたはstateが未指定 → 400を返す', async () => {

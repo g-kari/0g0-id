@@ -749,8 +749,29 @@ app.get('/callback', authRateLimitMiddleware, async (c) => {
   const error = c.req.query('error');
 
   if (error) {
+    // RFC 6749 §4.1.2.1: プロバイダーエラーはBFFコールバックURLへリダイレクト転送
+    const stateCookieRaw = getCookie(c, STATE_COOKIE);
     deleteCookie(c, STATE_COOKIE, { path: '/', secure: true });
     deleteCookie(c, PKCE_COOKIE, { path: '/', secure: true });
+
+    if (stateCookieRaw) {
+      const verifiedPayload = await verifyCookie(stateCookieRaw, c.env.COOKIE_SECRET);
+      if (verifiedPayload) {
+        try {
+          const parsedState: OAuthStateCookieData = JSON.parse(verifiedPayload);
+          // 未知のエラーコードはaccess_deniedにサニタイズ（プロバイダー内部情報漏洩防止）
+          const safeErrorCode = error in OAUTH_ERROR_MAP ? error : 'access_denied';
+          const errorUrl = new URL(parsedState.redirectTo);
+          errorUrl.searchParams.set('error', safeErrorCode);
+          errorUrl.searchParams.set('state', parsedState.bffState);
+          return c.redirect(errorUrl.toString());
+        } catch {
+          // Cookie parse失敗: フォールバックへ
+        }
+      }
+    }
+
+    // フォールバック: state cookieなし/無効の場合はJSONエラー
     const safeMessage = OAUTH_ERROR_MAP[error] ?? 'Authentication failed';
     return c.json({ error: { code: 'OAUTH_ERROR', message: safeMessage } }, 400);
   }
