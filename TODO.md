@@ -1,5 +1,13 @@
 # TODO
 
+## 依存関係更新（2026-04-10）
+
+- ✅ **TypeScript 5.9.3 → 6.0.2 アップデート**
+  - TS6.0 で `baseUrl` が deprecated になったため、全ワークスペースの tsconfig.json から `baseUrl` を削除
+  - `packages/shared`: `baseUrl` と空の `paths: {}` を削除
+  - `workers/admin/id/mcp/user`: `baseUrl: "."` を削除（`paths` は TS6.0 から単独指定可能）
+  - 全 typecheck・全テスト（1779件）パス確認済み
+
 ## セキュリティ修正（2026-04-09）
 
 ### /auth/authorize DB例外時のRFC 6749エラー形式統一
