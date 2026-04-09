@@ -359,7 +359,7 @@ async function handleRefreshTokenGrant(
   }
 
   // スコープ引き継ぎ
-  const refreshScope = storedToken.scope ?? resolveEffectiveScope(null, service.allowed_scopes) ?? '';
+  const refreshScope = storedToken.scope ?? resolveEffectiveScope(null, service.allowed_scopes);
 
   const issueResult = await issueTokenPairWithRecovery(
     c.env.DB,
@@ -404,6 +404,7 @@ async function introspectRefreshToken(
     if (!refreshToken) return null;
     if (refreshToken.revoked_at !== null) return { active: false };
     if (refreshToken.service_id !== service.id) {
+      console.warn(`[introspect] service_id mismatch: token.service_id=${refreshToken.service_id}, requesting service.id=${service.id}`);
       return { active: false };
     }
     if (new Date(refreshToken.expires_at) < new Date()) {

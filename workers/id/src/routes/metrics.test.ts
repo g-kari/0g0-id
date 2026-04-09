@@ -342,6 +342,7 @@ describe('GET /api/metrics/login-trends', () => {
 
   it('daysパラメーターが指定された場合getDailyLoginTrendsに渡される', async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(parseDays).mockReturnValue({ days: 7 });
     vi.mocked(getDailyLoginTrends).mockResolvedValue([]);
 
     await app.request(
@@ -355,6 +356,7 @@ describe('GET /api/metrics/login-trends', () => {
 
   it('daysが90を超える場合は90にクランプされる', async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(parseDays).mockReturnValue({ days: 90 });
     vi.mocked(getDailyLoginTrends).mockResolvedValue([]);
 
     await app.request(
@@ -368,6 +370,7 @@ describe('GET /api/metrics/login-trends', () => {
 
   it('daysが1未満の場合は1にクランプされる', async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(parseDays).mockReturnValue({ days: 1 });
     vi.mocked(getDailyLoginTrends).mockResolvedValue([]);
 
     await app.request(
@@ -723,6 +726,7 @@ describe('GET /api/metrics/user-registrations', () => {
 
   it('daysパラメーターが指定された場合 getDailyUserRegistrations に渡される', async () => {
     vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(parseDays).mockReturnValue({ days: 7 });
     vi.mocked(getDailyUserRegistrations).mockResolvedValueOnce([]);
     const app = buildApp();
     await app.request(
@@ -749,6 +753,7 @@ describe('GET /api/metrics/user-registrations', () => {
 
   it('days が 90 を超える場合は 90 にクランプされる', async () => {
     vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(parseDays).mockReturnValue({ days: 90 });
     vi.mocked(getDailyUserRegistrations).mockResolvedValueOnce([]);
     const app = buildApp();
     await app.request(
@@ -761,6 +766,7 @@ describe('GET /api/metrics/user-registrations', () => {
 
   it('days が 1 未満の場合は 1 にクランプされる', async () => {
     vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(parseDays).mockReturnValue({ days: 1 });
     vi.mocked(getDailyUserRegistrations).mockResolvedValueOnce([]);
     const app = buildApp();
     await app.request(

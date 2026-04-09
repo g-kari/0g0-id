@@ -65,7 +65,7 @@ import { parse as parseDomain } from 'tldts';
 const ExchangeSchema = z.object({
   code: z.string().min(1, 'code is required'),
   redirect_to: z.string().min(1, 'redirect_to is required').max(2048, 'redirect_to too long'),
-  code_verifier: z.string().min(43).max(128).optional(),
+  code_verifier: z.string().min(43).max(128).regex(/^[A-Za-z0-9\-._~]+$/, 'Invalid code_verifier characters').optional(),
 });
 
 const RefreshSchema = z.object({
