@@ -1170,3 +1170,22 @@
 - `getSuspiciousLoginsTool` (`get_suspicious_logins`): 複数国からの短時間ログインを検出（hours 1〜168、min_countries 2〜10、デフォルト24h/2か国）
 - `getServiceTokenStatsTool` (`get_service_token_stats`): 全サービスのアクティブトークン統計（認可ユーザー数・トークン数）を取得
 - テスト: 各4・3件追加（計+9件、142 → 151件）
+
+## 2026-04-11 bff.ts 未テスト関数テスト22件追加
+
+### 変更ファイル
+- `packages/shared/src/lib/bff.test.ts` — テスト13件 → 35件（+22件）
+
+### 追加したテスト（7つのdescribeブロック）
+- `encodeSession` — 4件: base64url形式確認・parseSessionで復元可能・ランダムIV・異なるシークレット
+- `setSessionCookie` — 2件: setCookieの正しいオプション（httpOnly/secure/Lax/30日）・Cookie値の復元確認
+- `internalServiceHeaders` — 2件: INTERNAL_SERVICE_SECRET設定時/未設定時の挙動
+- `setOAuthStateCookie` — 1件: maxAge=600のCookie設定確認
+- `verifyAndConsumeOAuthState` — 3件: missing_session/state_mismatch/null（成功+Cookie削除）
+- `exchangeCodeAtIdp` — 3件: 成功時ExchangeResult返却・失敗時ok:false・X-Internal-Secretヘッダー付与
+- `revokeTokenAtIdp` — 2件: /auth/logoutへのPOST確認・X-Internal-Secretヘッダー付与
+- `proxyMutate` — 3件: DELETE（デフォルト）/PATCH転送・セッションなし時401
+
+### テスト数推移
+- 変更前: 2016件パス
+- 変更後: 2038件パス（+22件）
