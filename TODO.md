@@ -2,6 +2,13 @@
 
 ## テストカバレッジ追加（2026-04-11）
 
+- ✅ **`users.test.ts`: listUsers・countUsers の search フィルターテスト2件追加**
+  - `listUsers`: search フィルター（email OR name の部分一致OR検索）SQL確認・bindパラメータ確認
+  - `countUsers`: search フィルターで絞り込み件数・bindパラメータ確認（同一パターンを2回渡す仕様）
+  - 全610テストパス（608 → 610、sharedパッケージ）
+
+## テストカバレッジ追加（2026-04-11）
+
 - ✅ **`token.test.ts`: resolveOAuthClient のテスト2件追加**
   - `authorization_code grant`: Basic認証ヘッダーのclient_idとbodyのclient_idが不一致 → 401 invalid_client
   - `refresh_token grant`: 同上（セキュリティ境界条件のカバレッジ追加）
