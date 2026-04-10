@@ -1,6 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   findRefreshTokenByHash,
+  findRefreshTokenById,
+  findAndRevokeRefreshToken,
+  unrevokeRefreshToken,
+  deleteExpiredRefreshTokens,
+  findUserIdByPairwiseSub,
+  revokeTokenByIdForUser,
   createRefreshToken,
   revokeRefreshToken,
   revokeTokenFamily,
@@ -450,5 +456,193 @@ describe('revokeAllServiceTokens', () => {
     await revokeAllServiceTokens(db, 'service-1', 'service_delete');
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
     expect(stmt.bind).toHaveBeenCalledWith('service_delete', 'service-1');
+  });
+});
+
+describe('findRefreshTokenById', () => {
+  it('存在するidに対してRefreshTokenを返す', async () => {
+    const db = makeD1Mock(baseToken);
+    const result = await findRefreshTokenById(db, 'token-id-1');
+    expect(result).not.toBeNull();
+    expect(result?.id).toBe('token-id-1');
+    expect(result?.user_id).toBe('user-1');
+  });
+
+  it('存在しないidにはnullを返す', async () => {
+    const db = makeD1Mock(null);
+    const result = await findRefreshTokenById(db, 'no-such-id');
+    expect(result).toBeNull();
+  });
+
+  it('idでbindを呼ぶ', async () => {
+    const db = makeD1Mock(baseToken);
+    await findRefreshTokenById(db, 'token-id-1');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('token-id-1');
+  });
+});
+
+describe('findAndRevokeRefreshToken', () => {
+  it('存在するhashのトークンをrevokeしてRefreshTokenを返す', async () => {
+    const revokedToken = { ...baseToken, revoked_at: '2024-06-01T00:00:00Z', revoked_reason: 'rotation' };
+    const db = makeD1Mock(revokedToken);
+    const result = await findAndRevokeRefreshToken(db, 'hash-abc', 'rotation');
+    expect(result).not.toBeNull();
+    expect(result?.id).toBe('token-id-1');
+  });
+
+  it('存在しないhash（または既に失効済み）にはnullを返す', async () => {
+    const db = makeD1Mock(null);
+    const result = await findAndRevokeRefreshToken(db, 'no-such-hash');
+    expect(result).toBeNull();
+  });
+
+  it('reasonなしのときnullでbindを呼ぶ', async () => {
+    const db = makeD1Mock(baseToken);
+    await findAndRevokeRefreshToken(db, 'hash-abc');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith(null, 'hash-abc');
+  });
+
+  it('reasonありのときreasonでbindを呼ぶ', async () => {
+    const db = makeD1Mock(baseToken);
+    await findAndRevokeRefreshToken(db, 'hash-abc', 'reuse_detected');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('reuse_detected', 'hash-abc');
+  });
+
+  it('RETURNING *を含むSQL文を実行する', async () => {
+    const db = makeD1Mock(baseToken);
+    await findAndRevokeRefreshToken(db, 'hash-abc');
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('RETURNING *');
+    expect(sql).toContain('token_hash = ?');
+    expect(sql).toContain('revoked_at IS NULL');
+  });
+});
+
+describe('unrevokeRefreshToken', () => {
+  it('changesが1以上のときtrueを返す', async () => {
+    const db = makeD1Mock(null, [], 1);
+    const result = await unrevokeRefreshToken(db, 'token-id-1');
+    expect(result).toBe(true);
+  });
+
+  it('changesが0のときfalseを返す', async () => {
+    const db = makeD1Mock(null, [], 0);
+    const result = await unrevokeRefreshToken(db, 'token-id-1');
+    expect(result).toBe(false);
+  });
+
+  it('DB例外時にリトライしてmaxRetries超過後にthrowする', async () => {
+    const dbError = new Error('D1 transient error');
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue(null),
+      run: vi.fn().mockRejectedValue(dbError),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+    await expect(unrevokeRefreshToken(db, 'token-id-1', 1)).rejects.toThrow('D1 transient error');
+    expect(stmt.run).toHaveBeenCalledTimes(2);
+  });
+
+  it('idとrevoked_reason=rotationでWHERE条件を持つSQL文を実行する', async () => {
+    const db = makeD1Mock(null, [], 1);
+    await unrevokeRefreshToken(db, 'token-id-1');
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('revoked_at = NULL');
+    expect(sql).toContain("revoked_reason = 'rotation'");
+  });
+});
+
+describe('deleteExpiredRefreshTokens', () => {
+  it('削除件数を返す', async () => {
+    const db = makeD1Mock(null, [], 7);
+    const result = await deleteExpiredRefreshTokens(db);
+    expect(result).toBe(7);
+  });
+
+  it('対象がない場合は0を返す', async () => {
+    const db = makeD1Mock(null, [], 0);
+    const result = await deleteExpiredRefreshTokens(db);
+    expect(result).toBe(0);
+  });
+
+  it('expires_atまたは古いrevoked_atでDELETE文を実行する', async () => {
+    const db = makeD1Mock(null, [], 3);
+    await deleteExpiredRefreshTokens(db);
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('DELETE FROM refresh_tokens');
+    expect(sql).toContain('expires_at');
+    expect(sql).toContain('revoked_at');
+  });
+});
+
+describe('findUserIdByPairwiseSub', () => {
+  it('存在するpairwiseSubのuser_idを返す', async () => {
+    const db = makeD1Mock({ user_id: 'user-1' });
+    const result = await findUserIdByPairwiseSub(db, 'service-1', 'pairwise-abc');
+    expect(result).toBe('user-1');
+  });
+
+  it('存在しないpairwiseSubにはnullを返す', async () => {
+    const db = makeD1Mock(null);
+    const result = await findUserIdByPairwiseSub(db, 'service-1', 'no-such-sub');
+    expect(result).toBeNull();
+  });
+
+  it('serviceId・pairwiseSubでbindを呼ぶ', async () => {
+    const db = makeD1Mock({ user_id: 'user-1' });
+    await findUserIdByPairwiseSub(db, 'service-1', 'pairwise-abc');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('service-1', 'pairwise-abc');
+  });
+
+  it('SQLにservice_id・pairwise_sub・revoked_at IS NULL・expires_atが含まれる', async () => {
+    const db = makeD1Mock(null);
+    await findUserIdByPairwiseSub(db, 'service-1', 'pairwise-abc');
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('service_id = ?');
+    expect(sql).toContain('pairwise_sub = ?');
+    expect(sql).toContain('revoked_at IS NULL');
+    expect(sql).toContain('expires_at');
+  });
+});
+
+describe('revokeTokenByIdForUser', () => {
+  it('失効したトークン数を返す', async () => {
+    const db = makeD1Mock(null, [], 1);
+    const result = await revokeTokenByIdForUser(db, 'token-id-1', 'user-1');
+    expect(result).toBe(1);
+  });
+
+  it('対象がない場合は0を返す', async () => {
+    const db = makeD1Mock(null, [], 0);
+    const result = await revokeTokenByIdForUser(db, 'token-id-1', 'user-1');
+    expect(result).toBe(0);
+  });
+
+  it('reasonなしのときid・userIdでbindを呼ぶ', async () => {
+    const db = makeD1Mock(null, [], 1);
+    await revokeTokenByIdForUser(db, 'token-id-1', 'user-1');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith(null, 'token-id-1', 'user-1');
+  });
+
+  it('reasonを指定した場合はrevoked_reasonに記録する', async () => {
+    const db = makeD1Mock(null, [], 1);
+    await revokeTokenByIdForUser(db, 'token-id-1', 'user-1', 'user_logout');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('user_logout', 'token-id-1', 'user-1');
+  });
+
+  it('SQLにid・user_id・revoked_at IS NULLが含まれる', async () => {
+    const db = makeD1Mock(null, [], 1);
+    await revokeTokenByIdForUser(db, 'token-id-1', 'user-1');
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('id = ?');
+    expect(sql).toContain('user_id = ?');
+    expect(sql).toContain('revoked_at IS NULL');
   });
 });
