@@ -2,6 +2,14 @@
 
 ## テストカバレッジ追加（2026-04-10）
 
+- ✅ **`base64url.test.ts` / `helpers.test.ts` / `providers.test.ts`: ユニットテスト31件追加**
+  - `packages/shared/src/lib/base64url.ts`: テストファイルが存在しなかった。decodeBase64Url のパディング・URLセーフ文字・JWT用途など9件
+  - `packages/shared/src/db/helpers.ts`: テストファイルが存在しなかった。daysAgoIso の日数計算・月またぎ・now省略時・ISO形式確認 8件
+  - `packages/shared/src/lib/providers.ts`: テストファイルが存在しなかった。isValidProvider・ALL_PROVIDERS・DISPLAY_NAMES・COLUMN・CREDENTIALS の全フィールド検証 14件
+  - 全517テストパス（486 → 517）
+
+## テストカバレッジ追加（2026-04-10）
+
 - ✅ **`env-validation.test.ts`: validateEnv ユニットテスト15件追加**
   - `workers/id/src/utils/env-validation.ts` のテストファイルが存在しなかった
   - 必須フィールド（GOOGLE_CLIENT_ID/SECRET、JWT_PRIVATE/PUBLIC_KEY、IDP/USER/ADMIN_ORIGIN、COOKIE_SECRET）の検証
