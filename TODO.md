@@ -1021,3 +1021,39 @@
 - ✅ `routes/auth.ts`: bootstrap admin 昇格失敗時の挙動を改善（2026-04-09）
   - 修正: DB例外時に `{ error: { code: 'INTERNAL_ERROR' } }` 500 を返すよう変更（silent failureを排除）
   - テスト: DB例外→500ケース追加（全841テストパス）
+
+## 2026-04-10 テストカバレッジ追加: logger・parse-body・body-limit
+
+### 追加したテスト
+
+#### packages/shared/src/lib/logger.test.ts ✅
+- `createLogger` でロガーインスタンス生成を確認
+- info/debug ログが `console.log` に JSON 形式で出力される
+- warn ログが `console.warn` に出力される
+- error ログが `console.error` に出力される
+- `Error` オブジェクトを渡すと `err`・`stack` が設定される
+- 非 Error オブジェクトを渡すと `data` に設定される
+- extra なし → `data`/`err`/`stack` が含まれない
+- コンテキスト文字列が出力に反映される
+- 数値・null を extra として渡すと `data` に設定される
+- 計 11テスト
+
+#### packages/shared/src/lib/parse-body.test.ts ✅
+- 有効な JSON ボディをパースして data を返す
+- 不正な JSON ボディ → 400 BAD_REQUEST
+- Zod バリデーション失敗 → 400 BAD_REQUEST
+- 必須フィールド欠如 → 400
+- 空オブジェクト → 400
+- スキーマ通過時は ok: true と data を返す
+- 型が違うフィールド → 400
+- null ボディ → 400
+- 計 8テスト
+
+#### packages/shared/src/middleware/body-limit.test.ts ✅
+- デフォルト 64KB 以下のボディは通過する
+- デフォルト 64KB 超 → 413 PAYLOAD_TOO_LARGE
+- カスタムサイズ: 100B 以下は通過する
+- カスタムサイズ: 100B 超 → 413
+- GET リクエストはボディ制限の対象外
+- 空ボディは通過する
+- 計 6テスト
