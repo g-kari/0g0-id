@@ -2,6 +2,14 @@
 
 ## テストカバレッジ追加（2026-04-10）
 
+- ✅ **`admin-audit-logs.test.ts`: getAuditLogStats・status フィルターのテスト10件追加**
+  - `packages/shared/src/db/admin-audit-logs.test.ts` の `getAuditLogStats` が未テストだった
+  - action_stats・admin_stats・daily_stats の返却値・SQL構造・days パラメータ・空配列ケース（8件）
+  - `listAdminAuditLogs` の `status` フィルター単体・他フィルターとの複合（2件）
+  - 全486テスト（shared）パス確認済み
+
+## テストカバレッジ追加（2026-04-10）
+
 - ✅ **`login-history.test.ts`: provider・境界値テスト7件追加**
   - `workers/user/src/routes/login-history.ts` の provider フィルターと limit/offset バリデーションのテストが未カバーだった
   - 有効provider（google/github）転送・無効provider（facebook）400・limit=0エラー・offset=-1エラー・provider+pagination組み合わせを網羅
