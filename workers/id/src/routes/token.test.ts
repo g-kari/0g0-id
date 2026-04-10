@@ -1437,6 +1437,24 @@ describe('POST /api/token/ — authorization_code grant', () => {
     const body = await res.json<{ error: string }>();
     expect(body.error).toBe('server_error');
   });
+
+  it('Basic認証ヘッダーのclient_idとbodyのclient_idが不一致 → { error: invalid_client } + 401', async () => {
+    // Basic認証で test-client-id として認証しつつ、bodyには別のclient_idを送信
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'authorization_code',
+        code: 'test-code',
+        redirect_uri: 'http://localhost:51234/callback',
+        client_id: 'different-client-id', // Basic認証のclient_idと不一致
+        code_verifier: 'a'.repeat(43),
+      },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_client');
+  });
 });
 
 // ===== POST /api/token/ — refresh_token grant =====
@@ -1811,5 +1829,21 @@ describe('POST /api/token/ — refresh_token grant', () => {
     expect(body.access_token).toBe('new-access-token');
     expect(body.refresh_token).toBe('new-refresh-token');
     expect(body.token_type).toBe('Bearer');
+  });
+
+  it('Basic認証ヘッダーのclient_idとbodyのclient_idが不一致 → { error: invalid_client } + 401', async () => {
+    // Basic認証で test-client-id として認証しつつ、bodyには別のclient_idを送信
+    const res = await sendRequest(app, '/api/token', {
+      method: 'POST',
+      formBody: {
+        grant_type: 'refresh_token',
+        refresh_token: 'valid-token',
+        client_id: 'different-client-id', // Basic認証のclient_idと不一致
+      },
+      authHeader: makeBasicAuth('test-client-id', 'secret'),
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe('invalid_client');
   });
 });

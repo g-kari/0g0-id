@@ -2,6 +2,11 @@
 
 ## テストカバレッジ追加（2026-04-11）
 
+- ✅ **`token.test.ts`: resolveOAuthClient のテスト2件追加**
+  - `authorization_code grant`: Basic認証ヘッダーのclient_idとbodyのclient_idが不一致 → 401 invalid_client
+  - `refresh_token grant`: 同上（セキュリティ境界条件のカバレッジ追加）
+  - 全879テストパス（id worker: 877 → 879）
+
 - ✅ **`validation.test.ts`: UUID_RE のテスト13件追加**
   - `packages/shared/src/lib/validation.ts` のテストファイルが存在しなかった
   - 有効なUUID v4形式・大文字小文字区別なし・全ゼロ/全fのUUID（5件）
