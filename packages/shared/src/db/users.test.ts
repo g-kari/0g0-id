@@ -9,6 +9,12 @@ import {
   upsertUser,
   upsertLineUser,
   upsertXUser,
+  upsertGithubUser,
+  upsertTwitchUser,
+  findUserById,
+  findUserByEmail,
+  findUserBySub,
+  getDailyUserRegistrations,
   listUsers,
   countUsers,
   countAdminUsers,
@@ -669,5 +675,255 @@ describe('unbanUser', () => {
     expect(db.prepare).toHaveBeenCalledWith(
       expect.stringContaining('banned_at = NULL')
     );
+  });
+});
+
+describe('findUserById', () => {
+  it('idでユーザーを取得する', async () => {
+    const db = makeD1Mock(baseUser);
+    const user = await findUserById(db, 'user-1');
+    expect(user).not.toBeNull();
+    expect(user!.id).toBe('user-1');
+  });
+
+  it('存在しないidはnullを返す', async () => {
+    const db = makeD1Mock(null);
+    const user = await findUserById(db, 'not-exist');
+    expect(user).toBeNull();
+  });
+
+  it('WHERE id = ? のSQLを呼ぶ', async () => {
+    const db = makeD1Mock(baseUser);
+    await findUserById(db, 'user-1');
+    expect(db.prepare).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE id = ?')
+    );
+    expect(db._stmt.bind).toHaveBeenCalledWith('user-1');
+  });
+});
+
+describe('findUserByEmail', () => {
+  it('emailでユーザーを取得する', async () => {
+    const db = makeD1Mock(baseUser);
+    const user = await findUserByEmail(db, 'test@example.com');
+    expect(user).not.toBeNull();
+    expect(user!.email).toBe('test@example.com');
+  });
+
+  it('存在しないemailはnullを返す', async () => {
+    const db = makeD1Mock(null);
+    const user = await findUserByEmail(db, 'nobody@example.com');
+    expect(user).toBeNull();
+  });
+
+  it('WHERE email = ? のSQLを呼ぶ', async () => {
+    const db = makeD1Mock(baseUser);
+    await findUserByEmail(db, 'test@example.com');
+    expect(db.prepare).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE email = ?')
+    );
+    expect(db._stmt.bind).toHaveBeenCalledWith('test@example.com');
+  });
+});
+
+describe('findUserBySub', () => {
+  it('google providerでユーザーを取得する', async () => {
+    const db = makeD1Mock(baseUser);
+    const user = await findUserBySub(db, 'google', 'google-sub-1');
+    expect(user).not.toBeNull();
+    expect(user!.google_sub).toBe('google-sub-1');
+  });
+
+  it('存在しないsubはnullを返す', async () => {
+    const db = makeD1Mock(null);
+    const user = await findUserBySub(db, 'google', 'not-exist');
+    expect(user).toBeNull();
+  });
+
+  it('WHERE google_sub = ? のSQLを呼ぶ', async () => {
+    const db = makeD1Mock(baseUser);
+    await findUserBySub(db, 'google', 'google-sub-1');
+    expect(db.prepare).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE google_sub = ?')
+    );
+    expect(db._stmt.bind).toHaveBeenCalledWith('google-sub-1');
+  });
+
+  it('github providerはgithub_subカラムを使う', async () => {
+    const githubUser = { ...baseUser, github_sub: 'gh-1', google_sub: null };
+    const db = makeD1Mock(githubUser);
+    const user = await findUserBySub(db, 'github', 'gh-1');
+    expect(user).not.toBeNull();
+    expect(db.prepare).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE github_sub = ?')
+    );
+  });
+});
+
+describe('getDailyUserRegistrations', () => {
+  it('登録日別のユーザー数を返す', async () => {
+    const stats = [
+      { date: '2026-04-01', count: 3 },
+      { date: '2026-04-02', count: 5 },
+    ];
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: stats }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+    const result = await getDailyUserRegistrations(db, 30);
+    expect(result).toHaveLength(2);
+    expect(result[0].date).toBe('2026-04-01');
+    expect(result[0].count).toBe(3);
+  });
+
+  it('結果が空の場合は空配列を返す', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+    const result = await getDailyUserRegistrations(db);
+    expect(result).toHaveLength(0);
+  });
+
+  it('daysパラメータがSQLに渡される', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+    await getDailyUserRegistrations(db, 7);
+    expect(stmt.bind).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}-\d{2}/));
+  });
+});
+
+describe('upsertGithubUser', () => {
+  const githubUser = { ...baseUser, github_sub: 'gh-sub-1', google_sub: null };
+
+  it('既存GitHubユーザーが見つかった場合はプロフィールを更新する', async () => {
+    const db = makeMultiD1Mock({ first: githubUser }, { first: githubUser });
+    const user = await upsertGithubUser(db, {
+      id: 'user-new',
+      githubSub: 'gh-sub-1',
+      email: 'gh@example.com',
+      isPlaceholderEmail: false,
+      name: '更新名',
+      picture: null,
+    });
+    expect(user.github_sub).toBe('gh-sub-1');
+  });
+
+  it('仮メールでないユーザーのメール一致で既存アカウントにGitHubを連携する', async () => {
+    const emailUser = { ...baseUser, github_sub: null };
+    const db = makeMultiD1Mock(
+      { first: null },
+      { first: emailUser },
+      { first: { ...emailUser, github_sub: 'gh-sub-1' } }
+    );
+    const user = await upsertGithubUser(db, {
+      id: 'user-new',
+      githubSub: 'gh-sub-1',
+      email: 'test@example.com',
+      isPlaceholderEmail: false,
+      name: 'GitHub User',
+      picture: null,
+    });
+    expect(user.github_sub).toBe('gh-sub-1');
+  });
+
+  it('仮メールの場合はメール連携せず新規ユーザーを作成する', async () => {
+    const newUser = { ...baseUser, github_sub: 'gh-sub-new', google_sub: null };
+    const db = makeMultiD1Mock({ first: null }, { first: newUser });
+    const user = await upsertGithubUser(db, {
+      id: 'user-new',
+      githubSub: 'gh-sub-new',
+      email: 'gh_placeholder@github.placeholder',
+      isPlaceholderEmail: true,
+      name: 'GitHub User',
+      picture: null,
+    });
+    expect(user.github_sub).toBe('gh-sub-new');
+  });
+
+  it('DBがnullを返した場合はエラーを投げる（新規作成時）', async () => {
+    const db = makeMultiD1Mock({ first: null }, { first: null });
+    await expect(
+      upsertGithubUser(db, {
+        id: 'user-new',
+        githubSub: 'gh-sub-new',
+        email: 'gh_new@github.placeholder',
+        isPlaceholderEmail: true,
+        name: 'Name',
+        picture: null,
+      })
+    ).rejects.toThrow('Failed to create GitHub user');
+  });
+});
+
+describe('upsertTwitchUser', () => {
+  const twitchUser = { ...baseUser, twitch_sub: 'tw-sub-1', google_sub: null };
+
+  it('既存Twitchユーザーが見つかった場合はプロフィールを更新する', async () => {
+    const db = makeMultiD1Mock({ first: twitchUser }, { first: twitchUser });
+    const user = await upsertTwitchUser(db, {
+      id: 'user-new',
+      twitchSub: 'tw-sub-1',
+      email: 'tw@example.com',
+      isPlaceholderEmail: false,
+      emailVerified: true,
+      name: '更新名',
+      picture: null,
+    });
+    expect(user.twitch_sub).toBe('tw-sub-1');
+  });
+
+  it('仮メールでないユーザーのメール一致で既存アカウントにTwitchを連携する', async () => {
+    const emailUser = { ...baseUser, twitch_sub: null };
+    const db = makeMultiD1Mock(
+      { first: null },
+      { first: emailUser },
+      { first: { ...emailUser, twitch_sub: 'tw-sub-1' } }
+    );
+    const user = await upsertTwitchUser(db, {
+      id: 'user-new',
+      twitchSub: 'tw-sub-1',
+      email: 'test@example.com',
+      isPlaceholderEmail: false,
+      emailVerified: true,
+      name: 'Twitch User',
+      picture: null,
+    });
+    expect(user.twitch_sub).toBe('tw-sub-1');
+  });
+
+  it('仮メールの場合はメール連携せず新規ユーザーを作成する', async () => {
+    const newUser = { ...baseUser, twitch_sub: 'tw-sub-new', google_sub: null };
+    const db = makeMultiD1Mock({ first: null }, { first: newUser });
+    const user = await upsertTwitchUser(db, {
+      id: 'user-new',
+      twitchSub: 'tw-sub-new',
+      email: 'tw_placeholder@twitch.placeholder',
+      isPlaceholderEmail: true,
+      emailVerified: false,
+      name: 'Twitch User',
+      picture: null,
+    });
+    expect(user.twitch_sub).toBe('tw-sub-new');
+  });
+
+  it('DBがnullを返した場合はエラーを投げる（新規作成時）', async () => {
+    const db = makeMultiD1Mock({ first: null }, { first: null });
+    await expect(
+      upsertTwitchUser(db, {
+        id: 'user-new',
+        twitchSub: 'tw-sub-new',
+        email: 'tw_new@twitch.placeholder',
+        isPlaceholderEmail: true,
+        emailVerified: false,
+        name: 'Name',
+        picture: null,
+      })
+    ).rejects.toThrow('Failed to create Twitch user');
   });
 });
