@@ -1123,3 +1123,12 @@
 - `getUserLoginTrendsTool` (`get_user_login_trends`): ユーザーの日別ログイントレンドを取得（days パラメータ対応、デフォルト30日、最大365日）
 - 両ツール: user_id 未指定・空文字→エラー、ユーザー未存在→404エラー
 - テスト: 各5件追加（計+10件、132 → 142件）
+
+## 2026-04-10 機能追加: MCPツール get_suspicious_logins・get_service_token_stats
+
+### 追加したツール
+
+#### workers/mcp/src/tools/metrics.ts ✅
+- `getSuspiciousLoginsTool` (`get_suspicious_logins`): 複数国からの短時間ログインを検出（hours 1〜168、min_countries 2〜10、デフォルト24h/2か国）
+- `getServiceTokenStatsTool` (`get_service_token_stats`): 全サービスのアクティブトークン統計（認可ユーザー数・トークン数）を取得
+- テスト: 各4・3件追加（計+9件、142 → 151件）
