@@ -2,6 +2,14 @@
 
 ## テストカバレッジ追加（2026-04-10）
 
+- ✅ **`profile.test.ts`: `/login-stats`・`/data-export` 未テストエンドポイント テスト11件追加**
+  - `workers/user/src/routes/profile.ts` の `GET /api/me/login-stats` と `GET /api/me/data-export` のテストが存在しなかった
+  - `GET /login-stats`: セッションなし401・正常系・エンドポイント確認・days転送・daysパラメータなし・days=366→400・IdP500伝播（7件）
+  - `GET /data-export`: セッションなし401・正常系・エンドポイント確認・IdP500伝播（4件）
+  - 全197テストパス（186 → 197）
+
+## テストカバレッジ追加（2026-04-10）
+
 - ✅ **`transport.test.ts`: MCP transport ユニットテスト15件追加**
   - `workers/mcp/src/mcp/transport.ts`: テストファイルが存在しなかった。全エンドポイントを網羅
     - `POST /mcp`: 不正JSON→ParseError(-32700)・initialize→セッション作成+Mcp-Session-Idヘッダー・セッションIDなし→-32600・無効セッション→-32600・有効セッション→正常処理・Notification→202・全通知→202・バッチ→配列・id受け渡し確認（9件）
