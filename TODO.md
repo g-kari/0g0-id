@@ -2,6 +2,17 @@
 
 ## テストカバレッジ追加（2026-04-10）
 
+- ✅ **`auth.test.ts` / `rate-limit.test.ts`: MCP middleware ユニットテスト17件追加**
+  - `workers/mcp/src/middleware/auth.ts`: テストファイルが存在しなかった。mcpAuthMiddleware（4件）・mcpRejectBannedUserMiddleware（5件）・mcpAdminMiddleware（3件）を網羅
+    - Authorization ヘッダーなし・Bearer以外のスキーム・有効トークン・JWT検証失敗
+    - ユーザー未認証・DB未登録・BAN済み・正常ユーザー・DB例外
+    - 未認証・非admin・adminロール確認
+  - `workers/mcp/src/middleware/rate-limit.ts`: テストファイルが存在しなかった。mcpRateLimitMiddleware（5件）を網羅
+    - バインディング未設定でスキップ・成功・超過429・unknown IP・複数IP独立
+  - 全1905テストパス（1888 → 1905）
+
+## テストカバレッジ追加（2026-04-10）
+
 - ✅ **`base64url.test.ts` / `helpers.test.ts` / `providers.test.ts`: ユニットテスト31件追加**
   - `packages/shared/src/lib/base64url.ts`: テストファイルが存在しなかった。decodeBase64Url のパディング・URLセーフ文字・JWT用途など9件
   - `packages/shared/src/db/helpers.ts`: テストファイルが存在しなかった。daysAgoIso の日数計算・月またぎ・now省略時・ISO形式確認 8件
