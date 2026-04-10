@@ -2,6 +2,15 @@
 
 ## テストカバレッジ追加（2026-04-11）
 
+- ✅ **`validation.test.ts`: UUID_RE のテスト13件追加**
+  - `packages/shared/src/lib/validation.ts` のテストファイルが存在しなかった
+  - 有効なUUID v4形式・大文字小文字区別なし・全ゼロ/全fのUUID（5件）
+  - ハイフンなし・文字数過不足・空文字・無効文字・ハイフン位置違い・前後余分文字（8件）
+  - 全2016テストパス（2003 → 2016）
+
+
+## テストカバレッジ追加（2026-04-11）
+
 - ✅ **`login-events.test.ts`: 未テスト3関数のテスト12件追加**
   - `getUserDailyLoginTrends`: 日別ログイン統計・空配列・days=30デフォルト・days=7指定・SQL確認（5件）
   - `getActiveUserStats`: DAU/WAU/MAU統計・nullフォールバック・3クエリ並列+SQL確認（3件）
