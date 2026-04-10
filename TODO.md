@@ -1,5 +1,16 @@
 # TODO
 
+## テストカバレッジ追加（2026-04-10）
+
+- ✅ **`users.test.ts`: 未テスト6関数のテスト21件追加**
+  - `findUserById`: id検索・null返却・SQL確認（3件）
+  - `findUserByEmail`: email検索・null返却・SQL確認（3件）
+  - `findUserBySub`: google/github providerでの検索・null返却・カラム名確認（4件）
+  - `getDailyUserRegistrations`: 日別集計・空配列・daysパラメータ確認（3件）
+  - `upsertGithubUser`: 既存更新・email連携・仮メール新規作成・DBnullエラー（4件）
+  - `upsertTwitchUser`: 既存更新・email連携・仮メール新規作成・DBnullエラー（4件）
+  - 全563テストパス（542 → 563）
+
 ## 2026-04-10 機能追加: MCPツール get_user_owned_services・get_user_authorized_services
 
 ### 追加したツール
