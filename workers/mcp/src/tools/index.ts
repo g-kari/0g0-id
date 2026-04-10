@@ -27,4 +27,6 @@ export {
 
 export {
   getSystemMetricsTool,
+  getSuspiciousLoginsTool,
+  getServiceTokenStatsTool,
 } from './metrics';

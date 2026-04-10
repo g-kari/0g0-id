@@ -7,6 +7,8 @@ import {
   getDailyUserRegistrations,
   getLoginEventProviderStats,
   getDailyActiveUsers,
+  getSuspiciousMultiCountryLogins,
+  getServiceTokenStats,
 } from '@0g0-id/shared';
 
 /** 指定した日数前の日時を ISO 8601 文字列で返す */
@@ -63,6 +65,52 @@ export const getSystemMetricsTool: McpTool = {
         login_by_provider: loginProviderStats,
       },
     };
+
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  },
+};
+
+export const getSuspiciousLoginsTool: McpTool = {
+  definition: {
+    name: 'get_suspicious_logins',
+    description: '短時間に複数の国からログインした疑わしいアカウントを検出する',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        hours: { type: 'number', description: '遡る時間数（1〜168、デフォルト: 24）' },
+        min_countries: { type: 'number', description: '疑わしいとみなす最低国数（2〜10、デフォルト: 2）' },
+      },
+    },
+  },
+  handler: async (params, context) => {
+    const hours = Math.min(Math.max(Number(params.hours) || 24, 1), 168);
+    const minCountries = Math.min(Math.max(Number(params.min_countries) || 2, 2), 10);
+    const sinceIso = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
+    const logins = await getSuspiciousMultiCountryLogins(context.db, sinceIso, minCountries);
+
+    const result = {
+      data: logins,
+      meta: { hours, min_countries: minCountries },
+    };
+
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  },
+};
+
+export const getServiceTokenStatsTool: McpTool = {
+  definition: {
+    name: 'get_service_token_stats',
+    description: '全サービスのアクティブトークン統計（認可ユーザー数・トークン数）を取得する',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  handler: async (_params, context) => {
+    const stats = await getServiceTokenStats(context.db);
+
+    const result = { data: stats };
 
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   },

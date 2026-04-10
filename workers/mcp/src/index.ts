@@ -26,6 +26,8 @@ import {
   getAuditLogsTool,
   getAuditStatsTool,
   getSystemMetricsTool,
+  getSuspiciousLoginsTool,
+  getServiceTokenStatsTool,
 } from './tools';
 
 type Env = {
@@ -73,6 +75,8 @@ mcpServer.registerTool(getAuditStatsTool);
 
 // メトリクスツールを登録
 mcpServer.registerTool(getSystemMetricsTool);
+mcpServer.registerTool(getSuspiciousLoginsTool);
+mcpServer.registerTool(getServiceTokenStatsTool);
 
 const app = new Hono<Env>();
 

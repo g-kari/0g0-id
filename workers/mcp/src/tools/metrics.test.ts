@@ -8,6 +8,8 @@ vi.mock('@0g0-id/shared', () => ({
   getDailyUserRegistrations: vi.fn(),
   getLoginEventProviderStats: vi.fn(),
   getDailyActiveUsers: vi.fn(),
+  getSuspiciousMultiCountryLogins: vi.fn(),
+  getServiceTokenStats: vi.fn(),
 }));
 
 import {
@@ -18,9 +20,11 @@ import {
   getDailyUserRegistrations,
   getLoginEventProviderStats,
   getDailyActiveUsers,
+  getSuspiciousMultiCountryLogins,
+  getServiceTokenStats,
 } from '@0g0-id/shared';
 
-import { getSystemMetricsTool } from './metrics';
+import { getSystemMetricsTool, getSuspiciousLoginsTool, getServiceTokenStatsTool } from './metrics';
 import type { McpContext } from '../mcp';
 
 const mockContext: McpContext = {
@@ -39,6 +43,8 @@ beforeEach(() => {
   vi.mocked(getDailyUserRegistrations).mockResolvedValue([]);
   vi.mocked(getLoginEventProviderStats).mockResolvedValue([]);
   vi.mocked(getDailyActiveUsers).mockResolvedValue([]);
+  vi.mocked(getSuspiciousMultiCountryLogins).mockResolvedValue([]);
+  vi.mocked(getServiceTokenStats).mockResolvedValue([]);
 });
 
 // ===== get_system_metrics =====
@@ -116,5 +122,96 @@ describe('getSystemMetricsTool', () => {
     expect(vi.mocked(getDailyUserRegistrations)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(getLoginEventProviderStats)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(getDailyActiveUsers)).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ===== get_suspicious_logins =====
+describe('getSuspiciousLoginsTool', () => {
+  it('dataとmetaを含むレスポンスを返す', async () => {
+    const mockLogins = [{ user_id: 'u1', country_count: 3, countries: 'JP,US,DE' }];
+    vi.mocked(getSuspiciousMultiCountryLogins).mockResolvedValue(mockLogins as never);
+
+    const result = await getSuspiciousLoginsTool.handler({}, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.data).toHaveLength(1);
+    expect(parsed.data[0].user_id).toBe('u1');
+    expect(parsed.meta.hours).toBe(24);
+    expect(parsed.meta.min_countries).toBe(2);
+  });
+
+  it('デフォルトは24時間・2か国', async () => {
+    await getSuspiciousLoginsTool.handler({}, mockContext);
+
+    const calls = vi.mocked(getSuspiciousMultiCountryLogins).mock.calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0][2]).toBe(2); // minCountries
+  });
+
+  it('hoursとmin_countriesを指定できる', async () => {
+    await getSuspiciousLoginsTool.handler({ hours: 48, min_countries: 3 }, mockContext);
+
+    const calls = vi.mocked(getSuspiciousMultiCountryLogins).mock.calls;
+    expect(calls[0][2]).toBe(3);
+    const parsed = JSON.parse((await getSuspiciousLoginsTool.handler({ hours: 48 }, mockContext)).content[0].text);
+    expect(parsed.meta.hours).toBe(48);
+  });
+
+  it('hoursは最大168にクランプする', async () => {
+    const result = await getSuspiciousLoginsTool.handler({ hours: 1000 }, mockContext);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.meta.hours).toBe(168);
+  });
+
+  it('hoursは最小1にクランプする', async () => {
+    const result = await getSuspiciousLoginsTool.handler({ hours: 0 }, mockContext);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.meta.hours).toBe(24); // 0はfalsyなのでデフォルト24
+  });
+
+  it('sinceIsoが正しい時間範囲で渡される', async () => {
+    const before = Date.now();
+    await getSuspiciousLoginsTool.handler({ hours: 1 }, mockContext);
+    const after = Date.now();
+
+    const calls = vi.mocked(getSuspiciousMultiCountryLogins).mock.calls;
+    const sinceMs = new Date(calls[0][1] as string).getTime();
+    const expected = before - 1 * 60 * 60 * 1000;
+    expect(sinceMs).toBeGreaterThanOrEqual(expected - 1000);
+    expect(sinceMs).toBeLessThanOrEqual(after);
+  });
+});
+
+// ===== get_service_token_stats =====
+describe('getServiceTokenStatsTool', () => {
+  it('dataを含むレスポンスを返す', async () => {
+    const mockStats = [
+      { service_id: 's1', service_name: 'App A', authorized_user_count: 10, active_token_count: 15 },
+    ];
+    vi.mocked(getServiceTokenStats).mockResolvedValue(mockStats as never);
+
+    const result = await getServiceTokenStatsTool.handler({}, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.data).toHaveLength(1);
+    expect(parsed.data[0].service_id).toBe('s1');
+    expect(parsed.data[0].authorized_user_count).toBe(10);
+  });
+
+  it('サービスが0件の場合は空配列を返す', async () => {
+    vi.mocked(getServiceTokenStats).mockResolvedValue([]);
+
+    const result = await getServiceTokenStatsTool.handler({}, mockContext);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.data).toEqual([]);
+  });
+
+  it('getServiceTokenStatsにDBが渡される', async () => {
+    await getServiceTokenStatsTool.handler({}, mockContext);
+
+    expect(vi.mocked(getServiceTokenStats)).toHaveBeenCalledWith(mockContext.db);
+    expect(vi.mocked(getServiceTokenStats)).toHaveBeenCalledTimes(1);
   });
 });
