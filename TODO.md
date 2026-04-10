@@ -1,5 +1,13 @@
 # TODO
 
+## テストカバレッジ追加（2026-04-11）
+
+- ✅ **`login-events.test.ts`: 未テスト3関数のテスト12件追加**
+  - `getUserDailyLoginTrends`: 日別ログイン統計・空配列・days=30デフォルト・days=7指定・SQL確認（5件）
+  - `getActiveUserStats`: DAU/WAU/MAU統計・nullフォールバック・3クエリ並列+SQL確認（3件）
+  - `getDailyActiveUsers`: 日別アクティブユーザー・空配列・days=30デフォルト・SQL確認（4件）
+  - 全2003テストパス（1991 → 2003）
+
 ## テストカバレッジ追加（2026-04-10）
 
 - ✅ **`users.test.ts`: 未テスト6関数のテスト21件追加**
