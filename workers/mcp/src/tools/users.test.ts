@@ -9,6 +9,8 @@ vi.mock('@0g0-id/shared', () => ({
   deleteUser: vi.fn(),
   getUserProviders: vi.fn(),
   getLoginEventsByUserId: vi.fn(),
+  getUserLoginProviderStats: vi.fn(),
+  getUserDailyLoginTrends: vi.fn(),
   listActiveSessionsByUserId: vi.fn(),
   revokeUserTokens: vi.fn(),
   deleteMcpSessionsByUser: vi.fn(),
@@ -23,7 +25,9 @@ import {
   unbanUser,
   deleteUser,
   getUserProviders,
-  getLoginEventsByUserId,
+    getLoginEventsByUserId,
+  getUserLoginProviderStats,
+  getUserDailyLoginTrends,
   listActiveSessionsByUserId,
   revokeUserTokens,
   deleteMcpSessionsByUser,
@@ -36,7 +40,9 @@ import {
   banUserTool,
   unbanUserTool,
   deleteUserTool,
-  getUserLoginHistoryTool,
+    getUserLoginHistoryTool,
+  getUserLoginStatsTool,
+  getUserLoginTrendsTool,
   getUserProvidersTool,
   listUserSessionsTool,
   revokeUserSessionsTool,
@@ -307,6 +313,125 @@ describe('getUserLoginHistoryTool', () => {
   it('user_id未指定はエラー', async () => {
     const result = await getUserLoginHistoryTool.handler({}, mockContext);
     expect(result.isError).toBe(true);
+  });
+});
+
+// ===== get_user_login_stats =====
+describe('getUserLoginStatsTool', () => {
+  const mockStats = [
+    { provider: 'google', count: 10 },
+    { provider: 'github', count: 3 },
+  ];
+
+  it('プロバイダー別統計を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(getUserLoginProviderStats).mockResolvedValue(mockStats as never);
+
+    const result = await getUserLoginStatsTool.handler({ user_id: 'user-1' }, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.stats).toHaveLength(2);
+    expect(parsed.days).toBe(30);
+    expect(vi.mocked(getUserLoginProviderStats)).toHaveBeenCalledWith(
+      mockContext.db,
+      'user-1',
+      expect.any(String),
+    );
+  });
+
+  it('daysパラメータを指定できる', async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(getUserLoginProviderStats).mockResolvedValue([] as never);
+
+    const result = await getUserLoginStatsTool.handler({ user_id: 'user-1', days: 7 }, mockContext);
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.days).toBe(7);
+  });
+
+  it('daysは365を超えない', async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(getUserLoginProviderStats).mockResolvedValue([] as never);
+
+    const result = await getUserLoginStatsTool.handler({ user_id: 'user-1', days: 999 }, mockContext);
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.days).toBe(365);
+  });
+
+  it('user_id未指定はエラー', async () => {
+    const result = await getUserLoginStatsTool.handler({}, mockContext);
+    expect(result.isError).toBe(true);
+  });
+
+  it('ユーザーが見つからない場合はエラー', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+
+    const result = await getUserLoginStatsTool.handler({ user_id: 'nonexistent' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('見つかりません');
+    expect(vi.mocked(getUserLoginProviderStats)).not.toHaveBeenCalled();
+  });
+});
+
+// ===== get_user_login_trends =====
+describe('getUserLoginTrendsTool', () => {
+  const mockTrends = [
+    { date: '2024-01-01', count: 3 },
+    { date: '2024-01-02', count: 5 },
+  ];
+
+  it('日別トレンドを返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(getUserDailyLoginTrends).mockResolvedValue(mockTrends as never);
+
+    const result = await getUserLoginTrendsTool.handler({ user_id: 'user-1' }, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.trends).toHaveLength(2);
+    expect(parsed.days).toBe(30);
+    expect(vi.mocked(getUserDailyLoginTrends)).toHaveBeenCalledWith(
+      mockContext.db,
+      'user-1',
+      30,
+    );
+  });
+
+  it('daysパラメータを指定できる', async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(getUserDailyLoginTrends).mockResolvedValue([] as never);
+
+    const result = await getUserLoginTrendsTool.handler({ user_id: 'user-1', days: 14 }, mockContext);
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.days).toBe(14);
+    expect(vi.mocked(getUserDailyLoginTrends)).toHaveBeenCalledWith(mockContext.db, 'user-1', 14);
+  });
+
+  it('daysは365を超えない', async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(getUserDailyLoginTrends).mockResolvedValue([] as never);
+
+    const result = await getUserLoginTrendsTool.handler({ user_id: 'user-1', days: 1000 }, mockContext);
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.days).toBe(365);
+  });
+
+  it('user_id未指定はエラー', async () => {
+    const result = await getUserLoginTrendsTool.handler({}, mockContext);
+    expect(result.isError).toBe(true);
+  });
+
+  it('ユーザーが見つからない場合はエラー', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+
+    const result = await getUserLoginTrendsTool.handler({ user_id: 'nonexistent' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('見つかりません');
+    expect(vi.mocked(getUserDailyLoginTrends)).not.toHaveBeenCalled();
   });
 });
 

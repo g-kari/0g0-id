@@ -12,7 +12,9 @@ import {
   banUserTool,
   unbanUserTool,
   deleteUserTool,
-  getUserLoginHistoryTool,
+    getUserLoginHistoryTool,
+  getUserLoginStatsTool,
+  getUserLoginTrendsTool,
   getUserProvidersTool,
   listUserSessionsTool,
   revokeUserSessionsTool,
@@ -52,6 +54,8 @@ mcpServer.registerTool(banUserTool);
 mcpServer.registerTool(unbanUserTool);
 mcpServer.registerTool(deleteUserTool);
 mcpServer.registerTool(getUserLoginHistoryTool);
+mcpServer.registerTool(getUserLoginStatsTool);
+mcpServer.registerTool(getUserLoginTrendsTool);
 mcpServer.registerTool(getUserProvidersTool);
 mcpServer.registerTool(listUserSessionsTool);
 mcpServer.registerTool(revokeUserSessionsTool);

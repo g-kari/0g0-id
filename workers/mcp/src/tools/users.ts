@@ -7,7 +7,9 @@ import {
   unbanUser,
   deleteUser,
   getUserProviders,
-  getLoginEventsByUserId,
+    getLoginEventsByUserId,
+  getUserLoginProviderStats,
+  getUserDailyLoginTrends,
   listActiveSessionsByUserId,
   revokeUserTokens,
   deleteMcpSessionsByUser,
@@ -248,6 +250,69 @@ export const getUserLoginHistoryTool: McpTool = {
   },
 };
 
+
+export const getUserLoginStatsTool: McpTool = {
+  definition: {
+    name: 'get_user_login_stats',
+    description: 'ユーザーのプロバイダー別ログイン統計を取得する',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user_id: { type: 'string', description: 'ユーザーID' },
+        days: { type: 'number', description: '集計対象の日数（デフォルト: 30、最大: 365）' },
+      },
+      required: ['user_id'],
+    },
+  },
+  handler: async (params, context) => {
+    const userId = params.user_id;
+    if (typeof userId !== 'string' || userId.length === 0) {
+      return { content: [{ type: 'text', text: 'user_id は必須です' }], isError: true };
+    }
+
+    const days = Math.min(365, Math.max(1, Number(params.days) || 30));
+    const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+    const user = await findUserById(context.db, userId);
+    if (!user) {
+      return { content: [{ type: 'text', text: 'ユーザーが見つかりません' }], isError: true };
+    }
+
+    const stats = await getUserLoginProviderStats(context.db, userId, sinceIso);
+    return { content: [{ type: 'text', text: JSON.stringify({ stats, days }, null, 2) }] };
+  },
+};
+
+export const getUserLoginTrendsTool: McpTool = {
+  definition: {
+    name: 'get_user_login_trends',
+    description: 'ユーザーの日別ログイントレンドを取得する',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user_id: { type: 'string', description: 'ユーザーID' },
+        days: { type: 'number', description: '集計対象の日数（デフォルト: 30、最大: 365）' },
+      },
+      required: ['user_id'],
+    },
+  },
+  handler: async (params, context) => {
+    const userId = params.user_id;
+    if (typeof userId !== 'string' || userId.length === 0) {
+      return { content: [{ type: 'text', text: 'user_id は必須です' }], isError: true };
+    }
+
+    const days = Math.min(365, Math.max(1, Number(params.days) || 30));
+
+    const user = await findUserById(context.db, userId);
+    if (!user) {
+      return { content: [{ type: 'text', text: 'ユーザーが見つかりません' }], isError: true }; 
+    }
+
+    const trends = await getUserDailyLoginTrends(context.db, userId, days);
+    return { content: [{ type: 'text', text: JSON.stringify({ trends, days }, null, 2) }] };
+  },
+};
 export const getUserProvidersTool: McpTool = {
   definition: {
     name: 'get_user_providers',
