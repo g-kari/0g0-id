@@ -455,4 +455,155 @@ describe('user BFF — /api/me', () => {
       expect(res.status).toBe(500);
     });
   });
+
+  describe('GET /login-stats — ログイン統計取得', () => {
+    const mockLoginStats = {
+      data: [
+        { provider: 'google', count: 10 },
+        { provider: 'github', count: 3 },
+      ],
+      days: 30,
+    };
+
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/login-stats');
+
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('セッションありでIdPへプロキシしてログイン統計を返す', async () => {
+      const idpFetch = mockIdp(200, mockLoginStats);
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/login-stats', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<typeof mockLoginStats>();
+      expect(body.data).toHaveLength(2);
+      expect(body.days).toBe(30);
+    });
+
+    it('IdPの /api/users/me/login-stats エンドポイントを呼び出す', async () => {
+      const idpFetch = mockIdp(200, mockLoginStats);
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/me/login-stats', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(new URL(calledReq.url).pathname).toBe('/api/users/me/login-stats');
+      expect(calledReq.headers.get('Authorization')).toBe('Bearer mock-access-token');
+    });
+
+    it('daysクエリパラメータをIdPに転送する', async () => {
+      const idpFetch = mockIdp(200, { ...mockLoginStats, days: 7 });
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/me/login-stats?days=7', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(new URL(calledReq.url).searchParams.get('days')).toBe('7');
+    });
+
+    it('daysパラメータなしの場合はURLにdaysを含まない', async () => {
+      const idpFetch = mockIdp(200, mockLoginStats);
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/me/login-stats', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(new URL(calledReq.url).searchParams.has('days')).toBe(false);
+    });
+
+    it('days=366はBFFで400を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/login-stats?days=366', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(400);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('IdPが500を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/login-stats', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(500);
+    });
+  });
+
+  describe('GET /data-export — アカウントデータエクスポート', () => {
+    const mockExportData = {
+      data: {
+        profile: { id: 'user-123', email: 'user@example.com', name: 'Test User' },
+        login_history: [],
+        connections: [],
+      },
+    };
+
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/data-export');
+
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('セッションありでIdPへプロキシしてエクスポートデータを返す', async () => {
+      const idpFetch = mockIdp(200, mockExportData);
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/data-export', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<typeof mockExportData>();
+      expect(body.data.profile.email).toBe('user@example.com');
+    });
+
+    it('IdPの /api/users/me/data-export エンドポイントを呼び出す', async () => {
+      const idpFetch = mockIdp(200, mockExportData);
+      const app = buildApp(idpFetch);
+
+      await app.request('/api/me/data-export', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.url).toBe('https://id.0g0.xyz/api/users/me/data-export');
+      expect(calledReq.headers.get('Authorization')).toBe('Bearer mock-access-token');
+    });
+
+    it('IdPが500を返した場合はそのまま伝播する', async () => {
+      const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR' } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/me/data-export', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(500);
+    });
+  });
 });
