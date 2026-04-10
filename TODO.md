@@ -1,5 +1,12 @@
 # TODO
 
+## セキュリティ対応（2026-04-10）
+
+- ✅ **hono ^4.12.8 → ^4.12.12 アップデート（Dependabot alerts 対応）**
+  - 対象アラート: GHSA-r5rp-j6wh-rvv4 / GHSA-26pp-8wgv-hjvm / GHSA-xpcf-pg52-r92g / GHSA-wmmm-f939-6g9c / GHSA-xf4j-xp2r-rqqx
+  - 全ワークスペース（workers/id・admin・mcp・user・packages/shared）を更新
+  - 全テスト（1905件）・typecheck パス確認済み
+
 ## テストカバレッジ追加（2026-04-10）
 
 - ✅ **`auth.test.ts` / `rate-limit.test.ts`: MCP middleware ユニットテスト17件追加**
