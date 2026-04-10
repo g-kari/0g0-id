@@ -1,5 +1,17 @@
 # TODO
 
+## テストカバレッジ追加（2026-04-10）
+
+- ✅ **`server.test.ts`: McpServer クラスのユニットテスト12件追加**
+  - `workers/mcp/src/mcp/server.ts`: テストファイルが存在しなかった。全メソッドを網羅
+    - `initialize`: プロトコルバージョン・capabilities・serverInfo を返す（1件）
+    - `ping`: 空のresultを返す（1件）
+    - unknown method: Method not found エラーを返す（1件）
+    - `tools/list`: 未登録時は空配列・登録済みツール一覧（2件）
+    - `tools/call`: nameなし→エラー・未登録tool→エラー・正常呼び出し・argumentsなし・例外→isError・非Errorthrow（6件）
+    - id の受け渡し確認（1件）
+  - 全1917テストパス（1905 → 1917）
+
 ## セキュリティ対応（2026-04-10）
 
 - ✅ **hono ^4.12.8 → ^4.12.12 アップデート（Dependabot alerts 対応）**
