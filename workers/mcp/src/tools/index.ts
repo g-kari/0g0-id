@@ -4,12 +4,14 @@ export {
   banUserTool,
   unbanUserTool,
   deleteUserTool,
-    getUserLoginHistoryTool,
+  getUserLoginHistoryTool,
   getUserLoginStatsTool,
   getUserLoginTrendsTool,
   getUserProvidersTool,
   listUserSessionsTool,
   revokeUserSessionsTool,
+  getUserOwnedServicesTool,
+  getUserAuthorizedServicesTool,
 } from './users';
 
 export {

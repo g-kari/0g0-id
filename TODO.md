@@ -1,5 +1,15 @@
 # TODO
 
+## 2026-04-10 機能追加: MCPツール get_user_owned_services・get_user_authorized_services
+
+### 追加したツール
+
+#### workers/mcp/src/tools/users.ts ✅
+- `getUserOwnedServicesTool` (`get_user_owned_services`): ユーザーが所有するサービス一覧を取得（削除前の所有権確認に有用）
+- `getUserAuthorizedServicesTool` (`get_user_authorized_services`): ユーザーが認可済みのサービス（連携中）一覧を取得
+- 両ツール: user_id 未指定・空文字→エラー、ユーザー未存在→404エラー
+- テスト: 各4件追加（計+8件、151 → 159件）
+
 ## テストカバレッジ追加（2026-04-10）
 
 - ✅ **`profile.test.ts`: `/login-stats`・`/data-export` 未テストエンドポイント テスト11件追加**

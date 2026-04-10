@@ -12,6 +12,8 @@ vi.mock('@0g0-id/shared', () => ({
   getUserLoginProviderStats: vi.fn(),
   getUserDailyLoginTrends: vi.fn(),
   listActiveSessionsByUserId: vi.fn(),
+  listServicesByOwner: vi.fn(),
+  listUserConnections: vi.fn(),
   revokeUserTokens: vi.fn(),
   deleteMcpSessionsByUser: vi.fn(),
   createAdminAuditLog: vi.fn(),
@@ -25,10 +27,12 @@ import {
   unbanUser,
   deleteUser,
   getUserProviders,
-    getLoginEventsByUserId,
+  getLoginEventsByUserId,
   getUserLoginProviderStats,
   getUserDailyLoginTrends,
   listActiveSessionsByUserId,
+  listServicesByOwner,
+  listUserConnections,
   revokeUserTokens,
   deleteMcpSessionsByUser,
   createAdminAuditLog,
@@ -40,12 +44,14 @@ import {
   banUserTool,
   unbanUserTool,
   deleteUserTool,
-    getUserLoginHistoryTool,
+  getUserLoginHistoryTool,
   getUserLoginStatsTool,
   getUserLoginTrendsTool,
   getUserProvidersTool,
   listUserSessionsTool,
   revokeUserSessionsTool,
+  getUserOwnedServicesTool,
+  getUserAuthorizedServicesTool,
 } from './users';
 import type { McpContext } from '../mcp';
 
@@ -560,5 +566,115 @@ describe('revokeUserSessionsTool', () => {
     expect(result.content[0].text).toContain('見つかりません');
     expect(vi.mocked(revokeUserTokens)).not.toHaveBeenCalled();
     expect(vi.mocked(createAdminAuditLog)).not.toHaveBeenCalled();
+  });
+});
+
+// ===== get_user_owned_services =====
+describe('getUserOwnedServicesTool', () => {
+  const mockService = {
+    id: 'svc-1',
+    name: 'My Service',
+    client_id: 'client-1',
+    client_secret_hash: 'hash',
+    allowed_scopes: 'openid profile',
+    owner_user_id: 'user-1',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  };
+
+  it('所有サービス一覧を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(listServicesByOwner).mockResolvedValue([mockService] as never);
+
+    const result = await getUserOwnedServicesTool.handler({ user_id: 'user-1' }, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.total).toBe(1);
+    expect(parsed.owned_services).toHaveLength(1);
+    expect(parsed.owned_services[0].id).toBe('svc-1');
+    expect(parsed.owned_services[0].name).toBe('My Service');
+    expect(parsed.user.id).toBe('user-1');
+    expect(vi.mocked(listServicesByOwner)).toHaveBeenCalledWith(mockContext.db, 'user-1');
+  });
+
+  it('サービス未所有の場合は空配列を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(listServicesByOwner).mockResolvedValue([]);
+
+    const result = await getUserOwnedServicesTool.handler({ user_id: 'user-1' }, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.total).toBe(0);
+    expect(parsed.owned_services).toHaveLength(0);
+  });
+
+  it('user_id未指定はエラー', async () => {
+    const result = await getUserOwnedServicesTool.handler({}, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(listServicesByOwner)).not.toHaveBeenCalled();
+  });
+
+  it('ユーザーが見つからない場合はエラー', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+
+    const result = await getUserOwnedServicesTool.handler({ user_id: 'nonexistent' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('見つかりません');
+    expect(vi.mocked(listServicesByOwner)).not.toHaveBeenCalled();
+  });
+});
+
+// ===== get_user_authorized_services =====
+describe('getUserAuthorizedServicesTool', () => {
+  const mockConnection = {
+    service_id: 'svc-1',
+    service_name: 'My Service',
+    client_id: 'client-1',
+    first_authorized_at: '2024-01-01T00:00:00Z',
+    last_authorized_at: '2024-06-01T00:00:00Z',
+  };
+
+  it('認可済みサービス一覧を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(listUserConnections).mockResolvedValue([mockConnection] as never);
+
+    const result = await getUserAuthorizedServicesTool.handler({ user_id: 'user-1' }, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.total).toBe(1);
+    expect(parsed.authorized_services).toHaveLength(1);
+    expect(parsed.authorized_services[0].service_id).toBe('svc-1');
+    expect(parsed.user.id).toBe('user-1');
+    expect(vi.mocked(listUserConnections)).toHaveBeenCalledWith(mockContext.db, 'user-1');
+  });
+
+  it('認可済みサービスなしの場合は空配列を返す', async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(listUserConnections).mockResolvedValue([]);
+
+    const result = await getUserAuthorizedServicesTool.handler({ user_id: 'user-1' }, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.total).toBe(0);
+    expect(parsed.authorized_services).toHaveLength(0);
+  });
+
+  it('user_id未指定はエラー', async () => {
+    const result = await getUserAuthorizedServicesTool.handler({}, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(listUserConnections)).not.toHaveBeenCalled();
+  });
+
+  it('ユーザーが見つからない場合はエラー', async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+
+    const result = await getUserAuthorizedServicesTool.handler({ user_id: 'nonexistent' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('見つかりません');
+    expect(vi.mocked(listUserConnections)).not.toHaveBeenCalled();
   });
 });

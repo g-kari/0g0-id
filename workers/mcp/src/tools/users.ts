@@ -7,10 +7,12 @@ import {
   unbanUser,
   deleteUser,
   getUserProviders,
-    getLoginEventsByUserId,
+  getLoginEventsByUserId,
   getUserLoginProviderStats,
   getUserDailyLoginTrends,
   listActiveSessionsByUserId,
+  listServicesByOwner,
+  listUserConnections,
   revokeUserTokens,
   deleteMcpSessionsByUser,
   createAdminAuditLog,
@@ -412,5 +414,79 @@ export const revokeUserSessionsTool: McpTool = {
         },
       ],
     };
+  },
+};
+
+export const getUserOwnedServicesTool: McpTool = {
+  definition: {
+    name: 'get_user_owned_services',
+    description: 'ユーザーが所有するサービス一覧を取得する（ユーザー削除前の所有権確認に使用）',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user_id: { type: 'string', description: 'ユーザーID' },
+      },
+      required: ['user_id'],
+    },
+  },
+  handler: async (params, context) => {
+    const userId = params.user_id;
+    if (typeof userId !== 'string' || userId.length === 0) {
+      return { content: [{ type: 'text', text: 'user_id は必須です' }], isError: true };
+    }
+
+    const user = await findUserById(context.db, userId);
+    if (!user) {
+      return { content: [{ type: 'text', text: 'ユーザーが見つかりません' }], isError: true };
+    }
+
+    const services = await listServicesByOwner(context.db, userId);
+    const result = {
+      user: { id: user.id, email: user.email, name: user.name },
+      owned_services: services.map((s) => ({
+        id: s.id,
+        name: s.name,
+        client_id: s.client_id,
+        allowed_scopes: s.allowed_scopes,
+        created_at: s.created_at,
+      })),
+      total: services.length,
+    };
+
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  },
+};
+
+export const getUserAuthorizedServicesTool: McpTool = {
+  definition: {
+    name: 'get_user_authorized_services',
+    description: 'ユーザーが認可済みのサービス（連携中のサービス）一覧を取得する',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user_id: { type: 'string', description: 'ユーザーID' },
+      },
+      required: ['user_id'],
+    },
+  },
+  handler: async (params, context) => {
+    const userId = params.user_id;
+    if (typeof userId !== 'string' || userId.length === 0) {
+      return { content: [{ type: 'text', text: 'user_id は必須です' }], isError: true };
+    }
+
+    const user = await findUserById(context.db, userId);
+    if (!user) {
+      return { content: [{ type: 'text', text: 'ユーザーが見つかりません' }], isError: true };
+    }
+
+    const connections = await listUserConnections(context.db, userId);
+    const result = {
+      user: { id: user.id, email: user.email, name: user.name },
+      authorized_services: connections,
+      total: connections.length,
+    };
+
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   },
 };
