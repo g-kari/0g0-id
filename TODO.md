@@ -2,6 +2,15 @@
 
 ## テストカバレッジ追加（2026-04-10）
 
+- ✅ **`transport.test.ts`: MCP transport ユニットテスト15件追加**
+  - `workers/mcp/src/mcp/transport.ts`: テストファイルが存在しなかった。全エンドポイントを網羅
+    - `POST /mcp`: 不正JSON→ParseError(-32700)・initialize→セッション作成+Mcp-Session-Idヘッダー・セッションIDなし→-32600・無効セッション→-32600・有効セッション→正常処理・Notification→202・全通知→202・バッチ→配列・id受け渡し確認（9件）
+    - `GET /mcp`: セッションIDなし→400・無効セッション→400・有効セッション→SSE text/event-stream（3件）
+    - `DELETE /mcp`: セッションIDあり→deleteMcpSession呼び出し+204・セッションIDなし→204（2件）
+  - 全1932テストパス（1917 → 1932）
+
+## テストカバレッジ追加（2026-04-10）
+
 - ✅ **`server.test.ts`: McpServer クラスのユニットテスト12件追加**
   - `workers/mcp/src/mcp/server.ts`: テストファイルが存在しなかった。全メソッドを網羅
     - `initialize`: プロトコルバージョン・capabilities・serverInfo を返す（1件）
