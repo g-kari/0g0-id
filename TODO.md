@@ -2,6 +2,21 @@
 
 ## テストカバレッジ追加（2026-04-10）
 
+- ✅ **`env-validation.test.ts`: validateEnv ユニットテスト15件追加**
+  - `workers/id/src/utils/env-validation.ts` のテストファイルが存在しなかった
+  - 必須フィールド（GOOGLE_CLIENT_ID/SECRET、JWT_PRIVATE/PUBLIC_KEY、IDP/USER/ADMIN_ORIGIN、COOKIE_SECRET）の検証
+  - COOKIE_SECRET 32文字未満でエラー・ちょうど32文字でOK
+  - オプションプロバイダー（LINE/GitHub/X）の片方設定でエラー・両方設定でOKのケース
+  - 成功結果キャッシュ・失敗結果非キャッシュ・_resetValidationCache 動作確認
+
+- ✅ **`mcp/well-known.test.ts`: Protected Resource Metadata エンドポイントテスト5件追加**
+  - `workers/mcp/src/routes/well-known.ts` のテストファイルが存在しなかった
+  - RFC 9728 Protected Resource Metadata の resource/authorization_servers/scopes_supported/bearer_methods_supported を検証
+  - 環境変数 MCP_ORIGIN / IDP_ORIGIN が正しく反映されることを確認
+  - 全1822テストパス（1802 → 1822）
+
+## テストカバレッジ追加（2026-04-10）
+
 - ✅ **`admin-audit-logs.test.ts`: getAuditLogStats・status フィルターのテスト10件追加**
   - `packages/shared/src/db/admin-audit-logs.test.ts` の `getAuditLogStats` が未テストだった
   - action_stats・admin_stats・daily_stats の返却値・SQL構造・days パラメータ・空配列ケース（8件）
