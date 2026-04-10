@@ -542,6 +542,17 @@ describe('listUsers', () => {
     expect(sql).toContain('banned_at IS NULL');
     expect(stmt.bind).toHaveBeenCalledWith(10, 0);
   });
+
+  it('searchフィルターでemail OR name のOR LIKE検索を行う', async () => {
+    const stmt = { bind: vi.fn().mockReturnThis(), all: vi.fn().mockResolvedValue({ results: [baseUser] }) };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+    await listUsers(db, 10, 0, { search: 'test' });
+    const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain('email LIKE ?');
+    expect(sql).toContain('OR');
+    expect(sql).toContain('name LIKE ?');
+    expect(stmt.bind).toHaveBeenCalledWith('%test%', '%test%', 10, 0);
+  });
 });
 
 describe('countUsers', () => {
@@ -594,6 +605,14 @@ describe('countUsers', () => {
     expect(count).toBe(97);
     const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(sql).toContain('banned_at IS NULL');
+  });
+
+  it('searchフィルターで絞り込み件数を返す', async () => {
+    const db = makeD1Mock({ count: 7 });
+    const count = await countUsers(db, { search: 'test' });
+    expect(count).toBe(7);
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith('%test%', '%test%');
   });
 });
 
