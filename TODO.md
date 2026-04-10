@@ -2,6 +2,13 @@
 
 ## テストカバレッジ追加（2026-04-11）
 
+- ✅ **`auth.test.ts`: rejectBannedUserMiddleware・rejectServiceTokenMiddleware のユニットテスト8件追加**
+  - `rejectServiceTokenMiddleware`: user未設定→401・cidあり（サービストークン）→403・cidなし→next呼び出し（3件）
+  - `rejectBannedUserMiddleware`: user未設定→401・DB例外→500・ユーザー未存在→401・BAN済み→401・正常→dbUser設定+next（5件）
+  - id worker: 879 → 887テスト（+8）
+
+## テストカバレッジ追加（2026-04-11）
+
 - ✅ **`services.test.ts`: 未テスト4関数のユニットテスト15件追加**
   - `listServicesByOwner`: owner_user_id フィルター・ORDER BY created_at DESC・空配列（3件）
   - `updateServiceFields`: name単体・allowedScopes単体・両方同時・空フィールド→null・存在しないID（5件）
