@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { fetchWithAuth, parsePagination, proxyResponse } from '@0g0-id/shared';
+import { fetchWithAuth, parsePagination, proxyResponse, UUID_RE } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 import { SESSION_COOKIE } from './auth';
 
@@ -17,7 +17,6 @@ app.get('/', async (c) => {
   const url = new URL(`${c.env.IDP_ORIGIN}/api/admin/audit-logs`);
   url.searchParams.set('limit', String(pagination.limit));
   url.searchParams.set('offset', String(pagination.offset));
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const adminUserId = c.req.query('admin_user_id');
   const targetId = c.req.query('target_id');
   const action = c.req.query('action');

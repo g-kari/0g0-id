@@ -1,11 +1,9 @@
 import { Hono } from 'hono';
-import { fetchWithAuth, fetchWithJsonBody, isValidProvider, parseDays, parsePagination, proxyMutate, proxyResponse } from '@0g0-id/shared';
+import { fetchWithAuth, fetchWithJsonBody, isValidProvider, parseDays, parsePagination, proxyMutate, proxyResponse, UUID_RE } from '@0g0-id/shared';
 import type { BffEnv } from '@0g0-id/shared';
 import { SESSION_COOKIE } from './auth';
 
 const app = new Hono<{ Bindings: BffEnv }>();
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ユーザーID形式検証ミドルウェア（:id パラメータを持つすべてのルートに適用）
 app.use('/:id', async (c, next) => {

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { listAdminAuditLogs, getAuditLogStats, parsePagination, parseDays } from '@0g0-id/shared';
+import { listAdminAuditLogs, getAuditLogStats, parsePagination, parseDays, UUID_RE } from '@0g0-id/shared';
 import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
 import { authMiddleware } from '../middleware/auth';
 import { adminMiddleware } from '../middleware/admin';
@@ -35,7 +35,6 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
   }
   const { limit, offset } = pagination;
 
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const adminUserId = c.req.query('admin_user_id');
   const targetId = c.req.query('target_id');
   const action = c.req.query('action');
