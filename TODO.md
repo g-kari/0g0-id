@@ -1113,3 +1113,13 @@
 - `GET /api/users/me/login-stats`: 認証なし→401、統計+days返却、自分のsubで呼び出し確認、daysクエリパラメータ、範囲外days→400
 - `GET /api/users/me/login-trends`: 認証なし→401、トレンド+days返却、自分のsubで呼び出し確認、daysクエリパラメータ、範囲外days→400
 - 計 10テスト追加（867 → 877件）
+
+## 2026-04-10 機能追加: MCPツール get_user_login_stats・get_user_login_trends
+
+### 追加したツール
+
+#### workers/mcp/src/tools/users.ts ✅
+- `getUserLoginStatsTool` (`get_user_login_stats`): ユーザーのプロバイダー別ログイン統計を取得（days パラメータ対応、デフォルト30日、最大365日）
+- `getUserLoginTrendsTool` (`get_user_login_trends`): ユーザーの日別ログイントレンドを取得（days パラメータ対応、デフォルト30日、最大365日）
+- 両ツール: user_id 未指定・空文字→エラー、ユーザー未存在→404エラー
+- テスト: 各5件追加（計+10件、132 → 142件）
