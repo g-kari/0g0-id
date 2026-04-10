@@ -1057,3 +1057,12 @@
 - GET リクエストはボディ制限の対象外
 - 空ボディは通過する
 - 計 6テスト
+
+## 2026-04-10 テストカバレッジ追加: /me/login-stats・/me/login-trends
+
+### 追加したテスト
+
+#### workers/id/src/routes/users.test.ts ✅
+- `GET /api/users/me/login-stats`: 認証なし→401、統計+days返却、自分のsubで呼び出し確認、daysクエリパラメータ、範囲外days→400
+- `GET /api/users/me/login-trends`: 認証なし→401、トレンド+days返却、自分のsubで呼び出し確認、daysクエリパラメータ、範囲外days→400
+- 計 10テスト追加（867 → 877件）

@@ -2414,3 +2414,139 @@ describe('GET /api/users/:id/login-trends', () => {
     expect(body.error.code).toBe('BAD_REQUEST');
   });
 });
+
+// ===== GET /api/users/me/login-stats =====
+describe('GET /api/users/me/login-stats', () => {
+  const app = buildApp();
+
+  const mockStats = [
+    { provider: 'google', count: 5 },
+    { provider: 'github', count: 2 },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(getUserLoginProviderStats).mockResolvedValue(mockStats);
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/login-stats', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('プロバイダー別統計とdaysを返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/login-stats');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[]; days: number }>();
+    expect(body.data).toHaveLength(2);
+    expect(body.days).toBe(30);
+  });
+
+  it('自分のsubでgetUserLoginProviderStatsを呼ぶ', async () => {
+    await sendRequest(app, '/api/users/me/login-stats');
+    expect(vi.mocked(getUserLoginProviderStats)).toHaveBeenCalledWith(
+      expect.anything(),
+      mockUserPayload.sub,
+      expect.any(String)
+    );
+  });
+
+  it('daysクエリパラメータを受け取る', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users/me/login-stats?days=7`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{ days: number }>();
+    expect(body.days).toBe(7);
+  });
+
+  it('daysが範囲外の場合 → 400を返す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users/me/login-stats?days=0`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+});
+
+// ===== GET /api/users/me/login-trends =====
+describe('GET /api/users/me/login-trends', () => {
+  const app = buildApp();
+
+  const mockTrends = [
+    { date: '2026-04-08', count: 3 },
+    { date: '2026-04-09', count: 7 },
+    { date: '2026-04-10', count: 2 },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(getUserDailyLoginTrends).mockResolvedValue(mockTrends);
+  });
+
+  it('認証なし → 401を返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/login-trends', { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it('日別ログイントレンドとdaysを返す', async () => {
+    const res = await sendRequest(app, '/api/users/me/login-trends');
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[]; days: number }>();
+    expect(body.data).toHaveLength(3);
+    expect(body.days).toBe(30);
+  });
+
+  it('自分のsubでgetUserDailyLoginTrendsを呼ぶ', async () => {
+    await sendRequest(app, '/api/users/me/login-trends');
+    expect(vi.mocked(getUserDailyLoginTrends)).toHaveBeenCalledWith(
+      expect.anything(),
+      mockUserPayload.sub,
+      30
+    );
+  });
+
+  it('daysクエリパラメータを受け取る', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users/me/login-trends?days=14`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{ days: number }>();
+    expect(body.days).toBe(14);
+    expect(vi.mocked(getUserDailyLoginTrends)).toHaveBeenCalledWith(
+      expect.anything(),
+      mockUserPayload.sub,
+      14
+    );
+  });
+
+  it('daysが範囲外の場合 → 400を返す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users/me/login-trends?days=366`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+});
