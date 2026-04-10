@@ -1217,3 +1217,14 @@
 ### テスト数推移
 - 変更前: 2016件パス
 - 変更後: 2038件パス（+22件）
+
+## テストカバレッジ追加（2026-04-11）
+
+- ✅ **`refresh-tokens.test.ts`: 未テスト6関数のユニットテスト24件追加**
+  - `findRefreshTokenById`: id検索・null返却・bindパラメータ確認（3件）
+  - `findAndRevokeRefreshToken`: revoke成功・既失効null・reason有無・RETURNING * SQL確認（5件）
+  - `unrevokeRefreshToken`: true/false返却・DB例外リトライ・SQL条件確認（4件）
+  - `deleteExpiredRefreshTokens`: 削除件数・0件・DELETE SQL確認（3件）
+  - `findUserIdByPairwiseSub`: user_id返却・null・bindパラメータ・SQL条件確認（4件）
+  - `revokeTokenByIdForUser`: 件数・0件・reason有無・SQL条件確認（5件）
+  - packages/shared: 625 → 649テスト（+24）、全2087テストパス
