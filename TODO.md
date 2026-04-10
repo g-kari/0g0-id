@@ -2,6 +2,15 @@
 
 ## テストカバレッジ追加（2026-04-11）
 
+- ✅ **`services.test.ts`: 未テスト4関数のユニットテスト15件追加**
+  - `listServicesByOwner`: owner_user_id フィルター・ORDER BY created_at DESC・空配列（3件）
+  - `updateServiceFields`: name単体・allowedScopes単体・両方同時・空フィールド→null・存在しないID（5件）
+  - `rotateClientSecret`: 新ハッシュUPDATE・存在しないID→null・RETURNING *確認（3件）
+  - `transferServiceOwnership`: オーナー変更・存在しないID→null・RETURNING *確認（3件）
+  - packages/shared: 610 → 625テスト（+15）、全2055テストパス
+
+## テストカバレッジ追加（2026-04-11）
+
 - ✅ **`users.test.ts`: listUsers・countUsers の search フィルターテスト2件追加**
   - `listUsers`: search フィルター（email OR name の部分一致OR検索）SQL確認・bindパラメータ確認
   - `countUsers`: search フィルターで絞り込み件数・bindパラメータ確認（同一パターンを2回渡す仕様）
