@@ -361,4 +361,146 @@ describe('listAdminAuditLogs', () => {
     expect(result.logs[1].id).toBe('log-1');
     expect(result.total).toBe(2);
   });
+
+  it('statusフィルターを指定するとSQLにstatus = ?が含まれる', async () => {
+    const logsStmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const countStmt = {
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue({ count: 0 }),
+    };
+    const db = {
+      prepare: vi.fn().mockReturnValueOnce(logsStmt).mockReturnValueOnce(countStmt),
+    } as unknown as D1Database;
+
+    await listAdminAuditLogs(db, 50, 0, { status: 'failure' });
+    const logsSql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(logsSql).toContain('status = ?');
+    expect(logsStmt.bind).toHaveBeenCalledWith('failure', 50, 0);
+    expect(countStmt.bind).toHaveBeenCalledWith('failure');
+  });
+
+  it('statusフィルターと他フィルターを同時に指定できる', async () => {
+    const logsStmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const countStmt = {
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue({ count: 0 }),
+    };
+    const db = {
+      prepare: vi.fn().mockReturnValueOnce(logsStmt).mockReturnValueOnce(countStmt),
+    } as unknown as D1Database;
+
+    await listAdminAuditLogs(db, 50, 0, { adminUserId: 'admin-1', status: 'success' });
+    expect(logsStmt.bind).toHaveBeenCalledWith('admin-1', 'success', 50, 0);
+    expect(countStmt.bind).toHaveBeenCalledWith('admin-1', 'success');
+  });
+});
+
+import { getAuditLogStats } from './admin-audit-logs';
+
+describe('getAuditLogStats', () => {
+  const mockActionResult = { results: [{ action: 'user.ban', count: 5 }, { action: 'role.change', count: 3 }] };
+  const mockAdminResult = { results: [{ admin_user_id: 'admin-1', count: 8 }] };
+  const mockDailyResult = { results: [{ date: '2024-02-01', count: 2 }, { date: '2024-01-31', count: 1 }] };
+
+  function buildDb() {
+    const actionStmt = { all: vi.fn().mockResolvedValue(mockActionResult) };
+    const adminStmt = { all: vi.fn().mockResolvedValue(mockAdminResult) };
+    const dailyStmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue(mockDailyResult),
+    };
+    const db = {
+      prepare: vi.fn()
+        .mockReturnValueOnce(actionStmt)
+        .mockReturnValueOnce(adminStmt)
+        .mockReturnValueOnce(dailyStmt),
+    } as unknown as D1Database;
+    return { db, actionStmt, adminStmt, dailyStmt };
+  }
+
+  it('action_stats・admin_stats・daily_statsを返す', async () => {
+    const { db } = buildDb();
+    const result = await getAuditLogStats(db);
+    expect(result.action_stats).toHaveLength(2);
+    expect(result.action_stats[0]).toEqual({ action: 'user.ban', count: 5 });
+    expect(result.admin_stats).toHaveLength(1);
+    expect(result.admin_stats[0]).toEqual({ admin_user_id: 'admin-1', count: 8 });
+    expect(result.daily_stats).toHaveLength(2);
+    expect(result.daily_stats[0]).toEqual({ date: '2024-02-01', count: 2 });
+  });
+
+  it('デフォルトdays=30を使用する', async () => {
+    const { db, dailyStmt } = buildDb();
+    await getAuditLogStats(db);
+    expect(dailyStmt.bind).toHaveBeenCalledTimes(1);
+    const sinceArg: string = (dailyStmt.bind as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const since = new Date(sinceArg);
+    const diffDays = Math.round((Date.now() - since.getTime()) / (1000 * 60 * 60 * 24));
+    expect(diffDays).toBeGreaterThanOrEqual(29);
+    expect(diffDays).toBeLessThanOrEqual(31);
+  });
+
+  it('days=7を指定できる', async () => {
+    const { db, dailyStmt } = buildDb();
+    await getAuditLogStats(db, 7);
+    const sinceArg: string = (dailyStmt.bind as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const since = new Date(sinceArg);
+    const diffDays = Math.round((Date.now() - since.getTime()) / (1000 * 60 * 60 * 24));
+    expect(diffDays).toBeGreaterThanOrEqual(6);
+    expect(diffDays).toBeLessThanOrEqual(8);
+  });
+
+  it('daily_statsのSQLにcreated_at >= ?のWHERE句が含まれる', async () => {
+    const { db } = buildDb();
+    await getAuditLogStats(db);
+    const calls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls;
+    const dailySql: string = calls[2][0];
+    expect(dailySql).toContain('created_at >= ?');
+    expect(dailySql).toContain('GROUP BY date(created_at)');
+    expect(dailySql).toContain('ORDER BY date DESC');
+  });
+
+  it('action_statsのSQLにGROUP BY actionが含まれる', async () => {
+    const { db } = buildDb();
+    await getAuditLogStats(db);
+    const calls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls;
+    const actionSql: string = calls[0][0];
+    expect(actionSql).toContain('GROUP BY action');
+    expect(actionSql).toContain('ORDER BY count DESC');
+  });
+
+  it('admin_statsのSQLにGROUP BY admin_user_idが含まれる', async () => {
+    const { db } = buildDb();
+    await getAuditLogStats(db);
+    const calls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls;
+    const adminSql: string = calls[1][0];
+    expect(adminSql).toContain('GROUP BY admin_user_id');
+    expect(adminSql).toContain('ORDER BY count DESC');
+  });
+
+  it('ログがない場合は空配列を返す', async () => {
+    const actionStmt = { all: vi.fn().mockResolvedValue({ results: [] }) };
+    const adminStmt = { all: vi.fn().mockResolvedValue({ results: [] }) };
+    const dailyStmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = {
+      prepare: vi.fn()
+        .mockReturnValueOnce(actionStmt)
+        .mockReturnValueOnce(adminStmt)
+        .mockReturnValueOnce(dailyStmt),
+    } as unknown as D1Database;
+
+    const result = await getAuditLogStats(db);
+    expect(result.action_stats).toEqual([]);
+    expect(result.admin_stats).toEqual([]);
+    expect(result.daily_stats).toEqual([]);
+  });
 });
