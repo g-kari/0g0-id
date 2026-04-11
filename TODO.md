@@ -1255,3 +1255,25 @@
 #### packages/shared/src/db/auth-codes.test.ts ✅
 - `cleanupExpiredAuthCodes`: 期限切れ・使用済みエントリ削除件数返却・削除0件・DELETE SQL条件確認・meta.changes undefined→0
 - 計 4テスト（packages/shared: 649 → 653テスト、全2095テストパス）
+
+## テストカバレッジ追加（2026-04-11）
+
+### scheduled handler に cleanupExpiredMcpSessions の検証を追加
+- `workers/id/src/index.test.ts`: scheduled handler のテストで `cleanupExpiredMcpSessions` のインポートと呼び出し検証が漏れていた
+  - インポート追加、beforeEach の clearAllMocks 追加、アサーション追加
+  - テスト名を「全クリーンアップ処理を実行する」に更新
+
+### POST /api/device/code テスト6件追加
+- `workers/id/src/routes/device.test.ts`: 2件のみだったテストを8件に拡充
+  - client_id 未指定 → invalid_request + 400
+  - 不明な client_id → invalid_client + 401
+  - DB エラー (findServiceByClientId) → server_error + 500
+  - 未対応 Content-Type → invalid_request + 400
+  - JSON Content-Type でも発行可能
+  - レスポンス形式（verification_uri・expires_in・interval）の検証
+  - user_code が XXXX-XXXX 形式
+  - id worker: 887 → 893テスト（+6）
+
+### token-recovery.ts テスト1件追加
+- `workers/id/src/utils/token-recovery.test.ts`: unrevokeRefreshToken が例外を投げても reject せず resolve するケース追加
+  - id worker: 893 → 894テスト（+1）
