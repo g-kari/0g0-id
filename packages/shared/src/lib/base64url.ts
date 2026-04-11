@@ -6,6 +6,6 @@
  * @returns デコードされた文字列
  */
 export function decodeBase64Url(input: string): string {
-  const padded = input + '='.repeat((4 - (input.length % 4)) % 4);
-  return atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
+  const padded = input + "=".repeat((4 - (input.length % 4)) % 4);
+  return atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
 }

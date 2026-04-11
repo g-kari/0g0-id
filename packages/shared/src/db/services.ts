@@ -1,5 +1,5 @@
-import type { Service } from '../types';
-import { escapeLikePattern } from '../lib/sql';
+import type { Service } from "../types";
+import { escapeLikePattern } from "../lib/sql";
 
 // ─── インメモリ TTL キャッシュ ───────────────────────────────────────────────
 // Cloudflare Workers の isolate はリクエスト間で再利用されるため、
@@ -34,12 +34,12 @@ export function invalidateServiceCache(id: string): void {
 // ─── DB アクセス関数 ─────────────────────────────────────────────────────────
 
 export async function findServiceById(db: D1Database, id: string): Promise<Service | null> {
-  return db.prepare('SELECT * FROM services WHERE id = ?').bind(id).first<Service>();
+  return db.prepare("SELECT * FROM services WHERE id = ?").bind(id).first<Service>();
 }
 
 export async function findServiceByClientId(
   db: D1Database,
-  clientId: string
+  clientId: string,
 ): Promise<Service | null> {
   const now = Date.now();
   const cached = byClientId.get(clientId);
@@ -48,7 +48,7 @@ export async function findServiceByClientId(
   }
 
   const service = await db
-    .prepare('SELECT * FROM services WHERE client_id = ?')
+    .prepare("SELECT * FROM services WHERE client_id = ?")
     .bind(clientId)
     .first<Service>();
 
@@ -65,13 +65,13 @@ export async function createService(
     clientSecretHash: string;
     allowedScopes: string;
     ownerUserId: string;
-  }
+  },
 ): Promise<Service> {
   const service = await db
     .prepare(
       `INSERT INTO services (id, name, client_id, client_secret_hash, allowed_scopes, owner_user_id)
        VALUES (?, ?, ?, ?, ?, ?)
-       RETURNING *`
+       RETURNING *`,
     )
     .bind(
       params.id,
@@ -79,27 +79,27 @@ export async function createService(
       params.clientId,
       params.clientSecretHash,
       params.allowedScopes,
-      params.ownerUserId
+      params.ownerUserId,
     )
     .first<Service>();
-  if (!service) throw new Error('Failed to create service');
+  if (!service) throw new Error("Failed to create service");
   return service;
 }
 
 export async function updateServiceFields(
   db: D1Database,
   id: string,
-  fields: { name?: string; allowedScopes?: string }
+  fields: { name?: string; allowedScopes?: string },
 ): Promise<Service | null> {
   const sets: string[] = [];
   const binds: unknown[] = [];
 
   if (fields.name !== undefined) {
-    sets.push('name = ?');
+    sets.push("name = ?");
     binds.push(fields.name);
   }
   if (fields.allowedScopes !== undefined) {
-    sets.push('allowed_scopes = ?');
+    sets.push("allowed_scopes = ?");
     binds.push(fields.allowedScopes);
   }
 
@@ -108,9 +108,9 @@ export async function updateServiceFields(
   binds.push(id);
   const service = await db
     .prepare(
-      `UPDATE services SET ${sets.join(', ')}, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+      `UPDATE services SET ${sets.join(", ")}, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
        WHERE id = ?
-       RETURNING *`
+       RETURNING *`,
     )
     .bind(...binds)
     .first<Service>();
@@ -120,13 +120,9 @@ export async function updateServiceFields(
   return service;
 }
 
-
-
-
-
 export async function deleteService(db: D1Database, id: string): Promise<void> {
   invalidateServiceCache(id);
-  await db.prepare('DELETE FROM services WHERE id = ?').bind(id).run();
+  await db.prepare("DELETE FROM services WHERE id = ?").bind(id).run();
 }
 
 export interface ServiceListFilter {
@@ -135,7 +131,10 @@ export interface ServiceListFilter {
   offset?: number;
 }
 
-export async function listServices(db: D1Database, filter: ServiceListFilter = {}): Promise<Service[]> {
+export async function listServices(
+  db: D1Database,
+  filter: ServiceListFilter = {},
+): Promise<Service[]> {
   const { name, limit = 50, offset = 0 } = filter;
 
   const conditions: string[] = [];
@@ -146,7 +145,7 @@ export async function listServices(db: D1Database, filter: ServiceListFilter = {
     params.push(`%${escapeLikePattern(name)}%`);
   }
 
-  const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
+  const where = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
   params.push(limit, offset);
 
   const result = await db
@@ -158,7 +157,7 @@ export async function listServices(db: D1Database, filter: ServiceListFilter = {
 
 export async function countServicesByOwner(db: D1Database, userId: string): Promise<number> {
   const result = await db
-    .prepare('SELECT COUNT(*) as count FROM services WHERE owner_user_id = ?')
+    .prepare("SELECT COUNT(*) as count FROM services WHERE owner_user_id = ?")
     .bind(userId)
     .first<{ count: number }>();
   return result?.count ?? 0;
@@ -166,17 +165,20 @@ export async function countServicesByOwner(db: D1Database, userId: string): Prom
 
 export async function listServicesByOwner(db: D1Database, userId: string): Promise<Service[]> {
   const result = await db
-    .prepare('SELECT * FROM services WHERE owner_user_id = ? ORDER BY created_at DESC')
+    .prepare("SELECT * FROM services WHERE owner_user_id = ? ORDER BY created_at DESC")
     .bind(userId)
     .all<Service>();
   return result.results;
 }
 
-export async function countServices(db: D1Database, filter: { name?: string } = {}): Promise<number> {
+export async function countServices(
+  db: D1Database,
+  filter: { name?: string } = {},
+): Promise<number> {
   const { name } = filter;
 
   const params: unknown[] = [];
-  let query = 'SELECT COUNT(*) as count FROM services';
+  let query = "SELECT COUNT(*) as count FROM services";
 
   if (name) {
     query += " WHERE name LIKE ? ESCAPE '\\'";
@@ -184,16 +186,17 @@ export async function countServices(db: D1Database, filter: { name?: string } = 
   }
 
   const stmt = db.prepare(query);
-  const result = params.length > 0
-    ? await stmt.bind(...params).first<{ count: number }>()
-    : await stmt.first<{ count: number }>();
+  const result =
+    params.length > 0
+      ? await stmt.bind(...params).first<{ count: number }>()
+      : await stmt.first<{ count: number }>();
   return result?.count ?? 0;
 }
 
 export async function rotateClientSecret(
   db: D1Database,
   id: string,
-  newClientSecretHash: string
+  newClientSecretHash: string,
 ): Promise<Service | null> {
   // シークレットローテーション: 旧キャッシュを即時破棄してから更新
   invalidateServiceCache(id);
@@ -201,7 +204,7 @@ export async function rotateClientSecret(
     .prepare(
       `UPDATE services SET client_secret_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
        WHERE id = ?
-       RETURNING *`
+       RETURNING *`,
     )
     .bind(newClientSecretHash, id)
     .first<Service>();
@@ -213,7 +216,7 @@ export async function rotateClientSecret(
 export async function transferServiceOwnership(
   db: D1Database,
   id: string,
-  newOwnerUserId: string
+  newOwnerUserId: string,
 ): Promise<Service | null> {
   // オーナー変更: 旧キャッシュを即時破棄してから更新（rotateClientSecretと同じパターン）
   invalidateServiceCache(id);
@@ -221,7 +224,7 @@ export async function transferServiceOwnership(
     .prepare(
       `UPDATE services SET owner_user_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
        WHERE id = ?
-       RETURNING *`
+       RETURNING *`,
     )
     .bind(newOwnerUserId, id)
     .first<Service>();

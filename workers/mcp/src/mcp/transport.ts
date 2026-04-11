@@ -1,11 +1,7 @@
-import { Hono } from 'hono';
-import { McpServer, type McpContext } from './server';
-import type { JsonRpcRequest, JsonRpcNotification, JsonRpcResponse } from './types';
-import {
-  createMcpSession,
-  validateAndRefreshMcpSession,
-  deleteMcpSession,
-} from '@0g0-id/shared';
+import { Hono } from "hono";
+import { McpServer, type McpContext } from "./server";
+import type { JsonRpcRequest, JsonRpcNotification, JsonRpcResponse } from "./types";
+import { createMcpSession, validateAndRefreshMcpSession, deleteMcpSession } from "@0g0-id/shared";
 
 type McpBindings = {
   DB: D1Database;
@@ -22,13 +18,16 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
   const app = new Hono<McpEnv>();
 
   // POST /mcp — JSON-RPCリクエスト処理
-  app.post('/', async (c): Promise<Response> => {
-    const sessionId = c.req.header('mcp-session-id');
+  app.post("/", async (c): Promise<Response> => {
+    const sessionId = c.req.header("mcp-session-id");
     let body: JsonRpcRequest | JsonRpcNotification | (JsonRpcRequest | JsonRpcNotification)[];
     try {
       body = await c.req.json();
     } catch {
-      return c.json({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }, 400);
+      return c.json(
+        { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } },
+        400,
+      );
     }
 
     // バッチリクエスト対応
@@ -37,7 +36,7 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
     const responses: JsonRpcResponse[] = [];
     for (const req of requests) {
       // Notification (idなし) はレスポンス不要
-      if (!('id' in req)) {
+      if (!("id" in req)) {
         // notifications/initialized 等のハンドリング
         continue;
       }
@@ -45,12 +44,12 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
       const rpcRequest = req as JsonRpcRequest;
 
       // initializeの場合、新セッション作成
-      if (rpcRequest.method === 'initialize') {
+      if (rpcRequest.method === "initialize") {
         const newSessionId = crypto.randomUUID();
-        const context = c.get('mcpContext');
+        const context = c.get("mcpContext");
         await createMcpSession(c.env.DB, newSessionId, context.userId);
-        const result = await server.handleRequest(rpcRequest, c.get('mcpContext'));
-        c.header('Mcp-Session-Id', newSessionId);
+        const result = await server.handleRequest(rpcRequest, c.get("mcpContext"));
+        c.header("Mcp-Session-Id", newSessionId);
         responses.push(result);
         continue;
       }
@@ -58,9 +57,9 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
       // initialize以外はセッションID必須
       if (!sessionId) {
         responses.push({
-          jsonrpc: '2.0',
+          jsonrpc: "2.0",
           id: rpcRequest.id,
-          error: { code: -32600, message: 'Invalid or missing session' },
+          error: { code: -32600, message: "Invalid or missing session" },
         });
         continue;
       }
@@ -69,14 +68,14 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
       const valid = await validateAndRefreshMcpSession(c.env.DB, sessionId);
       if (!valid) {
         responses.push({
-          jsonrpc: '2.0',
+          jsonrpc: "2.0",
           id: rpcRequest.id,
-          error: { code: -32600, message: 'Invalid or missing session' },
+          error: { code: -32600, message: "Invalid or missing session" },
         });
         continue;
       }
 
-      const result = await server.handleRequest(rpcRequest, c.get('mcpContext'));
+      const result = await server.handleRequest(rpcRequest, c.get("mcpContext"));
       responses.push(result);
     }
 
@@ -90,38 +89,38 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
   });
 
   // GET /mcp — SSEストリーム（将来のサーバー→クライアント通知用）
-  app.get('/', async (c): Promise<Response> => {
-    const sessionId = c.req.header('mcp-session-id');
+  app.get("/", async (c): Promise<Response> => {
+    const sessionId = c.req.header("mcp-session-id");
     if (!sessionId) {
-      return c.json({ error: 'Invalid session' }, 400);
+      return c.json({ error: "Invalid session" }, 400);
     }
     const valid = await validateAndRefreshMcpSession(c.env.DB, sessionId);
     if (!valid) {
-      return c.json({ error: 'Invalid session' }, 400);
+      return c.json({ error: "Invalid session" }, 400);
     }
     // 現時点ではサーバーからの通知は不要なので、接続を維持するだけ
     return new Response(
       new ReadableStream({
         start(controller): void {
           const encoder = new TextEncoder();
-          controller.enqueue(encoder.encode(': keepalive\n\n'));
+          controller.enqueue(encoder.encode(": keepalive\n\n"));
           // Cloudflare Workersではlong-livedストリームは制限があるため、
           // 現時点ではシンプルなSSE keepaliveのみ
         },
       }),
       {
         headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
         },
       },
     );
   });
 
   // DELETE /mcp — セッション終了
-  app.delete('/', async (c): Promise<Response> => {
-    const sessionId = c.req.header('mcp-session-id');
+  app.delete("/", async (c): Promise<Response> => {
+    const sessionId = c.req.header("mcp-session-id");
     if (sessionId) {
       await deleteMcpSession(c.env.DB, sessionId);
     }

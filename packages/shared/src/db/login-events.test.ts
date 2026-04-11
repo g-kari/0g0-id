@@ -1,127 +1,127 @@
-import { describe, it, expect, vi } from 'vitest';
-import { insertLoginEvent, getLoginEventsByUserId, countRecentLoginEvents } from './login-events';
-import type { LoginEvent } from '../types';
-import { makeD1Mock } from './test-helpers';
+import { describe, it, expect, vi } from "vite-plus/test";
+import { insertLoginEvent, getLoginEventsByUserId, countRecentLoginEvents } from "./login-events";
+import type { LoginEvent } from "../types";
+import { makeD1Mock } from "./test-helpers";
 
 const baseLoginEvent: LoginEvent = {
-  id: 'event-id-1',
-  user_id: 'user-1',
-  provider: 'google',
-  ip_address: '1.2.3.4',
-  user_agent: 'Mozilla/5.0',
+  id: "event-id-1",
+  user_id: "user-1",
+  provider: "google",
+  ip_address: "1.2.3.4",
+  user_agent: "Mozilla/5.0",
   country: null,
-  created_at: '2024-01-01T00:00:00Z',
+  created_at: "2024-01-01T00:00:00Z",
 };
 
-describe('insertLoginEvent', () => {
-  it('INSERT文を実行してログインイベントを記録する', async () => {
+describe("insertLoginEvent", () => {
+  it("INSERT文を実行してログインイベントを記録する", async () => {
     const db = makeD1Mock();
     await insertLoginEvent(db, {
-      userId: 'user-1',
-      provider: 'google',
-      ipAddress: '1.2.3.4',
-      userAgent: 'Mozilla/5.0',
+      userId: "user-1",
+      provider: "google",
+      ipAddress: "1.2.3.4",
+      userAgent: "Mozilla/5.0",
     });
 
-    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO login_events'));
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO login_events"));
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
     expect(stmt.bind).toHaveBeenCalledWith(
       expect.any(String), // UUIDは動的に生成
-      'user-1',
-      'google',
-      '1.2.3.4',
-      'Mozilla/5.0',
-      null
+      "user-1",
+      "google",
+      "1.2.3.4",
+      "Mozilla/5.0",
+      null,
     );
     expect(stmt.run).toHaveBeenCalled();
   });
 
-  it('ipAddressがnullの場合もnullでbindする', async () => {
+  it("ipAddressがnullの場合もnullでbindする", async () => {
     const db = makeD1Mock();
     await insertLoginEvent(db, {
-      userId: 'user-1',
-      provider: 'github',
+      userId: "user-1",
+      provider: "github",
       ipAddress: null,
-      userAgent: 'Chrome/120',
+      userAgent: "Chrome/120",
     });
 
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
     expect(stmt.bind).toHaveBeenCalledWith(
       expect.any(String),
-      'user-1',
-      'github',
+      "user-1",
+      "github",
       null,
-      'Chrome/120',
-      null
+      "Chrome/120",
+      null,
     );
   });
 
-  it('userAgentがnullの場合もnullでbindする', async () => {
+  it("userAgentがnullの場合もnullでbindする", async () => {
     const db = makeD1Mock();
     await insertLoginEvent(db, {
-      userId: 'user-1',
-      provider: 'line',
-      ipAddress: '10.0.0.1',
+      userId: "user-1",
+      provider: "line",
+      ipAddress: "10.0.0.1",
       userAgent: null,
     });
 
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
     expect(stmt.bind).toHaveBeenCalledWith(
       expect.any(String),
-      'user-1',
-      'line',
-      '10.0.0.1',
+      "user-1",
+      "line",
+      "10.0.0.1",
       null,
-      null
+      null,
     );
   });
 
-  it('ipAddressとuserAgentが省略された場合はnullでbindする', async () => {
+  it("ipAddressとuserAgentが省略された場合はnullでbindする", async () => {
     const db = makeD1Mock();
     await insertLoginEvent(db, {
-      userId: 'user-1',
-      provider: 'twitch',
+      userId: "user-1",
+      provider: "twitch",
     });
 
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
     expect(stmt.bind).toHaveBeenCalledWith(
       expect.any(String),
-      'user-1',
-      'twitch',
+      "user-1",
+      "twitch",
       null,
       null,
-      null
+      null,
     );
   });
 
-  it('countryを指定した場合はbindに渡される', async () => {
+  it("countryを指定した場合はbindに渡される", async () => {
     const db = makeD1Mock();
     await insertLoginEvent(db, {
-      userId: 'user-1',
-      provider: 'google',
-      ipAddress: '1.2.3.4',
-      userAgent: 'Mozilla/5.0',
-      country: 'JP',
+      userId: "user-1",
+      provider: "google",
+      ipAddress: "1.2.3.4",
+      userAgent: "Mozilla/5.0",
+      country: "JP",
     });
 
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
     expect(stmt.bind).toHaveBeenCalledWith(
       expect.any(String),
-      'user-1',
-      'google',
-      '1.2.3.4',
-      'Mozilla/5.0',
-      'JP'
+      "user-1",
+      "google",
+      "1.2.3.4",
+      "Mozilla/5.0",
+      "JP",
     );
   });
 
-  it('countryが省略された場合はnullでbindする', async () => {
+  it("countryが省略された場合はnullでbindする", async () => {
     const db = makeD1Mock();
     await insertLoginEvent(db, {
-      userId: 'user-1',
-      provider: 'google',
-      ipAddress: '1.2.3.4',
-      userAgent: 'Mozilla/5.0',
+      userId: "user-1",
+      provider: "google",
+      ipAddress: "1.2.3.4",
+      userAgent: "Mozilla/5.0",
     });
 
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
@@ -129,9 +129,9 @@ describe('insertLoginEvent', () => {
     expect(bindArgs[5]).toBeNull();
   });
 
-  it('idにUUIDを使用する', async () => {
+  it("idにUUIDを使用する", async () => {
     const db = makeD1Mock();
-    await insertLoginEvent(db, { userId: 'user-1', provider: 'google' });
+    await insertLoginEvent(db, { userId: "user-1", provider: "google" });
 
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
     const boundId = (stmt.bind as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
@@ -140,8 +140,8 @@ describe('insertLoginEvent', () => {
   });
 });
 
-describe('getLoginEventsByUserId', () => {
-  it('ユーザーのログインイベント一覧とtotalを返す', async () => {
+describe("getLoginEventsByUserId", () => {
+  it("ユーザーのログインイベント一覧とtotalを返す", async () => {
     const mockEvents = [baseLoginEvent];
 
     // 2回のqueryをモックする: 1回目はall（イベント一覧）、2回目はfirst（count）
@@ -157,14 +157,14 @@ describe('getLoginEventsByUserId', () => {
       prepare: vi.fn().mockReturnValueOnce(eventsStmt).mockReturnValueOnce(countStmt),
     } as unknown as D1Database;
 
-    const result = await getLoginEventsByUserId(db, 'user-1');
+    const result = await getLoginEventsByUserId(db, "user-1");
     expect(result.events).toHaveLength(1);
-    expect(result.events[0].id).toBe('event-id-1');
-    expect(result.events[0].provider).toBe('google');
+    expect(result.events[0].id).toBe("event-id-1");
+    expect(result.events[0].provider).toBe("google");
     expect(result.total).toBe(1);
   });
 
-  it('ログインイベントがない場合はevents=[]・total=0を返す', async () => {
+  it("ログインイベントがない場合はevents=[]・total=0を返す", async () => {
     const eventsStmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
@@ -177,12 +177,12 @@ describe('getLoginEventsByUserId', () => {
       prepare: vi.fn().mockReturnValueOnce(eventsStmt).mockReturnValueOnce(countStmt),
     } as unknown as D1Database;
 
-    const result = await getLoginEventsByUserId(db, 'user-no-events');
+    const result = await getLoginEventsByUserId(db, "user-no-events");
     expect(result.events).toEqual([]);
     expect(result.total).toBe(0);
   });
 
-  it('デフォルトlimit=20・offset=0でbindする', async () => {
+  it("デフォルトlimit=20・offset=0でbindする", async () => {
     const eventsStmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
@@ -195,11 +195,11 @@ describe('getLoginEventsByUserId', () => {
       prepare: vi.fn().mockReturnValueOnce(eventsStmt).mockReturnValueOnce(countStmt),
     } as unknown as D1Database;
 
-    await getLoginEventsByUserId(db, 'user-1');
-    expect(eventsStmt.bind).toHaveBeenCalledWith('user-1', 20, 0);
+    await getLoginEventsByUserId(db, "user-1");
+    expect(eventsStmt.bind).toHaveBeenCalledWith("user-1", 20, 0);
   });
 
-  it('limit・offsetを指定できる', async () => {
+  it("limit・offsetを指定できる", async () => {
     const eventsStmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
@@ -212,12 +212,12 @@ describe('getLoginEventsByUserId', () => {
       prepare: vi.fn().mockReturnValueOnce(eventsStmt).mockReturnValueOnce(countStmt),
     } as unknown as D1Database;
 
-    const result = await getLoginEventsByUserId(db, 'user-1', 5, 10);
-    expect(eventsStmt.bind).toHaveBeenCalledWith('user-1', 5, 10);
+    const result = await getLoginEventsByUserId(db, "user-1", 5, 10);
+    expect(eventsStmt.bind).toHaveBeenCalledWith("user-1", 5, 10);
     expect(result.total).toBe(50);
   });
 
-  it('SQLにORDER BY created_at DESCが含まれる', async () => {
+  it("SQLにORDER BY created_at DESCが含まれる", async () => {
     const eventsStmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
@@ -230,12 +230,12 @@ describe('getLoginEventsByUserId', () => {
       prepare: vi.fn().mockReturnValueOnce(eventsStmt).mockReturnValueOnce(countStmt),
     } as unknown as D1Database;
 
-    await getLoginEventsByUserId(db, 'user-1');
+    await getLoginEventsByUserId(db, "user-1");
     const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(sql).toContain('ORDER BY created_at DESC');
+    expect(sql).toContain("ORDER BY created_at DESC");
   });
 
-  it('userIdでcountクエリをbindする', async () => {
+  it("userIdでcountクエリをbindする", async () => {
     const eventsStmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
@@ -248,14 +248,14 @@ describe('getLoginEventsByUserId', () => {
       prepare: vi.fn().mockReturnValueOnce(eventsStmt).mockReturnValueOnce(countStmt),
     } as unknown as D1Database;
 
-    await getLoginEventsByUserId(db, 'user-xyz');
-    expect(countStmt.bind).toHaveBeenCalledWith('user-xyz');
+    await getLoginEventsByUserId(db, "user-xyz");
+    expect(countStmt.bind).toHaveBeenCalledWith("user-xyz");
   });
 
-  it('複数のイベントを正しく返す', async () => {
+  it("複数のイベントを正しく返す", async () => {
     const mockEvents: LoginEvent[] = [
-      { ...baseLoginEvent, id: 'event-2', created_at: '2024-02-01T00:00:00Z' },
-      { ...baseLoginEvent, id: 'event-1', created_at: '2024-01-01T00:00:00Z' },
+      { ...baseLoginEvent, id: "event-2", created_at: "2024-02-01T00:00:00Z" },
+      { ...baseLoginEvent, id: "event-1", created_at: "2024-01-01T00:00:00Z" },
     ];
     const eventsStmt = {
       bind: vi.fn().mockReturnThis(),
@@ -269,14 +269,14 @@ describe('getLoginEventsByUserId', () => {
       prepare: vi.fn().mockReturnValueOnce(eventsStmt).mockReturnValueOnce(countStmt),
     } as unknown as D1Database;
 
-    const result = await getLoginEventsByUserId(db, 'user-1');
+    const result = await getLoginEventsByUserId(db, "user-1");
     expect(result.events).toHaveLength(2);
-    expect(result.events[0].id).toBe('event-2');
-    expect(result.events[1].id).toBe('event-1');
+    expect(result.events[0].id).toBe("event-2");
+    expect(result.events[1].id).toBe("event-1");
     expect(result.total).toBe(2);
   });
 
-  it('providerを指定するとSQLにAND provider = ?が含まれる', async () => {
+  it("providerを指定するとSQLにAND provider = ?が含まれる", async () => {
     const eventsStmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
@@ -289,14 +289,14 @@ describe('getLoginEventsByUserId', () => {
       prepare: vi.fn().mockReturnValueOnce(eventsStmt).mockReturnValueOnce(countStmt),
     } as unknown as D1Database;
 
-    await getLoginEventsByUserId(db, 'user-1', 20, 0, 'google');
+    await getLoginEventsByUserId(db, "user-1", 20, 0, "google");
     const eventsSql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
     const countSql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[1][0];
-    expect(eventsSql).toContain('AND provider = ?');
-    expect(countSql).toContain('AND provider = ?');
+    expect(eventsSql).toContain("AND provider = ?");
+    expect(countSql).toContain("AND provider = ?");
   });
 
-  it('providerを指定するとeventsクエリにproviderをbindする', async () => {
+  it("providerを指定するとeventsクエリにproviderをbindする", async () => {
     const eventsStmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
@@ -309,12 +309,12 @@ describe('getLoginEventsByUserId', () => {
       prepare: vi.fn().mockReturnValueOnce(eventsStmt).mockReturnValueOnce(countStmt),
     } as unknown as D1Database;
 
-    await getLoginEventsByUserId(db, 'user-1', 10, 5, 'github');
-    expect(eventsStmt.bind).toHaveBeenCalledWith('user-1', 'github', 10, 5);
-    expect(countStmt.bind).toHaveBeenCalledWith('user-1', 'github');
+    await getLoginEventsByUserId(db, "user-1", 10, 5, "github");
+    expect(eventsStmt.bind).toHaveBeenCalledWith("user-1", "github", 10, 5);
+    expect(countStmt.bind).toHaveBeenCalledWith("user-1", "github");
   });
 
-  it('providerなしの場合はproviderをbindしない', async () => {
+  it("providerなしの場合はproviderをbindしない", async () => {
     const eventsStmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
@@ -327,68 +327,67 @@ describe('getLoginEventsByUserId', () => {
       prepare: vi.fn().mockReturnValueOnce(eventsStmt).mockReturnValueOnce(countStmt),
     } as unknown as D1Database;
 
-    await getLoginEventsByUserId(db, 'user-1', 20, 0);
-    expect(eventsStmt.bind).toHaveBeenCalledWith('user-1', 20, 0);
-    expect(countStmt.bind).toHaveBeenCalledWith('user-1');
+    await getLoginEventsByUserId(db, "user-1", 20, 0);
+    expect(eventsStmt.bind).toHaveBeenCalledWith("user-1", 20, 0);
+    expect(countStmt.bind).toHaveBeenCalledWith("user-1");
   });
 });
 
-describe('countRecentLoginEvents', () => {
-  it('指定日時以降のログインイベント数を返す', async () => {
+describe("countRecentLoginEvents", () => {
+  it("指定日時以降のログインイベント数を返す", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       first: vi.fn().mockResolvedValue({ count: 7 }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const result = await countRecentLoginEvents(db, '2024-01-01T00:00:00.000Z');
+    const result = await countRecentLoginEvents(db, "2024-01-01T00:00:00.000Z");
     expect(result).toBe(7);
-    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('COUNT(*)'));
-    expect(stmt.bind).toHaveBeenCalledWith('2024-01-01T00:00:00.000Z');
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("COUNT(*)"));
+    expect(stmt.bind).toHaveBeenCalledWith("2024-01-01T00:00:00.000Z");
   });
 
-  it('イベントがない場合は0を返す', async () => {
+  it("イベントがない場合は0を返す", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       first: vi.fn().mockResolvedValue({ count: 0 }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const result = await countRecentLoginEvents(db, '2024-01-01T00:00:00.000Z');
+    const result = await countRecentLoginEvents(db, "2024-01-01T00:00:00.000Z");
     expect(result).toBe(0);
   });
 
-  it('first()がnullを返した場合は0にフォールバックする', async () => {
+  it("first()がnullを返した場合は0にフォールバックする", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       first: vi.fn().mockResolvedValue(null),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const result = await countRecentLoginEvents(db, '2024-01-01T00:00:00.000Z');
+    const result = await countRecentLoginEvents(db, "2024-01-01T00:00:00.000Z");
     expect(result).toBe(0);
   });
 
-  it('SQLにcreated_at >= ?の条件が含まれる', async () => {
+  it("SQLにcreated_at >= ?の条件が含まれる", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       first: vi.fn().mockResolvedValue({ count: 3 }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    await countRecentLoginEvents(db, '2024-06-01T00:00:00.000Z');
+    await countRecentLoginEvents(db, "2024-06-01T00:00:00.000Z");
     const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(sql).toContain('created_at >=');
+    expect(sql).toContain("created_at >=");
   });
 });
 
-
-describe('getLoginEventProviderStats', () => {
-  it('プロバイダー別のログイン統計を返す', async () => {
+describe("getLoginEventProviderStats", () => {
+  it("プロバイダー別のログイン統計を返す", async () => {
     const mockStats = [
-      { provider: 'google', count: 10 },
-      { provider: 'line', count: 3 },
-      { provider: 'github', count: 1 },
+      { provider: "google", count: 10 },
+      { provider: "line", count: 3 },
+      { provider: "github", count: 1 },
     ];
     const stmt = {
       bind: vi.fn().mockReturnThis(),
@@ -397,62 +396,62 @@ describe('getLoginEventProviderStats', () => {
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
     // dynamic import to pick up the newly added export
-    const { getLoginEventProviderStats } = await import('./login-events');
-    const result = await getLoginEventProviderStats(db, '2024-01-01T00:00:00.000Z');
+    const { getLoginEventProviderStats } = await import("./login-events");
+    const result = await getLoginEventProviderStats(db, "2024-01-01T00:00:00.000Z");
 
     expect(result).toHaveLength(3);
-    expect(result[0]).toEqual({ provider: 'google', count: 10 });
-    expect(result[1]).toEqual({ provider: 'line', count: 3 });
-    expect(result[2]).toEqual({ provider: 'github', count: 1 });
+    expect(result[0]).toEqual({ provider: "google", count: 10 });
+    expect(result[1]).toEqual({ provider: "line", count: 3 });
+    expect(result[2]).toEqual({ provider: "github", count: 1 });
   });
 
-  it('ログインイベントがない場合は空配列を返す', async () => {
+  it("ログインイベントがない場合は空配列を返す", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getLoginEventProviderStats } = await import('./login-events');
-    const result = await getLoginEventProviderStats(db, '2099-01-01T00:00:00.000Z');
+    const { getLoginEventProviderStats } = await import("./login-events");
+    const result = await getLoginEventProviderStats(db, "2099-01-01T00:00:00.000Z");
 
     expect(result).toEqual([]);
   });
 
-  it('sinceIsoをbindパラメータとして渡す', async () => {
-    const since = '2024-06-01T00:00:00.000Z';
+  it("sinceIsoをbindパラメータとして渡す", async () => {
+    const since = "2024-06-01T00:00:00.000Z";
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getLoginEventProviderStats } = await import('./login-events');
+    const { getLoginEventProviderStats } = await import("./login-events");
     await getLoginEventProviderStats(db, since);
 
     expect(stmt.bind).toHaveBeenCalledWith(since);
   });
 
-  it('SQLにGROUP BY providerが含まれる', async () => {
+  it("SQLにGROUP BY providerが含まれる", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getLoginEventProviderStats } = await import('./login-events');
-    await getLoginEventProviderStats(db, '2024-01-01T00:00:00.000Z');
+    const { getLoginEventProviderStats } = await import("./login-events");
+    await getLoginEventProviderStats(db, "2024-01-01T00:00:00.000Z");
 
     const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(sql).toContain('GROUP BY provider');
+    expect(sql).toContain("GROUP BY provider");
   });
 });
 
-describe('getUserLoginProviderStats', () => {
-  it('ユーザーのプロバイダー別ログイン統計を返す', async () => {
+describe("getUserLoginProviderStats", () => {
+  it("ユーザーのプロバイダー別ログイン統計を返す", async () => {
     const mockStats = [
-      { provider: 'google', count: 5 },
-      { provider: 'github', count: 2 },
+      { provider: "google", count: 5 },
+      { provider: "github", count: 2 },
     ];
     const stmt = {
       bind: vi.fn().mockReturnThis(),
@@ -460,64 +459,64 @@ describe('getUserLoginProviderStats', () => {
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getUserLoginProviderStats } = await import('./login-events');
-    const result = await getUserLoginProviderStats(db, 'user-1', '2024-01-01T00:00:00.000Z');
+    const { getUserLoginProviderStats } = await import("./login-events");
+    const result = await getUserLoginProviderStats(db, "user-1", "2024-01-01T00:00:00.000Z");
 
     expect(result).toHaveLength(2);
-    expect(result[0]).toEqual({ provider: 'google', count: 5 });
-    expect(result[1]).toEqual({ provider: 'github', count: 2 });
+    expect(result[0]).toEqual({ provider: "google", count: 5 });
+    expect(result[1]).toEqual({ provider: "github", count: 2 });
   });
 
-  it('ログインイベントがない場合は空配列を返す', async () => {
+  it("ログインイベントがない場合は空配列を返す", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getUserLoginProviderStats } = await import('./login-events');
-    const result = await getUserLoginProviderStats(db, 'user-1', '2099-01-01T00:00:00.000Z');
+    const { getUserLoginProviderStats } = await import("./login-events");
+    const result = await getUserLoginProviderStats(db, "user-1", "2099-01-01T00:00:00.000Z");
 
     expect(result).toEqual([]);
   });
 
-  it('userId と sinceIso を bind パラメータとして渡す', async () => {
-    const since = '2024-06-01T00:00:00.000Z';
-    const userId = 'user-abc';
+  it("userId と sinceIso を bind パラメータとして渡す", async () => {
+    const since = "2024-06-01T00:00:00.000Z";
+    const userId = "user-abc";
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getUserLoginProviderStats } = await import('./login-events');
+    const { getUserLoginProviderStats } = await import("./login-events");
     await getUserLoginProviderStats(db, userId, since);
 
     expect(stmt.bind).toHaveBeenCalledWith(userId, since);
   });
 
-  it('SQL に user_id フィルターと GROUP BY provider が含まれる', async () => {
+  it("SQL に user_id フィルターと GROUP BY provider が含まれる", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getUserLoginProviderStats } = await import('./login-events');
-    await getUserLoginProviderStats(db, 'user-1', '2024-01-01T00:00:00.000Z');
+    const { getUserLoginProviderStats } = await import("./login-events");
+    await getUserLoginProviderStats(db, "user-1", "2024-01-01T00:00:00.000Z");
 
     const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(sql).toContain('user_id = ?');
-    expect(sql).toContain('GROUP BY provider');
+    expect(sql).toContain("user_id = ?");
+    expect(sql).toContain("GROUP BY provider");
   });
 });
 
-describe('getDailyLoginTrends', () => {
-  it('日別ログイン統計を日付昇順で返す', async () => {
+describe("getDailyLoginTrends", () => {
+  it("日別ログイン統計を日付昇順で返す", async () => {
     const mockStats = [
-      { date: '2024-01-01', count: 5 },
-      { date: '2024-01-02', count: 8 },
-      { date: '2024-01-03', count: 3 },
+      { date: "2024-01-01", count: 5 },
+      { date: "2024-01-02", count: 8 },
+      { date: "2024-01-03", count: 3 },
     ];
     const stmt = {
       bind: vi.fn().mockReturnThis(),
@@ -525,28 +524,28 @@ describe('getDailyLoginTrends', () => {
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getDailyLoginTrends } = await import('./login-events');
+    const { getDailyLoginTrends } = await import("./login-events");
     const result = await getDailyLoginTrends(db, 30);
 
     expect(result).toHaveLength(3);
-    expect(result[0]).toEqual({ date: '2024-01-01', count: 5 });
-    expect(result[2]).toEqual({ date: '2024-01-03', count: 3 });
+    expect(result[0]).toEqual({ date: "2024-01-01", count: 5 });
+    expect(result[2]).toEqual({ date: "2024-01-03", count: 3 });
   });
 
-  it('ログインイベントがない場合は空配列を返す', async () => {
+  it("ログインイベントがない場合は空配列を返す", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getDailyLoginTrends } = await import('./login-events');
+    const { getDailyLoginTrends } = await import("./login-events");
     const result = await getDailyLoginTrends(db, 7);
 
     expect(result).toEqual([]);
   });
 
-  it('デフォルトdays=30でsinceIsoをbindする', async () => {
+  it("デフォルトdays=30でsinceIsoをbindする", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
@@ -554,7 +553,7 @@ describe('getDailyLoginTrends', () => {
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
     const before = Date.now();
-    const { getDailyLoginTrends } = await import('./login-events');
+    const { getDailyLoginTrends } = await import("./login-events");
     await getDailyLoginTrends(db);
     const after = Date.now();
 
@@ -564,7 +563,7 @@ describe('getDailyLoginTrends', () => {
     expect(boundMs).toBeLessThanOrEqual(after - 30 * 24 * 60 * 60 * 1000);
   });
 
-  it('days=7を指定すると7日前のsinceIsoをbindする', async () => {
+  it("days=7を指定すると7日前のsinceIsoをbindする", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
@@ -572,7 +571,7 @@ describe('getDailyLoginTrends', () => {
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
     const before = Date.now();
-    const { getDailyLoginTrends } = await import('./login-events');
+    const { getDailyLoginTrends } = await import("./login-events");
     await getDailyLoginTrends(db, 7);
     const after = Date.now();
 
@@ -582,29 +581,29 @@ describe('getDailyLoginTrends', () => {
     expect(boundMs).toBeLessThanOrEqual(after - 7 * 24 * 60 * 60 * 1000);
   });
 
-  it('SQLにstrftime・GROUP BY date・ORDER BY date ASCが含まれる', async () => {
+  it("SQLにstrftime・GROUP BY date・ORDER BY date ASCが含まれる", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getDailyLoginTrends } = await import('./login-events');
+    const { getDailyLoginTrends } = await import("./login-events");
     await getDailyLoginTrends(db, 30);
 
     const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(sql).toContain("strftime('%Y-%m-%d'");
-    expect(sql).toContain('GROUP BY date');
-    expect(sql).toContain('ORDER BY date ASC');
+    expect(sql).toContain("GROUP BY date");
+    expect(sql).toContain("ORDER BY date ASC");
   });
 });
 
-describe('getLoginEventCountryStats', () => {
-  it('国別のログイン統計を返す', async () => {
+describe("getLoginEventCountryStats", () => {
+  it("国別のログイン統計を返す", async () => {
     const mockStats = [
-      { country: 'JP', count: 50 },
-      { country: 'US', count: 20 },
-      { country: 'unknown', count: 5 },
+      { country: "JP", count: 50 },
+      { country: "US", count: 20 },
+      { country: "unknown", count: 5 },
     ];
     const stmt = {
       bind: vi.fn().mockReturnThis(),
@@ -612,64 +611,64 @@ describe('getLoginEventCountryStats', () => {
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getLoginEventCountryStats } = await import('./login-events');
-    const result = await getLoginEventCountryStats(db, '2024-01-01T00:00:00.000Z');
+    const { getLoginEventCountryStats } = await import("./login-events");
+    const result = await getLoginEventCountryStats(db, "2024-01-01T00:00:00.000Z");
 
     expect(result).toHaveLength(3);
-    expect(result[0]).toEqual({ country: 'JP', count: 50 });
-    expect(result[1]).toEqual({ country: 'US', count: 20 });
-    expect(result[2]).toEqual({ country: 'unknown', count: 5 });
+    expect(result[0]).toEqual({ country: "JP", count: 50 });
+    expect(result[1]).toEqual({ country: "US", count: 20 });
+    expect(result[2]).toEqual({ country: "unknown", count: 5 });
   });
 
-  it('ログインイベントがない場合は空配列を返す', async () => {
+  it("ログインイベントがない場合は空配列を返す", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getLoginEventCountryStats } = await import('./login-events');
-    const result = await getLoginEventCountryStats(db, '2099-01-01T00:00:00.000Z');
+    const { getLoginEventCountryStats } = await import("./login-events");
+    const result = await getLoginEventCountryStats(db, "2099-01-01T00:00:00.000Z");
 
     expect(result).toEqual([]);
   });
 
-  it('sinceIsoをbindパラメータとして渡す', async () => {
-    const since = '2024-06-01T00:00:00.000Z';
+  it("sinceIsoをbindパラメータとして渡す", async () => {
+    const since = "2024-06-01T00:00:00.000Z";
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getLoginEventCountryStats } = await import('./login-events');
+    const { getLoginEventCountryStats } = await import("./login-events");
     await getLoginEventCountryStats(db, since);
 
     expect(stmt.bind).toHaveBeenCalledWith(since);
   });
 
-  it('SQLにCOALESCE・GROUP BY country・ORDER BY count DESCが含まれる', async () => {
+  it("SQLにCOALESCE・GROUP BY country・ORDER BY count DESCが含まれる", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getLoginEventCountryStats } = await import('./login-events');
-    await getLoginEventCountryStats(db, '2024-01-01T00:00:00.000Z');
+    const { getLoginEventCountryStats } = await import("./login-events");
+    await getLoginEventCountryStats(db, "2024-01-01T00:00:00.000Z");
 
     const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(sql).toContain('COALESCE(country,');
-    expect(sql).toContain('GROUP BY country');
-    expect(sql).toContain('ORDER BY count DESC');
+    expect(sql).toContain("COALESCE(country,");
+    expect(sql).toContain("GROUP BY country");
+    expect(sql).toContain("ORDER BY count DESC");
   });
 });
 
-describe('getSuspiciousMultiCountryLogins', () => {
-  it('複数国からログインしたユーザーの一覧を返す', async () => {
+describe("getSuspiciousMultiCountryLogins", () => {
+  it("複数国からログインしたユーザーの一覧を返す", async () => {
     const mockResults = [
-      { user_id: 'user-1', country_count: 3, countries: 'JP,US,DE' },
-      { user_id: 'user-2', country_count: 2, countries: 'JP,KR' },
+      { user_id: "user-1", country_count: 3, countries: "JP,US,DE" },
+      { user_id: "user-2", country_count: 2, countries: "JP,KR" },
     ];
     const stmt = {
       bind: vi.fn().mockReturnThis(),
@@ -677,91 +676,91 @@ describe('getSuspiciousMultiCountryLogins', () => {
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getSuspiciousMultiCountryLogins } = await import('./login-events');
-    const result = await getSuspiciousMultiCountryLogins(db, '2024-01-01T00:00:00.000Z');
+    const { getSuspiciousMultiCountryLogins } = await import("./login-events");
+    const result = await getSuspiciousMultiCountryLogins(db, "2024-01-01T00:00:00.000Z");
 
     expect(result).toHaveLength(2);
-    expect(result[0]).toEqual({ user_id: 'user-1', country_count: 3, countries: 'JP,US,DE' });
-    expect(result[1]).toEqual({ user_id: 'user-2', country_count: 2, countries: 'JP,KR' });
+    expect(result[0]).toEqual({ user_id: "user-1", country_count: 3, countries: "JP,US,DE" });
+    expect(result[1]).toEqual({ user_id: "user-2", country_count: 2, countries: "JP,KR" });
   });
 
-  it('該当するユーザーがいない場合は空配列を返す', async () => {
+  it("該当するユーザーがいない場合は空配列を返す", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getSuspiciousMultiCountryLogins } = await import('./login-events');
-    const result = await getSuspiciousMultiCountryLogins(db, '2099-01-01T00:00:00.000Z');
+    const { getSuspiciousMultiCountryLogins } = await import("./login-events");
+    const result = await getSuspiciousMultiCountryLogins(db, "2099-01-01T00:00:00.000Z");
 
     expect(result).toEqual([]);
   });
 
-  it('sinceIso と minCountries を bind パラメータとして渡す', async () => {
-    const since = '2024-06-01T00:00:00.000Z';
+  it("sinceIso と minCountries を bind パラメータとして渡す", async () => {
+    const since = "2024-06-01T00:00:00.000Z";
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getSuspiciousMultiCountryLogins } = await import('./login-events');
+    const { getSuspiciousMultiCountryLogins } = await import("./login-events");
     await getSuspiciousMultiCountryLogins(db, since, 3);
 
     expect(stmt.bind).toHaveBeenCalledWith(since, 3);
   });
 
-  it('minCountries を省略した場合はデフォルト 2 が使われる', async () => {
+  it("minCountries を省略した場合はデフォルト 2 が使われる", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getSuspiciousMultiCountryLogins } = await import('./login-events');
-    await getSuspiciousMultiCountryLogins(db, '2024-01-01T00:00:00.000Z');
+    const { getSuspiciousMultiCountryLogins } = await import("./login-events");
+    await getSuspiciousMultiCountryLogins(db, "2024-01-01T00:00:00.000Z");
 
-    expect(stmt.bind).toHaveBeenCalledWith('2024-01-01T00:00:00.000Z', 2);
+    expect(stmt.bind).toHaveBeenCalledWith("2024-01-01T00:00:00.000Z", 2);
   });
 
-  it('SQL に HAVING country_count >= ? が含まれる', async () => {
+  it("SQL に HAVING country_count >= ? が含まれる", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getSuspiciousMultiCountryLogins } = await import('./login-events');
-    await getSuspiciousMultiCountryLogins(db, '2024-01-01T00:00:00.000Z');
+    const { getSuspiciousMultiCountryLogins } = await import("./login-events");
+    await getSuspiciousMultiCountryLogins(db, "2024-01-01T00:00:00.000Z");
 
     const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(sql).toContain('HAVING country_count >=');
-    expect(sql).toContain('GROUP BY user_id');
-    expect(sql).toContain('ORDER BY country_count DESC');
+    expect(sql).toContain("HAVING country_count >=");
+    expect(sql).toContain("GROUP BY user_id");
+    expect(sql).toContain("ORDER BY country_count DESC");
   });
 
-  it('SQL に COUNT(DISTINCT ...) と GROUP_CONCAT(DISTINCT ...) が含まれる', async () => {
+  it("SQL に COUNT(DISTINCT ...) と GROUP_CONCAT(DISTINCT ...) が含まれる", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getSuspiciousMultiCountryLogins } = await import('./login-events');
-    await getSuspiciousMultiCountryLogins(db, '2024-01-01T00:00:00.000Z');
+    const { getSuspiciousMultiCountryLogins } = await import("./login-events");
+    await getSuspiciousMultiCountryLogins(db, "2024-01-01T00:00:00.000Z");
 
     const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(sql).toContain('COUNT(DISTINCT');
-    expect(sql).toContain('GROUP_CONCAT(DISTINCT');
+    expect(sql).toContain("COUNT(DISTINCT");
+    expect(sql).toContain("GROUP_CONCAT(DISTINCT");
   });
 });
 
-describe('getUserDailyLoginTrends', () => {
-  it('ユーザーの日別ログイン統計を日付昇順で返す', async () => {
+describe("getUserDailyLoginTrends", () => {
+  it("ユーザーの日別ログイン統計を日付昇順で返す", async () => {
     const mockStats = [
-      { date: '2024-01-01', count: 2 },
-      { date: '2024-01-02', count: 5 },
+      { date: "2024-01-01", count: 2 },
+      { date: "2024-01-02", count: 5 },
     ];
     const stmt = {
       bind: vi.fn().mockReturnThis(),
@@ -769,28 +768,28 @@ describe('getUserDailyLoginTrends', () => {
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getUserDailyLoginTrends } = await import('./login-events');
-    const result = await getUserDailyLoginTrends(db, 'user-1', 30);
+    const { getUserDailyLoginTrends } = await import("./login-events");
+    const result = await getUserDailyLoginTrends(db, "user-1", 30);
 
     expect(result).toHaveLength(2);
-    expect(result[0]).toEqual({ date: '2024-01-01', count: 2 });
-    expect(result[1]).toEqual({ date: '2024-01-02', count: 5 });
+    expect(result[0]).toEqual({ date: "2024-01-01", count: 2 });
+    expect(result[1]).toEqual({ date: "2024-01-02", count: 5 });
   });
 
-  it('ログインイベントがない場合は空配列を返す', async () => {
+  it("ログインイベントがない場合は空配列を返す", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getUserDailyLoginTrends } = await import('./login-events');
-    const result = await getUserDailyLoginTrends(db, 'user-1', 7);
+    const { getUserDailyLoginTrends } = await import("./login-events");
+    const result = await getUserDailyLoginTrends(db, "user-1", 7);
 
     expect(result).toEqual([]);
   });
 
-  it('デフォルトdays=30でuserIdとsinceIsoをbindする', async () => {
+  it("デフォルトdays=30でuserIdとsinceIsoをbindする", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
@@ -798,18 +797,18 @@ describe('getUserDailyLoginTrends', () => {
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
     const before = Date.now();
-    const { getUserDailyLoginTrends } = await import('./login-events');
-    await getUserDailyLoginTrends(db, 'user-abc');
+    const { getUserDailyLoginTrends } = await import("./login-events");
+    await getUserDailyLoginTrends(db, "user-abc");
     const after = Date.now();
 
     const [boundUserId, boundSince] = (stmt.bind as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(boundUserId).toBe('user-abc');
+    expect(boundUserId).toBe("user-abc");
     const boundMs = new Date(boundSince as string).getTime();
     expect(boundMs).toBeGreaterThanOrEqual(before - 30 * 24 * 60 * 60 * 1000);
     expect(boundMs).toBeLessThanOrEqual(after - 30 * 24 * 60 * 60 * 1000);
   });
 
-  it('days=7を指定すると7日前のsinceIsoをbindする', async () => {
+  it("days=7を指定すると7日前のsinceIsoをbindする", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
@@ -817,8 +816,8 @@ describe('getUserDailyLoginTrends', () => {
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
     const before = Date.now();
-    const { getUserDailyLoginTrends } = await import('./login-events');
-    await getUserDailyLoginTrends(db, 'user-1', 7);
+    const { getUserDailyLoginTrends } = await import("./login-events");
+    await getUserDailyLoginTrends(db, "user-1", 7);
     const after = Date.now();
 
     const [, boundSince] = (stmt.bind as ReturnType<typeof vi.fn>).mock.calls[0];
@@ -827,26 +826,26 @@ describe('getUserDailyLoginTrends', () => {
     expect(boundMs).toBeLessThanOrEqual(after - 7 * 24 * 60 * 60 * 1000);
   });
 
-  it('SQLにuser_id = ?・strftime・GROUP BY date・ORDER BY date ASCが含まれる', async () => {
+  it("SQLにuser_id = ?・strftime・GROUP BY date・ORDER BY date ASCが含まれる", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getUserDailyLoginTrends } = await import('./login-events');
-    await getUserDailyLoginTrends(db, 'user-1', 30);
+    const { getUserDailyLoginTrends } = await import("./login-events");
+    await getUserDailyLoginTrends(db, "user-1", 30);
 
     const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(sql).toContain('user_id = ?');
+    expect(sql).toContain("user_id = ?");
     expect(sql).toContain("strftime('%Y-%m-%d'");
-    expect(sql).toContain('GROUP BY date');
-    expect(sql).toContain('ORDER BY date ASC');
+    expect(sql).toContain("GROUP BY date");
+    expect(sql).toContain("ORDER BY date ASC");
   });
 });
 
-describe('getActiveUserStats', () => {
-  it('DAU/WAU/MAU の統計を返す', async () => {
+describe("getActiveUserStats", () => {
+  it("DAU/WAU/MAU の統計を返す", async () => {
     const dauStmt = {
       bind: vi.fn().mockReturnThis(),
       first: vi.fn().mockResolvedValue({ count: 10 }),
@@ -860,65 +859,70 @@ describe('getActiveUserStats', () => {
       first: vi.fn().mockResolvedValue({ count: 200 }),
     };
     const db = {
-      prepare: vi.fn()
+      prepare: vi
+        .fn()
         .mockReturnValueOnce(dauStmt)
         .mockReturnValueOnce(wauStmt)
         .mockReturnValueOnce(mauStmt),
     } as unknown as D1Database;
 
-    const { getActiveUserStats } = await import('./login-events');
+    const { getActiveUserStats } = await import("./login-events");
     const result = await getActiveUserStats(db);
 
     expect(result).toEqual({ dau: 10, wau: 50, mau: 200 });
   });
 
-  it('first()がnullを返した場合は0にフォールバックする', async () => {
+  it("first()がnullを返した場合は0にフォールバックする", async () => {
     const nullStmt = {
       bind: vi.fn().mockReturnThis(),
       first: vi.fn().mockResolvedValue(null),
     };
     const db = {
-      prepare: vi.fn()
+      prepare: vi
+        .fn()
         .mockReturnValueOnce(nullStmt)
         .mockReturnValueOnce(nullStmt)
         .mockReturnValueOnce(nullStmt),
     } as unknown as D1Database;
 
-    const { getActiveUserStats } = await import('./login-events');
+    const { getActiveUserStats } = await import("./login-events");
     const result = await getActiveUserStats(db);
 
     expect(result).toEqual({ dau: 0, wau: 0, mau: 0 });
   });
 
-  it('3回のクエリを並列で実行し、各クエリにCOUNT(DISTINCT user_id)が含まれる', async () => {
+  it("3回のクエリを並列で実行し、各クエリにCOUNT(DISTINCT user_id)が含まれる", async () => {
     const makeStmt = (count: number) => ({
       bind: vi.fn().mockReturnThis(),
       first: vi.fn().mockResolvedValue({ count }),
     });
     const stmts = [makeStmt(1), makeStmt(2), makeStmt(3)];
     const db = {
-      prepare: vi.fn()
+      prepare: vi
+        .fn()
         .mockReturnValueOnce(stmts[0])
         .mockReturnValueOnce(stmts[1])
         .mockReturnValueOnce(stmts[2]),
     } as unknown as D1Database;
 
-    const { getActiveUserStats } = await import('./login-events');
+    const { getActiveUserStats } = await import("./login-events");
     await getActiveUserStats(db);
 
     expect(db.prepare).toHaveBeenCalledTimes(3);
-    const sqls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[0] as string);
+    const sqls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c: unknown[]) => c[0] as string,
+    );
     for (const sql of sqls) {
-      expect(sql).toContain('COUNT(DISTINCT user_id)');
+      expect(sql).toContain("COUNT(DISTINCT user_id)");
     }
   });
 });
 
-describe('getDailyActiveUsers', () => {
-  it('日別アクティブユーザー統計を日付昇順で返す', async () => {
+describe("getDailyActiveUsers", () => {
+  it("日別アクティブユーザー統計を日付昇順で返す", async () => {
     const mockStats = [
-      { date: '2024-01-01', count: 30 },
-      { date: '2024-01-02', count: 45 },
+      { date: "2024-01-01", count: 30 },
+      { date: "2024-01-02", count: 45 },
     ];
     const stmt = {
       bind: vi.fn().mockReturnThis(),
@@ -926,28 +930,28 @@ describe('getDailyActiveUsers', () => {
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getDailyActiveUsers } = await import('./login-events');
+    const { getDailyActiveUsers } = await import("./login-events");
     const result = await getDailyActiveUsers(db, 30);
 
     expect(result).toHaveLength(2);
-    expect(result[0]).toEqual({ date: '2024-01-01', count: 30 });
-    expect(result[1]).toEqual({ date: '2024-01-02', count: 45 });
+    expect(result[0]).toEqual({ date: "2024-01-01", count: 30 });
+    expect(result[1]).toEqual({ date: "2024-01-02", count: 45 });
   });
 
-  it('ログインイベントがない場合は空配列を返す', async () => {
+  it("ログインイベントがない場合は空配列を返す", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getDailyActiveUsers } = await import('./login-events');
+    const { getDailyActiveUsers } = await import("./login-events");
     const result = await getDailyActiveUsers(db, 7);
 
     expect(result).toEqual([]);
   });
 
-  it('デフォルトdays=30でsinceIsoをbindする', async () => {
+  it("デフォルトdays=30でsinceIsoをbindする", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
@@ -955,7 +959,7 @@ describe('getDailyActiveUsers', () => {
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
     const before = Date.now();
-    const { getDailyActiveUsers } = await import('./login-events');
+    const { getDailyActiveUsers } = await import("./login-events");
     await getDailyActiveUsers(db);
     const after = Date.now();
 
@@ -965,20 +969,20 @@ describe('getDailyActiveUsers', () => {
     expect(boundMs).toBeLessThanOrEqual(after - 30 * 24 * 60 * 60 * 1000);
   });
 
-  it('SQLにCOUNT(DISTINCT user_id)・strftime・GROUP BY date・ORDER BY date ASCが含まれる', async () => {
+  it("SQLにCOUNT(DISTINCT user_id)・strftime・GROUP BY date・ORDER BY date ASCが含まれる", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
     };
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
 
-    const { getDailyActiveUsers } = await import('./login-events');
+    const { getDailyActiveUsers } = await import("./login-events");
     await getDailyActiveUsers(db, 30);
 
     const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(sql).toContain('COUNT(DISTINCT user_id)');
+    expect(sql).toContain("COUNT(DISTINCT user_id)");
     expect(sql).toContain("strftime('%Y-%m-%d'");
-    expect(sql).toContain('GROUP BY date');
-    expect(sql).toContain('ORDER BY date ASC');
+    expect(sql).toContain("GROUP BY date");
+    expect(sql).toContain("ORDER BY date ASC");
   });
 });

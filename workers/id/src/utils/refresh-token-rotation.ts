@@ -1,12 +1,16 @@
-import { findAndRevokeRefreshToken, findRefreshTokenByHash, revokeTokenFamily } from '@0g0-id/shared';
-import type { IdpEnv, User } from '@0g0-id/shared';
-import { attemptUnrevokeToken } from './token-recovery';
-import { issueTokenPair } from './token-pair';
+import {
+  findAndRevokeRefreshToken,
+  findRefreshTokenByHash,
+  revokeTokenFamily,
+} from "@0g0-id/shared";
+import type { IdpEnv, User } from "@0g0-id/shared";
+import { attemptUnrevokeToken } from "./token-recovery";
+import { issueTokenPair } from "./token-pair";
 
 /** リフレッシュトークンのローテーション前バリデーション結果 */
 export type RefreshTokenValidationResult =
   | { ok: true; storedToken: NonNullable<Awaited<ReturnType<typeof findAndRevokeRefreshToken>>> }
-  | { ok: false; reason: 'TOKEN_ROTATED' | 'TOKEN_REUSE' | 'INVALID_TOKEN' };
+  | { ok: false; reason: "TOKEN_ROTATED" | "TOKEN_REUSE" | "INVALID_TOKEN" };
 
 /**
  * リフレッシュトークンをアトミックに失効させ、reuse detection を行う。
@@ -20,21 +24,23 @@ export async function validateAndRevokeRefreshToken(
   db: D1Database,
   tokenHash: string,
 ): Promise<RefreshTokenValidationResult> {
-  const storedToken = await findAndRevokeRefreshToken(db, tokenHash, 'rotation');
+  const storedToken = await findAndRevokeRefreshToken(db, tokenHash, "rotation");
 
   if (!storedToken) {
     const existingToken = await findRefreshTokenByHash(db, tokenHash);
     if (existingToken) {
-      if (existingToken.revoked_reason === 'rotation') {
-        const revokedMs = existingToken.revoked_at ? new Date(existingToken.revoked_at).getTime() : 0;
+      if (existingToken.revoked_reason === "rotation") {
+        const revokedMs = existingToken.revoked_at
+          ? new Date(existingToken.revoked_at).getTime()
+          : 0;
         if (Date.now() - revokedMs < 30_000) {
-          return { ok: false, reason: 'TOKEN_ROTATED' };
+          return { ok: false, reason: "TOKEN_ROTATED" };
         }
-        await revokeTokenFamily(db, existingToken.family_id, 'reuse_detected');
-        return { ok: false, reason: 'TOKEN_REUSE' };
+        await revokeTokenFamily(db, existingToken.family_id, "reuse_detected");
+        return { ok: false, reason: "TOKEN_REUSE" };
       }
     }
-    return { ok: false, reason: 'INVALID_TOKEN' };
+    return { ok: false, reason: "INVALID_TOKEN" };
   }
 
   return { ok: true, storedToken };
@@ -43,7 +49,7 @@ export async function validateAndRevokeRefreshToken(
 /** 新トークンペア発行結果 */
 export type IssueWithRecoveryResult =
   | { ok: true; accessToken: string; refreshToken: string }
-  | { ok: false; reason: 'TOKEN_REUSE' | 'INTERNAL_ERROR' };
+  | { ok: false; reason: "TOKEN_REUSE" | "INTERNAL_ERROR" };
 
 /**
  * 新しいアクセストークン・リフレッシュトークンを発行し、
@@ -69,10 +75,10 @@ export async function issueTokenPairWithRecovery(
   } catch (e) {
     logger.error(`${context}: issueTokenPair failed`, e);
     const currentToken = await findRefreshTokenByHash(db, tokenHash);
-    if (currentToken && currentToken.revoked_reason === 'reuse_detected') {
-      return { ok: false, reason: 'TOKEN_REUSE' };
+    if (currentToken && currentToken.revoked_reason === "reuse_detected") {
+      return { ok: false, reason: "TOKEN_REUSE" };
     }
     await attemptUnrevokeToken(db, storedTokenId, `[${context}] issueTokenPair failure 後`);
-    return { ok: false, reason: 'INTERNAL_ERROR' };
+    return { ok: false, reason: "INTERNAL_ERROR" };
   }
 }

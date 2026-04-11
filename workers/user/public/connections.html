@@ -1,31 +1,40 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>0g0 ID - 連携サービス</title>
-  <meta name="robots" content="noindex, nofollow">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/style.css">
-</head>
-<body>
-  <div class="container" style="max-width:480px;">
-    <div class="card">
-      <div class="card-header">
-        <h1>連携サービス</h1>
-        <a href="/profile.html" class="btn btn-outline btn-sm" style="margin-left:0;">← プロフィール</a>
-      </div>
-      <p class="subtitle">アクセスを許可しているサービスの一覧です。不要なサービスは連携を解除できます。</p>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>0g0 ID - 連携サービス</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="container" style="max-width: 480px">
+      <div class="card">
+        <div class="card-header">
+          <h1>連携サービス</h1>
+          <a href="/profile.html" class="btn btn-outline btn-sm" style="margin-left: 0"
+            >← プロフィール</a
+          >
+        </div>
+        <p class="subtitle">
+          アクセスを許可しているサービスの一覧です。不要なサービスは連携を解除できます。
+        </p>
 
-      <div id="loading" class="loading-center">
-        <span class="spinner"></span>
-        <span>読み込み中...</span>
+        <div id="loading" class="loading-center">
+          <span class="spinner"></span>
+          <span>読み込み中...</span>
+        </div>
+        <div id="connections-list" style="display: none"></div>
+        <div
+          id="empty-msg"
+          style="display: none; text-align: center; color: var(--text-muted); padding: 2rem 0"
+        >
+          連携中のサービスはありません
+        </div>
+        <div id="error-msg" class="alert alert-error" style="display: none" role="alert"></div>
       </div>
-      <div id="connections-list" style="display:none;"></div>
-      <div id="empty-msg" style="display:none;text-align:center;color:var(--text-muted);padding:2rem 0;">連携中のサービスはありません</div>
-      <div id="error-msg" class="alert alert-error" style="display:none;" role="alert"></div>
     </div>
-  </div>
-  <script src="/app.js"></script>
-</body>
+    <script src="/app.js"></script>
+  </body>
 </html>

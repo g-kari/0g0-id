@@ -1,11 +1,11 @@
-import type { ServiceRedirectUri } from '../types';
+import type { ServiceRedirectUri } from "../types";
 
 export async function listRedirectUris(
   db: D1Database,
-  serviceId: string
+  serviceId: string,
 ): Promise<ServiceRedirectUri[]> {
   const result = await db
-    .prepare('SELECT * FROM service_redirect_uris WHERE service_id = ? ORDER BY created_at ASC')
+    .prepare("SELECT * FROM service_redirect_uris WHERE service_id = ? ORDER BY created_at ASC")
     .bind(serviceId)
     .all<ServiceRedirectUri>();
   return result.results;
@@ -13,25 +13,23 @@ export async function listRedirectUris(
 
 export async function addRedirectUri(
   db: D1Database,
-  params: { id: string; serviceId: string; uri: string }
+  params: { id: string; serviceId: string; uri: string },
 ): Promise<ServiceRedirectUri> {
   const uri = await db
-    .prepare(
-      'INSERT INTO service_redirect_uris (id, service_id, uri) VALUES (?, ?, ?) RETURNING *'
-    )
+    .prepare("INSERT INTO service_redirect_uris (id, service_id, uri) VALUES (?, ?, ?) RETURNING *")
     .bind(params.id, params.serviceId, params.uri)
     .first<ServiceRedirectUri>();
-  if (!uri) throw new Error('Failed to add redirect URI');
+  if (!uri) throw new Error("Failed to add redirect URI");
   return uri;
 }
 
 export async function findRedirectUriById(
   db: D1Database,
   id: string,
-  serviceId: string
+  serviceId: string,
 ): Promise<ServiceRedirectUri | null> {
   return db
-    .prepare('SELECT * FROM service_redirect_uris WHERE id = ? AND service_id = ?')
+    .prepare("SELECT * FROM service_redirect_uris WHERE id = ? AND service_id = ?")
     .bind(id, serviceId)
     .first<ServiceRedirectUri>();
 }
@@ -39,10 +37,10 @@ export async function findRedirectUriById(
 export async function deleteRedirectUri(
   db: D1Database,
   id: string,
-  serviceId: string
+  serviceId: string,
 ): Promise<number> {
   const result = await db
-    .prepare('DELETE FROM service_redirect_uris WHERE id = ? AND service_id = ?')
+    .prepare("DELETE FROM service_redirect_uris WHERE id = ? AND service_id = ?")
     .bind(id, serviceId)
     .run();
   return result.meta.changes ?? 0;
@@ -51,12 +49,10 @@ export async function deleteRedirectUri(
 export async function isValidRedirectUri(
   db: D1Database,
   serviceId: string,
-  uri: string
+  uri: string,
 ): Promise<boolean> {
   const result = await db
-    .prepare(
-      'SELECT id FROM service_redirect_uris WHERE service_id = ? AND uri = ?'
-    )
+    .prepare("SELECT id FROM service_redirect_uris WHERE service_id = ? AND uri = ?")
     .bind(serviceId, uri)
     .first();
   return result !== null;

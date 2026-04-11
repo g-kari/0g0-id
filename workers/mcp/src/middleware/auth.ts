@@ -1,7 +1,7 @@
-import { createMiddleware } from 'hono/factory';
-import { createRemoteJWKSet, jwtVerify } from 'jose';
-import type { TokenPayload } from '@0g0-id/shared';
-import { findUserById } from '@0g0-id/shared';
+import { createMiddleware } from "hono/factory";
+import { createRemoteJWKSet, jwtVerify } from "jose";
+import type { TokenPayload } from "@0g0-id/shared";
+import { findUserById } from "@0g0-id/shared";
 
 type McpEnv = {
   Bindings: {
@@ -34,66 +34,75 @@ function getJWKS(idpOrigin: string): ReturnType<typeof createRemoteJWKSet> {
  * Authorization: Bearer <token> ヘッダーからJWTを検証する。
  * IDP の JWKS エンドポイントから公開鍵を取得し ES256 署名を検証する。
  */
-export const mcpAuthMiddleware = createMiddleware<McpEnv>(async (c, next): Promise<Response | void> => {
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
-    c.header(
-      'WWW-Authenticate',
-      `Bearer resource_metadata="${c.env.MCP_ORIGIN}/.well-known/oauth-protected-resource"`,
-    );
-    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Bearer token required' } }, 401);
-  }
+export const mcpAuthMiddleware = createMiddleware<McpEnv>(
+  async (c, next): Promise<Response | void> => {
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      c.header(
+        "WWW-Authenticate",
+        `Bearer resource_metadata="${c.env.MCP_ORIGIN}/.well-known/oauth-protected-resource"`,
+      );
+      return c.json({ error: { code: "UNAUTHORIZED", message: "Bearer token required" } }, 401);
+    }
 
-  const token = authHeader.slice(7);
+    const token = authHeader.slice(7);
 
-  try {
-    const jwks = getJWKS(c.env.IDP_ORIGIN);
-    const { payload } = await jwtVerify(token, jwks, {
-      issuer: c.env.IDP_ORIGIN,
-      audience: c.env.IDP_ORIGIN,
-      algorithms: ['ES256'],
-    });
-    c.set('user', payload as unknown as TokenPayload);
-    await next();
-  } catch {
-    c.header(
-      'WWW-Authenticate',
-      `Bearer error="invalid_token", resource_metadata="${c.env.MCP_ORIGIN}/.well-known/oauth-protected-resource"`,
-    );
-    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token' } }, 401);
-  }
-});
+    try {
+      const jwks = getJWKS(c.env.IDP_ORIGIN);
+      const { payload } = await jwtVerify(token, jwks, {
+        issuer: c.env.IDP_ORIGIN,
+        audience: c.env.IDP_ORIGIN,
+        algorithms: ["ES256"],
+      });
+      c.set("user", payload as unknown as TokenPayload);
+      await next();
+    } catch {
+      c.header(
+        "WWW-Authenticate",
+        `Bearer error="invalid_token", resource_metadata="${c.env.MCP_ORIGIN}/.well-known/oauth-protected-resource"`,
+      );
+      return c.json({ error: { code: "UNAUTHORIZED", message: "Invalid or expired token" } }, 401);
+    }
+  },
+);
 
 /**
  * BAN済みユーザー拒否ミドルウェア。
  * mcpAuthMiddleware の後に配置して使用する。
  * DBからユーザーを取得し、BANされている場合は401を返す。
  */
-export const mcpRejectBannedUserMiddleware = createMiddleware<McpEnv>(async (c, next): Promise<Response | void> => {
-  const user = c.get('user');
-  if (!user) {
-    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } }, 401);
-  }
-  let dbUser;
-  try {
-    dbUser = await findUserById(c.env.DB, user.sub);
-  } catch {
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
-  }
-  if (!dbUser || dbUser.banned_at !== null) {
-    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Account suspended or not found' } }, 401);
-  }
-  await next();
-});
+export const mcpRejectBannedUserMiddleware = createMiddleware<McpEnv>(
+  async (c, next): Promise<Response | void> => {
+    const user = c.get("user");
+    if (!user) {
+      return c.json({ error: { code: "UNAUTHORIZED", message: "Not authenticated" } }, 401);
+    }
+    let dbUser;
+    try {
+      dbUser = await findUserById(c.env.DB, user.sub);
+    } catch {
+      return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    }
+    if (!dbUser || dbUser.banned_at !== null) {
+      return c.json(
+        { error: { code: "UNAUTHORIZED", message: "Account suspended or not found" } },
+        401,
+      );
+    }
+    await next();
+  },
+);
 
 /**
  * 管理者ロール必須ミドルウェア。
  * mcpAuthMiddleware の後に配置して使用する。
  */
-export const mcpAdminMiddleware = createMiddleware<McpEnv>(async (c, next): Promise<Response | void> => {
-  const user = c.get('user');
-  if (!user || user.role !== 'admin') {
-    return c.json({ error: { code: 'FORBIDDEN', message: 'Admin role required' } }, 403);
-  }
-  await next();
-});
+export const mcpAdminMiddleware = createMiddleware<McpEnv>(
+  async (c, next): Promise<Response | void> => {
+    const user = c.get("user");
+    if (!user || user.role !== "admin") {
+      return c.json({ error: { code: "FORBIDDEN", message: "Admin role required" } }, 403);
+    }
+    await next();
+  },
+);

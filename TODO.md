@@ -141,8 +141,8 @@
 - ✅ **`services.test.ts`: 未テスト4関数のユニットテスト15件追加**
   - `listServicesByOwner`: owner_user_id フィルター・ORDER BY created_at DESC・空配列（3件）
   - `updateServiceFields`: name単体・allowedScopes単体・両方同時・空フィールド→null・存在しないID（5件）
-  - `rotateClientSecret`: 新ハッシュUPDATE・存在しないID→null・RETURNING *確認（3件）
-  - `transferServiceOwnership`: オーナー変更・存在しないID→null・RETURNING *確認（3件）
+  - `rotateClientSecret`: 新ハッシュUPDATE・存在しないID→null・RETURNING \*確認（3件）
+  - `transferServiceOwnership`: オーナー変更・存在しないID→null・RETURNING \*確認（3件）
   - packages/shared: 610 → 625テスト（+15）、全2055テストパス
 
 ## テストカバレッジ追加（2026-04-11）
@@ -164,7 +164,6 @@
   - 有効なUUID v4形式・大文字小文字区別なし・全ゼロ/全fのUUID（5件）
   - ハイフンなし・文字数過不足・空文字・無効文字・ハイフン位置違い・前後余分文字（8件）
   - 全2016テストパス（2003 → 2016）
-
 
 ## テストカバレッジ追加（2026-04-11）
 
@@ -190,6 +189,7 @@
 ### 追加したツール
 
 #### workers/mcp/src/tools/users.ts ✅
+
 - `getUserOwnedServicesTool` (`get_user_owned_services`): ユーザーが所有するサービス一覧を取得（削除前の所有権確認に有用）
 - `getUserAuthorizedServicesTool` (`get_user_authorized_services`): ユーザーが認可済みのサービス（連携中）一覧を取得
 - 両ツール: user_id 未指定・空文字→エラー、ユーザー未存在→404エラー
@@ -257,7 +257,7 @@
   - 必須フィールド（GOOGLE_CLIENT_ID/SECRET、JWT_PRIVATE/PUBLIC_KEY、IDP/USER/ADMIN_ORIGIN、COOKIE_SECRET）の検証
   - COOKIE_SECRET 32文字未満でエラー・ちょうど32文字でOK
   - オプションプロバイダー（LINE/GitHub/X）の片方設定でエラー・両方設定でOKのケース
-  - 成功結果キャッシュ・失敗結果非キャッシュ・_resetValidationCache 動作確認
+  - 成功結果キャッシュ・失敗結果非キャッシュ・\_resetValidationCache 動作確認
 
 - ✅ **`mcp/well-known.test.ts`: Protected Resource Metadata エンドポイントテスト5件追加**
   - `workers/mcp/src/routes/well-known.ts` のテストファイルが存在しなかった
@@ -321,7 +321,6 @@
 - ✅ **MCPワーカー `rate-limit.ts`: IPベースのレートリミッターミドルウェア新規追加 (60リクエスト/分)**
 - ✅ **MCPワーカー `index.ts`: レートリミットを認証より前に適用するよう設定**
 - ✅ **MCPワーカー `wrangler.toml`: `RATE_LIMITER_MCP` バインディング追加**
-
 
 ## コードレビュー修正（2026-04-09）
 
@@ -453,6 +452,7 @@
 - ✅ 全テスト（2107件）パス、型チェック通過、master push 済み
 
 対象ファイル:
+
 - `packages/shared/src/lib/pagination.ts`
 - `packages/shared/src/lib/pagination.test.ts`
 - `workers/id/src/routes/admin-audit-logs.ts`
@@ -565,11 +565,13 @@
 ## コードレビューで発見した問題（2026-04-08）
 
 **セキュリティ（要確認）**
+
 - ✅ `token.ts` `/api/token/revoke`: `cid` クレームが未設定の旧トークンでリボークが機能しない問題 → `payload.cid &&` を追加してintrospectと同じ設計に統一（コミット: `275d01e`）
 - ✅ `auth.ts` `isAllowedRedirectTo`: Public Suffix List非対応（現状の `0g0.xyz` では問題なし、ドメイン変更時に潜在的 open redirect）→ `tldts` 導入・`allowPrivateDomains: true` で完全PSL対応済み（コミット: `5ef3b34`、テスト781件パス）
 - ✅ `auth.ts` `/auth/refresh`: ユーザー未存在時に 404 を返している（RFC 6749 準拠なら 401 `invalid_grant`）→ 修正済み
 
 **リファクタリング**
+
 - ✅ `auth.ts` + `token.ts`: リフレッシュトークンのリプレイ攻撃検知・ローテーションロジックが重複 → `validateAndRevokeRefreshToken` / `issueTokenPairWithRecovery` ユーティリティへ抽出済み（2026-04-08）
 - ✅ `auth.ts`: `/login` ハンドラの statePayload に `OAuthStateCookieData` 型注釈を明示（インライン無型オブジェクトを型安全な変数に分離、2026-04-08）
 - ✅ `auth.ts`: `oauthError` ヘルパーと `c.json({ error: ... })` 直接使用の混在を解消（2026-04-08）
@@ -578,6 +580,7 @@
   - 対応テスト更新済み
 
 **テスト**
+
 - ✅ `token.ts` `handleRefreshTokenGrant`: パブリッククライアントのリフレッシュトークンフローにPKCE相当の保護がないことのテスト追加・仕様決定（2026-04-08）
   - 仕様決定: PKCEはauthorization_codeグラントの認可コード横取り攻撃対策であり、refresh_tokenグラントには適用されない
   - OAuth 2.1 §6.1 / RFC 6749 §6 に基づき、リフレッシュトークンフローの保護はローテーション + reuse detectionで実現
@@ -970,6 +973,7 @@
 ## コードレビュー対応 (2026-04-05, 追記)
 
 ### 対応済み ✅
+
 - **device.ts: normalizeUserCode後の文字セットバリデーション追加**
   - `USER_CODE_CHARS` 以外の文字が含まれる場合に `BAD_REQUEST` を返すよう修正
   - `/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/` によるバリデーション追加
@@ -993,6 +997,7 @@
 ## コードレビュー対応 (2026-04-05)
 
 ### 対応済み ✅
+
 - **期限切れトークンの `attemptUnrevokeToken` 削除** (`token.ts`)
   - 期限切れチェック後に `attemptUnrevokeToken` を呼んで rotation 状態を解除していたが不要かつ危険
   - 期限切れトークンを revoked_at=NULL に戻すと reuse detection ロジックが誤動作するリスク
@@ -1020,6 +1025,7 @@
 - [x] ~~`token.ts`: `handleRefreshTokenGrant` でサービス所有権不一致・有効期限切れの両方で `findRefreshTokenByHash` が重複呼び出しされている（D1への余分なクエリ）。1回の呼び出しに統合してパフォーマンス改善~~ (2026-04-05, serviceMismatch/isExpiredを事前評価して条件統合)
 
 ### 対応済み（2026-04-05）
+
 - [x] `auth.ts`: `handleProviderLink` のエラーハンドリングが `err.message.includes('UNIQUE constraint failed')` という文字列マッチングに依存 → `linkProvider` 側で UNIQUE制約エラーをキャッチして `PROVIDER_ALREADY_LINKED` として再throw。`handleProviderLink` は完全一致 `=== 'PROVIDER_ALREADY_LINKED'` のみに簡素化
 - [x] `token.ts`: `service!` 非null アサーション（`introspect` エンドポイント）削除 → `const introspectService = service` に変数を分離してTypeScript型推論を活用
 - [x] `token-pair.ts`: アクセストークンの `expires_in: 900` マジックナンバー → `ACCESS_TOKEN_TTL_SECONDS = 900` 定数として管理
@@ -1046,11 +1052,13 @@
 ## 対応済み（2026-04-06）
 
 ### セキュリティ強化: OAuth/OIDCフロー
+
 - [x] **CSPヘッダー追加**: `workers/user` の OAuth ログインページに `Content-Security-Policy` ヘッダーを追加し、XSS攻撃リスクを低減
 - [x] **refresh token グレースピリオド導入**: リフレッシュトークンに30秒のグレースピリオドを設定。ネットワーク遅延等による正常なリトライを許容しつつ、replay attack を防止
 - [x] **`end_session_endpoint` を discovery から除外**: OIDC Discovery（`/.well-known/openid-configuration`）から `end_session_endpoint` を除外。未実装エンドポイントをクライアントに公開しないことでセキュリティ上の意図を明確化
 
 ### バグ修正: `resolveOAuthClient` のパブリッククライアントパス
+
 - [x] **`token.ts`: `resolveOAuthClient` パブリッククライアントパスに try-catch 追加**
   - DB例外が発生した場合に確実に `status: 500` を返すよう修正
   - 例外をキャッチせずに上位に伝播していたケースを解消し、サーバーエラーとして適切にハンドリング
@@ -1064,6 +1072,7 @@
   - `oauth.test.ts` を新規作成: CSP・バリデーション・HTMLエスケープ 16テスト追加（全1480テストパス）
 
 ### 設計方針確認: プロバイダーリゾルバーの現状維持
+
 - [x] **プロバイダーリゾルバーの設計を意図的に維持**
   - 現状: 呼び出し元マップ方式 + 各プロバイダー固有関数（`resolveGoogleProvider`, `resolveLineProvider` 等）
   - 統一化を検討したが、各プロバイダーに固有のロジック（スコープ、トークン形式、APIエンドポイント等）が存在するため統一化は不要と判断
@@ -1072,11 +1081,13 @@
 ## 2026-04-06 コードレビュー対応
 
 ### 対応済み ✅
+
 - ✅ MCPツール `banUserTool`: BANユーザーのリフレッシュトークン・MCPセッション失効を追加 (`workers/mcp/src/tools/users.ts`)
 - ✅ MCPツール `deleteUserTool`: 削除前に存在確認・トークン失効・MCPセッション削除を追加 (`workers/mcp/src/tools/users.ts`)
 - ✅ `token.ts` グレースピリオド: 条件判定を `auth.ts` と統一（`>` → `<` に修正）
 
 ### 未対応（今後対応予定）
+
 - ~~`oauth-authorization-server` エンドポイント (RFC 8414) に `claims_supported` / `response_modes_supported` / `subject_types_supported` が未追加（OIDCディスカバリの一貫性）~~ ✅ (2026-04-06, subject_types_supported / claims_supported 追加、テスト4件追加)
 - ~~CSPヘッダーに `script-src 'none'` を明示的に追加（`default-src 'none'` からの意図明確化）~~ ✅ (2026-04-06)
 - ~~SQLite `datetime('now')` → `strftime('%Y-%m-%dT%H:%M:%SZ', 'now')` でISO 8601準拠に（Node.jsテスト環境での `new Date()` パース互換性）~~ ✅ (2026-04-06, commit a9d8f25)
@@ -1132,6 +1143,7 @@
 ## 2026-04-07（コードレビュー対応）
 
 ### ✅ 対応済み
+
 - **バグ修正: `createAuthCode` 例外未キャッチ** (`workers/id/src/routes/auth.ts`)
   - `/auth/callback` の `createAuthCode` 呼び出しが try/catch なし → D1 書き込み失敗時に 500 エラー
   - try/catch で包み、失敗時に `{ error: 'server_error' }` を返すよう修正
@@ -1139,6 +1151,7 @@
   - RFC 7662 §2.2 準拠のため `WWW-Authenticate: Bearer realm=\"0g0-id\"` を追加
 
 ### 未対応（次回対応候補）
+
 - ~~**token.ts**: `handleRefreshTokenGrant` で service_id ミスマッチ後の `attemptUnrevokeToken` に `reuse_detected` チェック漏れ → 並行リクエストでトークン状態が矛盾する可能性~~ ✅ **対応済み（2026-04-07）**
   - `findRefreshTokenById` を shared に追加し、`attemptUnrevokeToken` で unrevoke 前に `reuse_detected` チェックを実施するよう修正
 - ~~**auth.ts**: Cookie の `stateData` に署名がない（理論上の改ざんリスク）~~ ✅ **対応済み（2026-04-07）**
@@ -1156,6 +1169,7 @@
 **問題**: `POST /auth/refresh` エンドポイントで、期限切れトークンに対して `attemptUnrevokeToken` を呼んでいた。`token.ts` の `handleRefreshTokenGrant` では意図的に削除済みの呼び出しが残存していた。
 
 **修正内容**:
+
 - 期限切れ時の `attemptUnrevokeToken` 呼び出しを削除
 - コメントを `token.ts` の意図と揃えて更新
 - これにより、失効済み期限切れトークンの再提示で reuse detection が正しく機能するようになる
@@ -1165,6 +1179,7 @@
 **問題**: `/auth/link-intent` エンドポイントで `createAuthCode` が try/catch なしで呼ばれており、D1 書き込み失敗時に 500 エラーが素通りしていた。
 
 **修正内容**:
+
 - `createAuthCode` を try/catch で囲み、失敗時に `INTERNAL_ERROR` 500 を返すように修正
 - `/auth/callback` の対応（2026-04-07 対応①）と挙動を統一
 
@@ -1177,6 +1192,7 @@
 **問題**: `resolveXProvider` で `upsertXUser` に `isPlaceholderEmail` フラグを渡していなかった。LINE/GitHub/Twitch等では `isPlaceholderEmail: true` を渡して `emailLink` と `newUserEmailVerified` を制御しているが、X（Twitter）では漏れていた。
 
 **修正内容**:
+
 - `upsertXUser` 呼び出しに `isPlaceholderEmail: true` を追加（`workers/id/src/routes/auth.ts`）
 - `packages/shared/src/db/users.ts` の `upsertXUser` params型に `isPlaceholderEmail: boolean` を追加し処理を統一
 - 関連テスト3件を更新（`packages/shared/src/db/users.test.ts`）
@@ -1186,6 +1202,7 @@
 **問題**: `stateData.provider ?? 'google'` という実装があり、Cookie内にproviderフィールドがない場合に誤ってgoogleプロバイダーとして処理されるリスクがあった。
 
 **修正内容**:
+
 - `stateData.provider` が未定義の場合は `BAD_REQUEST: 'Missing provider in state'` を返すように変更
 - Cookie署名検証済みであっても、不正フォーマットへの防御的処理として適切
 
@@ -1194,6 +1211,7 @@
 **問題**: `workers/id/src/utils/ip.ts` の `getClientIp` 関数にテストファイルが存在しなかった。
 
 **修正内容**:
+
 - `workers/id/src/utils/ip.test.ts` を新規作成、5件のテスト追加
 - CF-Connecting-IP優先・ヘッダーなし時のnull返却・XFF単体はnull・IPv6対応を確認
 
@@ -1202,6 +1220,7 @@
 ## 2026-04-07 コードレビュー対応（token.ts）
 
 ### 対応済み ✅
+
 - `/revoke` JWT_PATTERNマッチ時のリフレッシュトークン失効スキップバグ修正
   - JWT検証失敗時もリフレッシュトークン処理へフォールスルーするよう修正
 - `handleAuthorizationCodeGrant` 例外処理追加
@@ -1209,9 +1228,11 @@
 - 上記2件のテスト追加（計91テスト）
 
 ### 対応済み ✅
+
 - ~~`resolveEffectiveScope` が undefined 返却時のスコープ空トークン発行問題~~ → `invalid_scope` + 400 を返すよう修正（token.ts / auth.ts / device.ts 3箇所、テスト+11件、1602テストパス）
 
 ### 未対応・今後検討 📝
+
 - ~~`introspectRefreshToken` / `introspectJwtToken` 内部の例外処理追加（DB障害時に active: false を返すべき）~~ ✅ **対応済み（2026-04-07）**
   - 両関数に try/catch を追加、DB障害時は `tokenLogger.error` でログ出力し `{ active: false }` を返す
   - テスト3件追加（findRefreshTokenByHash例外・isAccessTokenRevoked例外・findUserById例外）
@@ -1228,11 +1249,13 @@
 ### コードレビュー: token.ts エラーハンドリング修正
 
 #### バグ修正1: `addRevokedAccessToken()` の try-catch 漏れ（revoke エンドポイント）
+
 - **問題**: `/token/revoke` で `verifyAccessToken()` と `addRevokedAccessToken()` が同一 try ブロックに入っており、DB エラー時に `jwtVerified=false` のまま RT 処理へフォールスルーし 200 OK が返るバグがあった
 - **修正**: `verifyAccessToken()` の try を分離し、`addRevokedAccessToken()` は独立した try-catch で囲み DB エラー時に 500 を返すよう変更
 - **コミット**: c0654b3
 
 #### バグ修正2: `introspectRefreshToken()` / `introspectJwtToken()` RFC 7662 非準拠
+
 - **問題**: DB エラー時に `{ active: false }` を返しており、トークン無効とサーバーエラーの区別がつかなかった
 - **修正**: DB エラー時は `throw err` で伝播し、ルートハンドラで 500 + `{ error: 'server_error' }` を返すよう変更（RFC 7662 §2.2 準拠）
 - **テスト更新**: 旧挙動を期待していた 3 件のテストを新挙動に合わせて修正
@@ -1256,6 +1279,7 @@
 ## 2026-04-09 コードレビュー (auth.ts)
 
 ### 完了
+
 - ✅ `routes/auth.ts`: `/auth/callback` の state Cookie 検証・パースを `parseStateFromCookie` ヘルパーに抽出
   - `verifyCookie` → `JSON.parse` → フィールド検証の責務を一元化
   - ネスト3段 → 1段に整理
@@ -1264,6 +1288,7 @@
 ### 残課題（優先度順）
 
 #### 優先度1
+
 - ✅ `routes/auth.ts`: プロバイダー認証情報（OPTIONAL_PROVIDER_CREDENTIALS）を `packages/shared` の PROVIDER_CREDENTIALS として一元管理化（2026-04-09）
   - `packages/shared/src/lib/providers.ts` に `PROVIDER_CREDENTIALS` を追加・export
   - `auth.ts` のローカル定義を削除し `@0g0-id/shared` からのインポートに変更
@@ -1271,6 +1296,7 @@
   - テストモックに `PROVIDER_CREDENTIALS`・`COOKIE_SECRET` を追加（840テストパス）
 
 #### 優先度2
+
 - ✅ `routes/auth.ts`: プロバイダーごとの `resolve*Provider` 関数の重複削減（2026-04-09）
   - `resolveGoogleProvider` / `resolveLineProvider` / `resolveTwitchProvider` / `resolveGithubProvider` / `resolveXProvider` の5関数を廃止
   - 単一の `resolveProvider(c, provider, code, pkceVerifier, callbackUri)` に統合し switch/case で管理
@@ -1281,6 +1307,7 @@
   - テスト: 期限切れlink_token→400テスト追加、createAuthCode呼び出し確認を削除（840テストパス）
 
 #### 優先度3（設計改善）
+
 - ✅ `routes/auth.ts`: bootstrap admin 昇格失敗時の挙動を改善（2026-04-09）
   - 修正: DB例外時に `{ error: { code: 'INTERNAL_ERROR' } }` 500 を返すよう変更（silent failureを排除）
   - テスト: DB例外→500ケース追加（全841テストパス）
@@ -1290,6 +1317,7 @@
 ### 追加したテスト
 
 #### packages/shared/src/lib/logger.test.ts ✅
+
 - `createLogger` でロガーインスタンス生成を確認
 - info/debug ログが `console.log` に JSON 形式で出力される
 - warn ログが `console.warn` に出力される
@@ -1302,6 +1330,7 @@
 - 計 11テスト
 
 #### packages/shared/src/lib/parse-body.test.ts ✅
+
 - 有効な JSON ボディをパースして data を返す
 - 不正な JSON ボディ → 400 BAD_REQUEST
 - Zod バリデーション失敗 → 400 BAD_REQUEST
@@ -1313,6 +1342,7 @@
 - 計 8テスト
 
 #### packages/shared/src/middleware/body-limit.test.ts ✅
+
 - デフォルト 64KB 以下のボディは通過する
 - デフォルト 64KB 超 → 413 PAYLOAD_TOO_LARGE
 - カスタムサイズ: 100B 以下は通過する
@@ -1326,6 +1356,7 @@
 ### 追加したテスト
 
 #### workers/id/src/routes/users.test.ts ✅
+
 - `GET /api/users/me/login-stats`: 認証なし→401、統計+days返却、自分のsubで呼び出し確認、daysクエリパラメータ、範囲外days→400
 - `GET /api/users/me/login-trends`: 認証なし→401、トレンド+days返却、自分のsubで呼び出し確認、daysクエリパラメータ、範囲外days→400
 - 計 10テスト追加（867 → 877件）
@@ -1335,6 +1366,7 @@
 ### 追加したツール
 
 #### workers/mcp/src/tools/users.ts ✅
+
 - `getUserLoginStatsTool` (`get_user_login_stats`): ユーザーのプロバイダー別ログイン統計を取得（days パラメータ対応、デフォルト30日、最大365日）
 - `getUserLoginTrendsTool` (`get_user_login_trends`): ユーザーの日別ログイントレンドを取得（days パラメータ対応、デフォルト30日、最大365日）
 - 両ツール: user_id 未指定・空文字→エラー、ユーザー未存在→404エラー
@@ -1345,6 +1377,7 @@
 ### 追加したツール
 
 #### workers/mcp/src/tools/metrics.ts ✅
+
 - `getSuspiciousLoginsTool` (`get_suspicious_logins`): 複数国からの短時間ログインを検出（hours 1〜168、min_countries 2〜10、デフォルト24h/2か国）
 - `getServiceTokenStatsTool` (`get_service_token_stats`): 全サービスのアクティブトークン統計（認可ユーザー数・トークン数）を取得
 - テスト: 各4・3件追加（計+9件、142 → 151件）
@@ -1352,9 +1385,11 @@
 ## 2026-04-11 bff.ts 未テスト関数テスト22件追加
 
 ### 変更ファイル
+
 - `packages/shared/src/lib/bff.test.ts` — テスト13件 → 35件（+22件）
 
 ### 追加したテスト（7つのdescribeブロック）
+
 - `encodeSession` — 4件: base64url形式確認・parseSessionで復元可能・ランダムIV・異なるシークレット
 - `setSessionCookie` — 2件: setCookieの正しいオプション（httpOnly/secure/Lax/30日）・Cookie値の復元確認
 - `internalServiceHeaders` — 2件: INTERNAL_SERVICE_SECRET設定時/未設定時の挙動
@@ -1365,6 +1400,7 @@
 - `proxyMutate` — 3件: DELETE（デフォルト）/PATCH転送・セッションなし時401
 
 ### テスト数推移
+
 - 変更前: 2016件パス
 - 変更後: 2038件パス（+22件）
 
@@ -1372,7 +1408,7 @@
 
 - ✅ **`refresh-tokens.test.ts`: 未テスト6関数のユニットテスト24件追加**
   - `findRefreshTokenById`: id検索・null返却・bindパラメータ確認（3件）
-  - `findAndRevokeRefreshToken`: revoke成功・既失効null・reason有無・RETURNING * SQL確認（5件）
+  - `findAndRevokeRefreshToken`: revoke成功・既失効null・reason有無・RETURNING \* SQL確認（5件）
   - `unrevokeRefreshToken`: true/false返却・DB例外リトライ・SQL条件確認（4件）
   - `deleteExpiredRefreshTokens`: 削除件数・0件・DELETE SQL確認（3件）
   - `findUserIdByPairwiseSub`: user_id返却・null・bindパラメータ・SQL条件確認（4件）
@@ -1384,17 +1420,20 @@
 ### 追加したテスト
 
 #### packages/shared/src/db/auth-codes.test.ts ✅
+
 - `cleanupExpiredAuthCodes`: 期限切れ・使用済みエントリ削除件数返却・削除0件・DELETE SQL条件確認・meta.changes undefined→0
 - 計 4テスト（packages/shared: 649 → 653テスト、全2095テストパス）
 
 ## テストカバレッジ追加（2026-04-11）
 
 ### scheduled handler に cleanupExpiredMcpSessions の検証を追加
+
 - `workers/id/src/index.test.ts`: scheduled handler のテストで `cleanupExpiredMcpSessions` のインポートと呼び出し検証が漏れていた
   - インポート追加、beforeEach の clearAllMocks 追加、アサーション追加
   - テスト名を「全クリーンアップ処理を実行する」に更新
 
 ### POST /api/device/code テスト6件追加
+
 - `workers/id/src/routes/device.test.ts`: 2件のみだったテストを8件に拡充
   - client_id 未指定 → invalid_request + 400
   - 不明な client_id → invalid_client + 401
@@ -1406,5 +1445,6 @@
   - id worker: 887 → 893テスト（+6）
 
 ### token-recovery.ts テスト1件追加
+
 - `workers/id/src/utils/token-recovery.test.ts`: unrevokeRefreshToken が例外を投げても reject せず resolve するケース追加
   - id worker: 893 → 894テスト（+1）

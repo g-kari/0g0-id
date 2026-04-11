@@ -12,7 +12,7 @@ export {
   revokeUserSessionsTool,
   getUserOwnedServicesTool,
   getUserAuthorizedServicesTool,
-} from './users';
+} from "./users";
 
 export {
   listServicesTool,
@@ -26,15 +26,8 @@ export {
   deleteRedirectUriTool,
   listServiceUsersTool,
   revokeServiceUserAccessTool,
-} from './services';
+} from "./services";
 
-export {
-  getAuditLogsTool,
-  getAuditStatsTool,
-} from './audit';
+export { getAuditLogsTool, getAuditStatsTool } from "./audit";
 
-export {
-  getSystemMetricsTool,
-  getSuspiciousLoginsTool,
-  getServiceTokenStatsTool,
-} from './metrics';
+export { getSystemMetricsTool, getSuspiciousLoginsTool, getServiceTokenStatsTool } from "./metrics";

@@ -1,61 +1,87 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>0g0 ID - プロフィール</title>
-  <meta name="robots" content="noindex, nofollow">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/style.css">
-</head>
-<body>
-  <div class="container">
-    <div class="card" id="profile-card" style="display:none;">
-      <div class="profile-header">
-        <img id="avatar" class="avatar" src="" alt="プロフィール画像" width="64" height="64" style="display:none;">
-        <div id="avatar-placeholder" class="avatar-placeholder" aria-hidden="true"></div>
-        <div class="profile-info">
-          <p class="profile-name" id="profile-name"></p>
-          <p class="profile-email" id="profile-email"></p>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>0g0 ID - プロフィール</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="card" id="profile-card" style="display: none">
+        <div class="profile-header">
+          <img
+            id="avatar"
+            class="avatar"
+            src=""
+            alt="プロフィール画像"
+            width="64"
+            height="64"
+            style="display: none"
+          />
+          <div id="avatar-placeholder" class="avatar-placeholder" aria-hidden="true"></div>
+          <div class="profile-info">
+            <p class="profile-name" id="profile-name"></p>
+            <p class="profile-email" id="profile-email"></p>
+          </div>
+        </div>
+
+        <hr class="divider" />
+
+        <div id="edit-msg" class="alert" style="display: none" role="alert"></div>
+
+        <form id="edit-form">
+          <div class="form-group">
+            <label for="name-input">表示名</label>
+            <input type="text" id="name-input" name="name" required minlength="1" maxlength="100" />
+          </div>
+          <div class="form-group">
+            <label for="picture-input">プロフィール画像URL</label>
+            <input
+              type="url"
+              id="picture-input"
+              name="picture"
+              maxlength="500"
+              placeholder="例: https://example.com/avatar.jpg"
+            />
+          </div>
+          <div class="form-group">
+            <label for="phone-input">電話番号</label>
+            <input
+              type="tel"
+              id="phone-input"
+              name="phone"
+              maxlength="20"
+              placeholder="例: 090-1234-5678"
+            />
+          </div>
+          <div class="form-group">
+            <label for="address-input">住所</label>
+            <input
+              type="text"
+              id="address-input"
+              name="address"
+              maxlength="200"
+              placeholder="例: 東京都渋谷区..."
+            />
+          </div>
+          <div class="gap-2">
+            <button type="submit" class="btn btn-primary">保存</button>
+            <a href="/connections.html" class="btn btn-outline">連携サービス管理</a>
+            <a href="/sessions.html" class="btn btn-outline">ログイン中のデバイス</a>
+            <button type="button" class="btn btn-danger" id="logout-btn">ログアウト</button>
+          </div>
+        </form>
+      </div>
+      <div id="loading" class="card">
+        <div class="loading-center">
+          <span class="spinner"></span>
+          <span>読み込み中...</span>
         </div>
       </div>
-
-      <hr class="divider">
-
-      <div id="edit-msg" class="alert" style="display:none;" role="alert"></div>
-
-      <form id="edit-form">
-        <div class="form-group">
-          <label for="name-input">表示名</label>
-          <input type="text" id="name-input" name="name" required minlength="1" maxlength="100">
-        </div>
-        <div class="form-group">
-          <label for="picture-input">プロフィール画像URL</label>
-          <input type="url" id="picture-input" name="picture" maxlength="500" placeholder="例: https://example.com/avatar.jpg">
-        </div>
-        <div class="form-group">
-          <label for="phone-input">電話番号</label>
-          <input type="tel" id="phone-input" name="phone" maxlength="20" placeholder="例: 090-1234-5678">
-        </div>
-        <div class="form-group">
-          <label for="address-input">住所</label>
-          <input type="text" id="address-input" name="address" maxlength="200" placeholder="例: 東京都渋谷区...">
-        </div>
-        <div class="gap-2">
-          <button type="submit" class="btn btn-primary">保存</button>
-          <a href="/connections.html" class="btn btn-outline">連携サービス管理</a>
-          <a href="/sessions.html" class="btn btn-outline">ログイン中のデバイス</a>
-          <button type="button" class="btn btn-danger" id="logout-btn">ログアウト</button>
-        </div>
-      </form>
     </div>
-    <div id="loading" class="card">
-      <div class="loading-center">
-        <span class="spinner"></span>
-        <span>読み込み中...</span>
-      </div>
-    </div>
-  </div>
-  <script src="/app.js"></script>
-</body>
+    <script src="/app.js"></script>
+  </body>
 </html>

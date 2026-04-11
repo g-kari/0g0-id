@@ -1,37 +1,37 @@
-import type { RefreshToken, User } from '../types';
-import { escapeLikePattern } from '../lib/sql';
-import { createLogger } from '../lib/logger';
+import type { RefreshToken, User } from "../types";
+import { escapeLikePattern } from "../lib/sql";
+import { createLogger } from "../lib/logger";
 
-const logger = createLogger('refresh-tokens');
+const logger = createLogger("refresh-tokens");
 
 export type RevokeReason =
-  | 'user_logout'
-  | 'user_logout_all'
-  | 'user_logout_others'
-  | 'reuse_detected'
-  | 'service_delete'
-  | 'service_revoke'
-  | 'rotation'
-  | 'security_event'
-  | 'admin_action'
-  | 'expired';
+  | "user_logout"
+  | "user_logout_all"
+  | "user_logout_others"
+  | "reuse_detected"
+  | "service_delete"
+  | "service_revoke"
+  | "rotation"
+  | "security_event"
+  | "admin_action"
+  | "expired";
 
 export async function findRefreshTokenByHash(
   db: D1Database,
-  tokenHash: string
+  tokenHash: string,
 ): Promise<RefreshToken | null> {
   return db
-    .prepare('SELECT * FROM refresh_tokens WHERE token_hash = ?')
+    .prepare("SELECT * FROM refresh_tokens WHERE token_hash = ?")
     .bind(tokenHash)
     .first<RefreshToken>();
 }
 
 export async function findRefreshTokenById(
   db: D1Database,
-  tokenId: string
+  tokenId: string,
 ): Promise<RefreshToken | null> {
   return db
-    .prepare('SELECT * FROM refresh_tokens WHERE id = ?')
+    .prepare("SELECT * FROM refresh_tokens WHERE id = ?")
     .bind(tokenId)
     .first<RefreshToken>();
 }
@@ -43,7 +43,7 @@ export async function findRefreshTokenById(
 export async function findAndRevokeRefreshToken(
   db: D1Database,
   tokenHash: string,
-  reason?: RevokeReason
+  reason?: RevokeReason,
 ): Promise<RefreshToken | null> {
   return db
     .prepare(
@@ -51,7 +51,7 @@ export async function findAndRevokeRefreshToken(
        SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ?
        WHERE token_hash = ?
          AND revoked_at IS NULL
-       RETURNING *`
+       RETURNING *`,
     )
     .bind(reason ?? null, tokenHash)
     .first<RefreshToken>();
@@ -60,7 +60,7 @@ export async function findAndRevokeRefreshToken(
 export async function unrevokeRefreshToken(
   db: D1Database,
   tokenId: string,
-  maxRetries = 2
+  maxRetries = 2,
 ): Promise<boolean> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -71,13 +71,13 @@ export async function unrevokeRefreshToken(
            SET revoked_at = NULL, revoked_reason = NULL
            WHERE id = ?
              AND revoked_at IS NOT NULL
-             AND revoked_reason = 'rotation'`
+             AND revoked_reason = 'rotation'`,
         )
         .bind(tokenId)
         .run();
       if (result.meta.changes === 0) {
         logger.warn(
-          `unrevokeRefreshToken: token ${tokenId} was not unrevoked — revoked_reason may have changed concurrently`
+          `unrevokeRefreshToken: token ${tokenId} was not unrevoked — revoked_reason may have changed concurrently`,
         );
         return false;
       }
@@ -86,7 +86,7 @@ export async function unrevokeRefreshToken(
       lastError = err;
       logger.error(
         `unrevokeRefreshToken: attempt ${attempt + 1}/${maxRetries + 1} failed for token ${tokenId}`,
-        err
+        err,
       );
     }
   }
@@ -96,7 +96,7 @@ export async function unrevokeRefreshToken(
 export async function deleteExpiredRefreshTokens(db: D1Database): Promise<number> {
   const result = await db
     .prepare(
-      "DELETE FROM refresh_tokens WHERE datetime(expires_at) < datetime('now') OR (revoked_at IS NOT NULL AND datetime(revoked_at) < datetime('now', '-30 days'))"
+      "DELETE FROM refresh_tokens WHERE datetime(expires_at) < datetime('now') OR (revoked_at IS NOT NULL AND datetime(revoked_at) < datetime('now', '-30 days'))",
     )
     .run();
   return result.meta.changes ?? 0;
@@ -113,12 +113,12 @@ export async function createRefreshToken(
     expiresAt: string;
     pairwiseSub?: string | null;
     scope?: string | null;
-  }
+  },
 ): Promise<void> {
   await db
     .prepare(
       `INSERT INTO refresh_tokens (id, user_id, service_id, token_hash, family_id, expires_at, pairwise_sub, scope)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       params.id,
@@ -128,7 +128,7 @@ export async function createRefreshToken(
       params.familyId,
       params.expiresAt,
       params.pairwiseSub ?? null,
-      params.scope ?? null
+      params.scope ?? null,
     )
     .run();
 }
@@ -137,23 +137,29 @@ export async function createRefreshToken(
 export async function findUserIdByPairwiseSub(
   db: D1Database,
   serviceId: string,
-  pairwiseSub: string
+  pairwiseSub: string,
 ): Promise<string | null> {
   const row = await db
     .prepare(
       `SELECT DISTINCT user_id FROM refresh_tokens
        WHERE service_id = ? AND pairwise_sub = ?
          AND revoked_at IS NULL AND datetime(expires_at) > datetime('now')
-       LIMIT 1`
+       LIMIT 1`,
     )
     .bind(serviceId, pairwiseSub)
     .first<{ user_id: string }>();
   return row?.user_id ?? null;
 }
 
-export async function revokeRefreshToken(db: D1Database, id: string, reason?: RevokeReason): Promise<void> {
+export async function revokeRefreshToken(
+  db: D1Database,
+  id: string,
+  reason?: RevokeReason,
+): Promise<void> {
   await db
-    .prepare(`UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ? WHERE id = ?`)
+    .prepare(
+      `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ? WHERE id = ?`,
+    )
     .bind(reason ?? null, id)
     .run();
 }
@@ -161,19 +167,27 @@ export async function revokeRefreshToken(db: D1Database, id: string, reason?: Re
 /**
  * reuse detection: family全体を失効させる
  */
-export async function revokeTokenFamily(db: D1Database, familyId: string, reason?: RevokeReason): Promise<void> {
+export async function revokeTokenFamily(
+  db: D1Database,
+  familyId: string,
+  reason?: RevokeReason,
+): Promise<void> {
   await db
     .prepare(
-      `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ? WHERE family_id = ? AND revoked_at IS NULL`
+      `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ? WHERE family_id = ? AND revoked_at IS NULL`,
     )
     .bind(reason ?? null, familyId)
     .run();
 }
 
-export async function revokeUserTokens(db: D1Database, userId: string, reason?: RevokeReason): Promise<void> {
+export async function revokeUserTokens(
+  db: D1Database,
+  userId: string,
+  reason?: RevokeReason,
+): Promise<void> {
   await db
     .prepare(
-      `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ? WHERE user_id = ? AND revoked_at IS NULL`
+      `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ? WHERE user_id = ? AND revoked_at IS NULL`,
     )
     .bind(reason ?? null, userId)
     .run();
@@ -192,7 +206,7 @@ export interface UserConnection {
  */
 export async function listUserConnections(
   db: D1Database,
-  userId: string
+  userId: string,
 ): Promise<UserConnection[]> {
   const result = await db
     .prepare(
@@ -205,7 +219,7 @@ export async function listUserConnections(
          AND rt.revoked_at IS NULL
          AND datetime(rt.expires_at) > datetime('now')
        GROUP BY s.id, s.name, s.client_id
-       ORDER BY last_authorized_at DESC`
+       ORDER BY last_authorized_at DESC`,
     )
     .bind(userId)
     .all<UserConnection>();
@@ -216,7 +230,7 @@ export async function countActiveRefreshTokens(db: D1Database): Promise<number> 
   const result = await db
     .prepare(
       `SELECT COUNT(*) as count FROM refresh_tokens
-       WHERE revoked_at IS NULL AND datetime(expires_at) > datetime('now')`
+       WHERE revoked_at IS NULL AND datetime(expires_at) > datetime('now')`,
     )
     .first<{ count: number }>();
   return result?.count ?? 0;
@@ -237,7 +251,7 @@ export interface ActiveSession {
  */
 export async function listActiveSessionsByUserId(
   db: D1Database,
-  userId: string
+  userId: string,
 ): Promise<ActiveSession[]> {
   const result = await db
     .prepare(
@@ -247,7 +261,7 @@ export async function listActiveSessionsByUserId(
        WHERE rt.user_id = ?
          AND rt.revoked_at IS NULL
          AND datetime(rt.expires_at) > datetime('now')
-       ORDER BY rt.created_at DESC`
+       ORDER BY rt.created_at DESC`,
     )
     .bind(userId)
     .all<ActiveSession>();
@@ -260,13 +274,13 @@ export async function listActiveSessionsByUserId(
 export async function hasUserAuthorizedService(
   db: D1Database,
   userId: string,
-  serviceId: string
+  serviceId: string,
 ): Promise<boolean> {
   const result = await db
     .prepare(
       `SELECT 1 FROM refresh_tokens
        WHERE user_id = ? AND service_id = ? AND revoked_at IS NULL AND datetime(expires_at) > datetime('now')
-       LIMIT 1`
+       LIMIT 1`,
     )
     .bind(userId, serviceId)
     .first<{ 1: number }>();
@@ -287,7 +301,7 @@ export async function listUsersAuthorizedForService(
   serviceId: string,
   limit: number = 50,
   offset: number = 0,
-  filter?: AuthorizedUserFilter
+  filter?: AuthorizedUserFilter,
 ): Promise<User[]> {
   const conditions: string[] = [];
   const bindings: unknown[] = [serviceId];
@@ -301,7 +315,7 @@ export async function listUsersAuthorizedForService(
     bindings.push(`%${escapeLikePattern(filter.email)}%`);
   }
 
-  const extraConditions = conditions.length > 0 ? '\n       ' + conditions.join('\n       ') : '';
+  const extraConditions = conditions.length > 0 ? "\n       " + conditions.join("\n       ") : "";
   const result = await db
     .prepare(
       `SELECT u.*
@@ -315,7 +329,7 @@ export async function listUsersAuthorizedForService(
        )
        AND u.banned_at IS NULL${extraConditions}
        ORDER BY u.created_at DESC, u.id DESC
-       LIMIT ? OFFSET ?`
+       LIMIT ? OFFSET ?`,
     )
     .bind(...bindings, limit, offset)
     .all<User>();
@@ -328,7 +342,7 @@ export async function listUsersAuthorizedForService(
 export async function countUsersAuthorizedForService(
   db: D1Database,
   serviceId: string,
-  filter?: AuthorizedUserFilter
+  filter?: AuthorizedUserFilter,
 ): Promise<number> {
   const conditions: string[] = [];
   const bindings: unknown[] = [serviceId];
@@ -342,7 +356,7 @@ export async function countUsersAuthorizedForService(
     bindings.push(`%${escapeLikePattern(filter.email)}%`);
   }
 
-  const extraConditions = conditions.length > 0 ? '\n       ' + conditions.join('\n       ') : '';
+  const extraConditions = conditions.length > 0 ? "\n       " + conditions.join("\n       ") : "";
   const result = await db
     .prepare(
       `SELECT COUNT(*) as count
@@ -354,7 +368,7 @@ export async function countUsersAuthorizedForService(
            AND rt.revoked_at IS NULL
            AND datetime(rt.expires_at) > datetime('now')
        )
-       AND u.banned_at IS NULL${extraConditions}`
+       AND u.banned_at IS NULL${extraConditions}`,
     )
     .bind(...bindings)
     .first<{ count: number }>();
@@ -368,12 +382,12 @@ export async function revokeUserServiceTokens(
   db: D1Database,
   userId: string,
   serviceId: string,
-  reason?: RevokeReason
+  reason?: RevokeReason,
 ): Promise<number> {
   const result = await db
     .prepare(
       `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ?
-       WHERE user_id = ? AND service_id = ? AND revoked_at IS NULL`
+       WHERE user_id = ? AND service_id = ? AND revoked_at IS NULL`,
     )
     .bind(reason ?? null, userId, serviceId)
     .run();
@@ -385,11 +399,15 @@ export async function revokeUserServiceTokens(
  * サービス削除時に呼び出し、削除されたサービスのトークンが残存しないようにする。
  * 失効したトークン数を返す。
  */
-export async function revokeAllServiceTokens(db: D1Database, serviceId: string, reason?: RevokeReason): Promise<number> {
+export async function revokeAllServiceTokens(
+  db: D1Database,
+  serviceId: string,
+  reason?: RevokeReason,
+): Promise<number> {
   const result = await db
     .prepare(
       `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ?
-       WHERE service_id = ? AND revoked_at IS NULL`
+       WHERE service_id = ? AND revoked_at IS NULL`,
     )
     .bind(reason ?? null, serviceId)
     .run();
@@ -404,12 +422,12 @@ export async function revokeOtherUserTokens(
   db: D1Database,
   userId: string,
   excludeTokenHash: string,
-  reason?: RevokeReason
+  reason?: RevokeReason,
 ): Promise<number> {
   const result = await db
     .prepare(
       `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ?
-       WHERE user_id = ? AND token_hash != ? AND revoked_at IS NULL`
+       WHERE user_id = ? AND token_hash != ? AND revoked_at IS NULL`,
     )
     .bind(reason ?? null, userId, excludeTokenHash)
     .run();
@@ -424,12 +442,12 @@ export async function revokeTokenByIdForUser(
   db: D1Database,
   tokenId: string,
   userId: string,
-  reason?: RevokeReason
+  reason?: RevokeReason,
 ): Promise<number> {
   const result = await db
     .prepare(
       `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ?
-       WHERE id = ? AND user_id = ? AND revoked_at IS NULL`
+       WHERE id = ? AND user_id = ? AND revoked_at IS NULL`,
     )
     .bind(reason ?? null, tokenId, userId)
     .run();
@@ -459,7 +477,7 @@ export async function getServiceTokenStats(db: D1Database): Promise<ServiceToken
          AND rt.revoked_at IS NULL
          AND datetime(rt.expires_at) > datetime('now')
        GROUP BY s.id, s.name
-       ORDER BY authorized_user_count DESC`
+       ORDER BY authorized_user_count DESC`,
     )
     .all<ServiceTokenStat>();
   return result.results;

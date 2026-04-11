@@ -1,10 +1,5 @@
-import {
-  generateToken,
-  sha256,
-  signAccessToken,
-  createRefreshToken,
-} from '@0g0-id/shared';
-import type { IdpEnv, User } from '@0g0-id/shared';
+import { generateToken, sha256, signAccessToken, createRefreshToken } from "@0g0-id/shared";
+import type { IdpEnv, User } from "@0g0-id/shared";
 
 /** リフレッシュトークンの有効期限（30日） */
 export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -22,14 +17,22 @@ export async function issueTokenPair(
   db: D1Database,
   env: IdpEnv,
   user: User,
-  options: { serviceId: string | null; clientId?: string; familyId?: string; scope?: string }
+  options: { serviceId: string | null; clientId?: string; familyId?: string; scope?: string },
 ): Promise<{ accessToken: string; refreshToken: string }> {
   const { serviceId, clientId, familyId = crypto.randomUUID(), scope } = options;
 
   const accessToken = await signAccessToken(
-    { iss: env.IDP_ORIGIN, sub: user.id, aud: env.IDP_ORIGIN, email: user.email, role: user.role, scope, cid: clientId },
+    {
+      iss: env.IDP_ORIGIN,
+      sub: user.id,
+      aud: env.IDP_ORIGIN,
+      email: user.email,
+      role: user.role,
+      scope,
+      cid: clientId,
+    },
     env.JWT_PRIVATE_KEY,
-    env.JWT_PUBLIC_KEY
+    env.JWT_PUBLIC_KEY,
   );
 
   const refreshToken = generateToken(32);
@@ -60,15 +63,15 @@ export function buildTokenResponse(
   accessToken: string,
   refreshToken: string,
   scope?: string,
-  idToken?: string
+  idToken?: string,
 ): Record<string, unknown> {
   const response: Record<string, unknown> = {
     access_token: accessToken,
-    token_type: 'Bearer',
+    token_type: "Bearer",
     expires_in: ACCESS_TOKEN_TTL_SECONDS,
     refresh_token: refreshToken,
   };
-  if (idToken) response['id_token'] = idToken;
-  if (scope) response['scope'] = scope;
+  if (idToken) response["id_token"] = idToken;
+  if (scope) response["scope"] = scope;
   return response;
 }

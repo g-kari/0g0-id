@@ -1,5 +1,5 @@
-import type { AdminAuditLog } from '../types';
-import { daysAgoIso } from './helpers';
+import type { AdminAuditLog } from "../types";
+import { daysAgoIso } from "./helpers";
 
 /**
  * 管理者操作の監査ログを記録する。
@@ -14,14 +14,14 @@ export async function createAdminAuditLog(
     targetId: string;
     details?: Record<string, unknown> | null;
     ipAddress?: string | null;
-    status?: 'success' | 'failure';
-  }
+    status?: "success" | "failure";
+  },
 ): Promise<void> {
   const id = crypto.randomUUID();
-  const status = data.status ?? 'success';
+  const status = data.status ?? "success";
   await db
     .prepare(
-      'INSERT INTO admin_audit_logs (id, admin_user_id, action, target_type, target_id, details, ip_address, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      "INSERT INTO admin_audit_logs (id, admin_user_id, action, target_type, target_id, details, ip_address, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(
       id,
@@ -31,7 +31,7 @@ export async function createAdminAuditLog(
       data.targetId,
       data.details != null ? JSON.stringify(data.details) : null,
       data.ipAddress ?? null,
-      status
+      status,
     )
     .run();
 }
@@ -44,7 +44,7 @@ export interface AuditLogFilter {
   adminUserId?: string;
   targetId?: string;
   action?: string;
-  status?: 'success' | 'failure';
+  status?: "success" | "failure";
 }
 
 function buildAuditLogFilterClause(filters?: AuditLogFilter): {
@@ -55,24 +55,24 @@ function buildAuditLogFilterClause(filters?: AuditLogFilter): {
   const params: (string | number)[] = [];
 
   if (filters?.adminUserId) {
-    conditions.push('admin_user_id = ?');
+    conditions.push("admin_user_id = ?");
     params.push(filters.adminUserId);
   }
   if (filters?.targetId) {
-    conditions.push('target_id = ?');
+    conditions.push("target_id = ?");
     params.push(filters.targetId);
   }
   if (filters?.action) {
-    conditions.push('action = ?');
+    conditions.push("action = ?");
     params.push(filters.action);
   }
   if (filters?.status) {
-    conditions.push('status = ?');
+    conditions.push("status = ?");
     params.push(filters.status);
   }
 
   return {
-    where: conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '',
+    where: conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "",
     params,
   };
 }
@@ -81,14 +81,14 @@ export async function listAdminAuditLogs(
   db: D1Database,
   limit = 50,
   offset = 0,
-  filters?: AuditLogFilter
+  filters?: AuditLogFilter,
 ): Promise<{ logs: AdminAuditLog[]; total: number }> {
   const { where: whereClause, params } = buildAuditLogFilterClause(filters);
 
   const [logsResult, countResult] = await Promise.all([
     db
       .prepare(
-        `SELECT * FROM admin_audit_logs${whereClause} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`
+        `SELECT * FROM admin_audit_logs${whereClause} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
       )
       .bind(...params, limit, offset)
       .all<AdminAuditLog>(),
@@ -120,17 +120,17 @@ export async function getAuditLogStats(db: D1Database, days = 30): Promise<Audit
   const [actionResult, adminResult, dailyResult] = await Promise.all([
     db
       .prepare(
-        'SELECT action, COUNT(*) as count FROM admin_audit_logs GROUP BY action ORDER BY count DESC'
+        "SELECT action, COUNT(*) as count FROM admin_audit_logs GROUP BY action ORDER BY count DESC",
       )
       .all<{ action: string; count: number }>(),
     db
       .prepare(
-        'SELECT admin_user_id, COUNT(*) as count FROM admin_audit_logs GROUP BY admin_user_id ORDER BY count DESC'
+        "SELECT admin_user_id, COUNT(*) as count FROM admin_audit_logs GROUP BY admin_user_id ORDER BY count DESC",
       )
       .all<{ admin_user_id: string; count: number }>(),
     db
       .prepare(
-        "SELECT date(created_at) as date, COUNT(*) as count FROM admin_audit_logs WHERE created_at >= ? GROUP BY date(created_at) ORDER BY date DESC"
+        "SELECT date(created_at) as date, COUNT(*) as count FROM admin_audit_logs WHERE created_at >= ? GROUP BY date(created_at) ORDER BY date DESC",
       )
       .bind(since)
       .all<{ date: string; count: number }>(),

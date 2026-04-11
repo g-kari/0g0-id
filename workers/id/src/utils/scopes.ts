@@ -5,14 +5,14 @@
  * - 壊れた設定値でユーザーデータを誤って公開しないための安全策。
  * - スコープトークンとして許可する文字（RFC 6749 §3.3 準拠、実用的に制限）
  */
-const VALID_SCOPE_RE = /^[\w:.\-]+$/;
+const VALID_SCOPE_RE = /^[\w:.-]+$/;
 
 export function parseAllowedScopes(allowedScopesJson: string): string[] {
   try {
     const scopes = JSON.parse(allowedScopesJson) as unknown;
     if (!Array.isArray(scopes)) return [];
     // 各要素がstringかつ有効な文字のみで構成されているものだけ残す（空白・制御文字を除外）
-    return scopes.filter((s): s is string => typeof s === 'string' && VALID_SCOPE_RE.test(s));
+    return scopes.filter((s): s is string => typeof s === "string" && VALID_SCOPE_RE.test(s));
   } catch {
     return [];
   }
@@ -27,15 +27,15 @@ export function parseAllowedScopes(allowedScopesJson: string): string[] {
  */
 export function resolveEffectiveScope(
   requestedScope: string | null | undefined,
-  allowedScopesJson: string
+  allowedScopesJson: string,
 ): string | undefined {
   const allowedScopes = parseAllowedScopes(allowedScopesJson);
   if (requestedScope) {
-    const requested = requestedScope.split(' ').filter(Boolean);
-    const valid = requested.filter((s) => s === 'openid' || allowedScopes.includes(s));
-    return valid.length > 0 ? valid.join(' ') : undefined;
+    const requested = requestedScope.split(" ").filter(Boolean);
+    const valid = requested.filter((s) => s === "openid" || allowedScopes.includes(s));
+    return valid.length > 0 ? valid.join(" ") : undefined;
   }
-  return 'openid';
+  return "openid";
 }
 
 /**
@@ -48,8 +48,8 @@ export function resolveEffectiveScope(
  */
 export function validateNonce(nonce: string | undefined): string | null {
   if (nonce === undefined) return null;
-  if (nonce.length > 128) return 'nonce too long';
-  if (/[\x00-\x1F\x7F]/.test(nonce)) return 'nonce contains invalid characters';
+  if (nonce.length > 128) return "nonce too long";
+  if (/[\x00-\x1F\x7F]/.test(nonce)) return "nonce contains invalid characters";
   return null;
 }
 
@@ -63,6 +63,6 @@ export function validateNonce(nonce: string | undefined): string | null {
  */
 export function validateCodeChallenge(codeChallenge: string | undefined): string | null {
   if (codeChallenge === undefined) return null;
-  if (!/^[A-Za-z0-9\-_]{43}$/.test(codeChallenge)) return 'Invalid code_challenge format for S256';
+  if (!/^[A-Za-z0-9\-_]{43}$/.test(codeChallenge)) return "Invalid code_challenge format for S256";
   return null;
 }

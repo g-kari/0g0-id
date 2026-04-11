@@ -1,5 +1,5 @@
-import type { Context, Env } from 'hono';
-import type { z } from 'zod';
+import type { Context, Env } from "hono";
+import type { z } from "zod";
 
 /**
  * リクエストボディのJSONパースとZodバリデーションを一括で行うユーティリティ。
@@ -12,7 +12,7 @@ import type { z } from 'zod';
  */
 export async function parseJsonBody<T, E extends Env = Env>(
   c: Context<E>,
-  schema: z.ZodType<T>
+  schema: z.ZodType<T>,
 ): Promise<{ ok: true; data: T } | { ok: false; response: Response }> {
   let rawBody: unknown;
   try {
@@ -20,7 +20,7 @@ export async function parseJsonBody<T, E extends Env = Env>(
   } catch {
     return {
       ok: false,
-      response: c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400),
+      response: c.json({ error: { code: "BAD_REQUEST", message: "Invalid JSON body" } }, 400),
     };
   }
 
@@ -29,8 +29,13 @@ export async function parseJsonBody<T, E extends Env = Env>(
     return {
       ok: false,
       response: c.json(
-        { error: { code: 'BAD_REQUEST', message: parsed.error.issues[0]?.message ?? 'Invalid request' } },
-        400
+        {
+          error: {
+            code: "BAD_REQUEST",
+            message: parsed.error.issues[0]?.message ?? "Invalid request",
+          },
+        },
+        400,
       ),
     };
   }

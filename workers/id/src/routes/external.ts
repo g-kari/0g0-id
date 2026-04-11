@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono } from "hono";
 import {
   findUserById,
   findUserIdByPairwiseSub,
@@ -6,11 +6,11 @@ import {
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
   parsePagination,
-} from '@0g0-id/shared';
-import type { IdpEnv, User, Service, AuthorizedUserFilter } from '@0g0-id/shared';
-import { serviceAuthMiddleware } from '../utils/service-auth';
-import { parseAllowedScopes } from '../utils/scopes';
-import { externalApiRateLimitMiddleware } from '../middleware/rate-limit';
+} from "@0g0-id/shared";
+import type { IdpEnv, User, Service, AuthorizedUserFilter } from "@0g0-id/shared";
+import { serviceAuthMiddleware } from "../utils/service-auth";
+import { parseAllowedScopes } from "../utils/scopes";
+import { externalApiRateLimitMiddleware } from "../middleware/rate-limit";
 
 type Variables = { service: Service };
 
@@ -29,7 +29,7 @@ const SCOPE_FIELDS: Record<string, (u: User) => Record<string, unknown>> = {
  * 内部IDを直接公開しないために、sha256(client_id:user_id)を使用する。
  */
 async function generatePairwiseSub(service: Service, userId: string): Promise<string> {
-  return sha256(service.client_id + ':' + userId);
+  return sha256(service.client_id + ":" + userId);
 }
 
 /**
@@ -39,7 +39,7 @@ async function generatePairwiseSub(service: Service, userId: string): Promise<st
 async function buildUserData(
   service: Service,
   user: User,
-  allowedScopes: string[]
+  allowedScopes: string[],
 ): Promise<Record<string, unknown>> {
   const sub = await generatePairwiseSub(service, user.id);
   const data: Record<string, unknown> = { sub };
@@ -52,28 +52,34 @@ async function buildUserData(
 }
 
 // GET /api/external/users — 認可済みユーザー一覧（外部サービス向け）
-app.get('/users', externalApiRateLimitMiddleware, serviceAuthMiddleware, async (c) => {
-  const service = c.get('service');
+app.get("/users", externalApiRateLimitMiddleware, serviceAuthMiddleware, async (c) => {
+  const service = c.get("service");
 
   const pagination = parsePagination(
-    { limit: c.req.query('limit'), offset: c.req.query('offset') },
-    { defaultLimit: 50, maxLimit: 100 }
+    { limit: c.req.query("limit"), offset: c.req.query("offset") },
+    { defaultLimit: 50, maxLimit: 100 },
   );
-  if ('error' in pagination) {
+  if ("error" in pagination) {
     return c.json({ error: pagination.error }, 400);
   }
   const { limit, offset } = pagination;
 
-  const nameQuery = c.req.query('name');
-  const emailQuery = c.req.query('email');
+  const nameQuery = c.req.query("name");
+  const emailQuery = c.req.query("email");
 
   const allowedScopes = parseAllowedScopes(service.allowed_scopes);
 
-  if (nameQuery && !allowedScopes.includes('profile')) {
-    return c.json({ error: { code: 'FORBIDDEN', message: 'name filter requires profile scope' } }, 403);
+  if (nameQuery && !allowedScopes.includes("profile")) {
+    return c.json(
+      { error: { code: "FORBIDDEN", message: "name filter requires profile scope" } },
+      403,
+    );
   }
-  if (emailQuery && !allowedScopes.includes('email')) {
-    return c.json({ error: { code: 'FORBIDDEN', message: 'email filter requires email scope' } }, 403);
+  if (emailQuery && !allowedScopes.includes("email")) {
+    return c.json(
+      { error: { code: "FORBIDDEN", message: "email filter requires email scope" } },
+      403,
+    );
   }
 
   const filter: AuthorizedUserFilter = {
@@ -89,7 +95,7 @@ app.get('/users', externalApiRateLimitMiddleware, serviceAuthMiddleware, async (
       countUsersAuthorizedForService(c.env.DB, service.id, filter),
     ]);
   } catch {
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
 
   // listUsersAuthorizedForService のSQLで banned_at IS NULL フィルタ済み
@@ -99,25 +105,25 @@ app.get('/users', externalApiRateLimitMiddleware, serviceAuthMiddleware, async (
 });
 
 // GET /api/external/users/:sub — ペアワイズsubによるユーザー検索（外部サービス向け）
-app.get('/users/:sub', externalApiRateLimitMiddleware, serviceAuthMiddleware, async (c) => {
-  const service = c.get('service');
-  const requestedSub = c.req.param('sub');
+app.get("/users/:sub", externalApiRateLimitMiddleware, serviceAuthMiddleware, async (c) => {
+  const service = c.get("service");
+  const requestedSub = c.req.param("sub");
 
   try {
     // pairwise_subカラムによるインデックス検索（O(1)）
     const matchedUserId = await findUserIdByPairwiseSub(c.env.DB, service.id, requestedSub);
 
     if (!matchedUserId) {
-      return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+      return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);
     }
 
     const user = await findUserById(c.env.DB, matchedUserId);
     if (!user) {
-      return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+      return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);
     }
     // BAN済みユーザーは外部サービスに公開しない
     if (user.banned_at !== null) {
-      return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+      return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);
     }
 
     const allowedScopes = parseAllowedScopes(service.allowed_scopes);
@@ -125,7 +131,7 @@ app.get('/users/:sub', externalApiRateLimitMiddleware, serviceAuthMiddleware, as
 
     return c.json({ data });
   } catch {
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
 });
 

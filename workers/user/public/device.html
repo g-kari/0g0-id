@@ -1,461 +1,555 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>0g0 ID - デバイス認証</title>
-  <meta name="description" content="デバイス認証コードを入力してください">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/style.css">
-  <style>
-    .code-input-group {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    .code-input {
-      flex: 1;
-      padding: 0.625rem 0.75rem;
-      border: 1px solid var(--border);
-      border-radius: 0.375rem;
-      font-size: 1.125rem;
-      font-family: 'SF Mono', 'Fira Code', monospace;
-      letter-spacing: 0.1em;
-      text-align: center;
-      text-transform: uppercase;
-      transition: border-color 0.15s, box-shadow 0.15s;
-    }
-    .code-input:focus {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
-    }
-    .code-separator {
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: var(--text-muted);
-      flex-shrink: 0;
-    }
-    .scope-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.375rem;
-      margin-top: 0.5rem;
-    }
-    .scope-badge {
-      display: inline-block;
-      padding: 0.25rem 0.625rem;
-      background: rgba(109, 40, 217, 0.08);
-      color: var(--primary);
-      border-radius: 9999px;
-      font-size: 0.8125rem;
-      font-weight: 500;
-    }
-    .service-name {
-      font-weight: 600;
-      color: var(--primary-dark);
-    }
-    .success-icon {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 3rem;
-      height: 3rem;
-      border-radius: 50%;
-      background: rgba(22, 163, 74, 0.1);
-      color: var(--success);
-      margin: 0 auto 1rem;
-    }
-    .success-icon svg {
-      width: 1.5rem;
-      height: 1.5rem;
-    }
-    .denied-icon {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 3rem;
-      height: 3rem;
-      border-radius: 50%;
-      background: rgba(220, 38, 38, 0.1);
-      color: var(--error);
-      margin: 0 auto 1rem;
-    }
-    .denied-icon svg {
-      width: 1.5rem;
-      height: 1.5rem;
-    }
-    .btn-group {
-      display: flex;
-      gap: 0.75rem;
-      margin-top: 1.5rem;
-    }
-    .btn-group .btn {
-      flex: 1;
-    }
-    .text-center {
-      text-align: center;
-    }
-    .mb-1 { margin-bottom: 0.5rem; }
-    .mb-2 { margin-bottom: 1rem; }
-
-    @media (prefers-color-scheme: dark) {
-      .scope-badge {
-        background: rgba(139, 92, 246, 0.15);
-        color: var(--accent);
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>0g0 ID - デバイス認証</title>
+    <meta name="description" content="デバイス認証コードを入力してください" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/style.css" />
+    <style>
+      .code-input-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
       }
       .code-input {
-        background: #0c0c14;
-        color: var(--text);
+        flex: 1;
+        padding: 0.625rem 0.75rem;
+        border: 1px solid var(--border);
+        border-radius: 0.375rem;
+        font-size: 1.125rem;
+        font-family: "SF Mono", "Fira Code", monospace;
+        letter-spacing: 0.1em;
+        text-align: center;
+        text-transform: uppercase;
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s;
       }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="card">
-      <!-- 画面1: コード入力 -->
-      <div id="step-code" class="step">
-        <h1>デバイス認証</h1>
-        <p class="subtitle">デバイスに表示されているコードを入力してください</p>
-        <div id="code-error" class="alert alert-error" style="display:none;" role="alert"></div>
-        <form id="code-form" aria-label="デバイス認証コード入力">
-          <div class="form-group">
-            <label for="code-left" class="sr-only">コード前半</label>
-            <label for="code-right" class="sr-only">コード後半</label>
-            <div class="code-input-group">
-              <input type="text" id="code-left" class="code-input" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX" required aria-label="コード前半4文字">
-              <span class="code-separator" aria-hidden="true">-</span>
-              <input type="text" id="code-right" class="code-input" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX" required aria-label="コード後半4文字">
+      .code-input:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+      }
+      .code-separator {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--text-muted);
+        flex-shrink: 0;
+      }
+      .scope-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.375rem;
+        margin-top: 0.5rem;
+      }
+      .scope-badge {
+        display: inline-block;
+        padding: 0.25rem 0.625rem;
+        background: rgba(109, 40, 217, 0.08);
+        color: var(--primary);
+        border-radius: 9999px;
+        font-size: 0.8125rem;
+        font-weight: 500;
+      }
+      .service-name {
+        font-weight: 600;
+        color: var(--primary-dark);
+      }
+      .success-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 50%;
+        background: rgba(22, 163, 74, 0.1);
+        color: var(--success);
+        margin: 0 auto 1rem;
+      }
+      .success-icon svg {
+        width: 1.5rem;
+        height: 1.5rem;
+      }
+      .denied-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 50%;
+        background: rgba(220, 38, 38, 0.1);
+        color: var(--error);
+        margin: 0 auto 1rem;
+      }
+      .denied-icon svg {
+        width: 1.5rem;
+        height: 1.5rem;
+      }
+      .btn-group {
+        display: flex;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+      }
+      .btn-group .btn {
+        flex: 1;
+      }
+      .text-center {
+        text-align: center;
+      }
+      .mb-1 {
+        margin-bottom: 0.5rem;
+      }
+      .mb-2 {
+        margin-bottom: 1rem;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .scope-badge {
+          background: rgba(139, 92, 246, 0.15);
+          color: var(--accent);
+        }
+        .code-input {
+          background: #0c0c14;
+          color: var(--text);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <!-- 画面1: コード入力 -->
+        <div id="step-code" class="step">
+          <h1>デバイス認証</h1>
+          <p class="subtitle">デバイスに表示されているコードを入力してください</p>
+          <div id="code-error" class="alert alert-error" style="display: none" role="alert"></div>
+          <form id="code-form" aria-label="デバイス認証コード入力">
+            <div class="form-group">
+              <label for="code-left" class="sr-only">コード前半</label>
+              <label for="code-right" class="sr-only">コード後半</label>
+              <div class="code-input-group">
+                <input
+                  type="text"
+                  id="code-left"
+                  class="code-input"
+                  maxlength="4"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  spellcheck="false"
+                  placeholder="XXXX"
+                  required
+                  aria-label="コード前半4文字"
+                />
+                <span class="code-separator" aria-hidden="true">-</span>
+                <input
+                  type="text"
+                  id="code-right"
+                  class="code-input"
+                  maxlength="4"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  spellcheck="false"
+                  placeholder="XXXX"
+                  required
+                  aria-label="コード後半4文字"
+                />
+              </div>
             </div>
-          </div>
-          <button type="submit" class="btn btn-primary" id="verify-btn">確認</button>
-        </form>
-      </div>
-
-      <!-- 画面2: ログイン要求 -->
-      <div id="step-login" class="step" style="display:none;">
-        <h1>デバイス認証</h1>
-        <p class="subtitle">デバイス認証を続けるにはサインインが必要です</p>
-        <div class="login-buttons">
-          <a href="#" class="btn btn-google" id="login-btn-google">
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-              <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
-              <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
-              <path d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/>
-              <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 6.294C4.672 4.169 6.656 3.58 9 3.58z" fill="#EA4335"/>
-            </svg>
-            Googleでサインイン
-          </a>
-          <a href="#" class="btn btn-line" id="login-btn-line">
-            <svg width="18" height="18" viewBox="0 0 36 36" fill="none" aria-hidden="true">
-              <rect width="36" height="36" rx="8" fill="#06C755"/>
-              <path d="M30 16.8C30 11.4 24.6 7 18 7S6 11.4 6 16.8c0 4.8 4.2 8.8 9.9 9.6.4.1.9.3 1 .6.1.3 0 .7 0 .7l-.2 1.2c-.1.3-.3 1.2 1 .7s7.2-4.2 9.8-7.2c1.8-2 2.5-4 2.5-5.6z" fill="white"/>
-              <path d="M25.2 19.8h-3.9c-.2 0-.3-.1-.3-.3v-6c0-.2.1-.3.3-.3h3.9c.2 0 .3.1.3.3v1c0 .2-.1.3-.3.3h-2.6v1h2.6c.2 0 .3.1.3.3v1c0 .2-.1.3-.3.3h-2.6v1h2.6c.2 0 .3.1.3.3v1c0 .2-.1.3-.3.3zm-5.7 0h-1c-.2 0-.3-.1-.3-.3v-6c0-.2.1-.3.3-.3h1c.2 0 .3.1.3.3v6c0 .2-.1.3-.3.3zm-2.4 0h-1c-.2 0-.3-.1-.3-.3v-3.7l-2.5 3.8c-.1.1-.2.2-.3.2h-1c-.2 0-.3-.1-.3-.3v-6c0-.2.1-.3.3-.3h1c.2 0 .3.1.3.3v3.7l2.5-3.8c.1-.1.2-.2.3-.2h1c.2 0 .3.1.3.3v6c0 .2-.2.3-.3.3zm-6.5 0h-3.9c-.2 0-.3-.1-.3-.3v-6c0-.2.1-.3.3-.3h1c.2 0 .3.1.3.3v4.7h2.6c.2 0 .3.1.3.3v1c0 .2-.1.3-.3.3z" fill="#06C755"/>
-            </svg>
-            LINEでサインイン
-          </a>
-          <a href="#" class="btn btn-github" id="login-btn-github">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="white" aria-hidden="true">
-              <path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.341-3.369-1.341-.454-1.155-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.268 2.75 1.026A9.578 9.578 0 0112 6.836c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.026 2.747-1.026.546 1.377.202 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
-            </svg>
-            GitHubでサインイン
-          </a>
+            <button type="submit" class="btn btn-primary" id="verify-btn">確認</button>
+          </form>
         </div>
-      </div>
 
-      <!-- 画面3: 承認確認 -->
-      <div id="step-approve" class="step" style="display:none;">
-        <h1>デバイス認証</h1>
-        <p class="subtitle"><span class="service-name" id="approve-service-name"></span> へのアクセスを許可しますか？</p>
-        <div id="approve-scopes"></div>
-        <div class="btn-group">
-          <button type="button" class="btn btn-primary" id="approve-btn">許可する</button>
-          <button type="button" class="btn btn-outline" id="deny-btn">拒否する</button>
-        </div>
-      </div>
-
-      <!-- 画面4: 承認完了 -->
-      <div id="step-done" class="step" style="display:none;">
-        <div class="text-center">
-          <div class="success-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
+        <!-- 画面2: ログイン要求 -->
+        <div id="step-login" class="step" style="display: none">
+          <h1>デバイス認証</h1>
+          <p class="subtitle">デバイス認証を続けるにはサインインが必要です</p>
+          <div class="login-buttons">
+            <a href="#" class="btn btn-google" id="login-btn-google">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <path
+                  d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"
+                  fill="#4285F4"
+                />
+                <path
+                  d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z"
+                  fill="#34A853"
+                />
+                <path
+                  d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z"
+                  fill="#FBBC05"
+                />
+                <path
+                  d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 6.294C4.672 4.169 6.656 3.58 9 3.58z"
+                  fill="#EA4335"
+                />
+              </svg>
+              Googleでサインイン
+            </a>
+            <a href="#" class="btn btn-line" id="login-btn-line">
+              <svg width="18" height="18" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+                <rect width="36" height="36" rx="8" fill="#06C755" />
+                <path
+                  d="M30 16.8C30 11.4 24.6 7 18 7S6 11.4 6 16.8c0 4.8 4.2 8.8 9.9 9.6.4.1.9.3 1 .6.1.3 0 .7 0 .7l-.2 1.2c-.1.3-.3 1.2 1 .7s7.2-4.2 9.8-7.2c1.8-2 2.5-4 2.5-5.6z"
+                  fill="white"
+                />
+                <path
+                  d="M25.2 19.8h-3.9c-.2 0-.3-.1-.3-.3v-6c0-.2.1-.3.3-.3h3.9c.2 0 .3.1.3.3v1c0 .2-.1.3-.3.3h-2.6v1h2.6c.2 0 .3.1.3.3v1c0 .2-.1.3-.3.3h-2.6v1h2.6c.2 0 .3.1.3.3v1c0 .2-.1.3-.3.3zm-5.7 0h-1c-.2 0-.3-.1-.3-.3v-6c0-.2.1-.3.3-.3h1c.2 0 .3.1.3.3v6c0 .2-.1.3-.3.3zm-2.4 0h-1c-.2 0-.3-.1-.3-.3v-3.7l-2.5 3.8c-.1.1-.2.2-.3.2h-1c-.2 0-.3-.1-.3-.3v-6c0-.2.1-.3.3-.3h1c.2 0 .3.1.3.3v3.7l2.5-3.8c.1-.1.2-.2.3-.2h1c.2 0 .3.1.3.3v6c0 .2-.2.3-.3.3zm-6.5 0h-3.9c-.2 0-.3-.1-.3-.3v-6c0-.2.1-.3.3-.3h1c.2 0 .3.1.3.3v4.7h2.6c.2 0 .3.1.3.3v1c0 .2-.1.3-.3.3z"
+                  fill="#06C755"
+                />
+              </svg>
+              LINEでサインイン
+            </a>
+            <a href="#" class="btn btn-github" id="login-btn-github">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="white" aria-hidden="true">
+                <path
+                  d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.341-3.369-1.341-.454-1.155-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.268 2.75 1.026A9.578 9.578 0 0112 6.836c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.026 2.747-1.026.546 1.377.202 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"
+                />
+              </svg>
+              GitHubでサインイン
+            </a>
           </div>
-          <h1>認証完了</h1>
-          <p class="subtitle">デバイスに戻って操作を続けてください</p>
-          <p class="subtitle">このページは閉じて構いません</p>
         </div>
-      </div>
 
-      <!-- 画面5: 拒否完了 -->
-      <div id="step-denied" class="step" style="display:none;">
-        <div class="text-center">
-          <div class="denied-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
+        <!-- 画面3: 承認確認 -->
+        <div id="step-approve" class="step" style="display: none">
+          <h1>デバイス認証</h1>
+          <p class="subtitle">
+            <span class="service-name" id="approve-service-name"></span>
+            へのアクセスを許可しますか？
+          </p>
+          <div id="approve-scopes"></div>
+          <div class="btn-group">
+            <button type="button" class="btn btn-primary" id="approve-btn">許可する</button>
+            <button type="button" class="btn btn-outline" id="deny-btn">拒否する</button>
           </div>
-          <h1>認証を拒否しました</h1>
-          <p class="subtitle">デバイスへのアクセスは許可されませんでした</p>
-          <p class="subtitle">このページは閉じて構いません</p>
+        </div>
+
+        <!-- 画面4: 承認完了 -->
+        <div id="step-done" class="step" style="display: none">
+          <div class="text-center">
+            <div class="success-icon" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </div>
+            <h1>認証完了</h1>
+            <p class="subtitle">デバイスに戻って操作を続けてください</p>
+            <p class="subtitle">このページは閉じて構いません</p>
+          </div>
+        </div>
+
+        <!-- 画面5: 拒否完了 -->
+        <div id="step-denied" class="step" style="display: none">
+          <div class="text-center">
+            <div class="denied-icon" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </div>
+            <h1>認証を拒否しました</h1>
+            <p class="subtitle">デバイスへのアクセスは許可されませんでした</p>
+            <p class="subtitle">このページは閉じて構いません</p>
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <script>
-    'use strict';
-    (function () {
-      // ステップ管理
-      var steps = ['step-code', 'step-login', 'step-approve', 'step-done', 'step-denied'];
-      function showStep(id) {
-        for (var i = 0; i < steps.length; i++) {
-          var el = document.getElementById(steps[i]);
-          if (el) el.style.display = steps[i] === id ? 'block' : 'none';
-        }
-      }
-
-      // 要素取得
-      var codeForm = document.getElementById('code-form');
-      var codeLeft = document.getElementById('code-left');
-      var codeRight = document.getElementById('code-right');
-      var codeError = document.getElementById('code-error');
-      var verifyBtn = document.getElementById('verify-btn');
-      var approveBtn = document.getElementById('approve-btn');
-      var denyBtn = document.getElementById('deny-btn');
-      var approveServiceName = document.getElementById('approve-service-name');
-      var approveScopes = document.getElementById('approve-scopes');
-
-      // 検証済みデバイスコード（承認時に使用）
-      var verifiedUserCode = '';
-
-      // エラー表示
-      function showCodeError(msg) {
-        if (codeError) {
-          codeError.textContent = msg;
-          codeError.style.display = 'block';
-        }
-      }
-      function hideCodeError() {
-        if (codeError) codeError.style.display = 'none';
-      }
-
-      // HTMLエスケープ
-      function escHtml(str) {
-        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-      }
-
-      // コード入力の自動フォーカス制御
-      if (codeLeft) {
-        codeLeft.addEventListener('input', function () {
-          // 英数字のみ
-          this.value = this.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-          if (this.value.length >= 4 && codeRight) {
-            codeRight.focus();
+    <script>
+      "use strict";
+      (function () {
+        // ステップ管理
+        var steps = ["step-code", "step-login", "step-approve", "step-done", "step-denied"];
+        function showStep(id) {
+          for (var i = 0; i < steps.length; i++) {
+            var el = document.getElementById(steps[i]);
+            if (el) el.style.display = steps[i] === id ? "block" : "none";
           }
-        });
-        // ペーストで XXXX-XXXX 形式を自動分割
-        codeLeft.addEventListener('paste', function (e) {
-          var pasted = (e.clipboardData || window.clipboardData).getData('text').trim().toUpperCase();
-          var match = pasted.match(/^([A-Z0-9]{4})-?([A-Z0-9]{4})$/);
-          if (match) {
-            e.preventDefault();
-            codeLeft.value = match[1];
-            if (codeRight) {
-              codeRight.value = match[2];
+        }
+
+        // 要素取得
+        var codeForm = document.getElementById("code-form");
+        var codeLeft = document.getElementById("code-left");
+        var codeRight = document.getElementById("code-right");
+        var codeError = document.getElementById("code-error");
+        var verifyBtn = document.getElementById("verify-btn");
+        var approveBtn = document.getElementById("approve-btn");
+        var denyBtn = document.getElementById("deny-btn");
+        var approveServiceName = document.getElementById("approve-service-name");
+        var approveScopes = document.getElementById("approve-scopes");
+
+        // 検証済みデバイスコード（承認時に使用）
+        var verifiedUserCode = "";
+
+        // エラー表示
+        function showCodeError(msg) {
+          if (codeError) {
+            codeError.textContent = msg;
+            codeError.style.display = "block";
+          }
+        }
+        function hideCodeError() {
+          if (codeError) codeError.style.display = "none";
+        }
+
+        // HTMLエスケープ
+        function escHtml(str) {
+          return String(str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+        }
+
+        // コード入力の自動フォーカス制御
+        if (codeLeft) {
+          codeLeft.addEventListener("input", function () {
+            // 英数字のみ
+            this.value = this.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+            if (this.value.length >= 4 && codeRight) {
               codeRight.focus();
             }
-          }
-        });
-      }
-      if (codeRight) {
-        codeRight.addEventListener('input', function () {
-          this.value = this.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-        });
-        // Backspaceで前の入力に戻る
-        codeRight.addEventListener('keydown', function (e) {
-          if (e.key === 'Backspace' && this.value === '' && codeLeft) {
-            codeLeft.focus();
-          }
-        });
-      }
-
-      // URLクエリパラメータからコード自動入力
-      var params = new URLSearchParams(window.location.search);
-      var codeParam = params.get('code');
-      if (codeParam) {
-        var codeParts = codeParam.toUpperCase().replace(/[^A-Z0-9-]/g, '');
-        var dashMatch = codeParts.match(/^([A-Z0-9]{4})-?([A-Z0-9]{4})$/);
-        if (dashMatch) {
-          if (codeLeft) codeLeft.value = dashMatch[1];
-          if (codeRight) codeRight.value = dashMatch[2];
-        }
-      }
-
-      // ログインボタンのリンクを構築（device認証後にこのページに戻る）
-      function buildLoginUrl(provider) {
-        var currentCode = '';
-        if (codeLeft && codeRight) {
-          currentCode = codeLeft.value + '-' + codeRight.value;
-        }
-        return '/auth/login?provider=' + encodeURIComponent(provider) +
-          '&redirect_to=' + encodeURIComponent('/device?code=' + currentCode);
-      }
-
-      function setupLoginButtons() {
-        var providers = { google: 'login-btn-google', line: 'login-btn-line', github: 'login-btn-github' };
-        for (var provider in providers) {
-          var btn = document.getElementById(providers[provider]);
-          if (btn) {
-            btn.setAttribute('data-provider', provider);
-            btn.addEventListener('click', function (e) {
+          });
+          // ペーストで XXXX-XXXX 形式を自動分割
+          codeLeft.addEventListener("paste", function (e) {
+            var pasted = (e.clipboardData || window.clipboardData)
+              .getData("text")
+              .trim()
+              .toUpperCase();
+            var match = pasted.match(/^([A-Z0-9]{4})-?([A-Z0-9]{4})$/);
+            if (match) {
               e.preventDefault();
-              window.location.href = buildLoginUrl(this.getAttribute('data-provider'));
-            });
+              codeLeft.value = match[1];
+              if (codeRight) {
+                codeRight.value = match[2];
+                codeRight.focus();
+              }
+            }
+          });
+        }
+        if (codeRight) {
+          codeRight.addEventListener("input", function () {
+            this.value = this.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+          });
+          // Backspaceで前の入力に戻る
+          codeRight.addEventListener("keydown", function (e) {
+            if (e.key === "Backspace" && this.value === "" && codeLeft) {
+              codeLeft.focus();
+            }
+          });
+        }
+
+        // URLクエリパラメータからコード自動入力
+        var params = new URLSearchParams(window.location.search);
+        var codeParam = params.get("code");
+        if (codeParam) {
+          var codeParts = codeParam.toUpperCase().replace(/[^A-Z0-9-]/g, "");
+          var dashMatch = codeParts.match(/^([A-Z0-9]{4})-?([A-Z0-9]{4})$/);
+          if (dashMatch) {
+            if (codeLeft) codeLeft.value = dashMatch[1];
+            if (codeRight) codeRight.value = dashMatch[2];
           }
         }
-      }
-      setupLoginButtons();
 
-      // コード検証
-      if (codeForm) {
-        codeForm.addEventListener('submit', function (e) {
-          e.preventDefault();
-          hideCodeError();
-
-          var left = codeLeft ? codeLeft.value.trim().toUpperCase() : '';
-          var right = codeRight ? codeRight.value.trim().toUpperCase() : '';
-
-          if (left.length !== 4 || right.length !== 4) {
-            showCodeError('8桁のコードを入力してください');
-            return;
+        // ログインボタンのリンクを構築（device認証後にこのページに戻る）
+        function buildLoginUrl(provider) {
+          var currentCode = "";
+          if (codeLeft && codeRight) {
+            currentCode = codeLeft.value + "-" + codeRight.value;
           }
+          return (
+            "/auth/login?provider=" +
+            encodeURIComponent(provider) +
+            "&redirect_to=" +
+            encodeURIComponent("/device?code=" + currentCode)
+          );
+        }
 
-          var userCode = left + '-' + right;
-
-          // 二重送信防止
-          if (verifyBtn) {
-            verifyBtn.disabled = true;
-            verifyBtn.textContent = '確認中...';
-          }
-
-          fetch('/api/device/verify', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_code: userCode }),
-          })
-            .then(function (res) {
-              return res.json().then(function (data) {
-                return { status: res.status, data: data };
+        function setupLoginButtons() {
+          var providers = {
+            google: "login-btn-google",
+            line: "login-btn-line",
+            github: "login-btn-github",
+          };
+          for (var provider in providers) {
+            var btn = document.getElementById(providers[provider]);
+            if (btn) {
+              btn.setAttribute("data-provider", provider);
+              btn.addEventListener("click", function (e) {
+                e.preventDefault();
+                window.location.href = buildLoginUrl(this.getAttribute("data-provider"));
               });
+            }
+          }
+        }
+        setupLoginButtons();
+
+        // コード検証
+        if (codeForm) {
+          codeForm.addEventListener("submit", function (e) {
+            e.preventDefault();
+            hideCodeError();
+
+            var left = codeLeft ? codeLeft.value.trim().toUpperCase() : "";
+            var right = codeRight ? codeRight.value.trim().toUpperCase() : "";
+
+            if (left.length !== 4 || right.length !== 4) {
+              showCodeError("8桁のコードを入力してください");
+              return;
+            }
+
+            var userCode = left + "-" + right;
+
+            // 二重送信防止
+            if (verifyBtn) {
+              verifyBtn.disabled = true;
+              verifyBtn.textContent = "確認中...";
+            }
+
+            fetch("/api/device/verify", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ user_code: userCode }),
             })
-            .then(function (result) {
-              if (result.status === 401) {
-                // 未認証 → ログイン画面を表示
-                showStep('step-login');
-                return;
-              }
-              if (result.data.error) {
-                var errorMessages = {
-                  INVALID_CODE: '無効なコードです。もう一度確認してください。',
-                  CODE_EXPIRED: 'コードの有効期限が切れています。デバイスで新しいコードを取得してください。',
-                  CODE_ALREADY_USED: 'このコードは既に使用されています。',
-                  BAD_REQUEST: '入力内容に誤りがあります。',
-                };
-                showCodeError(errorMessages[result.data.error.code] || result.data.error.message || '検証に失敗しました');
-                return;
-              }
-              if (result.data.data) {
-                verifiedUserCode = userCode;
-                if (approveServiceName) {
-                  approveServiceName.textContent = result.data.data.service_name || '不明なサービス';
+              .then(function (res) {
+                return res.json().then(function (data) {
+                  return { status: res.status, data: data };
+                });
+              })
+              .then(function (result) {
+                if (result.status === 401) {
+                  // 未認証 → ログイン画面を表示
+                  showStep("step-login");
+                  return;
                 }
-                if (approveScopes && result.data.data.scopes) {
-                  var scopes = result.data.data.scopes;
-                  if (scopes.length > 0) {
-                    approveScopes.innerHTML =
-                      '<p class="subtitle mb-1">要求されているスコープ:</p>' +
-                      '<div class="scope-list">' +
-                      scopes.map(function (s) { return '<span class="scope-badge">' + escHtml(s) + '</span>'; }).join('') +
-                      '</div>';
+                if (result.data.error) {
+                  var errorMessages = {
+                    INVALID_CODE: "無効なコードです。もう一度確認してください。",
+                    CODE_EXPIRED:
+                      "コードの有効期限が切れています。デバイスで新しいコードを取得してください。",
+                    CODE_ALREADY_USED: "このコードは既に使用されています。",
+                    BAD_REQUEST: "入力内容に誤りがあります。",
+                  };
+                  showCodeError(
+                    errorMessages[result.data.error.code] ||
+                      result.data.error.message ||
+                      "検証に失敗しました",
+                  );
+                  return;
+                }
+                if (result.data.data) {
+                  verifiedUserCode = userCode;
+                  if (approveServiceName) {
+                    approveServiceName.textContent =
+                      result.data.data.service_name || "不明なサービス";
                   }
+                  if (approveScopes && result.data.data.scopes) {
+                    var scopes = result.data.data.scopes;
+                    if (scopes.length > 0) {
+                      approveScopes.innerHTML =
+                        '<p class="subtitle mb-1">要求されているスコープ:</p>' +
+                        '<div class="scope-list">' +
+                        scopes
+                          .map(function (s) {
+                            return '<span class="scope-badge">' + escHtml(s) + "</span>";
+                          })
+                          .join("") +
+                        "</div>";
+                    }
+                  }
+                  showStep("step-approve");
                 }
-                showStep('step-approve');
-              }
-            })
-            .catch(function () {
-              showCodeError('通信エラーが発生しました。再度お試しください。');
-            })
-            .finally(function () {
-              if (verifyBtn) {
-                verifyBtn.disabled = false;
-                verifyBtn.textContent = '確認';
-              }
-            });
-        });
-      }
+              })
+              .catch(function () {
+                showCodeError("通信エラーが発生しました。再度お試しください。");
+              })
+              .finally(function () {
+                if (verifyBtn) {
+                  verifyBtn.disabled = false;
+                  verifyBtn.textContent = "確認";
+                }
+              });
+          });
+        }
 
-      // 承認ボタン
-      if (approveBtn) {
-        approveBtn.addEventListener('click', function () {
-          approveBtn.disabled = true;
-          approveBtn.textContent = '処理中...';
-          if (denyBtn) denyBtn.disabled = true;
+        // 承認ボタン
+        if (approveBtn) {
+          approveBtn.addEventListener("click", function () {
+            approveBtn.disabled = true;
+            approveBtn.textContent = "処理中...";
+            if (denyBtn) denyBtn.disabled = true;
 
-          fetch('/api/device/approve', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_code: verifiedUserCode, action: 'approve' }),
-          })
-            .then(function (res) { return res.json(); })
-            .then(function (data) {
-              if (data.error) {
-                showStep('step-code');
-                showCodeError(data.error.message || '承認に失敗しました');
-                return;
-              }
-              showStep('step-done');
+            fetch("/api/device/approve", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ user_code: verifiedUserCode, action: "approve" }),
             })
-            .catch(function () {
-              showStep('step-code');
-              showCodeError('通信エラーが発生しました。再度お試しください。');
-            });
-        });
-      }
+              .then(function (res) {
+                return res.json();
+              })
+              .then(function (data) {
+                if (data.error) {
+                  showStep("step-code");
+                  showCodeError(data.error.message || "承認に失敗しました");
+                  return;
+                }
+                showStep("step-done");
+              })
+              .catch(function () {
+                showStep("step-code");
+                showCodeError("通信エラーが発生しました。再度お試しください。");
+              });
+          });
+        }
 
-      // 拒否ボタン
-      if (denyBtn) {
-        denyBtn.addEventListener('click', function () {
-          if (denyBtn) denyBtn.disabled = true;
-          if (approveBtn) approveBtn.disabled = true;
+        // 拒否ボタン
+        if (denyBtn) {
+          denyBtn.addEventListener("click", function () {
+            if (denyBtn) denyBtn.disabled = true;
+            if (approveBtn) approveBtn.disabled = true;
 
-          fetch('/api/device/approve', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_code: verifiedUserCode, action: 'deny' }),
-          })
-            .then(function (res) { return res.json(); })
-            .then(function (data) {
-              if (data.error) {
-                showStep('step-code');
-                showCodeError(data.error.message || '処理に失敗しました');
-                return;
-              }
-              showStep('step-denied');
+            fetch("/api/device/approve", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ user_code: verifiedUserCode, action: "deny" }),
             })
-            .catch(function () {
-              showStep('step-code');
-              showCodeError('通信エラーが発生しました。再度お試しください。');
-            });
-        });
-      }
-    })();
-  </script>
-</body>
+              .then(function (res) {
+                return res.json();
+              })
+              .then(function (data) {
+                if (data.error) {
+                  showStep("step-code");
+                  showCodeError(data.error.message || "処理に失敗しました");
+                  return;
+                }
+                showStep("step-denied");
+              })
+              .catch(function () {
+                showStep("step-code");
+                showCodeError("通信エラーが発生しました。再度お試しください。");
+              });
+          });
+        }
+      })();
+    </script>
+  </body>
 </html>

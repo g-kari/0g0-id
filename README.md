@@ -32,14 +32,14 @@ admin.0g0.xyz — 管理画面（サービス管理・ユーザー管理）
 
 ## セキュリティ設計
 
-| 項目 | 実装 |
-|---|---|
-| JWT署名 | ES256 + JWKS（`kid` 付き） |
-| OAuth | state + PKCE (S256) 必須 |
-| Cookie | `__Host-` prefix / `HttpOnly` / `Secure` / `SameSite=Lax` |
-| CSRF | Origin ヘッダー検証 |
-| リフレッシュトークン | ローテーション + reuse detection（family 全失効） |
-| 管理者権限 | DB ロールベース + 初回ブートストラップ |
+| 項目                 | 実装                                                      |
+| -------------------- | --------------------------------------------------------- |
+| JWT署名              | ES256 + JWKS（`kid` 付き）                                |
+| OAuth                | state + PKCE (S256) 必須                                  |
+| Cookie               | `__Host-` prefix / `HttpOnly` / `Secure` / `SameSite=Lax` |
+| CSRF                 | Origin ヘッダー検証                                       |
+| リフレッシュトークン | ローテーション + reuse detection（family 全失効）         |
+| 管理者権限           | DB ロールベース + 初回ブートストラップ                    |
 
 ## セットアップ
 
@@ -140,10 +140,10 @@ BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 
 #### client_id の必須ルール
 
-| 呼び出し元 | client_id | 動作 |
-|---|---|---|
-| BFF オリジン（user.0g0.xyz, admin.0g0.xyz, EXTRA_BFF_ORIGINS） | 省略可 | BFF フローで処理 |
-| 外部サービス（非 BFF オリジン） | **必須** | 省略すると 400 エラー |
+| 呼び出し元                                                     | client_id | 動作                  |
+| -------------------------------------------------------------- | --------- | --------------------- |
+| BFF オリジン（user.0g0.xyz, admin.0g0.xyz, EXTRA_BFF_ORIGINS） | 省略可    | BFF フローで処理      |
+| 外部サービス（非 BFF オリジン）                                | **必須**  | 省略すると 400 エラー |
 
 - `client_id` なしで外部オリジンから呼び出すと `400 Bad Request` — `"client_id is required for external services"`
 - `client_id` なしでログインするとユーザーとサービスの関係が記録されず、`/api/users/me/connections`（連携サービス一覧）に表示されない

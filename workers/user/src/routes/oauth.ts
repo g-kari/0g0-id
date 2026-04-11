@@ -1,5 +1,5 @@
-import { Hono } from 'hono';
-import type { BffEnv } from '@0g0-id/shared';
+import { Hono } from "hono";
+import type { BffEnv } from "@0g0-id/shared";
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
@@ -9,34 +9,34 @@ const app = new Hono<{ Bindings: BffEnv }>();
  */
 function escapeHtml(str: string): string {
   return str
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 // GET /login — OAuth 2.0 / OIDC プロバイダー選択ページ（外部クライアント向け）
 // IdP の /auth/authorize からリダイレクトされる。
 // プロバイダー選択後は直接 IdP の /auth/login へリダイレクトし、
 // 外部クライアントの redirect_uri に認可コードを返す。
-app.get('/login', async (c) => {
-  const clientId = c.req.query('client_id');
-  const redirectUri = c.req.query('redirect_uri');
-  const state = c.req.query('state');
-  const codeChallenge = c.req.query('code_challenge');
-  const codeChallengeMethod = c.req.query('code_challenge_method');
-  const scope = c.req.query('scope');
-  const nonce = c.req.query('nonce');
+app.get("/login", async (c) => {
+  const clientId = c.req.query("client_id");
+  const redirectUri = c.req.query("redirect_uri");
+  const state = c.req.query("state");
+  const codeChallenge = c.req.query("code_challenge");
+  const codeChallengeMethod = c.req.query("code_challenge_method");
+  const scope = c.req.query("scope");
+  const nonce = c.req.query("nonce");
 
   // パラメータ長の上限チェック（DoS・過大入力対策）
   const PARAM_LIMITS: [string | undefined, number, string][] = [
-    [clientId, 128, 'client_id'],
-    [redirectUri, 2048, 'redirect_uri'],
-    [state, 1024, 'state'],
-    [codeChallenge, 256, 'code_challenge'],
-    [codeChallengeMethod, 16, 'code_challenge_method'],
-    [scope, 1024, 'scope'],
-    [nonce, 128, 'nonce'],
+    [clientId, 128, "client_id"],
+    [redirectUri, 2048, "redirect_uri"],
+    [state, 1024, "state"],
+    [codeChallenge, 256, "code_challenge"],
+    [codeChallengeMethod, 16, "code_challenge_method"],
+    [scope, 1024, "scope"],
+    [nonce, 128, "nonce"],
   ];
   for (const [value, maxLen, name] of PARAM_LIMITS) {
     if (value !== undefined && value.length > maxLen) {
@@ -46,29 +46,29 @@ app.get('/login', async (c) => {
 
   // 必須パラメータ未指定の場合は通常のログインページへフォールバック
   if (!clientId || !redirectUri || !state || !codeChallenge) {
-    return c.redirect('/');
+    return c.redirect("/");
   }
 
   // IdP /auth/login URL をプロバイダーごとに組み立てる
   // redirect_to には外部クライアントの redirect_uri を指定（BFF経由ではなくクライアント直接）
   const buildLoginUrl = (provider: string): string => {
     const url = new URL(`${c.env.IDP_ORIGIN}/auth/login`);
-    url.searchParams.set('provider', provider);
-    url.searchParams.set('redirect_to', redirectUri);
-    url.searchParams.set('state', state);
-    url.searchParams.set('client_id', clientId);
-    url.searchParams.set('code_challenge', codeChallenge);
-    url.searchParams.set('code_challenge_method', codeChallengeMethod ?? 'S256');
-    if (scope) url.searchParams.set('scope', scope);
-    if (nonce) url.searchParams.set('nonce', nonce);
+    url.searchParams.set("provider", provider);
+    url.searchParams.set("redirect_to", redirectUri);
+    url.searchParams.set("state", state);
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("code_challenge", codeChallenge);
+    url.searchParams.set("code_challenge_method", codeChallengeMethod ?? "S256");
+    if (scope) url.searchParams.set("scope", scope);
+    if (nonce) url.searchParams.set("nonce", nonce);
     return url.toString();
   };
 
-  const googleUrl = escapeHtml(buildLoginUrl('google'));
-  const lineUrl = escapeHtml(buildLoginUrl('line'));
-  const twitchUrl = escapeHtml(buildLoginUrl('twitch'));
-  const githubUrl = escapeHtml(buildLoginUrl('github'));
-  const xUrl = escapeHtml(buildLoginUrl('x'));
+  const googleUrl = escapeHtml(buildLoginUrl("google"));
+  const lineUrl = escapeHtml(buildLoginUrl("line"));
+  const twitchUrl = escapeHtml(buildLoginUrl("twitch"));
+  const githubUrl = escapeHtml(buildLoginUrl("github"));
+  const xUrl = escapeHtml(buildLoginUrl("x"));
 
   const html = `<!DOCTYPE html>
 <html lang="ja">
@@ -127,9 +127,12 @@ app.get('/login', async (c) => {
 </body>
 </html>`;
 
-  c.header('Content-Security-Policy', "default-src 'none'; script-src 'none'; style-src 'self'; img-src 'self'; frame-ancestors 'none'");
-  c.header('X-Frame-Options', 'DENY');
-  c.header('X-Content-Type-Options', 'nosniff');
+  c.header(
+    "Content-Security-Policy",
+    "default-src 'none'; script-src 'none'; style-src 'self'; img-src 'self'; frame-ancestors 'none'",
+  );
+  c.header("X-Frame-Options", "DENY");
+  c.header("X-Content-Type-Options", "nosniff");
   return c.html(html);
 });
 

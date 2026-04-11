@@ -5,5 +5,5 @@
  * x-forwarded-for はクライアントによる偽装が可能なため使用しない。
  */
 export function getClientIp(req: Request): string | null {
-  return req.headers.get('cf-connecting-ip') ?? null;
+  return req.headers.get("cf-connecting-ip") ?? null;
 }

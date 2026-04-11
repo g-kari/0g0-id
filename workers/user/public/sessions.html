@@ -1,36 +1,45 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>0g0 ID - ログイン中のデバイス</title>
-  <meta name="robots" content="noindex, nofollow">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/style.css">
-</head>
-<body>
-  <div class="container" style="max-width:480px;">
-    <div class="card">
-      <div class="card-header">
-        <h1>ログイン中のデバイス</h1>
-        <a href="/profile.html" class="btn btn-outline btn-sm" style="margin-left:0;">← プロフィール</a>
-      </div>
-      <p class="subtitle">現在アクティブなセッションの一覧です。身に覚えのないセッションは無効化してください。</p>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>0g0 ID - ログイン中のデバイス</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="container" style="max-width: 480px">
+      <div class="card">
+        <div class="card-header">
+          <h1>ログイン中のデバイス</h1>
+          <a href="/profile.html" class="btn btn-outline btn-sm" style="margin-left: 0"
+            >← プロフィール</a
+          >
+        </div>
+        <p class="subtitle">
+          現在アクティブなセッションの一覧です。身に覚えのないセッションは無効化してください。
+        </p>
 
-      <div id="loading" class="loading-center">
-        <span class="spinner"></span>
-        <span>読み込み中...</span>
-      </div>
-      <div id="sessions-list" style="display:none;"></div>
-      <div id="empty-msg" style="display:none;text-align:center;color:var(--text-muted);padding:2rem 0;">アクティブなセッションはありません</div>
-      <div id="error-msg" class="alert alert-error" style="display:none;" role="alert"></div>
+        <div id="loading" class="loading-center">
+          <span class="spinner"></span>
+          <span>読み込み中...</span>
+        </div>
+        <div id="sessions-list" style="display: none"></div>
+        <div
+          id="empty-msg"
+          style="display: none; text-align: center; color: var(--text-muted); padding: 2rem 0"
+        >
+          アクティブなセッションはありません
+        </div>
+        <div id="error-msg" class="alert alert-error" style="display: none" role="alert"></div>
 
-      <div id="revoke-all-wrap" style="display:none;margin-top:1.25rem;">
-        <hr class="divider" style="margin-bottom:1.25rem;">
-        <button id="revoke-all-btn" class="btn btn-danger">すべてのセッションを無効化</button>
+        <div id="revoke-all-wrap" style="display: none; margin-top: 1.25rem">
+          <hr class="divider" style="margin-bottom: 1.25rem" />
+          <button id="revoke-all-btn" class="btn btn-danger">すべてのセッションを無効化</button>
+        </div>
       </div>
     </div>
-  </div>
-  <script src="/app.js"></script>
-</body>
+    <script src="/app.js"></script>
+  </body>
 </html>

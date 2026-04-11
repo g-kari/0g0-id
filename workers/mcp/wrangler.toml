@@ -7,9 +7,7 @@ workers_dev = false
 enabled = true
 invocation_logs = true
 
-routes = [
-  { pattern = "mcp.0g0.xyz", custom_domain = true }
-]
+routes = [{ pattern = "mcp.0g0.xyz", custom_domain = true }]
 
 [vars]
 IDP_ORIGIN = "https://id.0g0.xyz"

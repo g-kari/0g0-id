@@ -1,6 +1,6 @@
-import { createMiddleware } from 'hono/factory';
-import { findServiceByClientId, sha256, timingSafeEqual } from '@0g0-id/shared';
-import type { IdpEnv, Service } from '@0g0-id/shared';
+import { createMiddleware } from "hono/factory";
+import { findServiceByClientId, sha256, timingSafeEqual } from "@0g0-id/shared";
+import type { IdpEnv, Service } from "@0g0-id/shared";
 
 type ServiceVariables = { service: Service };
 
@@ -10,7 +10,7 @@ type ServiceVariables = { service: Service };
  * DB障害・暗号処理エラーは throw して呼び出し元で 500 として扱う。
  */
 export async function authenticateService(db: D1Database, authHeader: string | undefined) {
-  if (!authHeader?.startsWith('Basic ')) return null;
+  if (!authHeader?.startsWith("Basic ")) return null;
 
   let credentials: string;
   try {
@@ -19,7 +19,7 @@ export async function authenticateService(db: D1Database, authHeader: string | u
     return null;
   }
 
-  const colonIndex = credentials.indexOf(':');
+  const colonIndex = credentials.indexOf(":");
   if (colonIndex === -1) return null;
 
   const clientId = credentials.slice(0, colonIndex);
@@ -35,7 +35,7 @@ export async function authenticateService(db: D1Database, authHeader: string | u
     return service;
   } catch {
     // DB障害・暗号処理エラーは認証失敗として扱わず、呼び出し元で500を返す
-    throw new Error('Service authentication failed due to internal error');
+    throw new Error("Service authentication failed due to internal error");
   }
 }
 
@@ -50,13 +50,13 @@ export const serviceAuthMiddleware = createMiddleware<{
 }>(async (c, next) => {
   let service: Service | null;
   try {
-    service = await authenticateService(c.env.DB, c.req.header('Authorization'));
+    service = await authenticateService(c.env.DB, c.req.header("Authorization"));
   } catch {
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
   if (!service) {
-    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid client credentials' } }, 401);
+    return c.json({ error: { code: "UNAUTHORIZED", message: "Invalid client credentials" } }, 401);
   }
-  c.set('service', service);
+  c.set("service", service);
   await next();
 });

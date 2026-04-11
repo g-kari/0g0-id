@@ -1,8 +1,8 @@
-import { createMiddleware } from 'hono/factory';
-import type { Context, HonoRequest } from 'hono';
-import type { IdpEnv, RateLimitBinding } from '@0g0-id/shared';
-import { createLogger } from '@0g0-id/shared';
-import { getClientIp } from '../utils/ip';
+import { createMiddleware } from "hono/factory";
+import type { Context, HonoRequest } from "hono";
+import type { IdpEnv, RateLimitBinding } from "@0g0-id/shared";
+import { createLogger } from "@0g0-id/shared";
+import { getClientIp } from "../utils/ip";
 
 /**
  * バインディング未設定の警告を1isolateにつき1回だけ出力するための追跡Set。
@@ -12,14 +12,14 @@ import { getClientIp } from '../utils/ip';
  */
 const warnedBindings = new Set<string>();
 
-const rateLimitLogger = createLogger('rate-limit');
+const rateLimitLogger = createLogger("rate-limit");
 
 /** Basic認証ヘッダーから client_id を抽出する。取得できない場合は null を返す */
 function extractClientId(authHeader: string | undefined): string | null {
-  if (!authHeader?.startsWith('Basic ')) return null;
+  if (!authHeader?.startsWith("Basic ")) return null;
   try {
     const credentials = atob(authHeader.slice(6));
-    const colonIndex = credentials.indexOf(':');
+    const colonIndex = credentials.indexOf(":");
     return colonIndex !== -1 ? credentials.slice(0, colonIndex) : null;
   } catch {
     return null;
@@ -28,15 +28,15 @@ function extractClientId(authHeader: string | undefined): string | null {
 
 /** リクエストボディから client_id を抽出する。取得できない場合は null を返す */
 async function extractClientIdFromBody(req: HonoRequest): Promise<string | null> {
-  const contentType = req.header('Content-Type') ?? '';
+  const contentType = req.header("Content-Type") ?? "";
   try {
-    if (contentType.includes('application/x-www-form-urlencoded')) {
+    if (contentType.includes("application/x-www-form-urlencoded")) {
       const body = await req.parseBody();
-      const clientId = body['client_id'];
-      return typeof clientId === 'string' ? clientId : null;
-    } else if (contentType.includes('application/json')) {
+      const clientId = body["client_id"];
+      return typeof clientId === "string" ? clientId : null;
+    } else if (contentType.includes("application/json")) {
       const body = await req.json<Record<string, unknown>>();
-      return typeof body['client_id'] === 'string' ? (body['client_id'] as string) : null;
+      return typeof body["client_id"] === "string" ? (body["client_id"] as string) : null;
     }
   } catch {
     return null;
@@ -72,7 +72,7 @@ function createRateLimitMiddleware(
       if (!warnedBindings.has(bindingName)) {
         warnedBindings.add(bindingName);
         rateLimitLogger.warn(
-          `[rate-limit] ${bindingName} binding is not configured — rate limiting is DISABLED. Configure this binding in wrangler.toml for production deployments.`
+          `[rate-limit] ${bindingName} binding is not configured — rate limiting is DISABLED. Configure this binding in wrangler.toml for production deployments.`,
         );
       }
       return next();
@@ -81,20 +81,22 @@ function createRateLimitMiddleware(
     // cf-connecting-ip が未設定（ローカル直接アクセス・Cloudflare設定ミス）の場合、
     // 全リクエストが 'unknown' キーに集約され、誤検知レートリミットが発生しうる。
     // 本番Cloudflare経由では発生しないが、設定ミス時に即座に検知できるよう警告ログを出す。
-    if (key === 'unknown') {
-      rateLimitLogger.warn(`[rate-limit] ${bindingName}: rate limit key resolved to 'unknown' — cf-connecting-ip may not be set. All requests share the same bucket.`);
+    if (key === "unknown") {
+      rateLimitLogger.warn(
+        `[rate-limit] ${bindingName}: rate limit key resolved to 'unknown' — cf-connecting-ip may not be set. All requests share the same bucket.`,
+      );
     }
     const { success } = await binding.limit({ key });
     if (!success) {
       return c.json(
         {
           error: {
-            code: 'TOO_MANY_REQUESTS',
+            code: "TOO_MANY_REQUESTS",
             message: errorMessage,
           },
         },
         429,
-        { 'Retry-After': String(retryAfterSeconds) }
+        { "Retry-After": String(retryAfterSeconds) },
       );
     }
     await next();
@@ -108,10 +110,10 @@ function createRateLimitMiddleware(
  * RATE_LIMITER_AUTH バインディングが未設定の場合はスキップ（ローカル開発・テスト時）。
  */
 export const authRateLimitMiddleware = createRateLimitMiddleware(
-  'RATE_LIMITER_AUTH',
+  "RATE_LIMITER_AUTH",
   (env) => env.RATE_LIMITER_AUTH,
-  (c) => getClientIp(c.req.raw) ?? 'unknown',
-  'Too many requests. Please try again later.',
+  (c) => getClientIp(c.req.raw) ?? "unknown",
+  "Too many requests. Please try again later.",
 );
 
 /**
@@ -122,10 +124,10 @@ export const authRateLimitMiddleware = createRateLimitMiddleware(
  * RATE_LIMITER_EXTERNAL バインディングが未設定の場合はスキップ。
  */
 export const externalApiRateLimitMiddleware = createRateLimitMiddleware(
-  'RATE_LIMITER_EXTERNAL',
+  "RATE_LIMITER_EXTERNAL",
   (env) => env.RATE_LIMITER_EXTERNAL,
-  (c) => extractClientId(c.req.header('Authorization')) ?? getClientIp(c.req.raw) ?? 'unknown',
-  'Rate limit exceeded.',
+  (c) => extractClientId(c.req.header("Authorization")) ?? getClientIp(c.req.raw) ?? "unknown",
+  "Rate limit exceeded.",
 );
 
 /**
@@ -136,10 +138,10 @@ export const externalApiRateLimitMiddleware = createRateLimitMiddleware(
  * RATE_LIMITER_TOKEN バインディングが未設定の場合はスキップ（ローカル開発・テスト時）。
  */
 export const tokenApiRateLimitMiddleware = createRateLimitMiddleware(
-  'RATE_LIMITER_TOKEN',
+  "RATE_LIMITER_TOKEN",
   (env) => env.RATE_LIMITER_TOKEN,
-  (c) => getClientIp(c.req.raw) ?? 'unknown',
-  'Too many requests. Please try again later.',
+  (c) => getClientIp(c.req.raw) ?? "unknown",
+  "Too many requests. Please try again later.",
 );
 
 /**
@@ -157,17 +159,17 @@ export const tokenApiRateLimitMiddleware = createRateLimitMiddleware(
  * RATE_LIMITER_TOKEN_CLIENT バインディングが未設定の場合はスキップ（ローカル開発・テスト時）。
  */
 export const tokenApiClientRateLimitMiddleware = createRateLimitMiddleware(
-  'RATE_LIMITER_TOKEN_CLIENT',
+  "RATE_LIMITER_TOKEN_CLIENT",
   (env) => env.RATE_LIMITER_TOKEN_CLIENT,
   async (c) => {
     // コンフィデンシャルクライアント: Authorization: Basic ヘッダーから client_id を取得
-    const headerClientId = extractClientId(c.req.header('Authorization'));
+    const headerClientId = extractClientId(c.req.header("Authorization"));
     if (headerClientId) return headerClientId;
     // パブリッククライアント: ボディの client_id を取得（Honoはbodyをキャッシュするため二重読み取り安全）
     const bodyClientId = await extractClientIdFromBody(c.req);
-    return bodyClientId ?? getClientIp(c.req.raw) ?? 'unknown';
+    return bodyClientId ?? getClientIp(c.req.raw) ?? "unknown";
   },
-  'Too many requests for this client. Please try again later.',
+  "Too many requests for this client. Please try again later.",
 );
 
 /**
@@ -179,11 +181,11 @@ export const tokenApiClientRateLimitMiddleware = createRateLimitMiddleware(
  * RATE_LIMITER_DEVICE_VERIFY バインディングが未設定の場合はスキップ（ローカル開発・テスト時）。
  */
 export const deviceVerifyRateLimitMiddleware = createRateLimitMiddleware(
-  'RATE_LIMITER_DEVICE_VERIFY',
+  "RATE_LIMITER_DEVICE_VERIFY",
   (env) => env.RATE_LIMITER_DEVICE_VERIFY,
   (c) => {
-    const user = c.get('user' as never) as { sub: string } | undefined;
-    return user?.sub ?? getClientIp(c.req.raw) ?? 'unknown';
+    const user = c.get("user" as never) as { sub: string } | undefined;
+    return user?.sub ?? getClientIp(c.req.raw) ?? "unknown";
   },
-  'Too many verification attempts. Please try again later.',
+  "Too many verification attempts. Please try again later.",
 );

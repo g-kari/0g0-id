@@ -1,4 +1,4 @@
-import { bodyLimit } from 'hono/body-limit';
+import { bodyLimit } from "hono/body-limit";
 
 /**
  * リクエストボディサイズ制限ミドルウェア（メモリ消耗攻撃防止）。
@@ -8,7 +8,10 @@ export function bodyLimitMiddleware(maxSize = 64 * 1024) {
   return bodyLimit({
     maxSize,
     onError: (c) => {
-      return c.json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'Request body too large' } }, 413);
+      return c.json(
+        { error: { code: "PAYLOAD_TOO_LARGE", message: "Request body too large" } },
+        413,
+      );
     },
   });
 }

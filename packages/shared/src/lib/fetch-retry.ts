@@ -37,9 +37,9 @@ function parseRetryAfter(header: string | null): number | null {
 export async function fetchWithRetry(
   url: string,
   options: RequestInit,
-  maxAttempts = MAX_ATTEMPTS
+  maxAttempts = MAX_ATTEMPTS,
 ): Promise<Response> {
-  let lastError: Error = new Error('Fetch failed');
+  let lastError: Error = new Error("Fetch failed");
   let retryAfterMs: number | null = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -55,10 +55,10 @@ export async function fetchWithRetry(
       }
       lastError = new Error(`HTTP ${response.status}`);
       if (response.status === 429) {
-        retryAfterMs = parseRetryAfter(response.headers.get('Retry-After'));
+        retryAfterMs = parseRetryAfter(response.headers.get("Retry-After"));
       }
     } catch (e) {
-      lastError = e instanceof Error ? e : new Error('Network error');
+      lastError = e instanceof Error ? e : new Error("Network error");
     }
   }
   throw lastError;

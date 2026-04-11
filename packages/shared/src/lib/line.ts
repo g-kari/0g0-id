@@ -1,11 +1,11 @@
-import { fetchWithRetry } from './fetch-retry';
-import { createLogger } from './logger';
+import { fetchWithRetry } from "./fetch-retry";
+import { createLogger } from "./logger";
 
-const logger = createLogger('oauth-line');
+const logger = createLogger("oauth-line");
 
-const LINE_AUTH_URL = 'https://access.line.me/oauth2/v2.1/authorize';
-const LINE_TOKEN_URL = 'https://api.line.me/oauth2/v2.1/token';
-const LINE_USERINFO_URL = 'https://api.line.me/oauth2/v2.1/userinfo';
+const LINE_AUTH_URL = "https://access.line.me/oauth2/v2.1/authorize";
+const LINE_TOKEN_URL = "https://api.line.me/oauth2/v2.1/token";
+const LINE_USERINFO_URL = "https://api.line.me/oauth2/v2.1/userinfo";
 
 export interface LineUserInfo {
   sub: string;
@@ -33,15 +33,15 @@ export function buildLineAuthUrl(params: {
   nonce?: string;
 }): string {
   const url = new URL(LINE_AUTH_URL);
-  url.searchParams.set('response_type', 'code');
-  url.searchParams.set('client_id', params.clientId);
-  url.searchParams.set('redirect_uri', params.redirectUri);
-  url.searchParams.set('scope', 'openid profile email');
-  url.searchParams.set('state', params.state);
-  url.searchParams.set('code_challenge', params.codeChallenge);
-  url.searchParams.set('code_challenge_method', 'S256');
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("client_id", params.clientId);
+  url.searchParams.set("redirect_uri", params.redirectUri);
+  url.searchParams.set("scope", "openid profile email");
+  url.searchParams.set("state", params.state);
+  url.searchParams.set("code_challenge", params.codeChallenge);
+  url.searchParams.set("code_challenge_method", "S256");
   if (params.nonce) {
-    url.searchParams.set('nonce', params.nonce);
+    url.searchParams.set("nonce", params.nonce);
   }
   return url.toString();
 }
@@ -58,10 +58,10 @@ export async function exchangeLineCode(params: {
   codeVerifier: string;
 }): Promise<LineTokenResponse> {
   const response = await fetchWithRetry(LINE_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      grant_type: 'authorization_code',
+      grant_type: "authorization_code",
       code: params.code,
       redirect_uri: params.redirectUri,
       client_id: params.clientId,
@@ -73,13 +73,13 @@ export async function exchangeLineCode(params: {
   if (!response.ok) {
     const error = await response.text();
     logger.error(`LINE token exchange failed (${response.status})`, error);
-    throw new Error('LINE token exchange failed');
+    throw new Error("LINE token exchange failed");
   }
 
   try {
     return (await response.json()) as LineTokenResponse;
   } catch {
-    throw new Error('LINE token exchange failed: Invalid JSON response');
+    throw new Error("LINE token exchange failed: Invalid JSON response");
   }
 }
 
@@ -98,6 +98,6 @@ export async function fetchLineUserInfo(accessToken: string): Promise<LineUserIn
   try {
     return (await response.json()) as LineUserInfo;
   } catch {
-    throw new Error('LINE userinfo fetch failed: Invalid JSON response');
+    throw new Error("LINE userinfo fetch failed: Invalid JSON response");
   }
 }

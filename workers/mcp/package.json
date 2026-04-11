@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "deploy": "vite build && wrangler deploy",
+    "dev": "vp dev",
+    "build": "vp build",
+    "deploy": "vp build && wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vp test run --passWithNoTests"
   },
   "dependencies": {
     "@0g0-id/shared": "*",
@@ -19,8 +19,9 @@
     "@cloudflare/vite-plugin": "^1.30.2",
     "@cloudflare/workers-types": "^4.20260329.1",
     "typescript": "^6.0.2",
-    "vite": "^8.0.8",
-    "vitest": "^4.1.4",
+    "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+    "vite-plus": "latest",
+    "vitest": "npm:@voidzero-dev/vite-plus-test@latest",
     "wrangler": "^4.78.0"
   }
 }

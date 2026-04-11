@@ -1,11 +1,15 @@
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import { createLogger } from '@0g0-id/shared';
-import type { TokenPayload, RateLimitBinding } from '@0g0-id/shared';
-import { McpServer, createMcpRoutes, type McpContext } from './mcp';
-import wellKnownRoutes from './routes/well-known';
-import { mcpAuthMiddleware, mcpAdminMiddleware, mcpRejectBannedUserMiddleware } from './middleware/auth';
-import { mcpRateLimitMiddleware } from './middleware/rate-limit';
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { createLogger } from "@0g0-id/shared";
+import type { TokenPayload, RateLimitBinding } from "@0g0-id/shared";
+import { McpServer, createMcpRoutes, type McpContext } from "./mcp";
+import wellKnownRoutes from "./routes/well-known";
+import {
+  mcpAuthMiddleware,
+  mcpAdminMiddleware,
+  mcpRejectBannedUserMiddleware,
+} from "./middleware/auth";
+import { mcpRateLimitMiddleware } from "./middleware/rate-limit";
 import {
   listUsersTool,
   getUserTool,
@@ -36,7 +40,7 @@ import {
   getSystemMetricsTool,
   getSuspiciousLoginsTool,
   getServiceTokenStatsTool,
-} from './tools';
+} from "./tools";
 
 type Env = {
   Bindings: {
@@ -52,7 +56,7 @@ type Env = {
   };
 };
 
-const appLogger = createLogger('mcp');
+const appLogger = createLogger("mcp");
 
 // MCPサーバーインスタンス
 const mcpServer = new McpServer();
@@ -98,46 +102,46 @@ const app = new Hono<Env>();
 
 // CORS: MCPオリジンのみ許可
 app.use(
-  '*',
+  "*",
   cors({
     origin: (origin, c) => {
       const allowed = c.env.MCP_ORIGIN;
-      return origin === allowed ? origin : '';
+      return origin === allowed ? origin : "";
     },
   }),
 );
 
 // Health check
-app.get('/health', (c): Response => {
-  return c.json({ status: 'ok', worker: 'mcp', timestamp: new Date().toISOString() });
+app.get("/health", (c): Response => {
+  return c.json({ status: "ok", worker: "mcp", timestamp: new Date().toISOString() });
 });
 
 // Protected Resource Metadata (RFC 9728)
-app.route('/.well-known', wellKnownRoutes);
+app.route("/.well-known", wellKnownRoutes);
 
 // MCP ルート: レートリミット + Bearer token 認証 + 管理者ロール必須 + BAN拒否 + コンテキスト設定
-app.use('/mcp/*', mcpRateLimitMiddleware);
-app.use('/mcp/*', mcpAuthMiddleware);
-app.use('/mcp/*', mcpRejectBannedUserMiddleware);
-app.use('/mcp/*', mcpAdminMiddleware);
-app.use('/mcp/*', async (c, next): Promise<void> => {
-  const user = c.get('user');
+app.use("/mcp/*", mcpRateLimitMiddleware);
+app.use("/mcp/*", mcpAuthMiddleware);
+app.use("/mcp/*", mcpRejectBannedUserMiddleware);
+app.use("/mcp/*", mcpAdminMiddleware);
+app.use("/mcp/*", async (c, next): Promise<void> => {
+  const user = c.get("user");
   const context: McpContext = {
     userId: user.sub,
     userRole: user.role,
     db: c.env.DB,
     idp: c.env.IDP,
   };
-  c.set('mcpContext', context);
+  c.set("mcpContext", context);
   await next();
 });
 
 // MCPルートをマウント
-app.route('/mcp', createMcpRoutes(mcpServer));
+app.route("/mcp", createMcpRoutes(mcpServer));
 
 app.onError((err, c): Response => {
-  appLogger.error('Unhandled error', err);
-  return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+  appLogger.error("Unhandled error", err);
+  return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
 });
 
 export default app;

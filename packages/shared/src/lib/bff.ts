@@ -1,13 +1,13 @@
-import { type Context } from 'hono';
-import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
-import type { BffEnv } from '../types';
-import { decodeBase64Url } from './base64url';
-import { timingSafeEqual } from './crypto';
+import { type Context } from "hono";
+import { setCookie, getCookie, deleteCookie } from "hono/cookie";
+import type { BffEnv } from "../types";
+import { decodeBase64Url } from "./base64url";
+import { timingSafeEqual } from "./crypto";
 
 export interface BffSession {
   access_token: string;
   refresh_token: string;
-  user: { id: string; email: string; name: string; role: 'user' | 'admin' };
+  user: { id: string; email: string; name: string; role: "user" | "admin" };
 }
 
 /**
@@ -16,16 +16,16 @@ export interface BffSession {
  * 既知フィールドのみを明示的に検査する。
  */
 function isBffSession(obj: unknown): obj is BffSession {
-  if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return false;
+  if (typeof obj !== "object" || obj === null || Array.isArray(obj)) return false;
   const s = obj as Record<string, unknown>;
-  if (typeof s['access_token'] !== 'string' || !s['access_token']) return false;
-  if (typeof s['refresh_token'] !== 'string' || !s['refresh_token']) return false;
-  if (typeof s['user'] !== 'object' || s['user'] === null || Array.isArray(s['user'])) return false;
-  const u = s['user'] as Record<string, unknown>;
-  if (typeof u['id'] !== 'string' || !u['id']) return false;
-  if (typeof u['email'] !== 'string' || !u['email']) return false;
-  if (typeof u['name'] !== 'string' || !u['name']) return false;
-  if (u['role'] !== 'user' && u['role'] !== 'admin') return false;
+  if (typeof s["access_token"] !== "string" || !s["access_token"]) return false;
+  if (typeof s["refresh_token"] !== "string" || !s["refresh_token"]) return false;
+  if (typeof s["user"] !== "object" || s["user"] === null || Array.isArray(s["user"])) return false;
+  const u = s["user"] as Record<string, unknown>;
+  if (typeof u["id"] !== "string" || !u["id"]) return false;
+  if (typeof u["email"] !== "string" || !u["email"]) return false;
+  if (typeof u["name"] !== "string" || !u["name"]) return false;
+  if (u["role"] !== "user" && u["role"] !== "admin") return false;
   return true;
 }
 
@@ -34,23 +34,23 @@ function isBffSession(obj: unknown): obj is BffSession {
  */
 async function deriveAesKey(secret: string): Promise<CryptoKey> {
   const keyMaterial = await crypto.subtle.importKey(
-    'raw',
+    "raw",
     new TextEncoder().encode(secret),
-    'HKDF',
+    "HKDF",
     false,
-    ['deriveKey']
+    ["deriveKey"],
   );
   return crypto.subtle.deriveKey(
     {
-      name: 'HKDF',
-      hash: 'SHA-256',
-      salt: new TextEncoder().encode('0g0-id-bff-session-v1'),
-      info: new TextEncoder().encode('bff-session'),
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: new TextEncoder().encode("0g0-id-bff-session-v1"),
+      info: new TextEncoder().encode("bff-session"),
     },
     keyMaterial,
-    { name: 'AES-GCM', length: 256 },
+    { name: "AES-GCM", length: 256 },
     false,
-    ['encrypt', 'decrypt']
+    ["encrypt", "decrypt"],
   );
 }
 
@@ -61,7 +61,7 @@ async function deriveAesKey(secret: string): Promise<CryptoKey> {
  */
 export async function parseSession(
   cookie: string | undefined,
-  secret: string
+  secret: string,
 ): Promise<BffSession | null> {
   if (!cookie) return null;
   try {
@@ -74,7 +74,7 @@ export async function parseSession(
     const ciphertext = combined.slice(12);
 
     const key = await deriveAesKey(secret);
-    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+    const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
     const raw: unknown = JSON.parse(new TextDecoder().decode(plaintext));
 
     if (!isBffSession(raw)) return null;
@@ -102,16 +102,16 @@ export async function encodeSession(session: BffSession, secret: string): Promis
   const key = await deriveAesKey(secret);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const plaintext = new TextEncoder().encode(JSON.stringify(session));
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext);
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext);
 
   // IV + 暗号文を結合して base64url エンコード
   const combined = new Uint8Array(iv.length + ciphertext.byteLength);
   combined.set(iv);
   combined.set(new Uint8Array(ciphertext), iv.length);
-  return btoa(Array.from(combined, (b) => String.fromCharCode(b)).join(''))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
+  return btoa(Array.from(combined, (b) => String.fromCharCode(b)).join(""))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
 }
 
 /**
@@ -120,14 +120,14 @@ export async function encodeSession(session: BffSession, secret: string): Promis
 export async function setSessionCookie(
   c: Context<{ Bindings: BffEnv }>,
   cookieName: string,
-  session: BffSession
+  session: BffSession,
 ): Promise<void> {
   const encoded = await encodeSession(session, c.env.SESSION_SECRET);
   setCookie(c, cookieName, encoded, {
     httpOnly: true,
     secure: true,
-    sameSite: 'Lax',
-    path: '/',
+    sameSite: "Lax",
+    path: "/",
     maxAge: 30 * 24 * 60 * 60,
   });
 }
@@ -135,7 +135,7 @@ export async function setSessionCookie(
 function errorResponse(status: number, code: string, message: string): Response {
   return new Response(JSON.stringify({ error: { code, message } }), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { "Content-Type": "application/json" },
   });
 }
 
@@ -145,7 +145,7 @@ function errorResponse(status: number, code: string, message: string): Response 
  */
 export function internalServiceHeaders(env: BffEnv): Record<string, string> {
   if (env.INTERNAL_SERVICE_SECRET) {
-    return { 'X-Internal-Secret': env.INTERNAL_SERVICE_SECRET };
+    return { "X-Internal-Secret": env.INTERNAL_SERVICE_SECRET };
   }
   return {};
 }
@@ -160,11 +160,11 @@ export async function fetchWithAuth(
   c: Context<{ Bindings: BffEnv }>,
   sessionCookieName: string,
   url: string,
-  init?: RequestInit
+  init?: RequestInit,
 ): Promise<Response> {
   const session = await parseSession(getCookie(c, sessionCookieName), c.env.SESSION_SECRET);
   if (!session) {
-    return errorResponse(401, 'UNAUTHORIZED', 'Not authenticated');
+    return errorResponse(401, "UNAUTHORIZED", "Not authenticated");
   }
 
   const serviceHeaders = internalServiceHeaders(c.env);
@@ -178,14 +178,14 @@ export async function fetchWithAuth(
           ...serviceHeaders,
           Authorization: `Bearer ${token}`,
         },
-      })
+      }),
     );
 
   let res: Response;
   try {
     res = await makeRequest(session.access_token);
   } catch {
-    return errorResponse(502, 'UPSTREAM_ERROR', 'Failed to reach identity provider');
+    return errorResponse(502, "UPSTREAM_ERROR", "Failed to reach identity provider");
   }
 
   // アクセストークン期限切れ → リフレッシュして再試行
@@ -194,14 +194,14 @@ export async function fetchWithAuth(
     try {
       refreshRes = await c.env.IDP.fetch(
         new Request(`${c.env.IDP_ORIGIN}/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...serviceHeaders },
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...serviceHeaders },
           body: JSON.stringify({ refresh_token: session.refresh_token }),
-        })
+        }),
       );
     } catch {
       // リフレッシュ自体が通信失敗 → 502
-      return errorResponse(502, 'UPSTREAM_ERROR', 'Failed to reach identity provider');
+      return errorResponse(502, "UPSTREAM_ERROR", "Failed to reach identity provider");
     }
 
     if (refreshRes.ok) {
@@ -209,17 +209,24 @@ export async function fetchWithAuth(
         data: {
           access_token: string;
           refresh_token: string;
-          user?: { id: string; email: string; name: string; role: 'user' | 'admin' };
+          user?: { id: string; email: string; name: string; role: "user" | "admin" };
         };
       }>();
 
       // リフレッシュレスポンスの実行時バリデーション
       if (
-        typeof refreshData.data?.access_token !== 'string' || !refreshData.data.access_token ||
-        typeof refreshData.data?.refresh_token !== 'string' || !refreshData.data.refresh_token
+        typeof refreshData.data?.access_token !== "string" ||
+        !refreshData.data.access_token ||
+        typeof refreshData.data?.refresh_token !== "string" ||
+        !refreshData.data.refresh_token
       ) {
-        deleteCookie(c, sessionCookieName, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' });
-        return errorResponse(401, 'UNAUTHORIZED', 'Session expired');
+        deleteCookie(c, sessionCookieName, {
+          path: "/",
+          secure: true,
+          httpOnly: true,
+          sameSite: "Lax",
+        });
+        return errorResponse(401, "UNAUTHORIZED", "Session expired");
       }
 
       // セッションCookieを新トークンで更新
@@ -245,11 +252,11 @@ export async function fetchWithAuth(
       try {
         res = await makeRequest(refreshData.data.access_token);
       } catch {
-        return errorResponse(502, 'UPSTREAM_ERROR', 'Failed to reach identity provider');
+        return errorResponse(502, "UPSTREAM_ERROR", "Failed to reach identity provider");
       }
     } else if (refreshRes.status >= 500) {
       // リフレッシュエンドポイントが5xx → 502（認証失敗ではなくアップストリーム障害）
-      return errorResponse(502, 'UPSTREAM_ERROR', 'Identity provider error');
+      return errorResponse(502, "UPSTREAM_ERROR", "Identity provider error");
     } else {
       // 400/401: リフレッシュ失敗。エラーコードによってセッション削除の判断を分ける。
       // TOKEN_ROTATED は並行リクエスト競合（race condition）で発生する一時的なエラー。
@@ -262,10 +269,15 @@ export async function fetchWithAuth(
       } catch {
         // パース失敗時はターミナルエラーとして扱う
       }
-      if (errorCode !== 'TOKEN_ROTATED') {
-        deleteCookie(c, sessionCookieName, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' });
+      if (errorCode !== "TOKEN_ROTATED") {
+        deleteCookie(c, sessionCookieName, {
+          path: "/",
+          secure: true,
+          httpOnly: true,
+          sameSite: "Lax",
+        });
       }
-      return errorResponse(401, 'UNAUTHORIZED', 'Session expired');
+      return errorResponse(401, "UNAUTHORIZED", "Session expired");
     }
   }
 
@@ -283,19 +295,19 @@ export async function fetchWithJsonBody(
   c: Context<{ Bindings: BffEnv }>,
   sessionCookieName: string,
   url: string,
-  method: 'POST' | 'PATCH' | 'PUT' = 'POST'
+  method: "POST" | "PATCH" | "PUT" = "POST",
 ): Promise<Response> {
   let body: unknown;
   try {
     body = await c.req.json();
   } catch {
-    return errorResponse(400, 'BAD_REQUEST', 'Invalid JSON body');
+    return errorResponse(400, "BAD_REQUEST", "Invalid JSON body");
   }
 
   const res = await fetchWithAuth(c, sessionCookieName, url, {
     method,
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       Origin: c.env.IDP_ORIGIN,
     },
     body: JSON.stringify(body),
@@ -310,8 +322,8 @@ export async function fetchWithJsonBody(
  */
 export async function proxyResponse(res: Response): Promise<Response> {
   const safeHeaders = new Headers();
-  const contentType = res.headers.get('Content-Type');
-  if (contentType) safeHeaders.set('Content-Type', contentType);
+  const contentType = res.headers.get("Content-Type");
+  if (contentType) safeHeaders.set("Content-Type", contentType);
 
   if (res.status === 204) {
     return new Response(null, { status: 204, headers: safeHeaders });
@@ -335,7 +347,7 @@ export async function proxyMutate(
   c: Context<{ Bindings: BffEnv }>,
   sessionCookieName: string,
   url: string,
-  method: 'DELETE' | 'PATCH' | 'POST' = 'DELETE'
+  method: "DELETE" | "PATCH" | "POST" = "DELETE",
 ): Promise<Response> {
   const res = await fetchWithAuth(c, sessionCookieName, url, {
     method,
@@ -350,13 +362,13 @@ export async function proxyMutate(
 export function setOAuthStateCookie(
   c: Context<{ Bindings: BffEnv }>,
   cookieName: string,
-  state: string
+  state: string,
 ): void {
   setCookie(c, cookieName, state, {
     httpOnly: true,
     secure: true,
-    sameSite: 'Lax',
-    path: '/',
+    sameSite: "Lax",
+    path: "/",
     maxAge: 600,
   });
 }
@@ -368,19 +380,19 @@ export function setOAuthStateCookie(
 export function verifyAndConsumeOAuthState(
   c: Context<{ Bindings: BffEnv }>,
   stateCookieName: string,
-  stateParam: string
-): 'missing_session' | 'state_mismatch' | null {
+  stateParam: string,
+): "missing_session" | "state_mismatch" | null {
   const storedState = getCookie(c, stateCookieName);
-  if (!storedState) return 'missing_session';
-  if (!timingSafeEqual(stateParam, storedState)) return 'state_mismatch';
-  deleteCookie(c, stateCookieName, { path: '/', secure: true });
+  if (!storedState) return "missing_session";
+  if (!timingSafeEqual(stateParam, storedState)) return "state_mismatch";
+  deleteCookie(c, stateCookieName, { path: "/", secure: true });
   return null;
 }
 
 export interface ExchangeResult {
   access_token: string;
   refresh_token: string;
-  user: { id: string; email: string; name: string; role: 'user' | 'admin' };
+  user: { id: string; email: string; name: string; role: "user" | "admin" };
 }
 
 /**
@@ -390,14 +402,14 @@ export interface ExchangeResult {
 export async function exchangeCodeAtIdp(
   env: BffEnv,
   code: string,
-  callbackUrl: string
+  callbackUrl: string,
 ): Promise<{ ok: true; data: ExchangeResult } | { ok: false }> {
   const res = await env.IDP.fetch(
     new Request(`${env.IDP_ORIGIN}/auth/exchange`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...internalServiceHeaders(env) },
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...internalServiceHeaders(env) },
       body: JSON.stringify({ code, redirect_to: callbackUrl }),
-    })
+    }),
   );
   if (!res.ok) return { ok: false };
   const body = await res.json<{ data: ExchangeResult }>();
@@ -411,9 +423,9 @@ export async function exchangeCodeAtIdp(
 export async function revokeTokenAtIdp(env: BffEnv, refreshToken: string): Promise<void> {
   await env.IDP.fetch(
     new Request(`${env.IDP_ORIGIN}/auth/logout`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...internalServiceHeaders(env) },
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...internalServiceHeaders(env) },
       body: JSON.stringify({ refresh_token: refreshToken }),
-    })
+    }),
   );
 }

@@ -11,19 +11,19 @@
  * base64url エンコード（Uint8Array → 文字列）
  */
 function toBase64Url(bytes: Uint8Array): string {
-  return btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
+  return btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
 }
 
 /**
  * base64url デコード（文字列 → Uint8Array）
  */
 function fromBase64Url(input: string): Uint8Array {
-  const padded = input.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = input.replace(/-/g, "+").replace(/_/g, "/");
   const pad = (4 - (padded.length % 4)) % 4;
-  const binary = atob(padded + '='.repeat(pad));
+  const binary = atob(padded + "=".repeat(pad));
   return Uint8Array.from(binary, (c) => c.charCodeAt(0));
 }
 
@@ -32,9 +32,9 @@ function fromBase64Url(input: string): Uint8Array {
  */
 async function importHmacKey(secret: string): Promise<CryptoKey> {
   const keyBytes = new TextEncoder().encode(secret);
-  return crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, [
-    'sign',
-    'verify',
+  return crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, [
+    "sign",
+    "verify",
   ]);
 }
 
@@ -49,7 +49,7 @@ export async function signCookie(payload: string, secret: string): Promise<strin
   const key = await importHmacKey(secret);
   const payloadEncoded = toBase64Url(new TextEncoder().encode(payload));
   const signatureBuffer = await crypto.subtle.sign(
-    'HMAC',
+    "HMAC",
     key,
     new TextEncoder().encode(payloadEncoded),
   );
@@ -65,7 +65,7 @@ export async function signCookie(payload: string, secret: string): Promise<strin
  * @returns 検証成功時は元のpayload文字列、失敗時は `null`
  */
 export async function verifyCookie(signedValue: string, secret: string): Promise<string | null> {
-  const dotIndex = signedValue.lastIndexOf('.');
+  const dotIndex = signedValue.lastIndexOf(".");
   if (dotIndex === -1) return null;
 
   const payloadEncoded = signedValue.slice(0, dotIndex);
@@ -82,7 +82,7 @@ export async function verifyCookie(signedValue: string, secret: string): Promise
 
   const key = await importHmacKey(secret);
   const isValid = await crypto.subtle.verify(
-    'HMAC',
+    "HMAC",
     key,
     signatureBytes,
     new TextEncoder().encode(payloadEncoded),

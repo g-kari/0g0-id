@@ -1,6 +1,6 @@
-import { cors } from 'hono/cors';
-import { createMiddleware } from 'hono/factory';
-import type { BffEnv } from '../types';
+import { cors } from "hono/cors";
+import { createMiddleware } from "hono/factory";
+import type { BffEnv } from "../types";
 
 /**
  * BFF共通CORSミドルウェア
@@ -13,14 +13,14 @@ export const bffCorsMiddleware = createMiddleware<{ Bindings: BffEnv }>(async (c
   const appOrigin = c.env.SELF_ORIGIN;
   return cors({
     origin: appOrigin,
-    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type'],
+    allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowHeaders: ["Content-Type"],
     credentials: true,
   })(c, next);
 });
 
 // CSRF検証が必要な安全でないHTTPメソッド
-const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
  * BFF共通CSRFミドルウェア
@@ -41,10 +41,10 @@ export const bffCsrfMiddleware = createMiddleware<{ Bindings: BffEnv }>(async (c
     return next();
   }
 
-  const origin = c.req.header('Origin');
+  const origin = c.req.header("Origin");
 
   if (!origin) {
-    return c.json({ error: { code: 'FORBIDDEN', message: 'Origin header required' } }, 403);
+    return c.json({ error: { code: "FORBIDDEN", message: "Origin header required" } }, 403);
   }
 
   const appOrigin = c.env.SELF_ORIGIN;
@@ -54,11 +54,14 @@ export const bffCsrfMiddleware = createMiddleware<{ Bindings: BffEnv }>(async (c
     const originUrl = new URL(origin);
     originBase = `${originUrl.protocol}//${originUrl.host}`;
   } catch {
-    return c.json({ error: { code: 'FORBIDDEN', message: 'Invalid Origin header' } }, 403);
+    return c.json({ error: { code: "FORBIDDEN", message: "Invalid Origin header" } }, 403);
   }
 
   if (originBase !== appOrigin) {
-    return c.json({ error: { code: 'FORBIDDEN', message: 'Access from external services is not allowed' } }, 403);
+    return c.json(
+      { error: { code: "FORBIDDEN", message: "Access from external services is not allowed" } },
+      403,
+    );
   }
 
   await next();

@@ -1,4 +1,4 @@
-import type { OAuthProvider } from './lib/providers';
+import type { OAuthProvider } from "./lib/providers";
 
 export interface User {
   id: string;
@@ -13,7 +13,7 @@ export interface User {
   picture: string | null;
   phone: string | null;
   address: string | null;
-  role: 'user' | 'admin';
+  role: "user" | "admin";
   banned_at: string | null;
   created_at: string;
   updated_at: string;
@@ -84,7 +84,7 @@ export interface AdminAuditLog {
   target_id: string;
   details: string | null;
   ip_address: string | null;
-  status: 'success' | 'failure';
+  status: "success" | "failure";
   created_at: string;
 }
 
@@ -97,7 +97,7 @@ export interface TokenPayload {
   jti: string;
   kid: string;
   email: string;
-  role: 'user' | 'admin';
+  role: "user" | "admin";
   /** OIDCスコープ（スペース区切り）。サービストークンのみ設定される。BFFセッションはundefined。 */
   scope?: string;
   /** トークンを発行したサービスのclient_id。サービストークンのみ設定される。BFFセッションはundefined。 */

@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono } from "hono";
 import {
   sha256,
   createLogger,
@@ -15,15 +15,22 @@ import {
   deleteApprovedDeviceCode,
   deleteExpiredDeviceCodes,
   signIdToken,
-} from '@0g0-id/shared';
-import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
-import type { TokenHandlerContext } from './token';
-import { tokenApiRateLimitMiddleware, deviceVerifyRateLimitMiddleware } from '../middleware/rate-limit';
-import { authMiddleware, rejectServiceTokenMiddleware, rejectBannedUserMiddleware } from '../middleware/auth';
-import { parseAllowedScopes, resolveEffectiveScope } from '../utils/scopes';
-import { issueTokenPair, buildTokenResponse } from '../utils/token-pair';
+} from "@0g0-id/shared";
+import type { IdpEnv, TokenPayload } from "@0g0-id/shared";
+import type { TokenHandlerContext } from "./token";
+import {
+  tokenApiRateLimitMiddleware,
+  deviceVerifyRateLimitMiddleware,
+} from "../middleware/rate-limit";
+import {
+  authMiddleware,
+  rejectServiceTokenMiddleware,
+  rejectBannedUserMiddleware,
+} from "../middleware/auth";
+import { parseAllowedScopes, resolveEffectiveScope } from "../utils/scopes";
+import { issueTokenPair, buildTokenResponse } from "../utils/token-pair";
 
-const deviceLogger = createLogger('device');
+const deviceLogger = createLogger("device");
 
 /** デバイスコードの有効期限（秒） */
 const DEVICE_CODE_LIFETIME_SEC = 600;
@@ -31,13 +38,11 @@ const DEVICE_CODE_LIFETIME_SEC = 600;
 /** ポーリング間隔（秒） */
 const POLLING_INTERVAL_SEC = 5;
 
-
-
 /**
  * user_code 生成用の文字セット。
  * 紛らわしい文字（O/0/I/1/L）を除外した英数字大文字。
  */
-const USER_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const USER_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
 /**
  * 8文字のランダムなuser_codeを生成する。
@@ -55,7 +60,7 @@ function generateUserCode(): string {
       }
     }
   }
-  return result.join('');
+  return result.join("");
 }
 
 /** user_codeをハイフン区切りで表示用に整形する */
@@ -65,42 +70,48 @@ function formatUserCode(code: string): string {
 
 /** user_code入力からハイフン・空白を除去して正規化する */
 function normalizeUserCode(input: string): string {
-  return input.replace(/[-\s]/g, '').toUpperCase();
+  return input.replace(/[-\s]/g, "").toUpperCase();
 }
 
 const app = new Hono<{ Bindings: IdpEnv; Variables: { user: TokenPayload } }>();
 
 // POST /api/device/code — デバイス認可リクエスト (RFC 8628 §3.1)
-app.post('/code', tokenApiRateLimitMiddleware, async (c) => {
+app.post("/code", tokenApiRateLimitMiddleware, async (c) => {
   // 期限切れレコードをベストエフォートで掃除
   deleteExpiredDeviceCodes(c.env.DB).catch((err) => {
-    deviceLogger.warn('期限切れデバイスコードの削除に失敗', err);
+    deviceLogger.warn("期限切れデバイスコードの削除に失敗", err);
   });
 
   // リクエストボディのパース
-  const contentType = c.req.header('Content-Type') ?? '';
+  const contentType = c.req.header("Content-Type") ?? "";
   let params: Record<string, string>;
   try {
-    if (contentType.includes('application/x-www-form-urlencoded')) {
+    if (contentType.includes("application/x-www-form-urlencoded")) {
       const body = await c.req.parseBody();
       params = {};
       for (const [key, value] of Object.entries(body)) {
-        if (typeof value === 'string') {
+        if (typeof value === "string") {
           params[key] = value;
         }
       }
-    } else if (contentType.includes('application/json')) {
+    } else if (contentType.includes("application/json")) {
       params = await c.req.json<Record<string, string>>();
     } else {
-      return c.json({ error: 'invalid_request', error_description: 'Unsupported Content-Type' }, 400);
+      return c.json(
+        { error: "invalid_request", error_description: "Unsupported Content-Type" },
+        400,
+      );
     }
   } catch {
-    return c.json({ error: 'invalid_request', error_description: 'Failed to parse request body' }, 400);
+    return c.json(
+      { error: "invalid_request", error_description: "Failed to parse request body" },
+      400,
+    );
   }
 
-  const clientId = params['client_id'];
+  const clientId = params["client_id"];
   if (!clientId) {
-    return c.json({ error: 'invalid_request', error_description: 'client_id is required' }, 400);
+    return c.json({ error: "invalid_request", error_description: "client_id is required" }, 400);
   }
 
   // サービス（クライアント）の存在確認
@@ -108,23 +119,26 @@ app.post('/code', tokenApiRateLimitMiddleware, async (c) => {
   try {
     service = await findServiceByClientId(c.env.DB, clientId);
   } catch (err) {
-    deviceLogger.error('POST /api/device/code: findServiceByClientId failed', err);
-    return c.json({ error: 'server_error', error_description: 'An unexpected error occurred' }, 500);
+    deviceLogger.error("POST /api/device/code: findServiceByClientId failed", err);
+    return c.json(
+      { error: "server_error", error_description: "An unexpected error occurred" },
+      500,
+    );
   }
   if (!service) {
-    return c.json({ error: 'invalid_client', error_description: 'Unknown client_id' }, 401);
+    return c.json({ error: "invalid_client", error_description: "Unknown client_id" }, 401);
   }
 
   // スコープの検証
   // スコープ未指定時は最小スコープポリシー（RFC 6749 §3.3）に従い openid のみを付与する。
   // auth.ts /exchange・token.ts と同様に resolveEffectiveScope に委譲して挙動を統一する。
-  const resolvedScope = resolveEffectiveScope(params['scope'], service.allowed_scopes);
+  const resolvedScope = resolveEffectiveScope(params["scope"], service.allowed_scopes);
   if (resolvedScope === undefined) {
-    return c.json({ error: 'invalid_scope', error_description: 'No valid scope' }, 400);
+    return c.json({ error: "invalid_scope", error_description: "No valid scope" }, 400);
   }
 
   // デバイスコードとユーザーコードの生成
-  const deviceCode = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, '');
+  const deviceCode = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
   const deviceCodeHash = await sha256(deviceCode);
   const userCode = generateUserCode();
   const expiresAt = new Date(Date.now() + DEVICE_CODE_LIFETIME_SEC * 1000).toISOString();
@@ -147,16 +161,22 @@ app.post('/code', tokenApiRateLimitMiddleware, async (c) => {
       break;
     } catch (err) {
       // UNIQUE制約違反の場合はリトライ
-      if (attempt < 2 && err instanceof Error && err.message.includes('UNIQUE')) {
+      if (attempt < 2 && err instanceof Error && err.message.includes("UNIQUE")) {
         continue;
       }
-      deviceLogger.error('デバイスコードの保存に失敗', err);
-      return c.json({ error: 'server_error', error_description: 'Failed to create device code' }, 500);
+      deviceLogger.error("デバイスコードの保存に失敗", err);
+      return c.json(
+        { error: "server_error", error_description: "Failed to create device code" },
+        500,
+      );
     }
   }
 
   if (!saved) {
-    return c.json({ error: 'server_error', error_description: 'Failed to create device code' }, 500);
+    return c.json(
+      { error: "server_error", error_description: "Failed to create device code" },
+      500,
+    );
   }
 
   const verificationUri = `${c.env.USER_ORIGIN}/device`;
@@ -175,7 +195,7 @@ app.post('/code', tokenApiRateLimitMiddleware, async (c) => {
 // authMiddleware でアクセストークン認証、rejectServiceTokenMiddleware でサービストークン拒否
 // tokenApiRateLimitMiddleware でブルートフォース対策
 app.post(
-  '/verify',
+  "/verify",
   tokenApiRateLimitMiddleware,
   authMiddleware,
   deviceVerifyRateLimitMiddleware,
@@ -187,43 +207,58 @@ app.post(
     try {
       params = await c.req.json<Record<string, string>>();
     } catch {
-      return c.json({ error: { code: 'BAD_REQUEST', message: 'Failed to parse request body' } }, 400);
+      return c.json(
+        { error: { code: "BAD_REQUEST", message: "Failed to parse request body" } },
+        400,
+      );
     }
 
-    const rawUserCode = params['user_code'];
-    const action = params['action'] as string | undefined;
+    const rawUserCode = params["user_code"];
+    const action = params["action"] as string | undefined;
 
     if (!rawUserCode) {
-      return c.json({ error: { code: 'BAD_REQUEST', message: 'user_code is required' } }, 400);
+      return c.json({ error: { code: "BAD_REQUEST", message: "user_code is required" } }, 400);
     }
 
     // action が指定されている場合は早期バリデーション（不要なDBアクセスを回避）
-    if (action && action !== 'approve' && action !== 'deny') {
-      return c.json({ error: { code: 'BAD_REQUEST', message: 'action must be "approve" or "deny"' } }, 400);
+    if (action && action !== "approve" && action !== "deny") {
+      return c.json(
+        { error: { code: "BAD_REQUEST", message: 'action must be "approve" or "deny"' } },
+        400,
+      );
     }
 
     const userCode = normalizeUserCode(rawUserCode);
     if (userCode.length !== 8 || !/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/.test(userCode)) {
-      return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid user_code format' } }, 400);
+      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid user_code format" } }, 400);
     }
 
     try {
       const deviceCode = await findDeviceCodeByUserCode(c.env.DB, userCode);
       if (!deviceCode) {
-        return c.json({ error: { code: 'INVALID_CODE', message: 'Unknown or expired user_code' } }, 404);
+        return c.json(
+          { error: { code: "INVALID_CODE", message: "Unknown or expired user_code" } },
+          404,
+        );
       }
 
       // 期限切れチェック
       if (new Date(deviceCode.expires_at) < new Date()) {
-        return c.json({ error: { code: 'CODE_EXPIRED', message: 'Device code has expired' } }, 400);
+        return c.json({ error: { code: "CODE_EXPIRED", message: "Device code has expired" } }, 400);
       }
 
       // 既に承認/拒否済みの場合
       if (deviceCode.approved_at) {
-        return c.json({ error: { code: 'CODE_ALREADY_USED', message: 'Device code already approved' } }, 400);
+        return c.json(
+          { error: { code: "CODE_ALREADY_USED", message: "Device code already approved" } },
+          400,
+        );
       }
       if (deviceCode.denied_at) {
-        return c.json({ error: { code: 'CODE_ALREADY_USED', message: 'Device code already denied' } }, 400);
+        return c.json(
+          { error: { code: "CODE_ALREADY_USED", message: "Device code already denied" } },
+          400,
+        );
       }
 
       // actionなし → 情報取得のみ（BFFの検証ステップ用）
@@ -234,26 +269,26 @@ app.post(
           : [];
         return c.json({
           data: {
-            service_name: serviceInfo?.name ?? 'Unknown',
+            service_name: serviceInfo?.name ?? "Unknown",
             scopes,
           },
         });
       }
 
       // action付き → 承認/拒否（'approve' か 'deny'、早期バリデーション済み）
-      const tokenUser = c.get('user');
+      const tokenUser = c.get("user");
 
-      if (action === 'approve') {
+      if (action === "approve") {
         await approveDeviceCode(c.env.DB, deviceCode.id, tokenUser.sub);
-        return c.json({ status: 'approved' });
+        return c.json({ status: "approved" });
       } else {
         await denyDeviceCode(c.env.DB, deviceCode.id);
-        return c.json({ status: 'denied' });
+        return c.json({ status: "denied" });
       }
     } catch {
-      return c.json({ error: 'INTERNAL_ERROR' }, 500);
+      return c.json({ error: "INTERNAL_ERROR" }, 500);
     }
-  }
+  },
 );
 
 /**
@@ -262,16 +297,16 @@ app.post(
  */
 export async function handleDeviceCodeGrant(
   c: TokenHandlerContext,
-  params: Record<string, string>
+  params: Record<string, string>,
 ): Promise<Response> {
-  const rawDeviceCode = params['device_code'];
-  const clientId = params['client_id'];
+  const rawDeviceCode = params["device_code"];
+  const clientId = params["client_id"];
 
   if (!rawDeviceCode) {
-    return c.json({ error: 'invalid_request', error_description: 'device_code is required' }, 400);
+    return c.json({ error: "invalid_request", error_description: "device_code is required" }, 400);
   }
   if (!clientId) {
-    return c.json({ error: 'invalid_request', error_description: 'client_id is required' }, 400);
+    return c.json({ error: "invalid_request", error_description: "client_id is required" }, 400);
   }
 
   // クライアント確認
@@ -279,11 +314,14 @@ export async function handleDeviceCodeGrant(
   try {
     service = await findServiceByClientId(c.env.DB, clientId);
   } catch (err) {
-    deviceLogger.error('handleDeviceCodeGrant: findServiceByClientId failed', err);
-    return c.json({ error: 'server_error', error_description: 'An unexpected error occurred' }, 500);
+    deviceLogger.error("handleDeviceCodeGrant: findServiceByClientId failed", err);
+    return c.json(
+      { error: "server_error", error_description: "An unexpected error occurred" },
+      500,
+    );
   }
   if (!service) {
-    return c.json({ error: 'invalid_client' }, 401);
+    return c.json({ error: "invalid_client" }, 401);
   }
 
   const deviceCodeHash = await sha256(rawDeviceCode);
@@ -292,17 +330,23 @@ export async function handleDeviceCodeGrant(
   try {
     deviceCode = await findDeviceCodeByHash(c.env.DB, deviceCodeHash);
   } catch (err) {
-    deviceLogger.error('handleDeviceCodeGrant: findDeviceCodeByHash failed', err);
-    return c.json({ error: 'server_error', error_description: 'An unexpected error occurred' }, 500);
+    deviceLogger.error("handleDeviceCodeGrant: findDeviceCodeByHash failed", err);
+    return c.json(
+      { error: "server_error", error_description: "An unexpected error occurred" },
+      500,
+    );
   }
 
   if (!deviceCode) {
-    return c.json({ error: 'invalid_grant', error_description: 'Invalid device code' }, 400);
+    return c.json({ error: "invalid_grant", error_description: "Invalid device code" }, 400);
   }
 
   // サービス一致確認
   if (deviceCode.service_id !== service.id) {
-    return c.json({ error: 'invalid_grant', error_description: 'Device code was not issued for this client' }, 400);
+    return c.json(
+      { error: "invalid_grant", error_description: "Device code was not issued for this client" },
+      400,
+    );
   }
 
   // 期限切れチェック
@@ -311,9 +355,9 @@ export async function handleDeviceCodeGrant(
     try {
       await deleteDeviceCode(c.env.DB, deviceCode.id);
     } catch (err) {
-      deviceLogger.warn('handleDeviceCodeGrant: deleteDeviceCode (expired) failed', err);
+      deviceLogger.warn("handleDeviceCodeGrant: deleteDeviceCode (expired) failed", err);
     }
-    return c.json({ error: 'invalid_grant', error_description: 'Device code has expired' }, 400);
+    return c.json({ error: "invalid_grant", error_description: "Device code has expired" }, 400);
   }
 
   // 拒否済みチェック
@@ -323,7 +367,7 @@ export async function handleDeviceCodeGrant(
     } catch {
       // 削除失敗してもクライアントにはaccess_deniedを返す（期限切れ時に自動削除される）
     }
-    return c.json({ error: 'access_denied' }, 400);
+    return c.json({ error: "access_denied" }, 400);
   }
 
   // 承認済みチェックをslow_downの前に実施（承認済みなのに余分な待機を強いるのを防止）
@@ -331,16 +375,23 @@ export async function handleDeviceCodeGrant(
     // まだ承認されていない場合のみポーリング間隔チェック
     let pollingAllowed: boolean;
     try {
-      pollingAllowed = await tryUpdateDeviceCodePolledAt(c.env.DB, deviceCode.id, POLLING_INTERVAL_SEC);
+      pollingAllowed = await tryUpdateDeviceCodePolledAt(
+        c.env.DB,
+        deviceCode.id,
+        POLLING_INTERVAL_SEC,
+      );
     } catch (err) {
-      deviceLogger.error('handleDeviceCodeGrant: tryUpdateDeviceCodePolledAt failed', err);
-      return c.json({ error: 'server_error', error_description: 'An unexpected error occurred' }, 500);
+      deviceLogger.error("handleDeviceCodeGrant: tryUpdateDeviceCodePolledAt failed", err);
+      return c.json(
+        { error: "server_error", error_description: "An unexpected error occurred" },
+        500,
+      );
     }
     if (!pollingAllowed) {
       // RFC 8628 §3.5: slow_down には Retry-After ヘッダーを付与する
-      return c.json({ error: 'slow_down' }, 400, { 'Retry-After': String(POLLING_INTERVAL_SEC) });
+      return c.json({ error: "slow_down" }, 400, { "Retry-After": String(POLLING_INTERVAL_SEC) });
     }
-    return c.json({ error: 'authorization_pending' }, 400);
+    return c.json({ error: "authorization_pending" }, 400);
   }
 
   // 承認済みユーザー取得とBANチェック（不可逆な削除の前に実施）
@@ -348,20 +399,23 @@ export async function handleDeviceCodeGrant(
   try {
     user = await findUserById(c.env.DB, deviceCode.user_id);
   } catch (err) {
-    deviceLogger.error('handleDeviceCodeGrant: findUserById failed', err);
-    return c.json({ error: 'server_error', error_description: 'An unexpected error occurred' }, 500);
+    deviceLogger.error("handleDeviceCodeGrant: findUserById failed", err);
+    return c.json(
+      { error: "server_error", error_description: "An unexpected error occurred" },
+      500,
+    );
   }
   if (!user) {
-    return c.json({ error: 'invalid_grant', error_description: 'User not found' }, 400);
+    return c.json({ error: "invalid_grant", error_description: "User not found" }, 400);
   }
   if (user.banned_at !== null) {
     // BAN済みユーザーのdevice codeは失効させる
     try {
       await deleteDeviceCode(c.env.DB, deviceCode.id);
     } catch (err) {
-      deviceLogger.warn('handleDeviceCodeGrant: deleteDeviceCode (banned) failed', err);
+      deviceLogger.warn("handleDeviceCodeGrant: deleteDeviceCode (banned) failed", err);
     }
-    return c.json({ error: 'access_denied', error_description: 'Account has been suspended' }, 403);
+    return c.json({ error: "access_denied", error_description: "Account has been suspended" }, 403);
   }
 
   // 全チェック通過後にアトミック削除で二重トークン発行を防止
@@ -369,12 +423,18 @@ export async function handleDeviceCodeGrant(
   try {
     deleted = await deleteApprovedDeviceCode(c.env.DB, deviceCode.id);
   } catch (err) {
-    deviceLogger.error('handleDeviceCodeGrant: deleteApprovedDeviceCode failed', err);
-    return c.json({ error: 'server_error', error_description: 'An unexpected error occurred' }, 500);
+    deviceLogger.error("handleDeviceCodeGrant: deleteApprovedDeviceCode failed", err);
+    return c.json(
+      { error: "server_error", error_description: "An unexpected error occurred" },
+      500,
+    );
   }
   if (!deleted) {
     // 他のリクエストが先にトークンを発行済み
-    return c.json({ error: 'invalid_grant', error_description: 'Device code already consumed' }, 400);
+    return c.json(
+      { error: "invalid_grant", error_description: "Device code already consumed" },
+      400,
+    );
   }
 
   // スコープ計算
@@ -390,7 +450,7 @@ export async function handleDeviceCodeGrant(
 
   // OIDC ID トークン発行（openid スコープがある場合）
   let idToken: string | undefined;
-  const shouldIssueIdToken = serviceScope?.split(' ').includes('openid');
+  const shouldIssueIdToken = serviceScope?.split(" ").includes("openid");
   if (shouldIssueIdToken) {
     const authTime = Math.floor(Date.now() / 1000);
     idToken = await signIdToken(
@@ -404,7 +464,7 @@ export async function handleDeviceCodeGrant(
         authTime,
       },
       c.env.JWT_PRIVATE_KEY,
-      c.env.JWT_PUBLIC_KEY
+      c.env.JWT_PUBLIC_KEY,
     );
   }
 

@@ -7,25 +7,28 @@ on:
     branches: [master]
 
 jobs:
-  test:
-    name: テスト・型チェック
+  check:
+    name: lint・fmt・型チェック・テスト
     runs-on: ubuntu-latest
 
     steps:
       - name: チェックアウト
         uses: actions/checkout@v4
 
+      - name: Vite+ セットアップ
+        run: curl -fsSL https://vite.plus | bash
+
       - name: Node.js セットアップ
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
 
       - name: 依存パッケージインストール
         run: npm ci
 
-      - name: 型チェック
-        run: npm run typecheck
+      - name: check（lint + fmt + typecheck）
+        run: vp check
 
       - name: テスト実行
-        run: npm test
+        run: vp test run

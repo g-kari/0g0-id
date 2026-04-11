@@ -1,11 +1,11 @@
-import { fetchWithRetry } from './fetch-retry';
-import { createLogger } from './logger';
+import { fetchWithRetry } from "./fetch-retry";
+import { createLogger } from "./logger";
 
-const logger = createLogger('oauth-twitch');
+const logger = createLogger("oauth-twitch");
 
-const TWITCH_AUTH_URL = 'https://id.twitch.tv/oauth2/authorize';
-const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
-const TWITCH_USERINFO_URL = 'https://id.twitch.tv/oauth2/userinfo';
+const TWITCH_AUTH_URL = "https://id.twitch.tv/oauth2/authorize";
+const TWITCH_TOKEN_URL = "https://id.twitch.tv/oauth2/token";
+const TWITCH_USERINFO_URL = "https://id.twitch.tv/oauth2/userinfo";
 
 export interface TwitchUserInfo {
   sub: string;
@@ -34,15 +34,15 @@ export function buildTwitchAuthUrl(params: {
   nonce?: string;
 }): string {
   const url = new URL(TWITCH_AUTH_URL);
-  url.searchParams.set('response_type', 'code');
-  url.searchParams.set('client_id', params.clientId);
-  url.searchParams.set('redirect_uri', params.redirectUri);
-  url.searchParams.set('scope', 'openid user:read:email');
-  url.searchParams.set('state', params.state);
-  url.searchParams.set('code_challenge', params.codeChallenge);
-  url.searchParams.set('code_challenge_method', 'S256');
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("client_id", params.clientId);
+  url.searchParams.set("redirect_uri", params.redirectUri);
+  url.searchParams.set("scope", "openid user:read:email");
+  url.searchParams.set("state", params.state);
+  url.searchParams.set("code_challenge", params.codeChallenge);
+  url.searchParams.set("code_challenge_method", "S256");
   if (params.nonce) {
-    url.searchParams.set('nonce', params.nonce);
+    url.searchParams.set("nonce", params.nonce);
   }
   return url.toString();
 }
@@ -59,10 +59,10 @@ export async function exchangeTwitchCode(params: {
   codeVerifier: string;
 }): Promise<TwitchTokenResponse> {
   const response = await fetchWithRetry(TWITCH_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      grant_type: 'authorization_code',
+      grant_type: "authorization_code",
       code: params.code,
       redirect_uri: params.redirectUri,
       client_id: params.clientId,
@@ -74,13 +74,13 @@ export async function exchangeTwitchCode(params: {
   if (!response.ok) {
     const error = await response.text();
     logger.error(`Twitch token exchange failed (${response.status})`, error);
-    throw new Error('Twitch token exchange failed');
+    throw new Error("Twitch token exchange failed");
   }
 
   try {
     return (await response.json()) as TwitchTokenResponse;
   } catch {
-    throw new Error('Twitch token exchange failed: Invalid JSON response');
+    throw new Error("Twitch token exchange failed: Invalid JSON response");
   }
 }
 
@@ -99,6 +99,6 @@ export async function fetchTwitchUserInfo(accessToken: string): Promise<TwitchUs
   try {
     return (await response.json()) as TwitchUserInfo;
   } catch {
-    throw new Error('Twitch userinfo fetch failed: Invalid JSON response');
+    throw new Error("Twitch userinfo fetch failed: Invalid JSON response");
   }
 }

@@ -9,16 +9,19 @@ paths:
 ## レスポンス形式
 
 ### 成功レスポンス
+
 ```json
 { "data": { ... } }
 ```
 
 ### エラーレスポンス
+
 ```json
 { "error": { "code": "ERROR_CODE", "message": "説明" } }
 ```
 
 ## HTTPステータスコード
+
 - 200: 成功（GET, PATCH）
 - 201: 作成成功（POST）
 - 204: 削除成功（DELETE）
@@ -33,34 +36,36 @@ paths:
 
 **API を追加・編集・削除したら、必ず `workers/id/src/routes/docs.ts` の OpenAPI 仕様も同じコミットで更新すること。**
 
-| 変更の種類 | 更新対象 |
-|-----------|---------|
-| id worker の API 追加・変更 | `INTERNAL_OPENAPI.paths` |
-| 外部サービス向け API（`/api/external/`, `/api/userinfo`, `/auth/`, `/api/token/introspect`, `/api/token/revoke`, `/.well-known/`）の変更 | `EXTERNAL_OPENAPI.paths` |
-| 新しいスキーマ型の追加 | `INTERNAL_OPENAPI.components.schemas` および/または `EXTERNAL_OPENAPI.components.schemas` |
-| API の削除 | 対応する `paths` エントリも削除 |
+| 変更の種類                                                                                                                               | 更新対象                                                                                  |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| id worker の API 追加・変更                                                                                                              | `INTERNAL_OPENAPI.paths`                                                                  |
+| 外部サービス向け API（`/api/external/`, `/api/userinfo`, `/auth/`, `/api/token/introspect`, `/api/token/revoke`, `/.well-known/`）の変更 | `EXTERNAL_OPENAPI.paths`                                                                  |
+| 新しいスキーマ型の追加                                                                                                                   | `INTERNAL_OPENAPI.components.schemas` および/または `EXTERNAL_OPENAPI.components.schemas` |
+| API の削除                                                                                                                               | 対応する `paths` エントリも削除                                                           |
 
 ### チェック観点
+
 - エンドポイントのパス・メソッドが一致しているか
 - リクエスト/レスポンスのスキーマが実装と一致しているか
 - 認証方式（BearerAuth / BasicAuth / Public）が正しいか
 - タグが適切に分類されているか
 
 ## id.0g0.xyz エンドポイント一覧
-| パス | メソッド | 認証 | 説明 |
-|------|----------|------|------|
-| /api/health | GET | Public | ヘルスチェック |
-| /auth/login | GET | Public | Google認可へリダイレクト |
+
+| パス        | メソッド | 認証   | 説明                     |
+| ----------- | -------- | ------ | ------------------------ |
+| /api/health | GET      | Public | ヘルスチェック           |
+| /auth/login | GET      | Public | Google認可へリダイレクト |
 
 ### /auth/login クエリパラメータ
 
-| パラメータ | 必須/任意 | 説明 |
-|---|---|---|
-| `redirect_to` | 必須 | 認証後のリダイレクト先 URI |
-| `state` | 推奨 | CSRF 防止用の不透明な文字列 |
-| `client_id` | **外部サービスでは必須** | 登録済みサービスの client_id |
-| `code_challenge` | PKCE 使用時 | S256 コードチャレンジ |
-| `code_challenge_method` | PKCE 使用時 | `S256` 固定 |
+| パラメータ              | 必須/任意                | 説明                         |
+| ----------------------- | ------------------------ | ---------------------------- |
+| `redirect_to`           | 必須                     | 認証後のリダイレクト先 URI   |
+| `state`                 | 推奨                     | CSRF 防止用の不透明な文字列  |
+| `client_id`             | **外部サービスでは必須** | 登録済みサービスの client_id |
+| `code_challenge`        | PKCE 使用時              | S256 コードチャレンジ        |
+| `code_challenge_method` | PKCE 使用時              | `S256` 固定                  |
 
 #### client_id の扱い
 
@@ -68,13 +73,16 @@ paths:
 - **外部サービス**（非 BFF オリジン、例: `rss.0g0.xyz`）: `client_id` は**必須**
 
 `client_id` なしで外部オリジンから呼び出した場合:
+
 - `400 Bad Request` — `{ "error": { "code": "BAD_REQUEST", "message": "client_id is required for external services" } }`
 - ユーザーとサービスの紐付けが記録されないため `/api/users/me/connections` に表示されない
 
 外部サービスのログイン URL 形式:
+
 ```
 https://id.0g0.xyz/auth/login?client_id=<CLIENT_ID>&redirect_to=<登録済みURI>&state=<STATE>
 ```
+
 | /auth/callback | GET | Public | Googleコールバック |
 | /auth/exchange | POST | Service Bindings | ワンタイムコード交換 |
 | /auth/logout | POST | Service Bindings | ログアウト |

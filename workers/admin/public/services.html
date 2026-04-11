@@ -1,129 +1,234 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>0g0 ID Admin - サービス管理</title>
-  <meta name="robots" content="noindex, nofollow">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/style.css">
-</head>
-<body>
-  <div class="layout">
-    <nav class="sidebar" aria-label="サイドバーナビゲーション">
-      <div class="sidebar-logo">0g0 ID Admin</div>
-      <div class="sidebar-nav">
-        <a href="/dashboard.html">
-          <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
-          ダッシュボード
-        </a>
-        <a href="/services.html" class="active">
-          <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-          サービス管理
-        </a>
-        <a href="/users.html">
-          <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
-          ユーザー管理
-        </a>
-      </div>
-    </nav>
-    <main class="main">
-      <div class="page-header">
-        <h1>サービス管理</h1>
-        <div style="display:flex;gap:0.5rem;">
-          <button class="btn btn-primary" id="add-service-btn">+ サービス追加</button>
-          <button class="btn btn-danger btn-sm" id="logout-btn">ログアウト</button>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>0g0 ID Admin - サービス管理</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <nav class="sidebar" aria-label="サイドバーナビゲーション">
+        <div class="sidebar-logo">0g0 ID Admin</div>
+        <div class="sidebar-nav">
+          <a href="/dashboard.html">
+            <svg
+              class="nav-icon"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="14" width="7" height="7" rx="1" />
+              <rect x="3" y="14" width="7" height="7" rx="1" />
+            </svg>
+            ダッシュボード
+          </a>
+          <a href="/services.html" class="active">
+            <svg
+              class="nav-icon"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="2" y="2" width="20" height="8" rx="2" />
+              <rect x="2" y="14" width="20" height="8" rx="2" />
+              <line x1="6" y1="6" x2="6.01" y2="6" />
+              <line x1="6" y1="18" x2="6.01" y2="18" />
+            </svg>
+            サービス管理
+          </a>
+          <a href="/users.html">
+            <svg
+              class="nav-icon"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="9" cy="7" r="4" />
+              <path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              <path d="M21 21v-2a4 4 0 0 0-3-3.87" />
+            </svg>
+            ユーザー管理
+          </a>
         </div>
-      </div>
-      <div id="msg" class="alert" style="display:none;" role="alert"></div>
-      <div class="card">
-        <div class="table-wrap">
-          <table id="services-table" aria-label="サービス一覧">
-            <thead>
-              <tr>
-                <th>名前</th>
-                <th>Client ID</th>
-                <th>登録日</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <!-- expanded redirect URIs row (template) -->
-            <tbody id="services-body">
-              <tr><td colspan="4" style="text-align:center;color:var(--text-muted);">読み込み中...</td></tr>
-            </tbody>
-          </table>
+      </nav>
+      <main class="main">
+        <div class="page-header">
+          <h1>サービス管理</h1>
+          <div style="display: flex; gap: 0.5rem">
+            <button class="btn btn-primary" id="add-service-btn">+ サービス追加</button>
+            <button class="btn btn-danger btn-sm" id="logout-btn">ログアウト</button>
+          </div>
         </div>
-      </div>
-    </main>
-  </div>
-
-  <!-- リダイレクトURI管理モーダル -->
-  <div class="modal-overlay" id="uri-modal" hidden role="dialog" aria-modal="true" aria-labelledby="uri-modal-title">
-    <div class="modal" style="max-width:520px;">
-      <h2 id="uri-modal-title">リダイレクトURI管理</h2>
-      <p id="uri-modal-service-name" style="font-size:0.875rem;color:var(--text-muted);margin-bottom:1rem;"></p>
-      <div id="uri-list" style="margin-bottom:1rem;min-height:2rem;"></div>
-      <form id="uri-add-form">
-        <div class="form-group" style="margin-bottom:0.5rem;">
-          <label for="uri-input">URIを追加</label>
-          <input type="url" id="uri-input" name="uri" placeholder="https://example.com/callback" required>
+        <div id="msg" class="alert" style="display: none" role="alert"></div>
+        <div class="card">
+          <div class="table-wrap">
+            <table id="services-table" aria-label="サービス一覧">
+              <thead>
+                <tr>
+                  <th>名前</th>
+                  <th>Client ID</th>
+                  <th>登録日</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <!-- expanded redirect URIs row (template) -->
+              <tbody id="services-body">
+                <tr>
+                  <td colspan="4" style="text-align: center; color: var(--text-muted)">
+                    読み込み中...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div class="modal-actions" style="margin-top:0.5rem;">
-          <button type="button" class="btn" id="uri-close-btn">閉じる</button>
-          <button type="submit" class="btn btn-primary">追加</button>
-        </div>
-      </form>
+      </main>
     </div>
-  </div>
 
-  <!-- サービス追加モーダル -->
-  <div class="modal-overlay" id="add-modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">
-    <div class="modal">
-      <h2 id="modal-title">サービス追加</h2>
-      <form id="add-form">
+    <!-- リダイレクトURI管理モーダル -->
+    <div
+      class="modal-overlay"
+      id="uri-modal"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="uri-modal-title"
+    >
+      <div class="modal" style="max-width: 520px">
+        <h2 id="uri-modal-title">リダイレクトURI管理</h2>
+        <p
+          id="uri-modal-service-name"
+          style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem"
+        ></p>
+        <div id="uri-list" style="margin-bottom: 1rem; min-height: 2rem"></div>
+        <form id="uri-add-form">
+          <div class="form-group" style="margin-bottom: 0.5rem">
+            <label for="uri-input">URIを追加</label>
+            <input
+              type="url"
+              id="uri-input"
+              name="uri"
+              placeholder="https://example.com/callback"
+              required
+            />
+          </div>
+          <div class="modal-actions" style="margin-top: 0.5rem">
+            <button type="button" class="btn" id="uri-close-btn">閉じる</button>
+            <button type="submit" class="btn btn-primary">追加</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- サービス追加モーダル -->
+    <div
+      class="modal-overlay"
+      id="add-modal"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
+    >
+      <div class="modal">
+        <h2 id="modal-title">サービス追加</h2>
+        <form id="add-form">
+          <div class="form-group">
+            <label for="service-name">サービス名</label>
+            <input type="text" id="service-name" name="name" required />
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn" id="cancel-btn">キャンセル</button>
+            <button type="submit" class="btn btn-primary">作成</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- シークレット表示モーダル -->
+    <div
+      class="modal-overlay"
+      id="secret-modal"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="secret-modal-title"
+    >
+      <div class="modal">
+        <h2 id="secret-modal-title">サービス作成完了</h2>
+        <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 0.5rem">
+          Client IDとClient Secretをコピーしてください。Secretは再表示できません。
+        </p>
         <div class="form-group">
-          <label for="service-name">サービス名</label>
-          <input type="text" id="service-name" name="name" required>
+          <label>Client ID</label>
+          <div class="secret-box" id="client-id-box"></div>
+        </div>
+        <div class="form-group">
+          <label>Client Secret</label>
+          <div class="secret-box" id="client-secret-box"></div>
+        </div>
+        <div class="alert alert-warning">
+          ⚠ このClient Secretは一度しか表示されません。必ずコピーして安全な場所に保管してください。
         </div>
         <div class="modal-actions">
-          <button type="button" class="btn" id="cancel-btn">キャンセル</button>
-          <button type="submit" class="btn btn-primary">作成</button>
+          <button type="button" class="btn btn-primary" id="close-secret-btn">確認しました</button>
         </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- シークレット表示モーダル -->
-  <div class="modal-overlay" id="secret-modal" hidden role="dialog" aria-modal="true" aria-labelledby="secret-modal-title">
-    <div class="modal">
-      <h2 id="secret-modal-title">サービス作成完了</h2>
-      <p style="font-size:0.875rem;color:var(--text-muted);margin-bottom:0.5rem;">Client IDとClient Secretをコピーしてください。Secretは再表示できません。</p>
-      <div class="form-group">
-        <label>Client ID</label>
-        <div class="secret-box" id="client-id-box"></div>
-      </div>
-      <div class="form-group">
-        <label>Client Secret</label>
-        <div class="secret-box" id="client-secret-box"></div>
-      </div>
-      <div class="alert alert-warning">⚠ このClient Secretは一度しか表示されません。必ずコピーして安全な場所に保管してください。</div>
-      <div class="modal-actions">
-        <button type="button" class="btn btn-primary" id="close-secret-btn">確認しました</button>
       </div>
     </div>
-  </div>
 
-  <!-- サービスユーザー一覧モーダル -->
-  <div class="modal-overlay" id="service-users-modal" hidden role="dialog" aria-modal="true" aria-labelledby="service-users-title">
-    <div class="modal" style="max-width:620px;max-height:90vh;display:flex;flex-direction:column;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
-        <h2 id="service-users-title" style="margin-bottom:0;"></h2>
-        <button class="btn btn-secondary btn-sm" id="service-users-close-btn" aria-label="閉じる">閉じる</button>
+    <!-- サービスユーザー一覧モーダル -->
+    <div
+      class="modal-overlay"
+      id="service-users-modal"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="service-users-title"
+    >
+      <div
+        class="modal"
+        style="max-width: 620px; max-height: 90vh; display: flex; flex-direction: column"
+      >
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+          "
+        >
+          <h2 id="service-users-title" style="margin-bottom: 0"></h2>
+          <button class="btn btn-secondary btn-sm" id="service-users-close-btn" aria-label="閉じる">
+            閉じる
+          </button>
+        </div>
+        <div id="service-users-content" style="overflow-y: auto; flex: 1; min-height: 0"></div>
       </div>
-      <div id="service-users-content" style="overflow-y:auto;flex:1;min-height:0;"></div>
     </div>
-  </div>
 
-  <script src="/app.js"></script>
-</body>
+    <script src="/app.js"></script>
+  </body>
 </html>

@@ -1,5 +1,5 @@
-import { Hono } from 'hono';
-import { z } from 'zod';
+import { Hono } from "hono";
+import { z } from "zod";
 import {
   listServices,
   countServices,
@@ -25,68 +25,72 @@ import {
   createAdminAuditLog,
   parsePagination,
   createLogger,
-} from '@0g0-id/shared';
-import type { IdpEnv, TokenPayload } from '@0g0-id/shared';
-import { authMiddleware } from '../middleware/auth';
-import { adminMiddleware } from '../middleware/admin';
-import { csrfMiddleware } from '../middleware/csrf';
-import { parseJsonBody } from '@0g0-id/shared';
-import { getClientIp } from '../utils/ip';
+} from "@0g0-id/shared";
+import type { IdpEnv, TokenPayload } from "@0g0-id/shared";
+import { authMiddleware } from "../middleware/auth";
+import { adminMiddleware } from "../middleware/admin";
+import { csrfMiddleware } from "../middleware/csrf";
+import { parseJsonBody } from "@0g0-id/shared";
+import { getClientIp } from "../utils/ip";
 
 type Variables = { user: TokenPayload };
 
-const servicesLogger = createLogger('services');
+const servicesLogger = createLogger("services");
 
 // サポートされているスコープの一覧
-const SUPPORTED_SCOPES = ['profile', 'email', 'phone', 'address'] as const;
+const SUPPORTED_SCOPES = ["profile", "email", "phone", "address"] as const;
 
 const ScopeEnum = z.enum(SUPPORTED_SCOPES);
 
 const CreateServiceSchema = z.object({
-  name: z.string().min(1, 'name is required').max(100, 'name must be 100 characters or less'),
-  allowed_scopes: z.array(ScopeEnum).min(1, 'allowed_scopes must not be empty').optional(),
+  name: z.string().min(1, "name is required").max(100, "name must be 100 characters or less"),
+  allowed_scopes: z.array(ScopeEnum).min(1, "allowed_scopes must not be empty").optional(),
 });
 
 const PatchServiceSchema = z
   .object({
-    name: z.string().min(1, 'name must not be empty').max(100, 'name must be 100 characters or less').optional(),
-    allowed_scopes: z.array(ScopeEnum).min(1, 'allowed_scopes must not be empty').optional(),
+    name: z
+      .string()
+      .min(1, "name must not be empty")
+      .max(100, "name must be 100 characters or less")
+      .optional(),
+    allowed_scopes: z.array(ScopeEnum).min(1, "allowed_scopes must not be empty").optional(),
   })
   .refine((data) => data.name !== undefined || data.allowed_scopes !== undefined, {
-    message: 'At least one of name or allowed_scopes must be provided',
+    message: "At least one of name or allowed_scopes must be provided",
   });
 
 const AddRedirectUriSchema = z
   .object({
-    uri: z.string().min(1, 'uri is required').max(2048, 'URI must be 2048 characters or less'),
+    uri: z.string().min(1, "uri is required").max(2048, "URI must be 2048 characters or less"),
   })
   .refine(
     (data) => {
       try {
         const url = new URL(data.uri);
-        const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-        return isLocalhost || url.protocol === 'https:';
+        const isLocalhost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+        return isLocalhost || url.protocol === "https:";
       } catch {
         return false;
       }
     },
-    { message: 'Redirect URI must use HTTPS (HTTP is only allowed for localhost/127.0.0.1)' }
+    { message: "Redirect URI must use HTTPS (HTTP is only allowed for localhost/127.0.0.1)" },
   );
 
 const TransferOwnerSchema = z.object({
-  new_owner_user_id: z.string().min(1, 'new_owner_user_id is required'),
+  new_owner_user_id: z.string().min(1, "new_owner_user_id is required"),
 });
 
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
 // GET /api/services
-app.get('/', authMiddleware, adminMiddleware, async (c) => {
-  const name = c.req.query('name');
+app.get("/", authMiddleware, adminMiddleware, async (c) => {
+  const name = c.req.query("name");
   const pagination = parsePagination(
-    { limit: c.req.query('limit'), offset: c.req.query('offset') },
-    { defaultLimit: 50, maxLimit: 100 }
+    { limit: c.req.query("limit"), offset: c.req.query("offset") },
+    { defaultLimit: 50, maxLimit: 100 },
   );
-  if ('error' in pagination) {
+  if ("error" in pagination) {
     return c.json({ error: pagination.error }, 400);
   }
   const { limit, offset } = pagination;
@@ -99,8 +103,8 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
       countServices(c.env.DB, { name }),
     ]);
   } catch (err) {
-    servicesLogger.error('[services] Failed to list services', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    servicesLogger.error("[services] Failed to list services", err);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
 
   return c.json({
@@ -119,17 +123,17 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
 });
 
 // GET /api/services/:id
-app.get('/:id', authMiddleware, adminMiddleware, async (c) => {
-  const serviceId = c.req.param('id');
+app.get("/:id", authMiddleware, adminMiddleware, async (c) => {
+  const serviceId = c.req.param("id");
   let service: Awaited<ReturnType<typeof findServiceById>>;
   try {
     service = await findServiceById(c.env.DB, serviceId);
   } catch (err) {
-    servicesLogger.error('[services] Failed to fetch service', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    servicesLogger.error("[services] Failed to fetch service", err);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
   if (!service) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
   }
 
   return c.json({
@@ -146,16 +150,16 @@ app.get('/:id', authMiddleware, adminMiddleware, async (c) => {
 });
 
 // POST /api/services
-app.post('/', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+app.post("/", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const result = await parseJsonBody(c, CreateServiceSchema);
   if (!result.ok) return result.response;
   const body = result.data;
 
-  const tokenUser = c.get('user');
+  const tokenUser = c.get("user");
   const clientId = generateClientId();
   const clientSecret = generateClientSecret();
   const clientSecretHash = await sha256(clientSecret);
-  const allowedScopes = JSON.stringify(body.allowed_scopes ?? ['profile', 'email']);
+  const allowedScopes = JSON.stringify(body.allowed_scopes ?? ["profile", "email"]);
 
   let service: Awaited<ReturnType<typeof createService>>;
   try {
@@ -168,22 +172,22 @@ app.post('/', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
       ownerUserId: tokenUser.sub,
     });
   } catch (err) {
-    servicesLogger.error('[services] Failed to create service', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    servicesLogger.error("[services] Failed to create service", err);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
 
   try {
     await createAdminAuditLog(c.env.DB, {
       adminUserId: tokenUser.sub,
-      action: 'service.create',
-      targetType: 'service',
+      action: "service.create",
+      targetType: "service",
       targetId: service.id,
-      details: { name: service.name, allowed_scopes: body.allowed_scopes ?? ['profile', 'email'] },
+      details: { name: service.name, allowed_scopes: body.allowed_scopes ?? ["profile", "email"] },
       ipAddress: getClientIp(c.req.raw),
-      status: 'success',
+      status: "success",
     });
   } catch (err) {
-    servicesLogger.error('[services] Failed to create audit log for service.create', err);
+    servicesLogger.error("[services] Failed to create audit log for service.create", err);
   }
 
   // client_secretは作成時のみ返却
@@ -198,13 +202,13 @@ app.post('/', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
         created_at: service.created_at,
       },
     },
-    201
+    201,
   );
 });
 
 // PATCH /api/services/:id — name または allowed_scopesの更新
-app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
-  const serviceId = c.req.param('id');
+app.patch("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+  const serviceId = c.req.param("id");
 
   const result = await parseJsonBody(c, PatchServiceSchema);
   if (!result.ok) return result.response;
@@ -217,30 +221,30 @@ app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => 
       ...(allowed_scopes !== undefined ? { allowedScopes: JSON.stringify(allowed_scopes) } : {}),
     });
   } catch (err) {
-    servicesLogger.error('[services] Failed to update service', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    servicesLogger.error("[services] Failed to update service", err);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
 
   if (!updated) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
   }
 
-  const tokenUser = c.get('user');
+  const tokenUser = c.get("user");
   try {
     await createAdminAuditLog(c.env.DB, {
       adminUserId: tokenUser.sub,
-      action: 'service.update',
-      targetType: 'service',
+      action: "service.update",
+      targetType: "service",
       targetId: serviceId,
       details: {
         ...(name !== undefined ? { name } : {}),
         ...(allowed_scopes !== undefined ? { allowed_scopes } : {}),
       },
       ipAddress: getClientIp(c.req.raw),
-      status: 'success',
+      status: "success",
     });
   } catch (err) {
-    servicesLogger.error('[services] Failed to create audit log for service.update', err);
+    servicesLogger.error("[services] Failed to create audit log for service.update", err);
   }
 
   return c.json({
@@ -256,60 +260,62 @@ app.patch('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => 
 });
 
 // DELETE /api/services/:id
-app.delete('/:id', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
-  const serviceId = c.req.param('id');
+app.delete("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+  const serviceId = c.req.param("id");
   let service: Awaited<ReturnType<typeof findServiceById>>;
   try {
     service = await findServiceById(c.env.DB, serviceId);
   } catch (err) {
-    servicesLogger.error('[services] Failed to fetch service for deletion', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    servicesLogger.error("[services] Failed to fetch service for deletion", err);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
   if (!service) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
   }
 
-  const tokenUser = c.get('user');
+  const tokenUser = c.get("user");
 
   // サービス削除前に全ユーザーのアクティブトークンを失効させる
   let revokedCount: number;
   try {
-    revokedCount = await revokeAllServiceTokens(c.env.DB, serviceId, 'service_delete');
+    revokedCount = await revokeAllServiceTokens(c.env.DB, serviceId, "service_delete");
   } catch (err) {
-    servicesLogger.error('[services] Failed to revoke tokens before deletion', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    servicesLogger.error("[services] Failed to revoke tokens before deletion", err);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
   if (revokedCount > 0) {
-    servicesLogger.info(`[services] Revoked ${revokedCount} active tokens before deleting service ${serviceId}`);
+    servicesLogger.info(
+      `[services] Revoked ${revokedCount} active tokens before deleting service ${serviceId}`,
+    );
   }
 
   try {
     await deleteService(c.env.DB, serviceId);
   } catch (err) {
-    servicesLogger.error('[services] Failed to delete service', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    servicesLogger.error("[services] Failed to delete service", err);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
 
   try {
     await createAdminAuditLog(c.env.DB, {
       adminUserId: tokenUser.sub,
-      action: 'service.delete',
-      targetType: 'service',
+      action: "service.delete",
+      targetType: "service",
       targetId: serviceId,
       details: { name: service.name, revoked_token_count: revokedCount },
       ipAddress: getClientIp(c.req.raw),
-      status: 'success',
+      status: "success",
     });
   } catch (err) {
-    servicesLogger.error('[services] Failed to create audit log for service.delete', err);
+    servicesLogger.error("[services] Failed to create audit log for service.delete", err);
   }
 
   return c.body(null, 204);
 });
 
 // GET /api/services/:id/redirect-uris
-app.get('/:id/redirect-uris', authMiddleware, adminMiddleware, async (c) => {
-  const serviceId = c.req.param('id');
+app.get("/:id/redirect-uris", authMiddleware, adminMiddleware, async (c) => {
+  const serviceId = c.req.param("id");
   let service: Awaited<ReturnType<typeof findServiceById>>;
   let uris: Awaited<ReturnType<typeof listRedirectUris>>;
   try {
@@ -318,28 +324,28 @@ app.get('/:id/redirect-uris', authMiddleware, adminMiddleware, async (c) => {
       listRedirectUris(c.env.DB, serviceId),
     ]);
   } catch (err) {
-    servicesLogger.error('[services] Failed to fetch redirect URIs', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    servicesLogger.error("[services] Failed to fetch redirect URIs", err);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
   if (!service) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
   }
 
   return c.json({ data: uris });
 });
 
 // POST /api/services/:id/redirect-uris
-app.post('/:id/redirect-uris', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
-  const serviceId = c.req.param('id');
+app.post("/:id/redirect-uris", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+  const serviceId = c.req.param("id");
   let service: Awaited<ReturnType<typeof findServiceById>>;
   try {
     service = await findServiceById(c.env.DB, serviceId);
   } catch (err) {
-    servicesLogger.error('[services] Failed to fetch service for redirect URI', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    servicesLogger.error("[services] Failed to fetch service for redirect URI", err);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
   if (!service) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
   }
 
   const result = await parseJsonBody(c, AddRedirectUriSchema);
@@ -347,7 +353,7 @@ app.post('/:id/redirect-uris', authMiddleware, adminMiddleware, csrfMiddleware, 
 
   const normalized = normalizeRedirectUri(result.data.uri);
   if (!normalized) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid redirect URI' } }, 400);
+    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid redirect URI" } }, 400);
   }
 
   let uri;
@@ -358,40 +364,43 @@ app.post('/:id/redirect-uris', authMiddleware, adminMiddleware, csrfMiddleware, 
       uri: normalized,
     });
   } catch (err) {
-    servicesLogger.error('[services] Failed to add redirect URI (possibly duplicate)', err);
-    return c.json({ error: { code: 'CONFLICT', message: 'Redirect URI already exists' } }, 409);
+    servicesLogger.error("[services] Failed to add redirect URI (possibly duplicate)", err);
+    return c.json({ error: { code: "CONFLICT", message: "Redirect URI already exists" } }, 409);
   }
 
-  const tokenUser = c.get('user');
+  const tokenUser = c.get("user");
   try {
     await createAdminAuditLog(c.env.DB, {
       adminUserId: tokenUser.sub,
-      action: 'service.redirect_uri_added',
-      targetType: 'service',
+      action: "service.redirect_uri_added",
+      targetType: "service",
       targetId: serviceId,
       details: { uri: normalized },
       ipAddress: getClientIp(c.req.raw),
-      status: 'success',
+      status: "success",
     });
   } catch (err) {
-    servicesLogger.error('[services] Failed to create audit log for service.redirect_uri_added', err);
+    servicesLogger.error(
+      "[services] Failed to create audit log for service.redirect_uri_added",
+      err,
+    );
   }
 
   return c.json({ data: uri }, 201);
 });
 
 // POST /api/services/:id/rotate-secret — client_secretの再発行
-app.post('/:id/rotate-secret', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
-  const serviceId = c.req.param('id');
+app.post("/:id/rotate-secret", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+  const serviceId = c.req.param("id");
   let service: Awaited<ReturnType<typeof findServiceById>>;
   try {
     service = await findServiceById(c.env.DB, serviceId);
   } catch (err) {
-    servicesLogger.error('[services] Failed to fetch service for secret rotation', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    servicesLogger.error("[services] Failed to fetch service for secret rotation", err);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
   if (!service) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
   }
 
   const newClientSecret = generateClientSecret();
@@ -401,25 +410,25 @@ app.post('/:id/rotate-secret', authMiddleware, adminMiddleware, csrfMiddleware, 
   try {
     updated = await rotateClientSecret(c.env.DB, serviceId, newClientSecretHash);
   } catch (err) {
-    servicesLogger.error('[services] Failed to rotate client secret', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    servicesLogger.error("[services] Failed to rotate client secret", err);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
   if (!updated) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
   }
 
-  const tokenUser = c.get('user');
+  const tokenUser = c.get("user");
   try {
     await createAdminAuditLog(c.env.DB, {
       adminUserId: tokenUser.sub,
-      action: 'service.secret_rotated',
-      targetType: 'service',
+      action: "service.secret_rotated",
+      targetType: "service",
       targetId: serviceId,
       ipAddress: getClientIp(c.req.raw),
-      status: 'success',
+      status: "success",
     });
   } catch (err) {
-    servicesLogger.error('[services] Failed to create audit log for service.secret_rotated', err);
+    servicesLogger.error("[services] Failed to create audit log for service.secret_rotated", err);
   }
 
   return c.json({
@@ -433,8 +442,8 @@ app.post('/:id/rotate-secret', authMiddleware, adminMiddleware, csrfMiddleware, 
 });
 
 // PATCH /api/services/:id/owner — サービス所有権の転送
-app.patch('/:id/owner', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
-  const serviceId = c.req.param('id');
+app.patch("/:id/owner", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+  const serviceId = c.req.param("id");
 
   const result = await parseJsonBody(c, TransferOwnerSchema);
   if (!result.ok) return result.response;
@@ -448,40 +457,43 @@ app.patch('/:id/owner', authMiddleware, adminMiddleware, csrfMiddleware, async (
       findUserById(c.env.DB, new_owner_user_id),
     ]);
   } catch (err) {
-    servicesLogger.error('[services] Failed to fetch service/user for ownership transfer', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    servicesLogger.error("[services] Failed to fetch service/user for ownership transfer", err);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
   if (!service) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
   }
   if (!newOwner) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'New owner user not found' } }, 404);
+    return c.json({ error: { code: "NOT_FOUND", message: "New owner user not found" } }, 404);
   }
 
   let updated: Awaited<ReturnType<typeof transferServiceOwnership>>;
   try {
     updated = await transferServiceOwnership(c.env.DB, serviceId, new_owner_user_id);
   } catch (err) {
-    servicesLogger.error('[services] Failed to transfer service ownership', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    servicesLogger.error("[services] Failed to transfer service ownership", err);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
   if (!updated) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
   }
 
-  const tokenUser = c.get('user');
+  const tokenUser = c.get("user");
   try {
     await createAdminAuditLog(c.env.DB, {
       adminUserId: tokenUser.sub,
-      action: 'service.owner_transferred',
-      targetType: 'service',
+      action: "service.owner_transferred",
+      targetType: "service",
       targetId: serviceId,
       details: { from: service.owner_user_id, to: new_owner_user_id },
       ipAddress: getClientIp(c.req.raw),
-      status: 'success',
+      status: "success",
     });
   } catch (err) {
-    servicesLogger.error('[services] Failed to create audit log for service.owner_transferred', err);
+    servicesLogger.error(
+      "[services] Failed to create audit log for service.owner_transferred",
+      err,
+    );
   }
 
   return c.json({
@@ -496,13 +508,13 @@ app.patch('/:id/owner', authMiddleware, adminMiddleware, csrfMiddleware, async (
 });
 
 // GET /api/services/:id/users — サービスを認可済みのユーザー一覧（管理者のみ）
-app.get('/:id/users', authMiddleware, adminMiddleware, async (c) => {
-  const serviceId = c.req.param('id');
+app.get("/:id/users", authMiddleware, adminMiddleware, async (c) => {
+  const serviceId = c.req.param("id");
   const pagination = parsePagination(
-    { limit: c.req.query('limit'), offset: c.req.query('offset') },
-    { defaultLimit: 50, maxLimit: 100 }
+    { limit: c.req.query("limit"), offset: c.req.query("offset") },
+    { defaultLimit: 50, maxLimit: 100 },
   );
-  if ('error' in pagination) {
+  if ("error" in pagination) {
     return c.json({ error: pagination.error }, 400);
   }
   const { limit, offset } = pagination;
@@ -519,11 +531,11 @@ app.get('/:id/users', authMiddleware, adminMiddleware, async (c) => {
       ]),
     ]);
   } catch (err) {
-    servicesLogger.error('[services] Failed to fetch service users', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    servicesLogger.error("[services] Failed to fetch service users", err);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
   if (!service) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
   }
 
   return c.json({
@@ -540,9 +552,9 @@ app.get('/:id/users', authMiddleware, adminMiddleware, async (c) => {
 });
 
 // DELETE /api/services/:id/users/:userId — ユーザーのサービスアクセスを失効
-app.delete('/:id/users/:userId', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
-  const serviceId = c.req.param('id');
-  const userId = c.req.param('userId');
+app.delete("/:id/users/:userId", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+  const serviceId = c.req.param("id");
+  const userId = c.req.param("userId");
 
   let service: Awaited<ReturnType<typeof findServiceById>>;
   let user: Awaited<ReturnType<typeof findUserById>>;
@@ -552,94 +564,108 @@ app.delete('/:id/users/:userId', authMiddleware, adminMiddleware, csrfMiddleware
       findUserById(c.env.DB, userId),
     ]);
   } catch (err) {
-    servicesLogger.error('[services] Failed to fetch service/user for access revocation', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    servicesLogger.error("[services] Failed to fetch service/user for access revocation", err);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
   if (!service) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
+    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
   }
   if (!user) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404);
+    return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);
   }
 
   let revokedCount: number;
   try {
-    revokedCount = await revokeUserServiceTokens(c.env.DB, userId, serviceId, 'admin_action');
+    revokedCount = await revokeUserServiceTokens(c.env.DB, userId, serviceId, "admin_action");
   } catch (err) {
-    servicesLogger.error('[services] Failed to revoke user service tokens', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
+    servicesLogger.error("[services] Failed to revoke user service tokens", err);
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
   if (revokedCount === 0) {
     return c.json(
-      { error: { code: 'NOT_FOUND', message: 'User has no active authorization for this service' } },
-      404
+      {
+        error: { code: "NOT_FOUND", message: "User has no active authorization for this service" },
+      },
+      404,
     );
   }
 
-  const tokenUser = c.get('user');
+  const tokenUser = c.get("user");
   try {
     await createAdminAuditLog(c.env.DB, {
       adminUserId: tokenUser.sub,
-      action: 'service.user_access_revoked',
-      targetType: 'service',
+      action: "service.user_access_revoked",
+      targetType: "service",
       targetId: serviceId,
       details: { user_id: userId },
       ipAddress: getClientIp(c.req.raw),
-      status: 'success',
+      status: "success",
     });
   } catch (err) {
-    servicesLogger.error('[services] Failed to create audit log for service.user_access_revoked', err);
+    servicesLogger.error(
+      "[services] Failed to create audit log for service.user_access_revoked",
+      err,
+    );
   }
 
   return c.body(null, 204);
 });
 
 // DELETE /api/services/:id/redirect-uris/:uriId
-app.delete('/:id/redirect-uris/:uriId', authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
-  const serviceId = c.req.param('id');
-  const uriId = c.req.param('uriId');
+app.delete(
+  "/:id/redirect-uris/:uriId",
+  authMiddleware,
+  adminMiddleware,
+  csrfMiddleware,
+  async (c) => {
+    const serviceId = c.req.param("id");
+    const uriId = c.req.param("uriId");
 
-  let service: Awaited<ReturnType<typeof findServiceById>>;
-  let redirectUri: Awaited<ReturnType<typeof findRedirectUriById>>;
-  try {
-    [service, redirectUri] = await Promise.all([
-      findServiceById(c.env.DB, serviceId),
-      findRedirectUriById(c.env.DB, uriId, serviceId),
-    ]);
-  } catch (err) {
-    servicesLogger.error('[services] Failed to fetch service/redirect URI for deletion', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
-  }
-  if (!service) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Service not found' } }, 404);
-  }
-  if (!redirectUri) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Redirect URI not found' } }, 404);
-  }
+    let service: Awaited<ReturnType<typeof findServiceById>>;
+    let redirectUri: Awaited<ReturnType<typeof findRedirectUriById>>;
+    try {
+      [service, redirectUri] = await Promise.all([
+        findServiceById(c.env.DB, serviceId),
+        findRedirectUriById(c.env.DB, uriId, serviceId),
+      ]);
+    } catch (err) {
+      servicesLogger.error("[services] Failed to fetch service/redirect URI for deletion", err);
+      return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    }
+    if (!service) {
+      return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
+    }
+    if (!redirectUri) {
+      return c.json({ error: { code: "NOT_FOUND", message: "Redirect URI not found" } }, 404);
+    }
 
-  const tokenUser = c.get('user');
-  try {
-    await deleteRedirectUri(c.env.DB, uriId, serviceId);
-  } catch (err) {
-    servicesLogger.error('[services] Failed to delete redirect URI', err);
-    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, 500);
-  }
+    const tokenUser = c.get("user");
+    try {
+      await deleteRedirectUri(c.env.DB, uriId, serviceId);
+    } catch (err) {
+      servicesLogger.error("[services] Failed to delete redirect URI", err);
+      return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    }
 
-  try {
-    await createAdminAuditLog(c.env.DB, {
-      adminUserId: tokenUser.sub,
-      action: 'service.redirect_uri_deleted',
-      targetType: 'service',
-      targetId: serviceId,
-      details: { uri_id: uriId, uri: redirectUri.uri },
-      ipAddress: getClientIp(c.req.raw),
-      status: 'success',
-    });
-  } catch (err) {
-    servicesLogger.error('[services] Failed to create audit log for service.redirect_uri_deleted', err);
-  }
+    try {
+      await createAdminAuditLog(c.env.DB, {
+        adminUserId: tokenUser.sub,
+        action: "service.redirect_uri_deleted",
+        targetType: "service",
+        targetId: serviceId,
+        details: { uri_id: uriId, uri: redirectUri.uri },
+        ipAddress: getClientIp(c.req.raw),
+        status: "success",
+      });
+    } catch (err) {
+      servicesLogger.error(
+        "[services] Failed to create audit log for service.redirect_uri_deleted",
+        err,
+      );
+    }
 
-  return c.body(null, 204);
-});
+    return c.body(null, 204);
+  },
+);
 
 export default app;

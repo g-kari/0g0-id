@@ -1,11 +1,11 @@
-import { fetchWithRetry } from './fetch-retry';
-import { createLogger } from './logger';
+import { fetchWithRetry } from "./fetch-retry";
+import { createLogger } from "./logger";
 
-const logger = createLogger('oauth-x');
+const logger = createLogger("oauth-x");
 
-const X_AUTH_URL = 'https://twitter.com/i/oauth2/authorize';
-const X_TOKEN_URL = 'https://api.twitter.com/2/oauth2/token';
-const X_USER_URL = 'https://api.twitter.com/2/users/me';
+const X_AUTH_URL = "https://twitter.com/i/oauth2/authorize";
+const X_TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
+const X_USER_URL = "https://api.twitter.com/2/users/me";
 
 export interface XUserInfo {
   id: string;
@@ -36,13 +36,13 @@ export function buildXAuthUrl(params: {
   codeChallenge: string;
 }): string {
   const url = new URL(X_AUTH_URL);
-  url.searchParams.set('response_type', 'code');
-  url.searchParams.set('client_id', params.clientId);
-  url.searchParams.set('redirect_uri', params.redirectUri);
-  url.searchParams.set('scope', 'tweet.read users.read offline.access');
-  url.searchParams.set('state', params.state);
-  url.searchParams.set('code_challenge', params.codeChallenge);
-  url.searchParams.set('code_challenge_method', 'S256');
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("client_id", params.clientId);
+  url.searchParams.set("redirect_uri", params.redirectUri);
+  url.searchParams.set("scope", "tweet.read users.read offline.access");
+  url.searchParams.set("state", params.state);
+  url.searchParams.set("code_challenge", params.codeChallenge);
+  url.searchParams.set("code_challenge_method", "S256");
   return url.toString();
 }
 
@@ -60,13 +60,13 @@ export async function exchangeXCode(params: {
   const credentials = btoa(`${params.clientId}:${params.clientSecret}`);
 
   const response = await fetchWithRetry(X_TOKEN_URL, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
+      "Content-Type": "application/x-www-form-urlencoded",
       Authorization: `Basic ${credentials}`,
     },
     body: new URLSearchParams({
-      grant_type: 'authorization_code',
+      grant_type: "authorization_code",
       code: params.code,
       redirect_uri: params.redirectUri,
       code_verifier: params.codeVerifier,
@@ -76,13 +76,13 @@ export async function exchangeXCode(params: {
   if (!response.ok) {
     const error = await response.text();
     logger.error(`X token exchange failed (${response.status})`, error);
-    throw new Error('X token exchange failed');
+    throw new Error("X token exchange failed");
   }
 
   try {
     return (await response.json()) as XTokenResponse;
   } catch {
-    throw new Error('X token exchange failed: Invalid JSON response');
+    throw new Error("X token exchange failed: Invalid JSON response");
   }
 }
 
@@ -96,7 +96,7 @@ export async function fetchXUserInfo(accessToken: string): Promise<XUserInfo> {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
-    }
+    },
   );
 
   if (!response.ok) {
@@ -107,6 +107,6 @@ export async function fetchXUserInfo(accessToken: string): Promise<XUserInfo> {
     const data = (await response.json()) as XUserResponse;
     return data.data;
   } catch {
-    throw new Error('X user info fetch failed: Invalid JSON response');
+    throw new Error("X user info fetch failed: Invalid JSON response");
   }
 }

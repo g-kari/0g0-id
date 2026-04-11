@@ -7,9 +7,7 @@ workers_dev = false
 enabled = true
 invocation_logs = true
 
-routes = [
-  { pattern = "user.0g0.xyz", custom_domain = true }
-]
+routes = [{ pattern = "user.0g0.xyz", custom_domain = true }]
 
 [assets]
 directory = "./public"

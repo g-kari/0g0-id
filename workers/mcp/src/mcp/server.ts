@@ -4,7 +4,7 @@ import type {
   McpToolDefinition,
   McpServerInfo,
   McpCapabilities,
-} from './types';
+} from "./types";
 
 export interface McpTool {
   definition: McpToolDefinition;
@@ -19,13 +19,13 @@ export interface McpContext {
 }
 
 export interface McpToolResult {
-  content: Array<{ type: 'text'; text: string }>;
+  content: Array<{ type: "text"; text: string }>;
   isError?: boolean;
 }
 
 export class McpServer {
   private tools: Map<string, McpTool> = new Map();
-  private serverInfo: McpServerInfo = { name: '0g0-id-mcp', version: '0.1.0' };
+  private serverInfo: McpServerInfo = { name: "0g0-id-mcp", version: "0.1.0" };
   private capabilities: McpCapabilities = { tools: {} };
 
   registerTool(tool: McpTool): void {
@@ -34,17 +34,17 @@ export class McpServer {
 
   async handleRequest(request: JsonRpcRequest, context: McpContext): Promise<JsonRpcResponse> {
     switch (request.method) {
-      case 'initialize':
+      case "initialize":
         return this.handleInitialize(request);
-      case 'tools/list':
+      case "tools/list":
         return this.handleToolsList(request);
-      case 'tools/call':
+      case "tools/call":
         return this.handleToolsCall(request, context);
-      case 'ping':
-        return { jsonrpc: '2.0', id: request.id, result: {} };
+      case "ping":
+        return { jsonrpc: "2.0", id: request.id, result: {} };
       default:
         return {
-          jsonrpc: '2.0',
+          jsonrpc: "2.0",
           id: request.id,
           error: { code: -32601, message: `Method not found: ${request.method}` },
         };
@@ -53,10 +53,10 @@ export class McpServer {
 
   private handleInitialize(request: JsonRpcRequest): JsonRpcResponse {
     return {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       id: request.id,
       result: {
-        protocolVersion: '2025-03-26',
+        protocolVersion: "2025-03-26",
         capabilities: this.capabilities,
         serverInfo: this.serverInfo,
       },
@@ -65,7 +65,7 @@ export class McpServer {
 
   private handleToolsList(request: JsonRpcRequest): JsonRpcResponse {
     const tools = Array.from(this.tools.values()).map((t) => t.definition);
-    return { jsonrpc: '2.0', id: request.id, result: { tools } };
+    return { jsonrpc: "2.0", id: request.id, result: { tools } };
   }
 
   private async handleToolsCall(
@@ -77,29 +77,32 @@ export class McpServer {
       | undefined;
     if (!params?.name) {
       return {
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: request.id,
-        error: { code: -32602, message: 'Missing tool name' },
+        error: { code: -32602, message: "Missing tool name" },
       };
     }
     const tool = this.tools.get(params.name);
     if (!tool) {
       return {
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: request.id,
         error: { code: -32602, message: `Unknown tool: ${params.name}` },
       };
     }
     try {
       const result = await tool.handler(params.arguments ?? {}, context);
-      return { jsonrpc: '2.0', id: request.id, result };
+      return { jsonrpc: "2.0", id: request.id, result };
     } catch (err) {
       return {
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: request.id,
         result: {
           content: [
-            { type: 'text', text: `Error: ${err instanceof Error ? err.message : 'Unknown error'}` },
+            {
+              type: "text",
+              text: `Error: ${err instanceof Error ? err.message : "Unknown error"}`,
+            },
           ],
           isError: true,
         },

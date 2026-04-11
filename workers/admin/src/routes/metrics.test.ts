@@ -1,33 +1,33 @@
-import { describe, it, expect, vi } from 'vitest';
-import { encodeSession } from '@0g0-id/shared';
-import { Hono } from 'hono';
+import { describe, it, expect, vi } from "vite-plus/test";
+import { encodeSession } from "@0g0-id/shared";
+import { Hono } from "hono";
 
-import metricsRoutes from './metrics';
+import metricsRoutes from "./metrics";
 
-const SESSION_COOKIE = '__Host-admin-session';
-const baseUrl = 'https://admin.0g0.xyz';
+const SESSION_COOKIE = "__Host-admin-session";
+const baseUrl = "https://admin.0g0.xyz";
 
-async function makeSessionCookie(role: 'admin' | 'user' = 'admin'): Promise<string> {
+async function makeSessionCookie(role: "admin" | "user" = "admin"): Promise<string> {
   const session = {
-    access_token: 'mock-access-token',
-    refresh_token: 'mock-refresh-token',
-    user: { id: 'admin-user-id', email: 'admin@example.com', name: 'Admin', role },
+    access_token: "mock-access-token",
+    refresh_token: "mock-refresh-token",
+    user: { id: "admin-user-id", email: "admin@example.com", name: "Admin", role },
   };
-  return encodeSession(session, 'test-secret');
+  return encodeSession(session, "test-secret");
 }
 
 function buildApp(idpFetch: (req: Request) => Promise<Response>) {
   const app = new Hono<{
     Bindings: { IDP: { fetch: typeof idpFetch }; IDP_ORIGIN: string; SESSION_SECRET: string };
   }>();
-  app.route('/api/metrics', metricsRoutes);
+  app.route("/api/metrics", metricsRoutes);
   return {
     request: (path: string, init?: RequestInit) => {
       const req = new Request(`${baseUrl}${path}`, init);
       return app.request(req, undefined, {
         IDP: { fetch: idpFetch },
-        IDP_ORIGIN: 'https://id.0g0.xyz',
-        SESSION_SECRET: 'test-secret',
+        IDP_ORIGIN: "https://id.0g0.xyz",
+        SESSION_SECRET: "test-secret",
       });
     },
   };
@@ -37,8 +37,8 @@ function mockIdp(status: number, body: unknown): (req: Request) => Promise<Respo
   return vi.fn().mockResolvedValue(
     new Response(JSON.stringify(body), {
       status,
-      headers: { 'Content-Type': 'application/json' },
-    })
+      headers: { "Content-Type": "application/json" },
+    }),
   );
 }
 
@@ -49,22 +49,22 @@ const mockMetrics = {
   active_sessions: 42,
 };
 
-describe('admin BFF — /api/metrics', () => {
-  describe('GET / — メトリクス取得', () => {
-    it('セッションなしで401を返す', async () => {
+describe("admin BFF — /api/metrics", () => {
+  describe("GET / — メトリクス取得", () => {
+    it("セッションなしで401を返す", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request('/api/metrics');
+      const res = await app.request("/api/metrics");
       expect(res.status).toBe(401);
       expect(idpFetch).not.toHaveBeenCalled();
     });
 
-    it('管理者セッションでIdPへプロキシしてメトリクスを返す', async () => {
+    it("管理者セッションでIdPへプロキシしてメトリクスを返す", async () => {
       const idpFetch = mockIdp(200, { data: mockMetrics });
       const app = buildApp(idpFetch);
 
-      const res = await app.request('/api/metrics', {
+      const res = await app.request("/api/metrics", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
@@ -77,34 +77,34 @@ describe('admin BFF — /api/metrics', () => {
       expect(idpFetch).toHaveBeenCalledOnce();
     });
 
-    it('IdP への呼び出しURLに /api/metrics が含まれる', async () => {
+    it("IdP への呼び出しURLに /api/metrics が含まれる", async () => {
       const idpFetch = mockIdp(200, { data: mockMetrics });
       const app = buildApp(idpFetch);
 
-      await app.request('/api/metrics', {
+      await app.request("/api/metrics", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const calledUrl = vi.mocked(idpFetch).mock.calls[0][0].url;
-      expect(calledUrl).toContain('/api/metrics');
+      expect(calledUrl).toContain("/api/metrics");
     });
 
-    it('IdP が403を返した場合は403をプロキシする', async () => {
-      const idpFetch = mockIdp(403, { error: { code: 'FORBIDDEN', message: 'Forbidden' } });
+    it("IdP が403を返した場合は403をプロキシする", async () => {
+      const idpFetch = mockIdp(403, { error: { code: "FORBIDDEN", message: "Forbidden" } });
       const app = buildApp(idpFetch);
 
-      const res = await app.request('/api/metrics', {
+      const res = await app.request("/api/metrics", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(403);
     });
 
-    it('IdP が500を返した場合は500をプロキシする', async () => {
-      const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR', message: 'Server error' } });
+    it("IdP が500を返した場合は500をプロキシする", async () => {
+      const idpFetch = mockIdp(500, { error: { code: "INTERNAL_ERROR", message: "Server error" } });
       const app = buildApp(idpFetch);
 
-      const res = await app.request('/api/metrics', {
+      const res = await app.request("/api/metrics", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
@@ -112,26 +112,26 @@ describe('admin BFF — /api/metrics', () => {
     });
   });
 
-  describe('GET /login-trends — 日別ログイントレンド', () => {
+  describe("GET /login-trends — 日別ログイントレンド", () => {
     const mockTrends = [
-      { date: '2024-01-01', count: 10 },
-      { date: '2024-01-02', count: 15 },
+      { date: "2024-01-01", count: 10 },
+      { date: "2024-01-02", count: 15 },
     ];
 
-    it('セッションなしで401を返す', async () => {
+    it("セッションなしで401を返す", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request('/api/metrics/login-trends');
+      const res = await app.request("/api/metrics/login-trends");
       expect(res.status).toBe(401);
       expect(idpFetch).not.toHaveBeenCalled();
     });
 
-    it('管理者セッションでIdPへプロキシしてトレンドデータを返す', async () => {
+    it("管理者セッションでIdPへプロキシしてトレンドデータを返す", async () => {
       const idpFetch = mockIdp(200, { data: mockTrends, days: 30 });
       const app = buildApp(idpFetch);
 
-      const res = await app.request('/api/metrics/login-trends', {
+      const res = await app.request("/api/metrics/login-trends", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
@@ -142,133 +142,133 @@ describe('admin BFF — /api/metrics', () => {
       expect(idpFetch).toHaveBeenCalledOnce();
     });
 
-    it('IdP への呼び出しURLに /api/metrics/login-trends が含まれる', async () => {
+    it("IdP への呼び出しURLに /api/metrics/login-trends が含まれる", async () => {
       const idpFetch = mockIdp(200, { data: mockTrends, days: 30 });
       const app = buildApp(idpFetch);
 
-      await app.request('/api/metrics/login-trends', {
+      await app.request("/api/metrics/login-trends", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const calledUrl = vi.mocked(idpFetch).mock.calls[0][0].url;
-      expect(calledUrl).toContain('/api/metrics/login-trends');
+      expect(calledUrl).toContain("/api/metrics/login-trends");
     });
 
-    it('daysクエリパラメータをIdPに転送する', async () => {
+    it("daysクエリパラメータをIdPに転送する", async () => {
       const idpFetch = mockIdp(200, { data: mockTrends, days: 7 });
       const app = buildApp(idpFetch);
 
-      await app.request('/api/metrics/login-trends?days=7', {
+      await app.request("/api/metrics/login-trends?days=7", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const calledUrl = new URL(vi.mocked(idpFetch).mock.calls[0][0].url);
-      expect(calledUrl.searchParams.get('days')).toBe('7');
+      expect(calledUrl.searchParams.get("days")).toBe("7");
     });
 
-    it('IdP が500を返した場合は500をプロキシする', async () => {
-      const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR', message: 'Server error' } });
+    it("IdP が500を返した場合は500をプロキシする", async () => {
+      const idpFetch = mockIdp(500, { error: { code: "INTERNAL_ERROR", message: "Server error" } });
       const app = buildApp(idpFetch);
 
-      const res = await app.request('/api/metrics/login-trends', {
+      const res = await app.request("/api/metrics/login-trends", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(500);
     });
 
-    it('不正なdays（abc）で400を返す（IdP呼び出しなし）', async () => {
+    it("不正なdays（abc）で400を返す（IdP呼び出しなし）", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/login-trends?days=abc', {
+      const res = await app.request("/api/metrics/login-trends?days=abc", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(400);
       const body = await res.json<{ error: { code: string } }>();
-      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(body.error.code).toBe("INVALID_PARAMETER");
       expect(idpFetch).not.toHaveBeenCalled();
     });
 
-    it('days=0（範囲外）で400を返す（IdP呼び出しなし）', async () => {
+    it("days=0（範囲外）で400を返す（IdP呼び出しなし）", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/login-trends?days=0', {
+      const res = await app.request("/api/metrics/login-trends?days=0", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(400);
       const body = await res.json<{ error: { code: string } }>();
-      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(body.error.code).toBe("INVALID_PARAMETER");
       expect(idpFetch).not.toHaveBeenCalled();
     });
   });
 
-  describe('GET /services — サービス別統計', () => {
-    it('セッションなしで 401 を返す', async () => {
+  describe("GET /services — サービス別統計", () => {
+    it("セッションなしで 401 を返す", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/services');
+      const res = await app.request("/api/metrics/services");
       expect(res.status).toBe(401);
       expect(idpFetch).not.toHaveBeenCalled();
     });
 
-    it('IdP にリクエストをプロキシする', async () => {
+    it("IdP にリクエストをプロキシする", async () => {
       const mockStats = [
         {
-          service_id: 'svc-1',
-          service_name: 'Service A',
+          service_id: "svc-1",
+          service_name: "Service A",
           authorized_user_count: 3,
           active_token_count: 5,
         },
       ];
       const idpFetch = mockIdp(200, { data: mockStats });
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/services', {
+      const res = await app.request("/api/metrics/services", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(200);
       const body = await res.json<{ data: typeof mockStats }>();
       expect(body.data).toEqual(mockStats);
       const calledUrl = vi.mocked(idpFetch).mock.calls[0][0].url;
-      expect(calledUrl).toContain('/api/metrics/services');
+      expect(calledUrl).toContain("/api/metrics/services");
     });
 
-    it('IdP エラーをそのまま転送する', async () => {
-      const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR' } });
+    it("IdP エラーをそのまま転送する", async () => {
+      const idpFetch = mockIdp(500, { error: { code: "INTERNAL_ERROR" } });
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/services', {
+      const res = await app.request("/api/metrics/services", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(500);
     });
   });
 
-  describe('GET /suspicious-logins — 不審なログイン検知', () => {
+  describe("GET /suspicious-logins — 不審なログイン検知", () => {
     const mockSuspiciousLogins = [
       {
-        user_id: 'user-1',
-        email: 'user@example.com',
-        name: 'Test User',
+        user_id: "user-1",
+        email: "user@example.com",
+        name: "Test User",
         country_count: 3,
-        countries: ['JP', 'US', 'DE'],
+        countries: ["JP", "US", "DE"],
         login_count: 5,
       },
     ];
 
-    it('セッションなしで 401 を返す', async () => {
+    it("セッションなしで 401 を返す", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/suspicious-logins');
+      const res = await app.request("/api/metrics/suspicious-logins");
       expect(res.status).toBe(401);
       expect(idpFetch).not.toHaveBeenCalled();
     });
 
-    it('IdP にリクエストをプロキシする', async () => {
+    it("IdP にリクエストをプロキシする", async () => {
       const idpFetch = mockIdp(200, {
         data: mockSuspiciousLogins,
         meta: { hours: 24, min_countries: 2 },
       });
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/suspicious-logins', {
+      const res = await app.request("/api/metrics/suspicious-logins", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(200);
@@ -278,149 +278,149 @@ describe('admin BFF — /api/metrics', () => {
       }>();
       expect(body.data).toEqual(mockSuspiciousLogins);
       const calledUrl = vi.mocked(idpFetch).mock.calls[0][0].url;
-      expect(calledUrl).toContain('/api/metrics/suspicious-logins');
+      expect(calledUrl).toContain("/api/metrics/suspicious-logins");
     });
 
-    it('hours クエリパラメータを IdP に転送する', async () => {
+    it("hours クエリパラメータを IdP に転送する", async () => {
       const idpFetch = mockIdp(200, {
         data: mockSuspiciousLogins,
         meta: { hours: 48, min_countries: 2 },
       });
       const app = buildApp(idpFetch);
-      await app.request('/api/metrics/suspicious-logins?hours=48', {
+      await app.request("/api/metrics/suspicious-logins?hours=48", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       const calledUrl = new URL(vi.mocked(idpFetch).mock.calls[0][0].url);
-      expect(calledUrl.searchParams.get('hours')).toBe('48');
+      expect(calledUrl.searchParams.get("hours")).toBe("48");
     });
 
-    it('min_countries クエリパラメータを IdP に転送する', async () => {
+    it("min_countries クエリパラメータを IdP に転送する", async () => {
       const idpFetch = mockIdp(200, {
         data: mockSuspiciousLogins,
         meta: { hours: 24, min_countries: 3 },
       });
       const app = buildApp(idpFetch);
-      await app.request('/api/metrics/suspicious-logins?min_countries=3', {
+      await app.request("/api/metrics/suspicious-logins?min_countries=3", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       const calledUrl = new URL(vi.mocked(idpFetch).mock.calls[0][0].url);
-      expect(calledUrl.searchParams.get('min_countries')).toBe('3');
+      expect(calledUrl.searchParams.get("min_countries")).toBe("3");
     });
 
-    it('hours と min_countries を同時に転送する', async () => {
+    it("hours と min_countries を同時に転送する", async () => {
       const idpFetch = mockIdp(200, {
         data: [],
         meta: { hours: 72, min_countries: 4 },
       });
       const app = buildApp(idpFetch);
-      await app.request('/api/metrics/suspicious-logins?hours=72&min_countries=4', {
+      await app.request("/api/metrics/suspicious-logins?hours=72&min_countries=4", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       const calledUrl = new URL(vi.mocked(idpFetch).mock.calls[0][0].url);
-      expect(calledUrl.searchParams.get('hours')).toBe('72');
-      expect(calledUrl.searchParams.get('min_countries')).toBe('4');
+      expect(calledUrl.searchParams.get("hours")).toBe("72");
+      expect(calledUrl.searchParams.get("min_countries")).toBe("4");
     });
 
-    it('IdP エラーをそのまま転送する', async () => {
-      const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR' } });
+    it("IdP エラーをそのまま転送する", async () => {
+      const idpFetch = mockIdp(500, { error: { code: "INTERNAL_ERROR" } });
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/suspicious-logins', {
+      const res = await app.request("/api/metrics/suspicious-logins", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(500);
     });
 
-    it('不正なhours（abc）で400を返す（IdP呼び出しなし）', async () => {
+    it("不正なhours（abc）で400を返す（IdP呼び出しなし）", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/suspicious-logins?hours=abc', {
+      const res = await app.request("/api/metrics/suspicious-logins?hours=abc", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(400);
       const body = await res.json<{ error: { code: string } }>();
-      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(body.error.code).toBe("INVALID_PARAMETER");
       expect(idpFetch).not.toHaveBeenCalled();
     });
 
-    it('hours=0（範囲外）で400を返す（IdP呼び出しなし）', async () => {
+    it("hours=0（範囲外）で400を返す（IdP呼び出しなし）", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/suspicious-logins?hours=0', {
+      const res = await app.request("/api/metrics/suspicious-logins?hours=0", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(400);
       const body = await res.json<{ error: { code: string } }>();
-      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(body.error.code).toBe("INVALID_PARAMETER");
       expect(idpFetch).not.toHaveBeenCalled();
     });
 
-    it('hours=721（範囲外）で400を返す（IdP呼び出しなし）', async () => {
+    it("hours=721（範囲外）で400を返す（IdP呼び出しなし）", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/suspicious-logins?hours=721', {
+      const res = await app.request("/api/metrics/suspicious-logins?hours=721", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(400);
       const body = await res.json<{ error: { code: string } }>();
-      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(body.error.code).toBe("INVALID_PARAMETER");
       expect(idpFetch).not.toHaveBeenCalled();
     });
 
-    it('不正なmin_countries（abc）で400を返す（IdP呼び出しなし）', async () => {
+    it("不正なmin_countries（abc）で400を返す（IdP呼び出しなし）", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/suspicious-logins?min_countries=abc', {
+      const res = await app.request("/api/metrics/suspicious-logins?min_countries=abc", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(400);
       const body = await res.json<{ error: { code: string } }>();
-      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(body.error.code).toBe("INVALID_PARAMETER");
       expect(idpFetch).not.toHaveBeenCalled();
     });
 
-    it('min_countries=0（範囲外）で400を返す（IdP呼び出しなし）', async () => {
+    it("min_countries=0（範囲外）で400を返す（IdP呼び出しなし）", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/suspicious-logins?min_countries=0', {
+      const res = await app.request("/api/metrics/suspicious-logins?min_countries=0", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(400);
       const body = await res.json<{ error: { code: string } }>();
-      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(body.error.code).toBe("INVALID_PARAMETER");
       expect(idpFetch).not.toHaveBeenCalled();
     });
 
-    it('min_countries=101（範囲外）で400を返す（IdP呼び出しなし）', async () => {
+    it("min_countries=101（範囲外）で400を返す（IdP呼び出しなし）", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/suspicious-logins?min_countries=101', {
+      const res = await app.request("/api/metrics/suspicious-logins?min_countries=101", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(400);
       const body = await res.json<{ error: { code: string } }>();
-      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(body.error.code).toBe("INVALID_PARAMETER");
       expect(idpFetch).not.toHaveBeenCalled();
     });
   });
 
-  describe('GET /user-registrations — 日別新規ユーザー登録数', () => {
+  describe("GET /user-registrations — 日別新規ユーザー登録数", () => {
     const mockRegistrations = [
-      { date: '2024-01-01', count: 5 },
-      { date: '2024-01-02', count: 8 },
+      { date: "2024-01-01", count: 5 },
+      { date: "2024-01-02", count: 8 },
     ];
 
-    it('セッションなしで401を返す', async () => {
+    it("セッションなしで401を返す", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/user-registrations');
+      const res = await app.request("/api/metrics/user-registrations");
       expect(res.status).toBe(401);
       expect(idpFetch).not.toHaveBeenCalled();
     });
 
-    it('管理者セッションでIdPへプロキシして登録数データを返す', async () => {
+    it("管理者セッションでIdPへプロキシして登録数データを返す", async () => {
       const idpFetch = mockIdp(200, { data: mockRegistrations, days: 30 });
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/user-registrations', {
+      const res = await app.request("/api/metrics/user-registrations", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(200);
@@ -430,54 +430,54 @@ describe('admin BFF — /api/metrics', () => {
       expect(idpFetch).toHaveBeenCalledOnce();
     });
 
-    it('IdP への呼び出しURLに /api/metrics/user-registrations が含まれる', async () => {
+    it("IdP への呼び出しURLに /api/metrics/user-registrations が含まれる", async () => {
       const idpFetch = mockIdp(200, { data: mockRegistrations, days: 30 });
       const app = buildApp(idpFetch);
-      await app.request('/api/metrics/user-registrations', {
+      await app.request("/api/metrics/user-registrations", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       const calledUrl = vi.mocked(idpFetch).mock.calls[0][0].url;
-      expect(calledUrl).toContain('/api/metrics/user-registrations');
+      expect(calledUrl).toContain("/api/metrics/user-registrations");
     });
 
-    it('daysクエリパラメータをIdPに転送する', async () => {
+    it("daysクエリパラメータをIdPに転送する", async () => {
       const idpFetch = mockIdp(200, { data: mockRegistrations, days: 7 });
       const app = buildApp(idpFetch);
-      await app.request('/api/metrics/user-registrations?days=7', {
+      await app.request("/api/metrics/user-registrations?days=7", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       const calledUrl = new URL(vi.mocked(idpFetch).mock.calls[0][0].url);
-      expect(calledUrl.searchParams.get('days')).toBe('7');
+      expect(calledUrl.searchParams.get("days")).toBe("7");
     });
 
-    it('不正なdays（abc）で400を返す（IdP呼び出しなし）', async () => {
+    it("不正なdays（abc）で400を返す（IdP呼び出しなし）", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/user-registrations?days=abc', {
+      const res = await app.request("/api/metrics/user-registrations?days=abc", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(400);
       const body = await res.json<{ error: { code: string } }>();
-      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(body.error.code).toBe("INVALID_PARAMETER");
       expect(idpFetch).not.toHaveBeenCalled();
     });
 
-    it('days=0（範囲外）で400を返す（IdP呼び出しなし）', async () => {
+    it("days=0（範囲外）で400を返す（IdP呼び出しなし）", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/user-registrations?days=0', {
+      const res = await app.request("/api/metrics/user-registrations?days=0", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(400);
       const body = await res.json<{ error: { code: string } }>();
-      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(body.error.code).toBe("INVALID_PARAMETER");
       expect(idpFetch).not.toHaveBeenCalled();
     });
 
-    it('IdP が500を返した場合は500をプロキシする', async () => {
-      const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR' } });
+    it("IdP が500を返した場合は500をプロキシする", async () => {
+      const idpFetch = mockIdp(500, { error: { code: "INTERNAL_ERROR" } });
       const app = buildApp(idpFetch);
-      const res = await app.request('/api/metrics/user-registrations', {
+      const res = await app.request("/api/metrics/user-registrations", {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(500);

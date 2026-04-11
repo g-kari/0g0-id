@@ -19,7 +19,7 @@ export function matchRedirectUri(registered: string, requested: string): boolean
   }
 
   const isLocalhostHost = (hostname: string): boolean =>
-    hostname === 'localhost' || hostname === '127.0.0.1';
+    hostname === "localhost" || hostname === "127.0.0.1";
 
   // 両方がlocalhostの場合はポートを無視して比較
   // localhost と 127.0.0.1 は同一ホストとして扱う (RFC 8252 §8.3)

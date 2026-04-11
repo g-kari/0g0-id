@@ -62,13 +62,13 @@ cat public.pem  | npx wrangler secret put JWT_PUBLIC_KEY
 echo "admin@0g0.xyz" | npx wrangler secret put BOOTSTRAP_ADMIN_EMAIL
 ```
 
-| シークレット名 | 説明 | 取得元 |
-|---|---|---|
-| `GOOGLE_CLIENT_ID` | Google OAuth 2.0 クライアント ID | [Google Cloud Console](https://console.cloud.google.com/) |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth 2.0 クライアントシークレット | 同上 |
-| `JWT_PRIVATE_KEY` | ES256 署名用秘密鍵（PEM） | `private.pem` |
-| `JWT_PUBLIC_KEY` | ES256 検証用公開鍵（PEM） | `public.pem` |
-| `BOOTSTRAP_ADMIN_EMAIL` | 初回管理者として登録するメールアドレス | 任意 |
+| シークレット名          | 説明                                      | 取得元                                                    |
+| ----------------------- | ----------------------------------------- | --------------------------------------------------------- |
+| `GOOGLE_CLIENT_ID`      | Google OAuth 2.0 クライアント ID          | [Google Cloud Console](https://console.cloud.google.com/) |
+| `GOOGLE_CLIENT_SECRET`  | Google OAuth 2.0 クライアントシークレット | 同上                                                      |
+| `JWT_PRIVATE_KEY`       | ES256 署名用秘密鍵（PEM）                 | `private.pem`                                             |
+| `JWT_PUBLIC_KEY`        | ES256 検証用公開鍵（PEM）                 | `public.pem`                                              |
+| `BOOTSTRAP_ADMIN_EMAIL` | 初回管理者として登録するメールアドレス    | 任意                                                      |
 
 ### Google Cloud Console での設定
 
@@ -93,10 +93,10 @@ GitHub ログイン/アカウント連携を有効化する場合のみ実施し
 2. 「OAuth Apps」→「New OAuth App」をクリック
 3. 以下の値を入力:
 
-| フィールド | 設定値 |
-|---|---|
-| Application name | `0g0-id`（任意） |
-| Homepage URL | `https://id.0g0.xyz` |
+| フィールド                 | 設定値                             |
+| -------------------------- | ---------------------------------- |
+| Application name           | `0g0-id`（任意）                   |
+| Homepage URL               | `https://id.0g0.xyz`               |
 | Authorization callback URL | `https://id.0g0.xyz/auth/callback` |
 
 4. 「Register application」をクリック
@@ -116,9 +116,9 @@ echo "<GitHub OAuth App の Client ID>" | npx wrangler secret put GITHUB_CLIENT_
 echo "<GitHub OAuth App の Client Secret>" | npx wrangler secret put GITHUB_CLIENT_SECRET
 ```
 
-| シークレット名 | 説明 |
-|---|---|
-| `GITHUB_CLIENT_ID` | GitHub OAuth App の Client ID |
+| シークレット名         | 説明                              |
+| ---------------------- | --------------------------------- |
+| `GITHUB_CLIENT_ID`     | GitHub OAuth App の Client ID     |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth App の Client Secret |
 
 > **重要:** `GITHUB_CLIENT_ID` と `GITHUB_CLIENT_SECRET` は**両方セット**してください。片方だけ設定すると起動時のバリデーションエラー（`GitHub の CLIENT_ID と CLIENT_SECRET は両方設定してください`）でリクエストが全て 503 になります。
@@ -141,53 +141,53 @@ GITHUB_CLIENT_SECRET=<ローカル開発用 Client Secret>
 
 ### Worker 1: `0g0-id`（id.0g0.xyz）
 
-| 項目 | 設定値 |
-|---|---|
-| Git リポジトリ | `g-kari/0g0-id` |
-| Production branch | `master` |
-| Framework preset | **None** |
-| Build command | `npm ci && npm run deploy:id` |
-| Build output directory | （空欄） |
-| Root directory | `/`（リポジトリルート） |
+| 項目                   | 設定値                        |
+| ---------------------- | ----------------------------- |
+| Git リポジトリ         | `g-kari/0g0-id`               |
+| Production branch      | `master`                      |
+| Framework preset       | **None**                      |
+| Build command          | `npm ci && npm run deploy:id` |
+| Build output directory | （空欄）                      |
+| Root directory         | `/`（リポジトリルート）       |
 
 **環境変数（Build のみ）:**
 
-| 変数名 | 値 |
-|---|---|
+| 変数名         | 値   |
+| -------------- | ---- |
 | `NODE_VERSION` | `20` |
 
 ### Worker 2: `0g0-id-user`（user.0g0.xyz）
 
-| 項目 | 設定値 |
-|---|---|
-| Git リポジトリ | `g-kari/0g0-id` |
-| Production branch | `master` |
-| Framework preset | **None** |
-| Build command | `npm ci && npm run deploy:user` |
-| Build output directory | （空欄） |
-| Root directory | `/` |
+| 項目                   | 設定値                          |
+| ---------------------- | ------------------------------- |
+| Git リポジトリ         | `g-kari/0g0-id`                 |
+| Production branch      | `master`                        |
+| Framework preset       | **None**                        |
+| Build command          | `npm ci && npm run deploy:user` |
+| Build output directory | （空欄）                        |
+| Root directory         | `/`                             |
 
 **環境変数（Build のみ）:**
 
-| 変数名 | 値 |
-|---|---|
+| 変数名         | 値   |
+| -------------- | ---- |
 | `NODE_VERSION` | `20` |
 
 ### Worker 3: `0g0-id-admin`（admin.0g0.xyz）
 
-| 項目 | 設定値 |
-|---|---|
-| Git リポジトリ | `g-kari/0g0-id` |
-| Production branch | `master` |
-| Framework preset | **None** |
-| Build command | `npm ci && npm run deploy:admin` |
-| Build output directory | （空欄） |
-| Root directory | `/` |
+| 項目                   | 設定値                           |
+| ---------------------- | -------------------------------- |
+| Git リポジトリ         | `g-kari/0g0-id`                  |
+| Production branch      | `master`                         |
+| Framework preset       | **None**                         |
+| Build command          | `npm ci && npm run deploy:admin` |
+| Build output directory | （空欄）                         |
+| Root directory         | `/`                              |
 
 **環境変数（Build のみ）:**
 
-| 変数名 | 値 |
-|---|---|
+| 変数名         | 値   |
+| -------------- | ---- |
 | `NODE_VERSION` | `20` |
 
 > **注意:** シークレット（`GOOGLE_CLIENT_ID` など）は Build 環境変数ではなく、Worker の **Variables & Secrets** に設定してください。Build 時には不要です。

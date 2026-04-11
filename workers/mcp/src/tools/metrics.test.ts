@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
-vi.mock('@0g0-id/shared', () => ({
+vi.mock("@0g0-id/shared", () => ({
   countUsers: vi.fn(),
   countServices: vi.fn(),
   getActiveUserStats: vi.fn(),
@@ -22,14 +22,14 @@ import {
   getDailyActiveUsers,
   getSuspiciousMultiCountryLogins,
   getServiceTokenStats,
-} from '@0g0-id/shared';
+} from "@0g0-id/shared";
 
-import { getSystemMetricsTool, getSuspiciousLoginsTool, getServiceTokenStatsTool } from './metrics';
-import type { McpContext } from '../mcp';
+import { getSystemMetricsTool, getSuspiciousLoginsTool, getServiceTokenStatsTool } from "./metrics";
+import type { McpContext } from "../mcp";
 
 const mockContext: McpContext = {
-  userId: 'admin-1',
-  userRole: 'admin',
+  userId: "admin-1",
+  userRole: "admin",
   db: {} as D1Database,
   idp: {} as Fetcher,
 };
@@ -48,8 +48,8 @@ beforeEach(() => {
 });
 
 // ===== get_system_metrics =====
-describe('getSystemMetricsTool', () => {
-  it('summaryとtrendsを含むメトリクスを返す', async () => {
+describe("getSystemMetricsTool", () => {
+  it("summaryとtrendsを含むメトリクスを返す", async () => {
     const result = await getSystemMetricsTool.handler({}, mockContext);
 
     expect(result.isError).toBeUndefined();
@@ -63,7 +63,7 @@ describe('getSystemMetricsTool', () => {
     expect(parsed.trends.days).toBe(30);
   });
 
-  it('デフォルトは30日分のトレンド', async () => {
+  it("デフォルトは30日分のトレンド", async () => {
     await getSystemMetricsTool.handler({}, mockContext);
 
     expect(vi.mocked(getDailyLoginTrends)).toHaveBeenCalledWith(mockContext.db, 30);
@@ -71,32 +71,32 @@ describe('getSystemMetricsTool', () => {
     expect(vi.mocked(getDailyActiveUsers)).toHaveBeenCalledWith(mockContext.db, 30);
   });
 
-  it('daysパラメータを指定できる', async () => {
+  it("daysパラメータを指定できる", async () => {
     await getSystemMetricsTool.handler({ days: 7 }, mockContext);
 
     expect(vi.mocked(getDailyLoginTrends)).toHaveBeenCalledWith(mockContext.db, 7);
   });
 
-  it('days=0はfalsy扱いでデフォルト30になる', async () => {
+  it("days=0はfalsy扱いでデフォルト30になる", async () => {
     // Number(0) || 30 = 30 (0はfalsy)
     await getSystemMetricsTool.handler({ days: 0 }, mockContext);
 
     expect(vi.mocked(getDailyLoginTrends)).toHaveBeenCalledWith(mockContext.db, 30);
   });
 
-  it('days=1は最小値として機能する', async () => {
+  it("days=1は最小値として機能する", async () => {
     await getSystemMetricsTool.handler({ days: 1 }, mockContext);
 
     expect(vi.mocked(getDailyLoginTrends)).toHaveBeenCalledWith(mockContext.db, 1);
   });
 
-  it('daysは最大365にクランプする', async () => {
+  it("daysは最大365にクランプする", async () => {
     await getSystemMetricsTool.handler({ days: 1000 }, mockContext);
 
     expect(vi.mocked(getDailyLoginTrends)).toHaveBeenCalledWith(mockContext.db, 365);
   });
 
-  it('getLoginEventProviderStatsにはsinceIsoが渡される', async () => {
+  it("getLoginEventProviderStatsにはsinceIsoが渡される", async () => {
     const before = Date.now();
     await getSystemMetricsTool.handler({ days: 30 }, mockContext);
     const after = Date.now();
@@ -111,7 +111,7 @@ describe('getSystemMetricsTool', () => {
     expect(sinceMs).toBeLessThanOrEqual(after);
   });
 
-  it('全DB呼び出しが並列で実行される（Promise.all）', async () => {
+  it("全DB呼び出しが並列で実行される（Promise.all）", async () => {
     // 各関数が1回ずつ呼ばれることを確認
     await getSystemMetricsTool.handler({}, mockContext);
 
@@ -126,9 +126,9 @@ describe('getSystemMetricsTool', () => {
 });
 
 // ===== get_suspicious_logins =====
-describe('getSuspiciousLoginsTool', () => {
-  it('dataとmetaを含むレスポンスを返す', async () => {
-    const mockLogins = [{ user_id: 'u1', country_count: 3, countries: 'JP,US,DE' }];
+describe("getSuspiciousLoginsTool", () => {
+  it("dataとmetaを含むレスポンスを返す", async () => {
+    const mockLogins = [{ user_id: "u1", country_count: 3, countries: "JP,US,DE" }];
     vi.mocked(getSuspiciousMultiCountryLogins).mockResolvedValue(mockLogins as never);
 
     const result = await getSuspiciousLoginsTool.handler({}, mockContext);
@@ -136,12 +136,12 @@ describe('getSuspiciousLoginsTool', () => {
     expect(result.isError).toBeUndefined();
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.data).toHaveLength(1);
-    expect(parsed.data[0].user_id).toBe('u1');
+    expect(parsed.data[0].user_id).toBe("u1");
     expect(parsed.meta.hours).toBe(24);
     expect(parsed.meta.min_countries).toBe(2);
   });
 
-  it('デフォルトは24時間・2か国', async () => {
+  it("デフォルトは24時間・2か国", async () => {
     await getSuspiciousLoginsTool.handler({}, mockContext);
 
     const calls = vi.mocked(getSuspiciousMultiCountryLogins).mock.calls;
@@ -149,28 +149,30 @@ describe('getSuspiciousLoginsTool', () => {
     expect(calls[0][2]).toBe(2); // minCountries
   });
 
-  it('hoursとmin_countriesを指定できる', async () => {
+  it("hoursとmin_countriesを指定できる", async () => {
     await getSuspiciousLoginsTool.handler({ hours: 48, min_countries: 3 }, mockContext);
 
     const calls = vi.mocked(getSuspiciousMultiCountryLogins).mock.calls;
     expect(calls[0][2]).toBe(3);
-    const parsed = JSON.parse((await getSuspiciousLoginsTool.handler({ hours: 48 }, mockContext)).content[0].text);
+    const parsed = JSON.parse(
+      (await getSuspiciousLoginsTool.handler({ hours: 48 }, mockContext)).content[0].text,
+    );
     expect(parsed.meta.hours).toBe(48);
   });
 
-  it('hoursは最大168にクランプする', async () => {
+  it("hoursは最大168にクランプする", async () => {
     const result = await getSuspiciousLoginsTool.handler({ hours: 1000 }, mockContext);
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.meta.hours).toBe(168);
   });
 
-  it('hoursは最小1にクランプする', async () => {
+  it("hoursは最小1にクランプする", async () => {
     const result = await getSuspiciousLoginsTool.handler({ hours: 0 }, mockContext);
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.meta.hours).toBe(24); // 0はfalsyなのでデフォルト24
   });
 
-  it('sinceIsoが正しい時間範囲で渡される', async () => {
+  it("sinceIsoが正しい時間範囲で渡される", async () => {
     const before = Date.now();
     await getSuspiciousLoginsTool.handler({ hours: 1 }, mockContext);
     const after = Date.now();
@@ -184,10 +186,15 @@ describe('getSuspiciousLoginsTool', () => {
 });
 
 // ===== get_service_token_stats =====
-describe('getServiceTokenStatsTool', () => {
-  it('dataを含むレスポンスを返す', async () => {
+describe("getServiceTokenStatsTool", () => {
+  it("dataを含むレスポンスを返す", async () => {
     const mockStats = [
-      { service_id: 's1', service_name: 'App A', authorized_user_count: 10, active_token_count: 15 },
+      {
+        service_id: "s1",
+        service_name: "App A",
+        authorized_user_count: 10,
+        active_token_count: 15,
+      },
     ];
     vi.mocked(getServiceTokenStats).mockResolvedValue(mockStats as never);
 
@@ -196,11 +203,11 @@ describe('getServiceTokenStatsTool', () => {
     expect(result.isError).toBeUndefined();
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.data).toHaveLength(1);
-    expect(parsed.data[0].service_id).toBe('s1');
+    expect(parsed.data[0].service_id).toBe("s1");
     expect(parsed.data[0].authorized_user_count).toBe(10);
   });
 
-  it('サービスが0件の場合は空配列を返す', async () => {
+  it("サービスが0件の場合は空配列を返す", async () => {
     vi.mocked(getServiceTokenStats).mockResolvedValue([]);
 
     const result = await getServiceTokenStatsTool.handler({}, mockContext);
@@ -208,7 +215,7 @@ describe('getServiceTokenStatsTool', () => {
     expect(parsed.data).toEqual([]);
   });
 
-  it('getServiceTokenStatsにDBが渡される', async () => {
+  it("getServiceTokenStatsにDBが渡される", async () => {
     await getServiceTokenStatsTool.handler({}, mockContext);
 
     expect(vi.mocked(getServiceTokenStats)).toHaveBeenCalledWith(mockContext.db);

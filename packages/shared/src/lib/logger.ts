@@ -5,7 +5,7 @@
  * createLogger(context) でコンテキスト付きロガーを生成する。
  */
 
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type LogLevel = "debug" | "info" | "warn" | "error";
 
 interface LogEntry {
   level: LogLevel;
@@ -43,9 +43,9 @@ export function createLogger(context: string): Logger {
       }
     }
     const line = JSON.stringify(entry);
-    if (level === 'error') {
+    if (level === "error") {
       console.error(line);
-    } else if (level === 'warn') {
+    } else if (level === "warn") {
       console.warn(line);
     } else {
       console.log(line);
@@ -53,9 +53,9 @@ export function createLogger(context: string): Logger {
   }
 
   return {
-    debug: (msg, extra) => log('debug', msg, extra),
-    info: (msg, extra) => log('info', msg, extra),
-    warn: (msg, extra) => log('warn', msg, extra),
-    error: (msg, extra) => log('error', msg, extra),
+    debug: (msg, extra) => log("debug", msg, extra),
+    info: (msg, extra) => log("info", msg, extra),
+    warn: (msg, extra) => log("warn", msg, extra),
+    error: (msg, extra) => log("error", msg, extra),
   };
 }

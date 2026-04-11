@@ -1,12 +1,12 @@
-import { fetchWithRetry } from './fetch-retry';
-import { createLogger } from './logger';
+import { fetchWithRetry } from "./fetch-retry";
+import { createLogger } from "./logger";
 
-const logger = createLogger('oauth-github');
+const logger = createLogger("oauth-github");
 
-const GITHUB_AUTH_URL = 'https://github.com/login/oauth/authorize';
-const GITHUB_TOKEN_URL = 'https://github.com/login/oauth/access_token';
-const GITHUB_USER_URL = 'https://api.github.com/user';
-const GITHUB_EMAILS_URL = 'https://api.github.com/user/emails';
+const GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize";
+const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
+const GITHUB_USER_URL = "https://api.github.com/user";
+const GITHUB_EMAILS_URL = "https://api.github.com/user/emails";
 
 export interface GithubUserInfo {
   id: number;
@@ -38,13 +38,13 @@ export function buildGithubAuthUrl(params: {
   codeChallenge: string;
 }): string {
   const url = new URL(GITHUB_AUTH_URL);
-  url.searchParams.set('response_type', 'code');
-  url.searchParams.set('client_id', params.clientId);
-  url.searchParams.set('redirect_uri', params.redirectUri);
-  url.searchParams.set('scope', 'read:user user:email');
-  url.searchParams.set('state', params.state);
-  url.searchParams.set('code_challenge', params.codeChallenge);
-  url.searchParams.set('code_challenge_method', 'S256');
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("client_id", params.clientId);
+  url.searchParams.set("redirect_uri", params.redirectUri);
+  url.searchParams.set("scope", "read:user user:email");
+  url.searchParams.set("state", params.state);
+  url.searchParams.set("code_challenge", params.codeChallenge);
+  url.searchParams.set("code_challenge_method", "S256");
   return url.toString();
 }
 
@@ -59,13 +59,13 @@ export async function exchangeGithubCode(params: {
   codeVerifier: string;
 }): Promise<GithubTokenResponse> {
   const response = await fetchWithRetry(GITHUB_TOKEN_URL, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json',
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
     },
     body: new URLSearchParams({
-      grant_type: 'authorization_code',
+      grant_type: "authorization_code",
       code: params.code,
       client_id: params.clientId,
       client_secret: params.clientSecret,
@@ -77,19 +77,19 @@ export async function exchangeGithubCode(params: {
   if (!response.ok) {
     const error = await response.text();
     logger.error(`GitHub token exchange failed (${response.status})`, error);
-    throw new Error('GitHub token exchange failed');
+    throw new Error("GitHub token exchange failed");
   }
 
   try {
     const data = (await response.json()) as GithubTokenResponse & { error?: string };
     if (data.error) {
-      logger.error('GitHub token exchange failed', data.error);
-      throw new Error('GitHub token exchange failed');
+      logger.error("GitHub token exchange failed", data.error);
+      throw new Error("GitHub token exchange failed");
     }
     return data;
   } catch (e) {
-    if (e instanceof Error && e.message === 'GitHub token exchange failed') throw e;
-    throw new Error('GitHub token exchange failed: Invalid JSON response');
+    if (e instanceof Error && e.message === "GitHub token exchange failed") throw e;
+    throw new Error("GitHub token exchange failed: Invalid JSON response");
   }
 }
 
@@ -100,7 +100,7 @@ export async function fetchGithubUserInfo(accessToken: string): Promise<GithubUs
   const response = await fetchWithRetry(GITHUB_USER_URL, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      'User-Agent': '0g0-id',
+      "User-Agent": "0g0-id",
     },
   });
 
@@ -111,7 +111,7 @@ export async function fetchGithubUserInfo(accessToken: string): Promise<GithubUs
   try {
     return (await response.json()) as GithubUserInfo;
   } catch {
-    throw new Error('GitHub user info fetch failed: Invalid JSON response');
+    throw new Error("GitHub user info fetch failed: Invalid JSON response");
   }
 }
 
@@ -122,7 +122,7 @@ export async function fetchGithubPrimaryEmail(accessToken: string): Promise<stri
   const response = await fetchWithRetry(GITHUB_EMAILS_URL, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      'User-Agent': '0g0-id',
+      "User-Agent": "0g0-id",
     },
   });
 
@@ -136,6 +136,6 @@ export async function fetchGithubPrimaryEmail(accessToken: string): Promise<stri
     const primary = emails.find((e) => e.primary && e.verified);
     return primary?.email ?? null;
   } catch {
-    throw new Error('GitHub Emails API returned invalid JSON');
+    throw new Error("GitHub Emails API returned invalid JSON");
   }
 }

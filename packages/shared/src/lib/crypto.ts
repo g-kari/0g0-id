@@ -4,8 +4,8 @@
 export function generateClientId(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 /**
@@ -14,8 +14,8 @@ export function generateClientId(): string {
 export function generateClientSecret(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 /**
@@ -23,9 +23,9 @@ export function generateClientSecret(): string {
  */
 export async function sha256(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
@@ -33,10 +33,10 @@ export async function sha256(input: string): Promise<string> {
  */
 export function generateToken(byteLength: number = 32): string {
   const bytes = crypto.getRandomValues(new Uint8Array(byteLength));
-  return btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
+  return btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
 }
 
 /**
@@ -51,11 +51,11 @@ export function generateCodeVerifier(): string {
  */
 export async function generateCodeChallenge(verifier: string): Promise<string> {
   const data = new TextEncoder().encode(verifier);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  return btoa(Array.from(new Uint8Array(hashBuffer), (b) => String.fromCharCode(b)).join(''))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return btoa(Array.from(new Uint8Array(hashBuffer), (b) => String.fromCharCode(b)).join(""))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
 }
 
 /**
@@ -71,9 +71,11 @@ export function timingSafeEqual(a: string, b: string): boolean {
   const bBytes = encoder.encode(b);
   // crypto.subtle.timingSafeEqual は Cloudflare Workers / Node.js 19+ で利用可能
   // 長さが一致する場合のみネイティブAPIを使用（ネイティブAPIは長さ不一致でエラーを投げるため）
-  type SubtleCryptoWithTimingSafeEqual = SubtleCrypto & { timingSafeEqual(a: ArrayBuffer, b: ArrayBuffer): boolean };
+  type SubtleCryptoWithTimingSafeEqual = SubtleCrypto & {
+    timingSafeEqual(a: ArrayBuffer, b: ArrayBuffer): boolean;
+  };
   const subtleCrypto = crypto.subtle as unknown as SubtleCryptoWithTimingSafeEqual;
-  if (typeof subtleCrypto.timingSafeEqual === 'function' && aBytes.length === bBytes.length) {
+  if (typeof subtleCrypto.timingSafeEqual === "function" && aBytes.length === bBytes.length) {
     return subtleCrypto.timingSafeEqual(aBytes.buffer as ArrayBuffer, bBytes.buffer as ArrayBuffer);
   }
   // フォールバック: 長さ差分もXORループで定数時間比較（タイミングリーク防止）

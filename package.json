@@ -2,7 +2,10 @@
   "name": "0g0-id",
   "version": "0.1.0",
   "private": true,
-  "workspaces": ["packages/*", "workers/*"],
+  "workspaces": [
+    "packages/*",
+    "workers/*"
+  ],
   "scripts": {
     "dev:id": "npm run dev -w workers/id",
     "dev:user": "npm run dev -w workers/user",
@@ -14,6 +17,15 @@
     "dev:mcp": "npm run dev -w workers/mcp",
     "deploy:mcp": "npm run deploy -w workers/mcp",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
-  }
+    "test": "npm run test --workspaces --if-present",
+    "prepare": "vp config"
+  },
+  "devDependencies": {
+    "vite-plus": "latest"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+    "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
+  },
+  "packageManager": "npm@11.12.1"
 }

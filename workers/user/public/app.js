@@ -1,23 +1,25 @@
-'use strict';
+"use strict";
 
 (function () {
   // トースト通知
   function showToast(message, type) {
-    var container = document.getElementById('toast-container');
+    var container = document.getElementById("toast-container");
     if (!container) {
-      container = document.createElement('div');
-      container.id = 'toast-container';
-      container.className = 'toast-container';
+      container = document.createElement("div");
+      container.id = "toast-container";
+      container.className = "toast-container";
       document.body.appendChild(container);
     }
-    var toast = document.createElement('div');
-    toast.className = 'toast toast-' + type;
+    var toast = document.createElement("div");
+    toast.className = "toast toast-" + type;
     toast.textContent = message;
     container.appendChild(toast);
     setTimeout(function () {
-      toast.style.transition = 'opacity 0.3s';
-      toast.style.opacity = '0';
-      setTimeout(function () { toast.remove(); }, 300);
+      toast.style.transition = "opacity 0.3s";
+      toast.style.opacity = "0";
+      setTimeout(function () {
+        toast.remove();
+      }, 300);
     }, 3000);
   }
 
@@ -29,8 +31,8 @@
 
   function getProgressBar() {
     if (!_progressBar) {
-      _progressBar = document.createElement('div');
-      _progressBar.id = 'progress-bar';
+      _progressBar = document.createElement("div");
+      _progressBar.id = "progress-bar";
       document.body.insertBefore(_progressBar, document.body.firstChild);
     }
     return _progressBar;
@@ -41,12 +43,12 @@
     var bar = getProgressBar();
     clearTimeout(_progressTimer);
     clearTimeout(_progressResetTimer);
-    bar.style.transition = 'none';
-    bar.style.width = '0%';
-    bar.style.opacity = '1';
+    bar.style.transition = "none";
+    bar.style.width = "0%";
+    bar.style.opacity = "1";
     setTimeout(function () {
-      bar.style.transition = 'width 0.8s ease';
-      bar.style.width = '75%';
+      bar.style.transition = "width 0.8s ease";
+      bar.style.width = "75%";
     }, 16);
   }
 
@@ -54,68 +56,73 @@
     _progressCount = Math.max(0, _progressCount - 1);
     if (_progressCount > 0) return;
     var bar = getProgressBar();
-    bar.style.transition = 'width 0.15s ease';
-    bar.style.width = '100%';
+    bar.style.transition = "width 0.15s ease";
+    bar.style.width = "100%";
     _progressTimer = setTimeout(function () {
-      bar.style.transition = 'opacity 0.3s ease';
-      bar.style.opacity = '0';
-      _progressResetTimer = setTimeout(function () { bar.style.width = '0%'; }, 300);
+      bar.style.transition = "opacity 0.3s ease";
+      bar.style.opacity = "0";
+      _progressResetTimer = setTimeout(function () {
+        bar.style.width = "0%";
+      }, 300);
     }, 150);
   }
 
   // Cloudflare Workers Assets は .html 拡張子を除去するため正規化
-  var path = window.location.pathname.replace(/\.html$/, '');
+  var path = window.location.pathname.replace(/\.html$/, "");
 
   // エラーパラメータ表示（ログインページ）
-  if (path === '/' || path === '/index') {
+  if (path === "/" || path === "/index") {
     var params = new URLSearchParams(window.location.search);
-    var errorEl = document.getElementById('error-msg');
-    if (params.get('error') && errorEl) {
+    var errorEl = document.getElementById("error-msg");
+    if (params.get("error") && errorEl) {
       var messages = {
-        missing_params: 'パラメータが不足しています',
-        missing_session: 'セッションが見つかりません',
-        state_mismatch: 'セキュリティエラーが発生しました',
-        exchange_failed: '認証に失敗しました',
-        invalid_provider: '無効なログインプロバイダーです',
+        missing_params: "パラメータが不足しています",
+        missing_session: "セッションが見つかりません",
+        state_mismatch: "セキュリティエラーが発生しました",
+        exchange_failed: "認証に失敗しました",
+        invalid_provider: "無効なログインプロバイダーです",
       };
-      errorEl.textContent = messages[params.get('error')] || '認証エラーが発生しました';
-      errorEl.style.display = 'block';
+      errorEl.textContent = messages[params.get("error")] || "認証エラーが発生しました";
+      errorEl.style.display = "block";
     }
     return;
   }
 
   // プロフィールページ
-  if (path === '/profile') {
-    var card = document.getElementById('profile-card');
-    var loading = document.getElementById('loading');
-    var avatar = document.getElementById('avatar');
-    var avatarPlaceholder = document.getElementById('avatar-placeholder');
-    var nameEl = document.getElementById('profile-name');
-    var emailEl = document.getElementById('profile-email');
-    var nameInput = document.getElementById('name-input');
-    var pictureInput = document.getElementById('picture-input');
-    var phoneInput = document.getElementById('phone-input');
-    var addressInput = document.getElementById('address-input');
-    var editForm = document.getElementById('edit-form');
+  if (path === "/profile") {
+    var card = document.getElementById("profile-card");
+    var loading = document.getElementById("loading");
+    var avatar = document.getElementById("avatar");
+    var avatarPlaceholder = document.getElementById("avatar-placeholder");
+    var nameEl = document.getElementById("profile-name");
+    var emailEl = document.getElementById("profile-email");
+    var nameInput = document.getElementById("name-input");
+    var pictureInput = document.getElementById("picture-input");
+    var phoneInput = document.getElementById("phone-input");
+    var addressInput = document.getElementById("address-input");
+    var editForm = document.getElementById("edit-form");
     var saveBtn = editForm ? editForm.querySelector('button[type="submit"]') : null;
-    var logoutBtn = document.getElementById('logout-btn');
+    var logoutBtn = document.getElementById("logout-btn");
 
     function showProfileError(msg) {
       hideProgress();
       if (loading) {
-        loading.innerHTML = '<div style="text-align:center;padding:1rem;">' +
-          '<p style="color:var(--error,#e53e3e);margin-bottom:1rem;">' + msg + '</p>' +
+        loading.innerHTML =
+          '<div style="text-align:center;padding:1rem;">' +
+          '<p style="color:var(--error,#e53e3e);margin-bottom:1rem;">' +
+          msg +
+          "</p>" +
           '<a href="/" style="color:var(--accent,#4f46e5);">ログインページへ</a>' +
-          '</div>';
+          "</div>";
       }
     }
 
     // プロフィール取得
     showProgress();
-    fetch('/api/me', { credentials: 'same-origin' })
+    fetch("/api/me", { credentials: "same-origin" })
       .then(function (res) {
         if (res.status === 401) {
-          window.location.href = '/';
+          window.location.href = "/";
           return null;
         }
         return res.json();
@@ -124,52 +131,52 @@
         hideProgress();
         if (!data) return; // 401の場合はリダイレクト中
         if (data.error) {
-          showProfileError('プロフィールの取得に失敗しました。再度ログインしてください。');
+          showProfileError("プロフィールの取得に失敗しました。再度ログインしてください。");
           return;
         }
         var user = data.data;
         if (!user) {
-          showProfileError('データの取得に失敗しました。再度ログインしてください。');
+          showProfileError("データの取得に失敗しました。再度ログインしてください。");
           return;
         }
         if (avatar) {
           if (user.picture) {
             avatar.src = user.picture;
-            avatar.style.display = 'block';
-            if (avatarPlaceholder) avatarPlaceholder.style.display = 'none';
+            avatar.style.display = "block";
+            if (avatarPlaceholder) avatarPlaceholder.style.display = "none";
           } else {
-            avatar.style.display = 'none';
+            avatar.style.display = "none";
             if (avatarPlaceholder) {
-              var initials = (user.name || '?').charAt(0).toUpperCase();
+              var initials = (user.name || "?").charAt(0).toUpperCase();
               avatarPlaceholder.textContent = initials;
-              avatarPlaceholder.style.display = 'flex';
+              avatarPlaceholder.style.display = "flex";
             }
           }
         }
         if (nameEl) nameEl.textContent = user.name;
         if (emailEl) emailEl.textContent = user.email;
         if (nameInput) nameInput.value = user.name;
-        if (pictureInput) pictureInput.value = user.picture || '';
-        if (phoneInput) phoneInput.value = user.phone || '';
-        if (addressInput) addressInput.value = user.address || '';
-        if (loading) loading.style.display = 'none';
-        if (card) card.style.display = 'block';
+        if (pictureInput) pictureInput.value = user.picture || "";
+        if (phoneInput) phoneInput.value = user.phone || "";
+        if (addressInput) addressInput.value = user.address || "";
+        if (loading) loading.style.display = "none";
+        if (card) card.style.display = "block";
       })
       .catch(function () {
-        showProfileError('通信エラーが発生しました。ページを再読み込みしてください。');
+        showProfileError("通信エラーが発生しました。ページを再読み込みしてください。");
       });
 
     // プロフィール更新
     if (editForm) {
-      editForm.addEventListener('submit', function (e) {
+      editForm.addEventListener("submit", function (e) {
         e.preventDefault();
-        var name = nameInput ? nameInput.value.trim() : '';
+        var name = nameInput ? nameInput.value.trim() : "";
         if (!name) return;
 
         // 二重送信防止
         if (saveBtn) {
           saveBtn.disabled = true;
-          saveBtn.textContent = '保存中...';
+          saveBtn.textContent = "保存中...";
         }
 
         var picture = pictureInput ? pictureInput.value.trim() || null : null;
@@ -177,48 +184,50 @@
         var address = addressInput ? addressInput.value.trim() || null : null;
 
         showProgress();
-        fetch('/api/me', {
-          method: 'PATCH',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
+        fetch("/api/me", {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: name, picture: picture, phone: phone, address: address }),
         })
-          .then(function (res) { return res.json(); })
+          .then(function (res) {
+            return res.json();
+          })
           .then(function (data) {
             hideProgress();
             if (data.error) {
-              showToast('更新に失敗しました', 'error');
+              showToast("更新に失敗しました", "error");
             } else {
               if (avatar) {
                 if (data.data.picture) {
                   avatar.src = data.data.picture;
-                  avatar.style.display = 'block';
-                  if (avatarPlaceholder) avatarPlaceholder.style.display = 'none';
+                  avatar.style.display = "block";
+                  if (avatarPlaceholder) avatarPlaceholder.style.display = "none";
                 } else {
-                  avatar.style.display = 'none';
+                  avatar.style.display = "none";
                   if (avatarPlaceholder) {
-                    var initials = (data.data.name || '?').charAt(0).toUpperCase();
+                    var initials = (data.data.name || "?").charAt(0).toUpperCase();
                     avatarPlaceholder.textContent = initials;
-                    avatarPlaceholder.style.display = 'flex';
+                    avatarPlaceholder.style.display = "flex";
                   }
                 }
               }
               if (nameEl) nameEl.textContent = data.data.name;
               if (nameInput) nameInput.value = data.data.name;
-              if (pictureInput) pictureInput.value = data.data.picture || '';
-              if (phoneInput) phoneInput.value = data.data.phone || '';
-              if (addressInput) addressInput.value = data.data.address || '';
-              showToast('プロフィールを更新しました', 'success');
+              if (pictureInput) pictureInput.value = data.data.picture || "";
+              if (phoneInput) phoneInput.value = data.data.phone || "";
+              if (addressInput) addressInput.value = data.data.address || "";
+              showToast("プロフィールを更新しました", "success");
             }
           })
           .catch(function () {
             hideProgress();
-            showToast('通信エラーが発生しました', 'error');
+            showToast("通信エラーが発生しました", "error");
           })
           .finally(function () {
             if (saveBtn) {
               saveBtn.disabled = false;
-              saveBtn.textContent = '保存';
+              saveBtn.textContent = "保存";
             }
           });
       });
@@ -226,127 +235,170 @@
 
     // ログアウト
     if (logoutBtn) {
-      logoutBtn.addEventListener('click', function () {
-        fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' })
-          .then(function () { window.location.href = '/'; })
-          .catch(function () { window.location.href = '/'; });
+      logoutBtn.addEventListener("click", function () {
+        fetch("/auth/logout", { method: "POST", credentials: "same-origin" })
+          .then(function () {
+            window.location.href = "/";
+          })
+          .catch(function () {
+            window.location.href = "/";
+          });
       });
     }
   }
 
   // セッション管理ページ
-  if (path === '/sessions') {
-    var sessionsListEl = document.getElementById('sessions-list');
-    var sessionsLoadingEl = document.getElementById('loading');
-    var sessionsEmptyEl = document.getElementById('empty-msg');
-    var sessionsErrorEl = document.getElementById('error-msg');
-    var revokeAllWrap = document.getElementById('revoke-all-wrap');
-    var revokeAllBtn = document.getElementById('revoke-all-btn');
+  if (path === "/sessions") {
+    var sessionsListEl = document.getElementById("sessions-list");
+    var sessionsLoadingEl = document.getElementById("loading");
+    var sessionsEmptyEl = document.getElementById("empty-msg");
+    var sessionsErrorEl = document.getElementById("error-msg");
+    var revokeAllWrap = document.getElementById("revoke-all-wrap");
+    var revokeAllBtn = document.getElementById("revoke-all-btn");
 
     function formatDatetime(iso) {
-      return new Date(iso).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      return new Date(iso).toLocaleString("ja-JP", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
     }
 
     function escHtmlSessions(str) {
-      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
     }
 
     function loadSessions() {
       showProgress();
-      fetch('/api/me/sessions', { credentials: 'same-origin' })
+      fetch("/api/me/sessions", { credentials: "same-origin" })
         .then(function (res) {
-          if (res.status === 401) { window.location.href = '/'; return null; }
+          if (res.status === 401) {
+            window.location.href = "/";
+            return null;
+          }
           return res.json();
         })
         .then(function (data) {
           hideProgress();
           if (!data) return;
-          if (sessionsLoadingEl) sessionsLoadingEl.style.display = 'none';
+          if (sessionsLoadingEl) sessionsLoadingEl.style.display = "none";
           if (data.error) {
-            if (sessionsErrorEl) { sessionsErrorEl.textContent = 'セッション一覧の取得に失敗しました'; sessionsErrorEl.style.display = 'block'; }
+            if (sessionsErrorEl) {
+              sessionsErrorEl.textContent = "セッション一覧の取得に失敗しました";
+              sessionsErrorEl.style.display = "block";
+            }
             return;
           }
           var sessions = data.data || [];
           if (sessions.length === 0) {
-            if (sessionsEmptyEl) sessionsEmptyEl.style.display = 'block';
+            if (sessionsEmptyEl) sessionsEmptyEl.style.display = "block";
             return;
           }
           if (sessionsListEl) {
-            sessionsListEl.style.display = 'block';
-            sessionsListEl.innerHTML = sessions.map(function (s) {
-              var label = s.service_name ? escHtmlSessions(s.service_name) : '0g0 ID（IdP セッション）';
-              var icon = s.service_name
-                ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>'
-                : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
-              return '<div class="connection-item">' +
-                '<div class="connection-info">' +
-                  '<div class="connection-name" style="display:flex;align-items:center;gap:0.375rem;">' + icon + label + '</div>' +
-                  '<div class="connection-meta">作成: ' + formatDatetime(s.created_at) + ' ／ 有効期限: ' + formatDatetime(s.expires_at) + '</div>' +
-                '</div>' +
-                '<button class="btn btn-danger btn-sm" data-session-id="' + escHtmlSessions(s.id) + '" aria-label="' + label + 'のセッションを無効化">無効化</button>' +
-              '</div>';
-            }).join('');
+            sessionsListEl.style.display = "block";
+            sessionsListEl.innerHTML = sessions
+              .map(function (s) {
+                var label = s.service_name
+                  ? escHtmlSessions(s.service_name)
+                  : "0g0 ID（IdP セッション）";
+                var icon = s.service_name
+                  ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>'
+                  : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
+                return (
+                  '<div class="connection-item">' +
+                  '<div class="connection-info">' +
+                  '<div class="connection-name" style="display:flex;align-items:center;gap:0.375rem;">' +
+                  icon +
+                  label +
+                  "</div>" +
+                  '<div class="connection-meta">作成: ' +
+                  formatDatetime(s.created_at) +
+                  " ／ 有効期限: " +
+                  formatDatetime(s.expires_at) +
+                  "</div>" +
+                  "</div>" +
+                  '<button class="btn btn-danger btn-sm" data-session-id="' +
+                  escHtmlSessions(s.id) +
+                  '" aria-label="' +
+                  label +
+                  'のセッションを無効化">無効化</button>' +
+                  "</div>"
+                );
+              })
+              .join("");
 
-            sessionsListEl.querySelectorAll('[data-session-id]').forEach(function (btn) {
-              btn.addEventListener('click', function () {
-                if (!confirm('このセッションを無効化しますか？')) return;
+            sessionsListEl.querySelectorAll("[data-session-id]").forEach(function (btn) {
+              btn.addEventListener("click", function () {
+                if (!confirm("このセッションを無効化しますか？")) return;
                 btn.disabled = true;
                 showProgress();
-                fetch('/api/me/sessions/' + btn.dataset.sessionId, {
-                  method: 'DELETE',
-                  credentials: 'same-origin',
+                fetch("/api/me/sessions/" + btn.dataset.sessionId, {
+                  method: "DELETE",
+                  credentials: "same-origin",
                   headers: { Origin: window.location.origin },
                 })
                   .then(function (res) {
                     hideProgress();
                     if (res.ok || res.status === 204) {
-                      showToast('セッションを無効化しました', 'success');
+                      showToast("セッションを無効化しました", "success");
                       loadSessions();
                     } else {
-                      showToast('無効化に失敗しました', 'error');
+                      showToast("無効化に失敗しました", "error");
                       btn.disabled = false;
                     }
                   })
                   .catch(function () {
                     hideProgress();
-                    showToast('通信エラーが発生しました', 'error');
+                    showToast("通信エラーが発生しました", "error");
                     btn.disabled = false;
                   });
               });
             });
           }
-          if (revokeAllWrap) revokeAllWrap.style.display = 'block';
+          if (revokeAllWrap) revokeAllWrap.style.display = "block";
         })
         .catch(function () {
           hideProgress();
-          if (sessionsLoadingEl) sessionsLoadingEl.style.display = 'none';
-          if (sessionsErrorEl) { sessionsErrorEl.textContent = '通信エラーが発生しました'; sessionsErrorEl.style.display = 'block'; }
+          if (sessionsLoadingEl) sessionsLoadingEl.style.display = "none";
+          if (sessionsErrorEl) {
+            sessionsErrorEl.textContent = "通信エラーが発生しました";
+            sessionsErrorEl.style.display = "block";
+          }
         });
     }
 
     if (revokeAllBtn) {
-      revokeAllBtn.addEventListener('click', function () {
-        if (!confirm('すべてのセッションを無効化しますか？この操作後、ログアウトされます。')) return;
+      revokeAllBtn.addEventListener("click", function () {
+        if (!confirm("すべてのセッションを無効化しますか？この操作後、ログアウトされます。"))
+          return;
         revokeAllBtn.disabled = true;
         showProgress();
-        fetch('/api/me/sessions', {
-          method: 'DELETE',
-          credentials: 'same-origin',
+        fetch("/api/me/sessions", {
+          method: "DELETE",
+          credentials: "same-origin",
           headers: { Origin: window.location.origin },
         })
           .then(function (res) {
             hideProgress();
             if (res.ok || res.status === 204) {
-              showToast('すべてのセッションを無効化しました', 'success');
-              setTimeout(function () { window.location.href = '/'; }, 1200);
+              showToast("すべてのセッションを無効化しました", "success");
+              setTimeout(function () {
+                window.location.href = "/";
+              }, 1200);
             } else {
-              showToast('無効化に失敗しました', 'error');
+              showToast("無効化に失敗しました", "error");
               revokeAllBtn.disabled = false;
             }
           })
           .catch(function () {
             hideProgress();
-            showToast('通信エラーが発生しました', 'error');
+            showToast("通信エラーが発生しました", "error");
             revokeAllBtn.disabled = false;
           });
       });
@@ -356,75 +408,103 @@
   }
 
   // 連携サービスページ
-  if (path === '/connections') {
-    var listEl = document.getElementById('connections-list');
-    var loadingEl = document.getElementById('loading');
-    var emptyEl = document.getElementById('empty-msg');
-    var errorEl = document.getElementById('error-msg');
+  if (path === "/connections") {
+    var listEl = document.getElementById("connections-list");
+    var loadingEl = document.getElementById("loading");
+    var emptyEl = document.getElementById("empty-msg");
+    var errorEl = document.getElementById("error-msg");
 
     function formatDate(iso) {
-      return new Date(iso).toLocaleDateString('ja-JP');
+      return new Date(iso).toLocaleDateString("ja-JP");
     }
 
     function escHtml(str) {
-      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
     }
 
     function loadConnections() {
       showProgress();
-      fetch('/api/connections', { credentials: 'same-origin' })
+      fetch("/api/connections", { credentials: "same-origin" })
         .then(function (res) {
-          if (res.status === 401) { window.location.href = '/'; return null; }
+          if (res.status === 401) {
+            window.location.href = "/";
+            return null;
+          }
           return res.json();
         })
         .then(function (data) {
           hideProgress();
           if (!data) return;
-          if (loadingEl) loadingEl.style.display = 'none';
+          if (loadingEl) loadingEl.style.display = "none";
           if (data.error) {
-            if (errorEl) { errorEl.textContent = '連携サービスの取得に失敗しました'; errorEl.style.display = 'block'; }
+            if (errorEl) {
+              errorEl.textContent = "連携サービスの取得に失敗しました";
+              errorEl.style.display = "block";
+            }
             return;
           }
           var connections = data.data || [];
           if (connections.length === 0) {
-            if (emptyEl) emptyEl.style.display = 'block';
+            if (emptyEl) emptyEl.style.display = "block";
             return;
           }
           if (listEl) {
-            listEl.style.display = 'block';
-            listEl.innerHTML = connections.map(function (c) {
-              return '<div class="connection-item">' +
-                '<div class="connection-info">' +
-                  '<div class="connection-name">' + escHtml(c.service_name) + '</div>' +
-                  '<div class="connection-meta">連携日: ' + formatDate(c.first_authorized_at) + '</div>' +
-                '</div>' +
-                '<button class="btn btn-danger btn-sm" data-id="' + escHtml(c.service_id) + '">解除</button>' +
-              '</div>';
-            }).join('');
+            listEl.style.display = "block";
+            listEl.innerHTML = connections
+              .map(function (c) {
+                return (
+                  '<div class="connection-item">' +
+                  '<div class="connection-info">' +
+                  '<div class="connection-name">' +
+                  escHtml(c.service_name) +
+                  "</div>" +
+                  '<div class="connection-meta">連携日: ' +
+                  formatDate(c.first_authorized_at) +
+                  "</div>" +
+                  "</div>" +
+                  '<button class="btn btn-danger btn-sm" data-id="' +
+                  escHtml(c.service_id) +
+                  '">解除</button>' +
+                  "</div>"
+                );
+              })
+              .join("");
 
-            listEl.querySelectorAll('[data-id]').forEach(function (btn) {
-              btn.addEventListener('click', function () {
-                if (!confirm('「' + btn.closest('.connection-item').querySelector('.connection-name').textContent + '」との連携を解除しますか？')) return;
+            listEl.querySelectorAll("[data-id]").forEach(function (btn) {
+              btn.addEventListener("click", function () {
+                if (
+                  !confirm(
+                    "「" +
+                      btn.closest(".connection-item").querySelector(".connection-name")
+                        .textContent +
+                      "」との連携を解除しますか？",
+                  )
+                )
+                  return;
                 btn.disabled = true;
                 showProgress();
-                fetch('/api/connections/' + btn.dataset.id, {
-                  method: 'DELETE',
-                  credentials: 'same-origin',
+                fetch("/api/connections/" + btn.dataset.id, {
+                  method: "DELETE",
+                  credentials: "same-origin",
                   headers: { Origin: window.location.origin },
                 })
                   .then(function (res) {
                     hideProgress();
                     if (res.ok || res.status === 204) {
-                      showToast('連携を解除しました', 'success');
+                      showToast("連携を解除しました", "success");
                       loadConnections();
                     } else {
-                      showToast('解除に失敗しました', 'error');
+                      showToast("解除に失敗しました", "error");
                       btn.disabled = false;
                     }
                   })
                   .catch(function () {
                     hideProgress();
-                    showToast('通信エラーが発生しました', 'error');
+                    showToast("通信エラーが発生しました", "error");
                     btn.disabled = false;
                   });
               });
@@ -433,8 +513,11 @@
         })
         .catch(function () {
           hideProgress();
-          if (loadingEl) loadingEl.style.display = 'none';
-          if (errorEl) { errorEl.textContent = '通信エラーが発生しました'; errorEl.style.display = 'block'; }
+          if (loadingEl) loadingEl.style.display = "none";
+          if (errorEl) {
+            errorEl.textContent = "通信エラーが発生しました";
+            errorEl.style.display = "block";
+          }
         });
     }
 

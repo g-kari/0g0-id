@@ -1,15 +1,10 @@
-import { defineConfig } from 'vite';
+import type { UserConfig } from "vite-plus";
+import { defineConfig } from "vite-plus";
 
-export default defineConfig(async () => {
-  const plugins = [];
-  if (!process.env.VITEST) {
-    const { cloudflare } = await import('@cloudflare/vite-plugin');
-    plugins.push(cloudflare());
-  }
+export default defineConfig(async (): Promise<UserConfig> => {
+  const plugins = process.env.VITEST ? [] : (await import("@cloudflare/vite-plugin")).cloudflare();
   return {
-    plugins,
-    server: {
-      port: 8790,
-    },
+    plugins: plugins as UserConfig["plugins"],
+    server: { port: 8790 },
   };
 });

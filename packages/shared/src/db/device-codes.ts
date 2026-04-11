@@ -21,12 +21,12 @@ export async function createDeviceCode(
     serviceId: string;
     scope: string | null;
     expiresAt: string;
-  }
+  },
 ): Promise<void> {
   await db
     .prepare(
       `INSERT INTO device_codes (id, device_code_hash, user_code, service_id, scope, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?)`,
     )
     .bind(opts.id, opts.deviceCodeHash, opts.userCode, opts.serviceId, opts.scope, opts.expiresAt)
     .run();
@@ -34,7 +34,7 @@ export async function createDeviceCode(
 
 export async function findDeviceCodeByUserCode(
   db: D1Database,
-  userCode: string
+  userCode: string,
 ): Promise<DeviceCode | null> {
   return db
     .prepare(`SELECT * FROM device_codes WHERE user_code = ?`)
@@ -44,7 +44,7 @@ export async function findDeviceCodeByUserCode(
 
 export async function findDeviceCodeByHash(
   db: D1Database,
-  deviceCodeHash: string
+  deviceCodeHash: string,
 ): Promise<DeviceCode | null> {
   return db
     .prepare(`SELECT * FROM device_codes WHERE device_code_hash = ?`)
@@ -52,14 +52,10 @@ export async function findDeviceCodeByHash(
     .first<DeviceCode>();
 }
 
-export async function approveDeviceCode(
-  db: D1Database,
-  id: string,
-  userId: string
-): Promise<void> {
+export async function approveDeviceCode(db: D1Database, id: string, userId: string): Promise<void> {
   await db
     .prepare(
-      `UPDATE device_codes SET user_id = ?, approved_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`
+      `UPDATE device_codes SET user_id = ?, approved_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`,
     )
     .bind(userId, id)
     .run();
@@ -67,7 +63,9 @@ export async function approveDeviceCode(
 
 export async function denyDeviceCode(db: D1Database, id: string): Promise<void> {
   await db
-    .prepare(`UPDATE device_codes SET denied_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`)
+    .prepare(
+      `UPDATE device_codes SET denied_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`,
+    )
     .bind(id)
     .run();
 }
@@ -79,7 +77,7 @@ export async function denyDeviceCode(db: D1Database, id: string): Promise<void> 
 export async function tryUpdateDeviceCodePolledAt(
   db: D1Database,
   id: string,
-  intervalSec: number
+  intervalSec: number,
 ): Promise<boolean> {
   const now = new Date();
   const threshold = new Date(now.getTime() - intervalSec * 1000).toISOString();
@@ -89,7 +87,7 @@ export async function tryUpdateDeviceCodePolledAt(
       `UPDATE device_codes
        SET last_polled_at = ?
        WHERE id = ?
-         AND (last_polled_at IS NULL OR last_polled_at < ?)`
+         AND (last_polled_at IS NULL OR last_polled_at < ?)`,
     )
     .bind(nowIso, id, threshold)
     .run();
@@ -104,10 +102,7 @@ export async function deleteDeviceCode(db: D1Database, id: string): Promise<void
  * 承認済みデバイスコードをアトミックに削除する。
  * 他リクエストが先に削除済みの場合は false を返す（二重トークン発行防止）。
  */
-export async function deleteApprovedDeviceCode(
-  db: D1Database,
-  id: string
-): Promise<boolean> {
+export async function deleteApprovedDeviceCode(db: D1Database, id: string): Promise<boolean> {
   const result = await db
     .prepare(`DELETE FROM device_codes WHERE id = ? AND approved_at IS NOT NULL`)
     .bind(id)
@@ -116,7 +111,5 @@ export async function deleteApprovedDeviceCode(
 }
 
 export async function deleteExpiredDeviceCodes(db: D1Database): Promise<void> {
-  await db
-    .prepare(`DELETE FROM device_codes WHERE datetime(expires_at) < datetime('now')`)
-    .run();
+  await db.prepare(`DELETE FROM device_codes WHERE datetime(expires_at) < datetime('now')`).run();
 }

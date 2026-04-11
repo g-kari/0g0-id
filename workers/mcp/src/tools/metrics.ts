@@ -1,4 +1,4 @@
-import type { McpTool } from '../mcp';
+import type { McpTool } from "../mcp";
 import {
   countUsers,
   countServices,
@@ -9,7 +9,7 @@ import {
   getDailyActiveUsers,
   getSuspiciousMultiCountryLogins,
   getServiceTokenStats,
-} from '@0g0-id/shared';
+} from "@0g0-id/shared";
 
 /** 指定した日数前の日時を ISO 8601 文字列で返す */
 function daysAgoIso(days: number): string {
@@ -18,12 +18,13 @@ function daysAgoIso(days: number): string {
 
 export const getSystemMetricsTool: McpTool = {
   definition: {
-    name: 'get_system_metrics',
-    description: 'システムメトリクス（ユーザー数、サービス数、ログイン統計、アクティブユーザー統計等）を取得する',
+    name: "get_system_metrics",
+    description:
+      "システムメトリクス（ユーザー数、サービス数、ログイン統計、アクティブユーザー統計等）を取得する",
     inputSchema: {
-      type: 'object',
+      type: "object",
       properties: {
-        days: { type: 'number', description: 'トレンド統計の対象日数（デフォルト: 30）' },
+        days: { type: "number", description: "トレンド統計の対象日数（デフォルト: 30）" },
       },
     },
   },
@@ -66,19 +67,22 @@ export const getSystemMetricsTool: McpTool = {
       },
     };
 
-    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
   },
 };
 
 export const getSuspiciousLoginsTool: McpTool = {
   definition: {
-    name: 'get_suspicious_logins',
-    description: '短時間に複数の国からログインした疑わしいアカウントを検出する',
+    name: "get_suspicious_logins",
+    description: "短時間に複数の国からログインした疑わしいアカウントを検出する",
     inputSchema: {
-      type: 'object',
+      type: "object",
       properties: {
-        hours: { type: 'number', description: '遡る時間数（1〜168、デフォルト: 24）' },
-        min_countries: { type: 'number', description: '疑わしいとみなす最低国数（2〜10、デフォルト: 2）' },
+        hours: { type: "number", description: "遡る時間数（1〜168、デフォルト: 24）" },
+        min_countries: {
+          type: "number",
+          description: "疑わしいとみなす最低国数（2〜10、デフォルト: 2）",
+        },
       },
     },
   },
@@ -94,16 +98,16 @@ export const getSuspiciousLoginsTool: McpTool = {
       meta: { hours, min_countries: minCountries },
     };
 
-    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
   },
 };
 
 export const getServiceTokenStatsTool: McpTool = {
   definition: {
-    name: 'get_service_token_stats',
-    description: '全サービスのアクティブトークン統計（認可ユーザー数・トークン数）を取得する',
+    name: "get_service_token_stats",
+    description: "全サービスのアクティブトークン統計（認可ユーザー数・トークン数）を取得する",
     inputSchema: {
-      type: 'object',
+      type: "object",
       properties: {},
     },
   },
@@ -112,6 +116,6 @@ export const getServiceTokenStatsTool: McpTool = {
 
     const result = { data: stats };
 
-    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
   },
 };

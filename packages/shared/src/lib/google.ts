@@ -1,6 +1,6 @@
-const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
-const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
+const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
 
 export interface GoogleUserInfo {
   sub: string;
@@ -29,21 +29,21 @@ export function buildGoogleAuthUrl(params: {
   scope?: string;
 }): string {
   const url = new URL(GOOGLE_AUTH_URL);
-  url.searchParams.set('client_id', params.clientId);
-  url.searchParams.set('redirect_uri', params.redirectUri);
-  url.searchParams.set('response_type', 'code');
-  url.searchParams.set('scope', params.scope ?? 'openid email profile');
-  url.searchParams.set('state', params.state);
-  url.searchParams.set('code_challenge', params.codeChallenge);
-  url.searchParams.set('code_challenge_method', 'S256');
-  url.searchParams.set('access_type', 'online');
+  url.searchParams.set("client_id", params.clientId);
+  url.searchParams.set("redirect_uri", params.redirectUri);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", params.scope ?? "openid email profile");
+  url.searchParams.set("state", params.state);
+  url.searchParams.set("code_challenge", params.codeChallenge);
+  url.searchParams.set("code_challenge_method", "S256");
+  url.searchParams.set("access_type", "online");
   return url.toString();
 }
 
-import { fetchWithRetry } from './fetch-retry';
-import { createLogger } from './logger';
+import { fetchWithRetry } from "./fetch-retry";
+import { createLogger } from "./logger";
 
-const logger = createLogger('oauth-google');
+const logger = createLogger("oauth-google");
 
 /**
  * Googleトークンエンドポイントを呼び出してアクセストークンを取得する
@@ -57,14 +57,14 @@ export async function exchangeGoogleCode(params: {
   codeVerifier: string;
 }): Promise<GoogleTokenResponse> {
   const response = await fetchWithRetry(GOOGLE_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       code: params.code,
       client_id: params.clientId,
       client_secret: params.clientSecret,
       redirect_uri: params.redirectUri,
-      grant_type: 'authorization_code',
+      grant_type: "authorization_code",
       code_verifier: params.codeVerifier,
     }).toString(),
   });
@@ -72,13 +72,13 @@ export async function exchangeGoogleCode(params: {
   if (!response.ok) {
     const error = await response.text();
     logger.error(`Google token exchange failed (${response.status})`, error);
-    throw new Error('Google token exchange failed');
+    throw new Error("Google token exchange failed");
   }
 
   try {
     return (await response.json()) as GoogleTokenResponse;
   } catch {
-    throw new Error('Google token exchange failed: Invalid JSON response');
+    throw new Error("Google token exchange failed: Invalid JSON response");
   }
 }
 
@@ -97,7 +97,7 @@ export async function fetchGoogleUserInfo(accessToken: string): Promise<GoogleUs
   try {
     return (await response.json()) as GoogleUserInfo;
   } catch {
-    throw new Error('Google userinfo fetch failed: Invalid JSON response');
+    throw new Error("Google userinfo fetch failed: Invalid JSON response");
   }
 }
 
@@ -113,23 +113,22 @@ export function normalizeRedirectUri(uri: string): string | null {
     const url = new URL(uri);
 
     // fragment禁止（空fragmentも含む: `#` 文字自体を禁止）
-    if (uri.includes('#')) return null;
+    if (uri.includes("#")) return null;
 
-    const isLocalhost =
-      url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+    const isLocalhost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
 
     // https必須（localhost例外）
-    if (!isLocalhost && url.protocol !== 'https:') return null;
+    if (!isLocalhost && url.protocol !== "https:") return null;
 
     // host小文字化
     url.hostname = url.hostname.toLowerCase();
 
     // 既定ポート除去
     if (
-      (url.protocol === 'https:' && url.port === '443') ||
-      (url.protocol === 'http:' && url.port === '80')
+      (url.protocol === "https:" && url.port === "443") ||
+      (url.protocol === "http:" && url.port === "80")
     ) {
-      url.port = '';
+      url.port = "";
     }
 
     return url.toString();

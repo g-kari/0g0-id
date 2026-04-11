@@ -1,6 +1,6 @@
-import { createMiddleware } from 'hono/factory';
-import type { RateLimitBinding } from '@0g0-id/shared';
-import { createLogger } from '@0g0-id/shared';
+import { createMiddleware } from "hono/factory";
+import type { RateLimitBinding } from "@0g0-id/shared";
+import { createLogger } from "@0g0-id/shared";
 
 /**
  * バインディング未設定の警告を1 isolateにつき1回だけ出力するための追跡Set。
@@ -9,7 +9,7 @@ import { createLogger } from '@0g0-id/shared';
  */
 const warnedBindings = new Set<string>();
 
-const rateLimitLogger = createLogger('mcp-rate-limit');
+const rateLimitLogger = createLogger("mcp-rate-limit");
 
 type McpEnv = {
   Bindings: {
@@ -31,38 +31,40 @@ type McpEnv = {
  *
  * @retryAfterSeconds - RFC 6585 準拠の Retry-After ヘッダーに設定する待機秒数（60秒）。
  */
-export const mcpRateLimitMiddleware = createMiddleware<McpEnv>(async (c, next): Promise<Response | void> => {
-  const binding = c.env.RATE_LIMITER_MCP;
-  if (!binding) {
-    if (!warnedBindings.has('RATE_LIMITER_MCP')) {
-      warnedBindings.add('RATE_LIMITER_MCP');
+export const mcpRateLimitMiddleware = createMiddleware<McpEnv>(
+  async (c, next): Promise<Response | void> => {
+    const binding = c.env.RATE_LIMITER_MCP;
+    if (!binding) {
+      if (!warnedBindings.has("RATE_LIMITER_MCP")) {
+        warnedBindings.add("RATE_LIMITER_MCP");
+        rateLimitLogger.warn(
+          "[rate-limit] RATE_LIMITER_MCP binding is not configured — rate limiting is DISABLED. Configure this binding in wrangler.toml for production deployments.",
+        );
+      }
+      return next();
+    }
+
+    const ip = c.req.raw.headers.get("cf-connecting-ip") ?? "unknown";
+    if (ip === "unknown") {
       rateLimitLogger.warn(
-        '[rate-limit] RATE_LIMITER_MCP binding is not configured — rate limiting is DISABLED. Configure this binding in wrangler.toml for production deployments.',
+        "[rate-limit] RATE_LIMITER_MCP: rate limit key resolved to 'unknown' — cf-connecting-ip may not be set. All requests share the same bucket.",
       );
     }
-    return next();
-  }
 
-  const ip = c.req.raw.headers.get('cf-connecting-ip') ?? 'unknown';
-  if (ip === 'unknown') {
-    rateLimitLogger.warn(
-      '[rate-limit] RATE_LIMITER_MCP: rate limit key resolved to \'unknown\' — cf-connecting-ip may not be set. All requests share the same bucket.',
-    );
-  }
-
-  const { success } = await binding.limit({ key: ip });
-  if (!success) {
-    return c.json(
-      {
-        error: {
-          code: 'TOO_MANY_REQUESTS',
-          message: 'Too many requests. Please try again later.',
+    const { success } = await binding.limit({ key: ip });
+    if (!success) {
+      return c.json(
+        {
+          error: {
+            code: "TOO_MANY_REQUESTS",
+            message: "Too many requests. Please try again later.",
+          },
         },
-      },
-      429,
-      { 'Retry-After': '60' },
-    );
-  }
+        429,
+        { "Retry-After": "60" },
+      );
+    }
 
-  await next();
-});
+    await next();
+  },
+);

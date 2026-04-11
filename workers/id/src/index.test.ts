@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
-vi.mock('@0g0-id/shared', () => ({
+vi.mock("@0g0-id/shared", () => ({
   createLogger: vi.fn().mockReturnValue({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
   logger: () => async (_c: unknown, next: () => Promise<void>) => next(),
   securityHeaders: () => async (_c: unknown, next: () => Promise<void>) => next(),
@@ -46,7 +46,7 @@ vi.mock('@0g0-id/shared', () => ({
   deleteExpiredRefreshTokens: vi.fn().mockResolvedValue(0),
 }));
 
-import type { IdpEnv } from '@0g0-id/shared';
+import type { IdpEnv } from "@0g0-id/shared";
 import {
   getJWTKeys,
   cleanupExpiredAuthCodes,
@@ -54,179 +54,179 @@ import {
   cleanupExpiredMcpSessions,
   cleanupExpiredRevokedAccessTokens,
   deleteExpiredRefreshTokens,
-} from '@0g0-id/shared';
-import { app } from './index';
-import worker from './index';
-import { _resetValidationCache } from './utils/env-validation';
+} from "@0g0-id/shared";
+import { app } from "./index";
+import worker from "./index";
+import { _resetValidationCache } from "./utils/env-validation";
 
 const mockEnv = {
   DB: {} as D1Database,
-  GOOGLE_CLIENT_ID: 'google-client-id',
-  GOOGLE_CLIENT_SECRET: 'google-secret',
-  JWT_PRIVATE_KEY: 'mock-private-key',
-  JWT_PUBLIC_KEY: 'mock-public-key',
-  IDP_ORIGIN: 'https://id.0g0.xyz',
-  USER_ORIGIN: 'https://user.0g0.xyz',
-  ADMIN_ORIGIN: 'https://admin.0g0.xyz',
-  COOKIE_SECRET: 'mock-cookie-secret-for-testing-32chars!!',
+  GOOGLE_CLIENT_ID: "google-client-id",
+  GOOGLE_CLIENT_SECRET: "google-secret",
+  JWT_PRIVATE_KEY: "mock-private-key",
+  JWT_PUBLIC_KEY: "mock-public-key",
+  IDP_ORIGIN: "https://id.0g0.xyz",
+  USER_ORIGIN: "https://user.0g0.xyz",
+  ADMIN_ORIGIN: "https://admin.0g0.xyz",
+  COOKIE_SECRET: "mock-cookie-secret-for-testing-32chars!!",
 };
 
-describe('GET /api/health', () => {
-  it('200を返してstatus okとworker名を含む', async () => {
+describe("GET /api/health", () => {
+  it("200を返してstatus okとworker名を含む", async () => {
     const res = await app.request(
-      'https://id.0g0.xyz/api/health',
+      "https://id.0g0.xyz/api/health",
       undefined,
-      mockEnv as unknown as Record<string, string>
+      mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(200);
     const body = await res.json<{ status: string; worker: string; timestamp: string }>();
-    expect(body.status).toBe('ok');
-    expect(body.worker).toBe('id');
-    expect(typeof body.timestamp).toBe('string');
+    expect(body.status).toBe("ok");
+    expect(body.worker).toBe("id");
+    expect(typeof body.timestamp).toBe("string");
   });
 });
 
-describe('onError ハンドラ', () => {
+describe("onError ハンドラ", () => {
   beforeEach(() => {
     vi.resetAllMocks();
   });
 
-  it('未処理の例外で500とINTERNAL_ERRORを返す', async () => {
+  it("未処理の例外で500とINTERNAL_ERRORを返す", async () => {
     // getJWTKeys をスローさせて /.well-known/jwks.json 経由で app.onError を通過させる
-    vi.mocked(getJWTKeys).mockRejectedValue(new Error('unexpected db error'));
+    vi.mocked(getJWTKeys).mockRejectedValue(new Error("unexpected db error"));
 
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const res = await app.request(
-      'https://id.0g0.xyz/.well-known/jwks.json',
+      "https://id.0g0.xyz/.well-known/jwks.json",
       undefined,
-      mockEnv as unknown as Record<string, string>
+      mockEnv as unknown as Record<string, string>,
     );
     consoleSpy.mockRestore();
 
     expect(res.status).toBe(500);
     const body = await res.json<{ error: { code: string; message: string } }>();
-    expect(body.error.code).toBe('INTERNAL_ERROR');
-    expect(body.error.message).toBe('Internal server error');
+    expect(body.error.code).toBe("INTERNAL_ERROR");
+    expect(body.error.message).toBe("Internal server error");
   });
 });
 
-describe('notFound ハンドラ', () => {
-  it('存在しないパスで404とNOT_FOUNDを返す', async () => {
+describe("notFound ハンドラ", () => {
+  it("存在しないパスで404とNOT_FOUNDを返す", async () => {
     const res = await app.request(
-      'https://id.0g0.xyz/this-route-does-not-exist',
+      "https://id.0g0.xyz/this-route-does-not-exist",
       undefined,
-      mockEnv as unknown as Record<string, string>
+      mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string; message: string } }>();
-    expect(body.error.code).toBe('NOT_FOUND');
-    expect(body.error.message).toBe('Not found');
+    expect(body.error.code).toBe("NOT_FOUND");
+    expect(body.error.message).toBe("Not found");
   });
 });
 
-describe('環境変数バリデーション ミドルウェア', () => {
+describe("環境変数バリデーション ミドルウェア", () => {
   beforeEach(() => {
     _resetValidationCache();
   });
 
-  it('必須環境変数が欠けている場合に500とMISCONFIGURATIONを返す', async () => {
+  it("必須環境変数が欠けている場合に500とMISCONFIGURATIONを返す", async () => {
     const incompleteEnv = {
       DB: {} as D1Database,
       // GOOGLE_CLIENT_ID を意図的に省略
-      GOOGLE_CLIENT_SECRET: 'google-secret',
-      JWT_PRIVATE_KEY: 'mock-private-key',
-      JWT_PUBLIC_KEY: 'mock-public-key',
-      IDP_ORIGIN: 'https://id.0g0.xyz',
-      USER_ORIGIN: 'https://user.0g0.xyz',
-      ADMIN_ORIGIN: 'https://admin.0g0.xyz',
+      GOOGLE_CLIENT_SECRET: "google-secret",
+      JWT_PRIVATE_KEY: "mock-private-key",
+      JWT_PUBLIC_KEY: "mock-public-key",
+      IDP_ORIGIN: "https://id.0g0.xyz",
+      USER_ORIGIN: "https://user.0g0.xyz",
+      ADMIN_ORIGIN: "https://admin.0g0.xyz",
     };
     const res = await app.request(
-      'https://id.0g0.xyz/api/health',
+      "https://id.0g0.xyz/api/health",
       undefined,
-      incompleteEnv as unknown as Record<string, string>
+      incompleteEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(500);
     const body = await res.json<{ error: { code: string; message: string } }>();
-    expect(body.error.code).toBe('MISCONFIGURATION');
-    expect(body.error.message).toBe('Server misconfiguration');
+    expect(body.error.code).toBe("MISCONFIGURATION");
+    expect(body.error.message).toBe("Server misconfiguration");
   });
 
-  it('必須環境変数が空文字の場合に500とMISCONFIGURATIONを返す', async () => {
+  it("必須環境変数が空文字の場合に500とMISCONFIGURATIONを返す", async () => {
     const emptyKeyEnv = {
       ...mockEnv,
-      JWT_PRIVATE_KEY: '',
+      JWT_PRIVATE_KEY: "",
     };
     const res = await app.request(
-      'https://id.0g0.xyz/api/health',
+      "https://id.0g0.xyz/api/health",
       undefined,
-      emptyKeyEnv as unknown as Record<string, string>
+      emptyKeyEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(500);
     const body = await res.json<{ error: { code: string; message: string } }>();
-    expect(body.error.code).toBe('MISCONFIGURATION');
+    expect(body.error.code).toBe("MISCONFIGURATION");
   });
 
-  it('全ての必須環境変数が揃っている場合は通常のレスポンスを返す', async () => {
+  it("全ての必須環境変数が揃っている場合は通常のレスポンスを返す", async () => {
     const res = await app.request(
-      'https://id.0g0.xyz/api/health',
+      "https://id.0g0.xyz/api/health",
       undefined,
-      mockEnv as unknown as Record<string, string>
+      mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(200);
   });
 
-  it('LINE_CLIENT_ID のみ設定（SECRET 未設定）の場合に500とMISCONFIGURATIONを返す', async () => {
-    const envWithPartialLine = { ...mockEnv, LINE_CLIENT_ID: 'line-client-id' };
+  it("LINE_CLIENT_ID のみ設定（SECRET 未設定）の場合に500とMISCONFIGURATIONを返す", async () => {
+    const envWithPartialLine = { ...mockEnv, LINE_CLIENT_ID: "line-client-id" };
     const res = await app.request(
-      'https://id.0g0.xyz/api/health',
+      "https://id.0g0.xyz/api/health",
       undefined,
-      envWithPartialLine as unknown as Record<string, string>
+      envWithPartialLine as unknown as Record<string, string>,
     );
     expect(res.status).toBe(500);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe('MISCONFIGURATION');
+    expect(body.error.code).toBe("MISCONFIGURATION");
   });
 
-  it('LINE_CLIENT_SECRET のみ設定（ID 未設定）の場合に500とMISCONFIGURATIONを返す', async () => {
-    const envWithPartialLine = { ...mockEnv, LINE_CLIENT_SECRET: 'line-secret' };
+  it("LINE_CLIENT_SECRET のみ設定（ID 未設定）の場合に500とMISCONFIGURATIONを返す", async () => {
+    const envWithPartialLine = { ...mockEnv, LINE_CLIENT_SECRET: "line-secret" };
     const res = await app.request(
-      'https://id.0g0.xyz/api/health',
+      "https://id.0g0.xyz/api/health",
       undefined,
-      envWithPartialLine as unknown as Record<string, string>
+      envWithPartialLine as unknown as Record<string, string>,
     );
     expect(res.status).toBe(500);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe('MISCONFIGURATION');
+    expect(body.error.code).toBe("MISCONFIGURATION");
   });
 
-  it('GITHUB_CLIENT_ID のみ設定（SECRET 未設定）の場合に500とMISCONFIGURATIONを返す', async () => {
-    const envWithPartialGithub = { ...mockEnv, GITHUB_CLIENT_ID: 'github-client-id' };
+  it("GITHUB_CLIENT_ID のみ設定（SECRET 未設定）の場合に500とMISCONFIGURATIONを返す", async () => {
+    const envWithPartialGithub = { ...mockEnv, GITHUB_CLIENT_ID: "github-client-id" };
     const res = await app.request(
-      'https://id.0g0.xyz/api/health',
+      "https://id.0g0.xyz/api/health",
       undefined,
-      envWithPartialGithub as unknown as Record<string, string>
+      envWithPartialGithub as unknown as Record<string, string>,
     );
     expect(res.status).toBe(500);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe('MISCONFIGURATION');
+    expect(body.error.code).toBe("MISCONFIGURATION");
   });
 
-  it('オプションプロバイダーの認証情報が両方揃っている場合は通常のレスポンスを返す', async () => {
+  it("オプションプロバイダーの認証情報が両方揃っている場合は通常のレスポンスを返す", async () => {
     const envWithLine = {
       ...mockEnv,
-      LINE_CLIENT_ID: 'line-client-id',
-      LINE_CLIENT_SECRET: 'line-client-secret',
+      LINE_CLIENT_ID: "line-client-id",
+      LINE_CLIENT_SECRET: "line-client-secret",
     };
     const res = await app.request(
-      'https://id.0g0.xyz/api/health',
+      "https://id.0g0.xyz/api/health",
       undefined,
-      envWithLine as unknown as Record<string, string>
+      envWithLine as unknown as Record<string, string>,
     );
     expect(res.status).toBe(200);
   });
 });
 
-describe('scheduled handler', () => {
+describe("scheduled handler", () => {
   beforeEach(() => {
     vi.mocked(cleanupExpiredAuthCodes).mockClear();
     vi.mocked(deleteExpiredDeviceCodes).mockClear();
@@ -235,14 +235,14 @@ describe('scheduled handler', () => {
     vi.mocked(deleteExpiredRefreshTokens).mockClear();
   });
 
-  it('全クリーンアップ処理を実行する', async () => {
+  it("全クリーンアップ処理を実行する", async () => {
     vi.mocked(cleanupExpiredAuthCodes).mockResolvedValue(5);
     vi.mocked(cleanupExpiredRevokedAccessTokens).mockResolvedValue(3);
     vi.mocked(deleteExpiredRefreshTokens).mockResolvedValue(2);
 
     const waitUntilFn = vi.fn();
     const ctx = { waitUntil: waitUntilFn } as unknown as ExecutionContext;
-    const event = { cron: '0 0 * * *', scheduledTime: Date.now() } as unknown as ScheduledEvent;
+    const event = { cron: "0 0 * * *", scheduledTime: Date.now() } as unknown as ScheduledEvent;
 
     await worker.scheduled(event, mockEnv as unknown as IdpEnv, ctx);
 

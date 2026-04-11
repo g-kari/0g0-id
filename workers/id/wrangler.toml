@@ -10,9 +10,7 @@ crons = ["0 0 * * *"]
 enabled = true
 invocation_logs = true
 
-routes = [
-  { pattern = "id.0g0.xyz", custom_domain = true }
-]
+routes = [{ pattern = "id.0g0.xyz", custom_domain = true }]
 
 [vars]
 IDP_ORIGIN = "https://id.0g0.xyz"

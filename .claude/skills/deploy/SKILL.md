@@ -9,11 +9,13 @@ disable-model-invocation: true
 引数に `id`, `user`, `admin` のいずれかを指定してデプロイを実行します。
 
 ## 使用方法
+
 - `/deploy id` — id worker をデプロイ
 - `/deploy user` — user worker をデプロイ
 - `/deploy admin` — admin worker をデプロイ
 
 ## 実行コマンド
+
 ```bash
 # /deploy id
 npm run deploy:id

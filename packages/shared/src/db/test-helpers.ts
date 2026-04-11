@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { vi } from "vite-plus/test";
 
 /**
  * D1Databaseのモックを生成するテストユーティリティ
@@ -10,7 +10,7 @@ import { vi } from 'vitest';
 export function makeD1Mock(
   firstResult: unknown = null,
   allResults: unknown[] = [],
-  changes = 1
+  changes = 1,
 ): D1Database & { _stmt: ReturnType<typeof vi.fn> } {
   const stmt = {
     bind: vi.fn().mockReturnThis(),

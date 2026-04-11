@@ -1,10 +1,10 @@
-import { createMiddleware } from 'hono/factory';
-import type { IdpEnv } from '@0g0-id/shared';
-import { timingSafeEqual, createLogger } from '@0g0-id/shared';
-import { authenticateService } from '../utils/service-auth';
+import { createMiddleware } from "hono/factory";
+import type { IdpEnv } from "@0g0-id/shared";
+import { timingSafeEqual, createLogger } from "@0g0-id/shared";
+import { authenticateService } from "../utils/service-auth";
 
-const INTERNAL_SECRET_HEADER = 'X-Internal-Secret';
-const sbLogger = createLogger('service-binding');
+const INTERNAL_SECRET_HEADER = "X-Internal-Secret";
+const sbLogger = createLogger("service-binding");
 let warnedMissingSecret = false;
 
 /**
@@ -17,48 +17,42 @@ let warnedMissingSecret = false;
  * INTERNAL_SERVICE_SECRET が未設定の場合はミドルウェアをスキップ（開発環境向け）。
  * 本番環境（HTTPS）で未設定の場合は警告ログを出力する。
  */
-export const serviceBindingMiddleware = createMiddleware<{ Bindings: IdpEnv }>(
-  async (c, next) => {
-    const secret = c.env.INTERNAL_SERVICE_SECRET;
+export const serviceBindingMiddleware = createMiddleware<{ Bindings: IdpEnv }>(async (c, next) => {
+  const secret = c.env.INTERNAL_SERVICE_SECRET;
 
-    // シークレット未設定時はスキップ（開発環境向けグレースフルデグラデーション）
-    if (!secret) {
-      if (!warnedMissingSecret && c.env.IDP_ORIGIN?.startsWith('https://')) {
-        sbLogger.warn('INTERNAL_SERVICE_SECRET が未設定です。Service Bindings保護が無効になっています。本番環境では設定を推奨します。');
-        warnedMissingSecret = true;
-      }
-      await next();
-      return;
+  // シークレット未設定時はスキップ（開発環境向けグレースフルデグラデーション）
+  if (!secret) {
+    if (!warnedMissingSecret && c.env.IDP_ORIGIN?.startsWith("https://")) {
+      sbLogger.warn(
+        "INTERNAL_SERVICE_SECRET が未設定です。Service Bindings保護が無効になっています。本番環境では設定を推奨します。",
+      );
+      warnedMissingSecret = true;
     }
-
-    // 条件1: X-Internal-Secret ヘッダーによるBFF検証
-    const headerSecret = c.req.header(INTERNAL_SECRET_HEADER);
-    if (headerSecret && timingSafeEqual(headerSecret, secret)) {
-      await next();
-      return;
-    }
-
-    // 条件2: Authorization: Basic ヘッダーによるサービスOAuthクライアント認証
-    // 存在チェックだけでなく、実際にDB上のクライアント認証情報と照合する
-    const authHeader = c.req.header('Authorization');
-    if (authHeader && authHeader.startsWith('Basic ')) {
-      try {
-        const service = await authenticateService(c.env.DB, authHeader);
-        if (service) {
-          await next();
-          return;
-        }
-      } catch {
-        return c.json(
-          { error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } },
-          500
-        );
-      }
-    }
-
-    return c.json(
-      { error: { code: 'FORBIDDEN', message: 'Internal service access required' } },
-      403
-    );
+    await next();
+    return;
   }
-);
+
+  // 条件1: X-Internal-Secret ヘッダーによるBFF検証
+  const headerSecret = c.req.header(INTERNAL_SECRET_HEADER);
+  if (headerSecret && timingSafeEqual(headerSecret, secret)) {
+    await next();
+    return;
+  }
+
+  // 条件2: Authorization: Basic ヘッダーによるサービスOAuthクライアント認証
+  // 存在チェックだけでなく、実際にDB上のクライアント認証情報と照合する
+  const authHeader = c.req.header("Authorization");
+  if (authHeader && authHeader.startsWith("Basic ")) {
+    try {
+      const service = await authenticateService(c.env.DB, authHeader);
+      if (service) {
+        await next();
+        return;
+      }
+    } catch {
+      return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    }
+  }
+
+  return c.json({ error: { code: "FORBIDDEN", message: "Internal service access required" } }, 403);
+});

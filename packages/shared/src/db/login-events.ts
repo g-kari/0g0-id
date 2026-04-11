@@ -1,5 +1,5 @@
-import type { LoginEvent } from '../types';
-import { daysAgoIso } from './helpers';
+import type { LoginEvent } from "../types";
+import { daysAgoIso } from "./helpers";
 
 export async function insertLoginEvent(
   db: D1Database,
@@ -9,14 +9,21 @@ export async function insertLoginEvent(
     ipAddress?: string | null;
     userAgent?: string | null;
     country?: string | null;
-  }
+  },
 ): Promise<void> {
   const id = crypto.randomUUID();
   await db
     .prepare(
-      'INSERT INTO login_events (id, user_id, provider, ip_address, user_agent, country) VALUES (?, ?, ?, ?, ?, ?)'
+      "INSERT INTO login_events (id, user_id, provider, ip_address, user_agent, country) VALUES (?, ?, ?, ?, ?, ?)",
     )
-    .bind(id, data.userId, data.provider, data.ipAddress ?? null, data.userAgent ?? null, data.country ?? null)
+    .bind(
+      id,
+      data.userId,
+      data.provider,
+      data.ipAddress ?? null,
+      data.userAgent ?? null,
+      data.country ?? null,
+    )
     .run();
 }
 
@@ -25,13 +32,13 @@ export async function getLoginEventsByUserId(
   userId: string,
   limit = 20,
   offset = 0,
-  provider?: string
+  provider?: string,
 ): Promise<{ events: LoginEvent[]; total: number }> {
-  const providerClause = provider ? ' AND provider = ?' : '';
+  const providerClause = provider ? " AND provider = ?" : "";
   const [eventsResult, countResult] = await Promise.all([
     db
       .prepare(
-        `SELECT * FROM login_events WHERE user_id = ?${providerClause} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`
+        `SELECT * FROM login_events WHERE user_id = ?${providerClause} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
       )
       .bind(...(provider ? [userId, provider, limit, offset] : [userId, limit, offset]))
       .all<LoginEvent>(),
@@ -46,12 +53,9 @@ export async function getLoginEventsByUserId(
   };
 }
 
-export async function countRecentLoginEvents(
-  db: D1Database,
-  sinceIso: string
-): Promise<number> {
+export async function countRecentLoginEvents(db: D1Database, sinceIso: string): Promise<number> {
   const result = await db
-    .prepare('SELECT COUNT(*) as count FROM login_events WHERE created_at >= ?')
+    .prepare("SELECT COUNT(*) as count FROM login_events WHERE created_at >= ?")
     .bind(sinceIso)
     .first<{ count: number }>();
   return result?.count ?? 0;
@@ -70,7 +74,7 @@ export interface LoginProviderStat {
  */
 export async function getLoginEventProviderStats(
   db: D1Database,
-  sinceIso: string
+  sinceIso: string,
 ): Promise<LoginProviderStat[]> {
   const result = await db
     .prepare(
@@ -78,7 +82,7 @@ export async function getLoginEventProviderStats(
        FROM login_events
        WHERE created_at >= ?
        GROUP BY provider
-       ORDER BY count DESC`
+       ORDER BY count DESC`,
     )
     .bind(sinceIso)
     .all<LoginProviderStat>();
@@ -88,7 +92,7 @@ export async function getLoginEventProviderStats(
 export async function getUserLoginProviderStats(
   db: D1Database,
   userId: string,
-  sinceIso: string
+  sinceIso: string,
 ): Promise<LoginProviderStat[]> {
   const result = await db
     .prepare(
@@ -96,7 +100,7 @@ export async function getUserLoginProviderStats(
        FROM login_events
        WHERE user_id = ? AND created_at >= ?
        GROUP BY provider
-       ORDER BY count DESC`
+       ORDER BY count DESC`,
     )
     .bind(userId, sinceIso)
     .all<LoginProviderStat>();
@@ -115,7 +119,7 @@ export interface DailyLoginStat {
  */
 export async function getDailyLoginTrends(
   db: D1Database,
-  days: number = 30
+  days: number = 30,
 ): Promise<DailyLoginStat[]> {
   const sinceIso = daysAgoIso(days);
   const result = await db
@@ -124,7 +128,7 @@ export async function getDailyLoginTrends(
        FROM login_events
        WHERE created_at >= ?
        GROUP BY date
-       ORDER BY date ASC`
+       ORDER BY date ASC`,
     )
     .bind(sinceIso)
     .all<DailyLoginStat>();
@@ -138,7 +142,7 @@ export async function getDailyLoginTrends(
 export async function getUserDailyLoginTrends(
   db: D1Database,
   userId: string,
-  days: number = 30
+  days: number = 30,
 ): Promise<DailyLoginStat[]> {
   const sinceIso = daysAgoIso(days);
   const result = await db
@@ -147,7 +151,7 @@ export async function getUserDailyLoginTrends(
        FROM login_events
        WHERE user_id = ? AND created_at >= ?
        GROUP BY date
-       ORDER BY date ASC`
+       ORDER BY date ASC`,
     )
     .bind(userId, sinceIso)
     .all<DailyLoginStat>();
@@ -167,7 +171,7 @@ export interface LoginCountryStat {
  */
 export async function getLoginEventCountryStats(
   db: D1Database,
-  sinceIso: string
+  sinceIso: string,
 ): Promise<LoginCountryStat[]> {
   const result = await db
     .prepare(
@@ -175,7 +179,7 @@ export async function getLoginEventCountryStats(
        FROM login_events
        WHERE created_at >= ?
        GROUP BY country
-       ORDER BY count DESC`
+       ORDER BY count DESC`,
     )
     .bind(sinceIso)
     .all<LoginCountryStat>();
@@ -198,7 +202,7 @@ export interface SuspiciousMultiCountryLogin {
 export async function getSuspiciousMultiCountryLogins(
   db: D1Database,
   sinceIso: string,
-  minCountries: number = 2
+  minCountries: number = 2,
 ): Promise<SuspiciousMultiCountryLogin[]> {
   const result = await db
     .prepare(
@@ -210,7 +214,7 @@ export async function getSuspiciousMultiCountryLogins(
        WHERE created_at >= ?
        GROUP BY user_id
        HAVING country_count >= ?
-       ORDER BY country_count DESC`
+       ORDER BY country_count DESC`,
     )
     .bind(sinceIso, minCountries)
     .all<SuspiciousMultiCountryLogin>();
@@ -228,9 +232,7 @@ export interface ActiveUserStats {
  * DAU/WAU/MAU（アクティブユーザー数）を並列で取得する。
  * ログインイベントテーブルのユニークuser_idを期間別に集計する。
  */
-export async function getActiveUserStats(
-  db: D1Database
-): Promise<ActiveUserStats> {
+export async function getActiveUserStats(db: D1Database): Promise<ActiveUserStats> {
   const now = Date.now();
   const dauSince = new Date(now - 1 * 24 * 60 * 60 * 1000).toISOString();
   const wauSince = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -238,15 +240,15 @@ export async function getActiveUserStats(
 
   const [dauResult, wauResult, mauResult] = await Promise.all([
     db
-      .prepare('SELECT COUNT(DISTINCT user_id) as count FROM login_events WHERE created_at >= ?')
+      .prepare("SELECT COUNT(DISTINCT user_id) as count FROM login_events WHERE created_at >= ?")
       .bind(dauSince)
       .first<{ count: number }>(),
     db
-      .prepare('SELECT COUNT(DISTINCT user_id) as count FROM login_events WHERE created_at >= ?')
+      .prepare("SELECT COUNT(DISTINCT user_id) as count FROM login_events WHERE created_at >= ?")
       .bind(wauSince)
       .first<{ count: number }>(),
     db
-      .prepare('SELECT COUNT(DISTINCT user_id) as count FROM login_events WHERE created_at >= ?')
+      .prepare("SELECT COUNT(DISTINCT user_id) as count FROM login_events WHERE created_at >= ?")
       .bind(mauSince)
       .first<{ count: number }>(),
   ]);
@@ -270,7 +272,7 @@ export interface DailyActiveUserStat {
  */
 export async function getDailyActiveUsers(
   db: D1Database,
-  days: number = 30
+  days: number = 30,
 ): Promise<DailyActiveUserStat[]> {
   const sinceIso = daysAgoIso(days);
   const result = await db
@@ -279,7 +281,7 @@ export async function getDailyActiveUsers(
        FROM login_events
        WHERE created_at >= ?
        GROUP BY date
-       ORDER BY date ASC`
+       ORDER BY date ASC`,
     )
     .bind(sinceIso)
     .all<DailyActiveUserStat>();

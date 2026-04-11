@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono } from "hono";
 
 type Env = {
   Bindings: {
@@ -15,12 +15,12 @@ const app = new Hono<Env>();
  *
  * OAuth クライアントがリソースサーバーの認可要件を自動検出するためのメタデータ。
  */
-app.get('/oauth-protected-resource', (c): Response => {
+app.get("/oauth-protected-resource", (c): Response => {
   return c.json({
     resource: c.env.MCP_ORIGIN,
     authorization_servers: [c.env.IDP_ORIGIN],
-    scopes_supported: ['openid', 'profile', 'email'],
-    bearer_methods_supported: ['header'],
+    scopes_supported: ["openid", "profile", "email"],
+    bearer_methods_supported: ["header"],
   });
 });
 

@@ -10,10 +10,10 @@
 export async function addRevokedAccessToken(
   db: D1Database,
   jti: string,
-  expiresAt: number
+  expiresAt: number,
 ): Promise<void> {
   await db
-    .prepare('INSERT OR IGNORE INTO revoked_access_tokens (jti, expires_at) VALUES (?, ?)')
+    .prepare("INSERT OR IGNORE INTO revoked_access_tokens (jti, expires_at) VALUES (?, ?)")
     .bind(jti, expiresAt)
     .run();
 }
@@ -24,7 +24,7 @@ export async function addRevokedAccessToken(
  */
 export async function isAccessTokenRevoked(db: D1Database, jti: string): Promise<boolean> {
   const result = await db
-    .prepare('SELECT 1 FROM revoked_access_tokens WHERE jti = ? AND expires_at > unixepoch()')
+    .prepare("SELECT 1 FROM revoked_access_tokens WHERE jti = ? AND expires_at > unixepoch()")
     .bind(jti)
     .first();
   return result !== null;
@@ -36,7 +36,7 @@ export async function isAccessTokenRevoked(db: D1Database, jti: string): Promise
  */
 export async function cleanupExpiredRevokedAccessTokens(db: D1Database): Promise<number> {
   const result = await db
-    .prepare('DELETE FROM revoked_access_tokens WHERE expires_at <= unixepoch()')
+    .prepare("DELETE FROM revoked_access_tokens WHERE expires_at <= unixepoch()")
     .run();
   return result.meta.changes ?? 0;
 }

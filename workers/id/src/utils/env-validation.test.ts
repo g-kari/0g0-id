@@ -1,126 +1,130 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { validateEnv, _resetValidationCache } from './env-validation';
-import type { IdpEnv } from '@0g0-id/shared';
+import { describe, it, expect, beforeEach } from "vite-plus/test";
+import { validateEnv, _resetValidationCache } from "./env-validation";
+import type { IdpEnv } from "@0g0-id/shared";
 
 const validEnv: Partial<IdpEnv> = {
-  GOOGLE_CLIENT_ID: 'google-client-id',
-  GOOGLE_CLIENT_SECRET: 'google-client-secret',
-  JWT_PRIVATE_KEY: 'mock-private-key',
-  JWT_PUBLIC_KEY: 'mock-public-key',
-  IDP_ORIGIN: 'https://id.0g0.xyz',
-  USER_ORIGIN: 'https://user.0g0.xyz',
-  ADMIN_ORIGIN: 'https://admin.0g0.xyz',
-  COOKIE_SECRET: 'a'.repeat(32),
+  GOOGLE_CLIENT_ID: "google-client-id",
+  GOOGLE_CLIENT_SECRET: "google-client-secret",
+  JWT_PRIVATE_KEY: "mock-private-key",
+  JWT_PUBLIC_KEY: "mock-public-key",
+  IDP_ORIGIN: "https://id.0g0.xyz",
+  USER_ORIGIN: "https://user.0g0.xyz",
+  ADMIN_ORIGIN: "https://admin.0g0.xyz",
+  COOKIE_SECRET: "a".repeat(32),
 };
 
 beforeEach(() => {
   _resetValidationCache();
 });
 
-describe('validateEnv', () => {
-  it('有効な環境変数でok: trueを返す', () => {
+describe("validateEnv", () => {
+  it("有効な環境変数でok: trueを返す", () => {
     const result = validateEnv(validEnv as IdpEnv);
     expect(result.ok).toBe(true);
   });
 
-  it('GOOGLE_CLIENT_IDが未設定の場合はエラーを返す', () => {
-    const env = { ...validEnv, GOOGLE_CLIENT_ID: '' };
+  it("GOOGLE_CLIENT_IDが未設定の場合はエラーを返す", () => {
+    const env = { ...validEnv, GOOGLE_CLIENT_ID: "" };
     const result = validateEnv(env as IdpEnv);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.errors.some((e) => e.includes('GOOGLE_CLIENT_ID'))).toBe(true);
+      expect(result.errors.some((e) => e.includes("GOOGLE_CLIENT_ID"))).toBe(true);
     }
   });
 
-  it('GOOGLE_CLIENT_SECRETが未設定の場合はエラーを返す', () => {
-    const env = { ...validEnv, GOOGLE_CLIENT_SECRET: '' };
+  it("GOOGLE_CLIENT_SECRETが未設定の場合はエラーを返す", () => {
+    const env = { ...validEnv, GOOGLE_CLIENT_SECRET: "" };
     const result = validateEnv(env as IdpEnv);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.errors.some((e) => e.includes('GOOGLE_CLIENT_SECRET'))).toBe(true);
+      expect(result.errors.some((e) => e.includes("GOOGLE_CLIENT_SECRET"))).toBe(true);
     }
   });
 
-  it('JWT_PRIVATE_KEYが未設定の場合はエラーを返す', () => {
-    const env = { ...validEnv, JWT_PRIVATE_KEY: '' };
+  it("JWT_PRIVATE_KEYが未設定の場合はエラーを返す", () => {
+    const env = { ...validEnv, JWT_PRIVATE_KEY: "" };
     const result = validateEnv(env as IdpEnv);
     expect(result.ok).toBe(false);
   });
 
-  it('IDP_ORIGINが無効なURLの場合はエラーを返す', () => {
-    const env = { ...validEnv, IDP_ORIGIN: 'not-a-url' };
-    const result = validateEnv(env as IdpEnv);
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.errors.some((e) => e.includes('IDP_ORIGIN'))).toBe(true);
-    }
-  });
-
-  it('COOKIE_SECRETが32文字未満の場合はエラーを返す', () => {
-    const env = { ...validEnv, COOKIE_SECRET: 'short' };
+  it("IDP_ORIGINが無効なURLの場合はエラーを返す", () => {
+    const env = { ...validEnv, IDP_ORIGIN: "not-a-url" };
     const result = validateEnv(env as IdpEnv);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.errors.some((e) => e.includes('COOKIE_SECRET'))).toBe(true);
+      expect(result.errors.some((e) => e.includes("IDP_ORIGIN"))).toBe(true);
     }
   });
 
-  it('COOKIE_SECRETがちょうど32文字の場合はエラーなし', () => {
-    const env = { ...validEnv, COOKIE_SECRET: 'a'.repeat(32) };
+  it("COOKIE_SECRETが32文字未満の場合はエラーを返す", () => {
+    const env = { ...validEnv, COOKIE_SECRET: "short" };
+    const result = validateEnv(env as IdpEnv);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.includes("COOKIE_SECRET"))).toBe(true);
+    }
+  });
+
+  it("COOKIE_SECRETがちょうど32文字の場合はエラーなし", () => {
+    const env = { ...validEnv, COOKIE_SECRET: "a".repeat(32) };
     const result = validateEnv(env as IdpEnv);
     expect(result.ok).toBe(true);
   });
 
-  it('LINE_CLIENT_IDのみ設定でLINE_CLIENT_SECRETが未設定の場合はエラー', () => {
-    const env = { ...validEnv, LINE_CLIENT_ID: 'line-id' } as IdpEnv;
+  it("LINE_CLIENT_IDのみ設定でLINE_CLIENT_SECRETが未設定の場合はエラー", () => {
+    const env = { ...validEnv, LINE_CLIENT_ID: "line-id" } as IdpEnv;
     const result = validateEnv(env);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.errors.some((e) => e.includes('LINE_CLIENT_SECRET'))).toBe(true);
+      expect(result.errors.some((e) => e.includes("LINE_CLIENT_SECRET"))).toBe(true);
     }
   });
 
-  it('LINE_CLIENT_SECRETのみ設定でLINE_CLIENT_IDが未設定の場合はエラー', () => {
-    const env = { ...validEnv, LINE_CLIENT_SECRET: 'line-secret' } as IdpEnv;
+  it("LINE_CLIENT_SECRETのみ設定でLINE_CLIENT_IDが未設定の場合はエラー", () => {
+    const env = { ...validEnv, LINE_CLIENT_SECRET: "line-secret" } as IdpEnv;
     const result = validateEnv(env);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.errors.some((e) => e.includes('LINE_CLIENT_ID'))).toBe(true);
+      expect(result.errors.some((e) => e.includes("LINE_CLIENT_ID"))).toBe(true);
     }
   });
 
-  it('LINE_CLIENT_IDとLINE_CLIENT_SECRETが両方設定されていればエラーなし', () => {
-    const env = { ...validEnv, LINE_CLIENT_ID: 'line-id', LINE_CLIENT_SECRET: 'line-secret' } as IdpEnv;
+  it("LINE_CLIENT_IDとLINE_CLIENT_SECRETが両方設定されていればエラーなし", () => {
+    const env = {
+      ...validEnv,
+      LINE_CLIENT_ID: "line-id",
+      LINE_CLIENT_SECRET: "line-secret",
+    } as IdpEnv;
     const result = validateEnv(env);
     expect(result.ok).toBe(true);
   });
 
-  it('GITHUB_CLIENT_IDのみ設定でエラーを返す', () => {
-    const env = { ...validEnv, GITHUB_CLIENT_ID: 'gh-id' } as IdpEnv;
+  it("GITHUB_CLIENT_IDのみ設定でエラーを返す", () => {
+    const env = { ...validEnv, GITHUB_CLIENT_ID: "gh-id" } as IdpEnv;
     const result = validateEnv(env);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.errors.some((e) => e.includes('GITHUB_CLIENT_SECRET'))).toBe(true);
+      expect(result.errors.some((e) => e.includes("GITHUB_CLIENT_SECRET"))).toBe(true);
     }
   });
 
-  it('X_CLIENT_IDのみ設定でエラーを返す', () => {
-    const env = { ...validEnv, X_CLIENT_ID: 'x-id' } as IdpEnv;
+  it("X_CLIENT_IDのみ設定でエラーを返す", () => {
+    const env = { ...validEnv, X_CLIENT_ID: "x-id" } as IdpEnv;
     const result = validateEnv(env);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.errors.some((e) => e.includes('X_CLIENT_SECRET'))).toBe(true);
+      expect(result.errors.some((e) => e.includes("X_CLIENT_SECRET"))).toBe(true);
     }
   });
 
-  it('成功結果はキャッシュされ2回目以降は同じオブジェクトを返す', () => {
+  it("成功結果はキャッシュされ2回目以降は同じオブジェクトを返す", () => {
     const result1 = validateEnv(validEnv as IdpEnv);
     const result2 = validateEnv(validEnv as IdpEnv);
     expect(result1).toBe(result2);
   });
 
-  it('失敗結果はキャッシュされない（環境変数修正後に回復できる）', () => {
-    const badEnv = { ...validEnv, GOOGLE_CLIENT_ID: '' };
+  it("失敗結果はキャッシュされない（環境変数修正後に回復できる）", () => {
+    const badEnv = { ...validEnv, GOOGLE_CLIENT_ID: "" };
     const result1 = validateEnv(badEnv as IdpEnv);
     expect(result1.ok).toBe(false);
 
@@ -129,7 +133,7 @@ describe('validateEnv', () => {
     expect(result1).not.toBe(result2);
   });
 
-  it('_resetValidationCacheでキャッシュがリセットされる', () => {
+  it("_resetValidationCacheでキャッシュがリセットされる", () => {
     const result1 = validateEnv(validEnv as IdpEnv);
     expect(result1.ok).toBe(true);
 
