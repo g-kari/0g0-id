@@ -1,5 +1,15 @@
 # TODO
 
+## セキュリティ修正（2026-04-12）
+
+- ✅ **serviceBindingMiddleware: 本番環境での INTERNAL_SERVICE_SECRET 未設定時ブロック**
+  - 本番環境（`IDP_ORIGIN=https://`）で `INTERNAL_SERVICE_SECRET` が未設定の場合、警告ログのみで通過させていた挙動を 403 拒否に変更
+  - 設定漏れによる `/auth/exchange` への外部直接アクセスを防止
+  - 開発環境（`http://`・未設定）では従来通りスキップ
+  - `warnedMissingSecret` フラグ削除（不要化）
+  - テスト追加: 本番環境403・開発環境通過・http通過の3ケース
+  - 既存テスト更新: `mockEnv` に `INTERNAL_SERVICE_SECRET` 追加、`sendRequest` に自動ヘッダー付与、`timingSafeEqual` モック調整
+
 ## Vite+ 導入・pre-commit フック設定（2026-04-12）
 
 - ✅ **Vite+ ツールチェーン移行**
