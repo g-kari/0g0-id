@@ -24,6 +24,8 @@ export {
   listRedirectUrisTool,
   addRedirectUriTool,
   deleteRedirectUriTool,
+  listServiceUsersTool,
+  revokeServiceUserAccessTool,
 } from './services';
 
 export {

@@ -3,9 +3,11 @@ import {
   listServices,
   countServices,
   findServiceById,
+  findUserById,
   createService,
   deleteService,
   revokeAllServiceTokens,
+  revokeUserServiceTokens,
   rotateClientSecret,
   updateServiceFields,
   listRedirectUris,
@@ -13,6 +15,8 @@ import {
   findRedirectUriById,
   deleteRedirectUri,
   normalizeRedirectUri,
+  listUsersAuthorizedForService,
+  countUsersAuthorizedForService,
   generateClientId,
   generateClientSecret,
   sha256,
@@ -499,6 +503,124 @@ export const deleteRedirectUriTool: McpTool = {
 
     return {
       content: [{ type: 'text', text: `リダイレクトURI "${existing.uri}" を削除しました。` }],
+    };
+  },
+};
+
+export const listServiceUsersTool: McpTool = {
+  definition: {
+    name: 'list_service_users',
+    description: 'サービスを認可済みのユーザー一覧を取得する（ページネーション対応）',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        service_id: { type: 'string', description: 'サービスID' },
+        page: { type: 'number', description: 'ページ番号（1始まり、デフォルト: 1）' },
+        limit: { type: 'number', description: '1ページあたりの件数（デフォルト: 50、最大: 100）' },
+      },
+      required: ['service_id'],
+    },
+  },
+  handler: async (params, context) => {
+    const serviceId = params.service_id;
+    if (typeof serviceId !== 'string' || serviceId.length === 0) {
+      return { content: [{ type: 'text', text: 'service_id は必須です' }], isError: true };
+    }
+
+    const service = await findServiceById(context.db, serviceId);
+    if (!service) {
+      return { content: [{ type: 'text', text: 'サービスが見つかりません' }], isError: true };
+    }
+
+    const page = Math.max(1, Number(params.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(params.limit) || 50));
+    const offset = (page - 1) * limit;
+
+    const [users, total] = await Promise.all([
+      listUsersAuthorizedForService(context.db, serviceId, limit, offset),
+      countUsersAuthorizedForService(context.db, serviceId),
+    ]);
+
+    const result = {
+      service: { id: service.id, name: service.name },
+      users: users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        role: u.role,
+        created_at: u.created_at,
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  },
+};
+
+export const revokeServiceUserAccessTool: McpTool = {
+  definition: {
+    name: 'revoke_service_user_access',
+    description: '指定ユーザーの特定サービスへのアクセスを失効させる（そのサービスのトークンのみ失効）',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        service_id: { type: 'string', description: 'サービスID' },
+        user_id: { type: 'string', description: 'アクセスを失効させるユーザーのID' },
+      },
+      required: ['service_id', 'user_id'],
+    },
+  },
+  handler: async (params, context) => {
+    const serviceId = params.service_id;
+    if (typeof serviceId !== 'string' || serviceId.length === 0) {
+      return { content: [{ type: 'text', text: 'service_id は必須です' }], isError: true };
+    }
+
+    const userId = params.user_id;
+    if (typeof userId !== 'string' || userId.length === 0) {
+      return { content: [{ type: 'text', text: 'user_id は必須です' }], isError: true };
+    }
+
+    const [service, user] = await Promise.all([
+      findServiceById(context.db, serviceId),
+      findUserById(context.db, userId),
+    ]);
+
+    if (!service) {
+      return { content: [{ type: 'text', text: 'サービスが見つかりません' }], isError: true };
+    }
+    if (!user) {
+      return { content: [{ type: 'text', text: 'ユーザーが見つかりません' }], isError: true };
+    }
+
+    const revokedCount = await revokeUserServiceTokens(context.db, userId, serviceId, 'admin_action');
+    if (revokedCount === 0) {
+      return {
+        content: [{ type: 'text', text: `ユーザー ${user.name} (${user.email}) はサービス "${service.name}" へのアクティブなアクセスを持っていません` }],
+        isError: true,
+      };
+    }
+
+    await createAdminAuditLog(context.db, {
+      adminUserId: context.userId,
+      action: 'service.user_access_revoked',
+      targetType: 'service',
+      targetId: serviceId,
+      details: { user_id: userId, revoked_token_count: revokedCount },
+    });
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `ユーザー ${user.name} (${user.email}) のサービス "${service.name}" へのアクセスを失効させました。（トークン ${revokedCount} 件を失効）`,
+        },
+      ],
     };
   },
 };

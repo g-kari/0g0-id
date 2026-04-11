@@ -4,9 +4,11 @@ vi.mock('@0g0-id/shared', () => ({
   listServices: vi.fn(),
   countServices: vi.fn(),
   findServiceById: vi.fn(),
+  findUserById: vi.fn(),
   createService: vi.fn(),
   deleteService: vi.fn(),
   revokeAllServiceTokens: vi.fn(),
+  revokeUserServiceTokens: vi.fn(),
   rotateClientSecret: vi.fn(),
   updateServiceFields: vi.fn(),
   listRedirectUris: vi.fn(),
@@ -14,6 +16,8 @@ vi.mock('@0g0-id/shared', () => ({
   findRedirectUriById: vi.fn(),
   deleteRedirectUri: vi.fn(),
   normalizeRedirectUri: vi.fn(),
+  listUsersAuthorizedForService: vi.fn(),
+  countUsersAuthorizedForService: vi.fn(),
   generateClientId: vi.fn(),
   generateClientSecret: vi.fn(),
   sha256: vi.fn(),
@@ -24,9 +28,11 @@ import {
   listServices,
   countServices,
   findServiceById,
+  findUserById,
   createService,
   deleteService,
   revokeAllServiceTokens,
+  revokeUserServiceTokens,
   rotateClientSecret,
   updateServiceFields,
   listRedirectUris,
@@ -34,6 +40,8 @@ import {
   findRedirectUriById,
   deleteRedirectUri,
   normalizeRedirectUri,
+  listUsersAuthorizedForService,
+  countUsersAuthorizedForService,
   generateClientId,
   generateClientSecret,
   sha256,
@@ -50,6 +58,8 @@ import {
   listRedirectUrisTool,
   addRedirectUriTool,
   deleteRedirectUriTool,
+  listServiceUsersTool,
+  revokeServiceUserAccessTool,
 } from './services';
 import type { McpContext } from '../mcp';
 
@@ -603,6 +613,185 @@ describe('deleteRedirectUriTool', () => {
 
     const result = await deleteRedirectUriTool.handler(
       { service_id: 'svc-1', uri_id: 'uri-1' },
+      mockContext,
+    );
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(createAdminAuditLog)).not.toHaveBeenCalled();
+  });
+});
+
+// ===== list_service_users =====
+describe('listServiceUsersTool', () => {
+  const mockUser = {
+    id: 'user-1',
+    email: 'user@example.com',
+    name: 'Test User',
+    role: 'user',
+    created_at: '2024-01-01T00:00:00Z',
+  };
+
+  it('ユーザー一覧をページネーション付きで返す', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(listUsersAuthorizedForService).mockResolvedValue([mockUser] as never);
+    vi.mocked(countUsersAuthorizedForService).mockResolvedValue(1);
+
+    const result = await listServiceUsersTool.handler({ service_id: 'svc-1' }, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.users).toHaveLength(1);
+    expect(parsed.users[0].id).toBe('user-1');
+    expect(parsed.users[0].email).toBe('user@example.com');
+    expect(parsed.pagination.page).toBe(1);
+    expect(parsed.pagination.limit).toBe(50);
+    expect(parsed.pagination.total).toBe(1);
+    expect(parsed.service.id).toBe('svc-1');
+  });
+
+  it('pageとlimitを指定できる', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(listUsersAuthorizedForService).mockResolvedValue([]);
+    vi.mocked(countUsersAuthorizedForService).mockResolvedValue(200);
+
+    const result = await listServiceUsersTool.handler({ service_id: 'svc-1', page: 3, limit: 10 }, mockContext);
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.pagination.page).toBe(3);
+    expect(parsed.pagination.limit).toBe(10);
+    expect(parsed.pagination.totalPages).toBe(20);
+    expect(vi.mocked(listUsersAuthorizedForService)).toHaveBeenCalledWith(
+      mockContext.db,
+      'svc-1',
+      10,
+      20,
+    );
+  });
+
+  it('limitは100を超えない', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(listUsersAuthorizedForService).mockResolvedValue([]);
+    vi.mocked(countUsersAuthorizedForService).mockResolvedValue(0);
+
+    await listServiceUsersTool.handler({ service_id: 'svc-1', limit: 200 }, mockContext);
+
+    expect(vi.mocked(listUsersAuthorizedForService)).toHaveBeenCalledWith(
+      mockContext.db,
+      'svc-1',
+      100,
+      0,
+    );
+  });
+
+  it('service_id未指定はエラー', async () => {
+    const result = await listServiceUsersTool.handler({}, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(listUsersAuthorizedForService)).not.toHaveBeenCalled();
+  });
+
+  it('サービスが見つからない場合はエラー', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(null);
+
+    const result = await listServiceUsersTool.handler({ service_id: 'nonexistent' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(listUsersAuthorizedForService)).not.toHaveBeenCalled();
+  });
+
+  it('ユーザーが0件の場合は空配列を返す', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(listUsersAuthorizedForService).mockResolvedValue([]);
+    vi.mocked(countUsersAuthorizedForService).mockResolvedValue(0);
+
+    const result = await listServiceUsersTool.handler({ service_id: 'svc-1' }, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.users).toHaveLength(0);
+    expect(parsed.pagination.total).toBe(0);
+  });
+});
+
+// ===== revoke_service_user_access =====
+describe('revokeServiceUserAccessTool', () => {
+  const mockUser = {
+    id: 'user-1',
+    email: 'user@example.com',
+    name: 'Test User',
+    role: 'user',
+    created_at: '2024-01-01T00:00:00Z',
+  };
+
+  it('アクセスを失効させ監査ログを記録する', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(findUserById).mockResolvedValue(mockUser as never);
+    vi.mocked(revokeUserServiceTokens).mockResolvedValue(3);
+
+    const result = await revokeServiceUserAccessTool.handler(
+      { service_id: 'svc-1', user_id: 'user-1' },
+      mockContext,
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toContain('Test User');
+    expect(result.content[0].text).toContain('3 件を失効');
+    expect(vi.mocked(revokeUserServiceTokens)).toHaveBeenCalledWith(
+      mockContext.db,
+      'user-1',
+      'svc-1',
+      'admin_action',
+    );
+    expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
+      mockContext.db,
+      expect.objectContaining({
+        action: 'service.user_access_revoked',
+        targetId: 'svc-1',
+        details: { user_id: 'user-1', revoked_token_count: 3 },
+      }),
+    );
+  });
+
+  it('service_id未指定はエラー', async () => {
+    const result = await revokeServiceUserAccessTool.handler({ user_id: 'user-1' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(revokeUserServiceTokens)).not.toHaveBeenCalled();
+  });
+
+  it('user_id未指定はエラー', async () => {
+    const result = await revokeServiceUserAccessTool.handler({ service_id: 'svc-1' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(revokeUserServiceTokens)).not.toHaveBeenCalled();
+  });
+
+  it('サービスが見つからない場合はエラー', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockResolvedValue(mockUser as never);
+
+    const result = await revokeServiceUserAccessTool.handler(
+      { service_id: 'nonexistent', user_id: 'user-1' },
+      mockContext,
+    );
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(revokeUserServiceTokens)).not.toHaveBeenCalled();
+  });
+
+  it('ユーザーが見つからない場合はエラー', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(findUserById).mockResolvedValue(null);
+
+    const result = await revokeServiceUserAccessTool.handler(
+      { service_id: 'svc-1', user_id: 'nonexistent' },
+      mockContext,
+    );
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(revokeUserServiceTokens)).not.toHaveBeenCalled();
+  });
+
+  it('アクティブなトークンがない場合はエラー（監査ログなし）', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(findUserById).mockResolvedValue(mockUser as never);
+    vi.mocked(revokeUserServiceTokens).mockResolvedValue(0);
+
+    const result = await revokeServiceUserAccessTool.handler(
+      { service_id: 'svc-1', user_id: 'user-1' },
       mockContext,
     );
     expect(result.isError).toBe(true);

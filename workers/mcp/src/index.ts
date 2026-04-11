@@ -29,6 +29,8 @@ import {
   listRedirectUrisTool,
   addRedirectUriTool,
   deleteRedirectUriTool,
+  listServiceUsersTool,
+  revokeServiceUserAccessTool,
   getAuditLogsTool,
   getAuditStatsTool,
   getSystemMetricsTool,
@@ -80,6 +82,8 @@ mcpServer.registerTool(rotateServiceSecretTool);
 mcpServer.registerTool(listRedirectUrisTool);
 mcpServer.registerTool(addRedirectUriTool);
 mcpServer.registerTool(deleteRedirectUriTool);
+mcpServer.registerTool(listServiceUsersTool);
+mcpServer.registerTool(revokeServiceUserAccessTool);
 
 // 監査ログツールを登録
 mcpServer.registerTool(getAuditLogsTool);
