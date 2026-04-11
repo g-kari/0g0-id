@@ -344,6 +344,27 @@
 - **テスト**: DB例外テスト11件追加（全852テストパス）
 - **背景**: `createAdminAuditLog` の try-catch は対応済みだったが、主要なビジネスロジックのDBアクセスが未保護で、D1障害時に非JSON500が素通りしていた
 
+## 2026-04-11 リファクタリング: parsePagination エラー型統一
+
+- ✅ `PaginationResult` の `error` プロパティを `string` から `{ code: string; message: string }` に変更（`parseDays` の `DaysResult` と型構造を統一）
+- ✅ `parsePagination` 関数内でエラーコード `BAD_REQUEST` を付与するよう変更
+- ✅ 全 9 ルートファイル（11 箇所）の呼び出し元を簡略化（`{ error: { code: 'BAD_REQUEST', message: pagination.error } }` → `{ error: pagination.error }`）
+- ✅ `pagination.test.ts` にエラー構造検証テスト追加
+- ✅ 全テスト（2107件）パス、型チェック通過、master push 済み
+
+対象ファイル:
+- `packages/shared/src/lib/pagination.ts`
+- `packages/shared/src/lib/pagination.test.ts`
+- `workers/id/src/routes/admin-audit-logs.ts`
+- `workers/id/src/routes/external.ts`
+- `workers/id/src/routes/users.ts`
+- `workers/id/src/routes/services.ts`
+- `workers/admin/src/routes/audit-logs.ts`
+- `workers/admin/src/routes/users.ts`
+- `workers/admin/src/routes/services.ts`
+- `workers/user/src/routes/login-history.ts`
+- `workers/user/src/routes/profile.ts`
+
 ## 残課題（要対応）
 
 なし
