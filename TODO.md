@@ -2,6 +2,15 @@
 
 ## テストカバレッジ追加（2026-04-11）
 
+- ✅ **`workers/admin/src/routes/audit-logs.test.ts`: audit-logs バリデーション未テストケース5件追加**
+  - 不正UUID形式の `admin_user_id` → 400 BAD_REQUEST・IdP未呼び出し（1件）
+  - 不正UUID形式の `target_id` → 400 BAD_REQUEST・IdP未呼び出し（1件）
+  - 不正形式の `action`（大文字含む）→ 400 BAD_REQUEST・IdP未呼び出し（1件）
+  - `limit=0` → 400 BAD_REQUEST・IdP未呼び出し（1件）
+  - admin worker: 197 → 202テスト（+5）、全テストパス
+
+## テストカバレッジ追加（2026-04-11）
+
 - ✅ **`workers/admin/src/routes/users.test.ts`: admin users ルートの未テストエラーケース3件追加**
   - `GET /:id/login-history`: 不正なprovider（`invalid-provider`）→ 400 BAD_REQUEST・IdP未呼び出し（1件）
   - `GET /:id/login-stats`: 不正なdays（`invalid`）→ 400 INVALID_PARAMETER・IdP未呼び出し（1件）
