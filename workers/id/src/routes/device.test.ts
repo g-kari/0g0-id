@@ -374,6 +374,90 @@ describe('POST /api/device/code — デバイス認可リクエスト', () => {
     vi.mocked(deleteExpiredDeviceCodes).mockResolvedValue(undefined as never);
   });
 
+  it('client_id 未指定 → invalid_request + 400', async () => {
+    const app = buildDeviceApp();
+    const body = new URLSearchParams({ scope: 'openid' });
+    const res = await app.request(
+      new Request(`${baseUrl}/api/device/code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json<{ error: string }>();
+    expect(json.error).toBe('invalid_request');
+  });
+
+  it('不明な client_id → invalid_client + 401', async () => {
+    vi.mocked(findServiceByClientId).mockResolvedValue(null);
+    const app = buildDeviceApp();
+    const body = new URLSearchParams({ client_id: 'unknown-client' });
+    const res = await app.request(
+      new Request(`${baseUrl}/api/device/code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(401);
+    const json = await res.json<{ error: string }>();
+    expect(json.error).toBe('invalid_client');
+  });
+
+  it('DB エラー (findServiceByClientId) → server_error + 500', async () => {
+    vi.mocked(findServiceByClientId).mockRejectedValue(new Error('DB error'));
+    const app = buildDeviceApp();
+    const body = new URLSearchParams({ client_id: 'test-client-id' });
+    const res = await app.request(
+      new Request(`${baseUrl}/api/device/code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(500);
+    const json = await res.json<{ error: string }>();
+    expect(json.error).toBe('server_error');
+  });
+
+  it('未対応の Content-Type → invalid_request + 400', async () => {
+    const app = buildDeviceApp();
+    const res = await app.request(
+      new Request(`${baseUrl}/api/device/code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: 'client_id=test',
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json<{ error: string }>();
+    expect(json.error).toBe('invalid_request');
+  });
+
+  it('JSON Content-Type でも発行できる', async () => {
+    vi.mocked(resolveEffectiveScope).mockReturnValue('openid');
+    const app = buildDeviceApp();
+    const res = await app.request(
+      new Request(`${baseUrl}/api/device/code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: 'test-client-id' }),
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+  });
+
   it('全スコープが無効 → { error: invalid_scope } + 400', async () => {
     // resolveEffectiveScope が undefined を返す（全スコープ無効）
     vi.mocked(resolveEffectiveScope).mockReturnValue(undefined);
@@ -413,9 +497,36 @@ describe('POST /api/device/code — デバイス認可リクエスト', () => {
       mockEnv as unknown as Record<string, string>
     );
     expect(res.status).toBe(200);
-    const json = await res.json<{ device_code: string; user_code: string }>();
+    const json = await res.json<{
+      device_code: string;
+      user_code: string;
+      verification_uri: string;
+      expires_in: number;
+      interval: number;
+    }>();
     expect(json.device_code).toBeTruthy();
     expect(json.user_code).toBeTruthy();
+    expect(json.verification_uri).toBe('https://user.0g0.xyz/device');
+    expect(json.expires_in).toBe(600);
+    expect(json.interval).toBe(5);
+  });
+
+  it('user_code の形式が XXXX-XXXX', async () => {
+    vi.mocked(resolveEffectiveScope).mockReturnValue('openid');
+    const app = buildDeviceApp();
+    const body = new URLSearchParams({ client_id: 'test-client-id' });
+    const res = await app.request(
+      new Request(`${baseUrl}/api/device/code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json<{ user_code: string }>();
+    expect(json.user_code).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
   });
 });
 
