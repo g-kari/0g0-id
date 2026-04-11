@@ -16,6 +16,11 @@
   - `.github/workflows/ci.yml` を `vp check` + `vp test run` に変更
   - Vite+ CLI セットアップステップ追加
 - 全2180テスト合格、エラー0件
+- ✅ **CI修正（4件）**
+  - `$HOME/.vite-plus/bin` を `$GITHUB_PATH` に追加（`vp` コマンドのPATH解決）
+  - `package-lock.json` 再生成 + `esbuild@0.28.0` overrides追加（`npm ci` 同期エラー解消）
+  - TODO.md のOxfmtフォーマット修正
+  - unused imports 6件削除 + lint設定調整（`unbound-method` off for tests, `no-control-regex` off）→ warning 0件
 
 ## コードレビュー・バグ修正（2026-04-12）
 
