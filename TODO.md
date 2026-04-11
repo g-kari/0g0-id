@@ -2,6 +2,19 @@
 
 ## テストカバレッジ追加（2026-04-11）
 
+- ✅ **`workers/mcp/src/index.test.ts`: MCPワーカー index のユニットテスト4件追加**
+  - テストファイルが存在しなかった。health check・CORS・エラーハンドラを網羅
+  - `GET /health`: 200 + status/worker/timestamp 確認（1件）
+  - CORS: MCP_ORIGINと一致するoriginにACEO付与・不一致には付与しない（2件）
+  - `onError` ハンドラ: 未処理例外で500 + INTERNAL_ERROR（1件）
+  - mcp worker: 159 → 163テスト（+4）、全2091テストパス
+
+## 残課題（要対応）
+
+なし
+
+## テストカバレッジ追加（2026-04-11）
+
 - ✅ **`auth.test.ts`: rejectBannedUserMiddleware・rejectServiceTokenMiddleware のユニットテスト8件追加**
   - `rejectServiceTokenMiddleware`: user未設定→401・cidあり（サービストークン）→403・cidなし→next呼び出し（3件）
   - `rejectBannedUserMiddleware`: user未設定→401・DB例外→500・ユーザー未存在→401・BAN済み→401・正常→dbUser設定+next（5件）
