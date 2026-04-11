@@ -1182,6 +1182,54 @@ describe('GET /api/users', () => {
     );
   });
 
+  it('banned=true フィルターをfilter.banned=trueとして渡す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users?banned=true`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(
+      expect.anything(), 50, 0, expect.objectContaining<UserFilter>({ banned: true })
+    );
+    expect(vi.mocked(countUsers)).toHaveBeenCalledWith(
+      expect.anything(), expect.objectContaining<UserFilter>({ banned: true })
+    );
+  });
+
+  it('banned=false フィルターをfilter.banned=falseとして渡す', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users?banned=false`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(
+      expect.anything(), 50, 0, expect.objectContaining<UserFilter>({ banned: false })
+    );
+    expect(vi.mocked(countUsers)).toHaveBeenCalledWith(
+      expect.anything(), expect.objectContaining<UserFilter>({ banned: false })
+    );
+  });
+
+  it('banned=maybe など不正値はfilter.bannedに含めない', async () => {
+    const res = await app.request(
+      new Request(`${baseUrl}/api/users?banned=maybe`, {
+        headers: { Authorization: 'Bearer mock-token' },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(200);
+    const call = vi.mocked(listUsers).mock.calls[0];
+    const filter = call[3] as UserFilter;
+    expect(filter.banned).toBeUndefined();
+  });
+
   it('DB例外時 → 500 INTERNAL_ERROR を返す', async () => {
     vi.mocked(listUsers).mockRejectedValue(new Error('D1 error'));
     const res = await sendRequest(app, '/api/users');
