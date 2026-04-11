@@ -44,9 +44,14 @@ function mockIdp(status: number, body: unknown): (req: Request) => Promise<Respo
   );
 }
 
+const VALID_SERVICE_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+const VALID_USER_ID = "b2c3d4e5-f6a7-8901-bcde-f12345678901";
+const VALID_URI_ID = "c3d4e5f6-a7b8-9012-cdef-123456789012";
+const NONEXISTENT_ID = "00000000-0000-0000-0000-000000000000";
+
 const mockServiceList = [
   {
-    id: "service-1",
+    id: VALID_SERVICE_ID,
     name: "Test Service",
     client_id: "client-abc",
     allowed_scopes: ["profile", "email"],
@@ -144,25 +149,25 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1");
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}`);
       expect(res.status).toBe(401);
       expect(idpFetch).not.toHaveBeenCalled();
     });
 
     it("管理者セッションでIdPにGETしてサービスを返す", async () => {
-      const mockService = { id: "service-1", name: "Test Service", client_id: "client-abc" };
+      const mockService = { id: VALID_SERVICE_ID, name: "Test Service", client_id: "client-abc" };
       const idpFetch = mockIdp(200, { data: mockService });
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}`, {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(200);
       const body = await res.json<{ data: typeof mockService }>();
-      expect(body.data.id).toBe("service-1");
+      expect(body.data.id).toBe(VALID_SERVICE_ID);
 
       const fetchedReq = vi.mocked(idpFetch).mock.calls[0]?.[0] as Request;
-      expect(fetchedReq.url).toBe("https://id.0g0.xyz/api/services/service-1");
+      expect(fetchedReq.url).toBe(`https://id.0g0.xyz/api/services/${VALID_SERVICE_ID}`);
       expect(fetchedReq.method).toBe("GET");
     });
 
@@ -170,7 +175,7 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = mockIdp(404, { error: { code: "NOT_FOUND", message: "Service not found" } });
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/nonexistent", {
+      const res = await app.request(`/api/services/${NONEXISTENT_ID}`, {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(404);
@@ -238,7 +243,7 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ allowed_scopes: ["profile"] }),
@@ -251,7 +256,7 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -264,10 +269,12 @@ describe("admin BFF — /api/services", () => {
     });
 
     it("管理者セッションでIdPにPATCHしてスコープを更新する", async () => {
-      const idpFetch = mockIdp(200, { data: { id: "service-1", allowed_scopes: ["profile"] } });
+      const idpFetch = mockIdp(200, {
+        data: { id: VALID_SERVICE_ID, allowed_scopes: ["profile"] },
+      });
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -280,7 +287,7 @@ describe("admin BFF — /api/services", () => {
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
       expect(calledReq.method).toBe("PATCH");
-      expect(calledReq.url).toBe("https://id.0g0.xyz/api/services/service-1");
+      expect(calledReq.url).toBe(`https://id.0g0.xyz/api/services/${VALID_SERVICE_ID}`);
     });
   });
 
@@ -289,7 +296,7 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1", { method: "DELETE" });
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}`, { method: "DELETE" });
       expect(res.status).toBe(401);
     });
 
@@ -297,7 +304,7 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}`, {
         method: "DELETE",
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
@@ -306,7 +313,7 @@ describe("admin BFF — /api/services", () => {
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
       expect(calledReq.method).toBe("DELETE");
-      expect(calledReq.url).toBe("https://id.0g0.xyz/api/services/service-1");
+      expect(calledReq.url).toBe(`https://id.0g0.xyz/api/services/${VALID_SERVICE_ID}`);
     });
   });
 
@@ -315,7 +322,7 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1/redirect-uris");
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}/redirect-uris`);
       expect(res.status).toBe(401);
     });
 
@@ -324,7 +331,7 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = mockIdp(200, { data: uris });
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1/redirect-uris", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}/redirect-uris`, {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
@@ -333,7 +340,9 @@ describe("admin BFF — /api/services", () => {
       expect(body.data).toHaveLength(1);
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
-      expect(calledReq.url).toBe("https://id.0g0.xyz/api/services/service-1/redirect-uris");
+      expect(calledReq.url).toBe(
+        `https://id.0g0.xyz/api/services/${VALID_SERVICE_ID}/redirect-uris`,
+      );
     });
   });
 
@@ -342,7 +351,7 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1/redirect-uris", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}/redirect-uris`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uri: "https://app.example.com/callback" }),
@@ -354,7 +363,7 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1/redirect-uris", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}/redirect-uris`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -370,7 +379,7 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = mockIdp(201, { data: { id: "uri-2", uri: "https://app.example.com/cb" } });
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1/redirect-uris", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}/redirect-uris`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -383,7 +392,9 @@ describe("admin BFF — /api/services", () => {
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
       expect(calledReq.method).toBe("POST");
-      expect(calledReq.url).toBe("https://id.0g0.xyz/api/services/service-1/redirect-uris");
+      expect(calledReq.url).toBe(
+        `https://id.0g0.xyz/api/services/${VALID_SERVICE_ID}/redirect-uris`,
+      );
     });
   });
 
@@ -392,7 +403,7 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1/rotate-secret", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}/rotate-secret`, {
         method: "POST",
       });
       expect(res.status).toBe(401);
@@ -401,7 +412,7 @@ describe("admin BFF — /api/services", () => {
 
     it("管理者セッションでIdPにPOSTして新しいsecretを返す", async () => {
       const rotated = {
-        id: "service-1",
+        id: VALID_SERVICE_ID,
         client_id: "client-abc",
         client_secret: "new-secret-xyz",
         updated_at: "2024-06-01T00:00:00Z",
@@ -409,7 +420,7 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = mockIdp(200, { data: rotated });
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1/rotate-secret", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}/rotate-secret`, {
         method: "POST",
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
@@ -420,14 +431,16 @@ describe("admin BFF — /api/services", () => {
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
       expect(calledReq.method).toBe("POST");
-      expect(calledReq.url).toBe("https://id.0g0.xyz/api/services/service-1/rotate-secret");
+      expect(calledReq.url).toBe(
+        `https://id.0g0.xyz/api/services/${VALID_SERVICE_ID}/rotate-secret`,
+      );
     });
 
     it("IdPが404を返した場合はそのまま伝播する", async () => {
       const idpFetch = mockIdp(404, { error: { code: "NOT_FOUND" } });
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/no-such/rotate-secret", {
+      const res = await app.request(`/api/services/${NONEXISTENT_ID}/rotate-secret`, {
         method: "POST",
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
@@ -440,10 +453,10 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1/owner", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}/owner`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ new_owner_user_id: "user-2" }),
+        body: JSON.stringify({ new_owner_user_id: VALID_USER_ID }),
       });
 
       expect(res.status).toBe(401);
@@ -454,7 +467,7 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1/owner", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}/owner`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -470,31 +483,31 @@ describe("admin BFF — /api/services", () => {
 
     it("管理者セッションでIdPにPATCHして所有権を転送する", async () => {
       const updated = {
-        id: "service-1",
+        id: VALID_SERVICE_ID,
         name: "Test Service",
         client_id: "client-abc",
-        owner_user_id: "user-2",
+        owner_user_id: VALID_USER_ID,
         updated_at: "2024-06-01T00:00:00Z",
       };
       const idpFetch = mockIdp(200, { data: updated });
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1/owner", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}/owner`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}`,
         },
-        body: JSON.stringify({ new_owner_user_id: "user-2" }),
+        body: JSON.stringify({ new_owner_user_id: VALID_USER_ID }),
       });
 
       expect(res.status).toBe(200);
       const body = await res.json<{ data: typeof updated }>();
-      expect(body.data.owner_user_id).toBe("user-2");
+      expect(body.data.owner_user_id).toBe(VALID_USER_ID);
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
       expect(calledReq.method).toBe("PATCH");
-      expect(calledReq.url).toBe("https://id.0g0.xyz/api/services/service-1/owner");
+      expect(calledReq.url).toBe(`https://id.0g0.xyz/api/services/${VALID_SERVICE_ID}/owner`);
       expect(calledReq.headers.get("Authorization")).toBe("Bearer mock-access-token");
       expect(calledReq.headers.get("Origin")).toBe("https://id.0g0.xyz");
     });
@@ -503,13 +516,13 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = mockIdp(404, { error: { code: "NOT_FOUND" } });
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/no-such/owner", {
+      const res = await app.request(`/api/services/${NONEXISTENT_ID}/owner`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}`,
         },
-        body: JSON.stringify({ new_owner_user_id: "user-2" }),
+        body: JSON.stringify({ new_owner_user_id: VALID_USER_ID }),
       });
 
       expect(res.status).toBe(404);
@@ -521,9 +534,12 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1/redirect-uris/uri-1", {
-        method: "DELETE",
-      });
+      const res = await app.request(
+        `/api/services/${VALID_SERVICE_ID}/redirect-uris/${VALID_URI_ID}`,
+        {
+          method: "DELETE",
+        },
+      );
       expect(res.status).toBe(401);
     });
 
@@ -531,16 +547,21 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1/redirect-uris/uri-1", {
-        method: "DELETE",
-        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
-      });
+      const res = await app.request(
+        `/api/services/${VALID_SERVICE_ID}/redirect-uris/${VALID_URI_ID}`,
+        {
+          method: "DELETE",
+          headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+        },
+      );
 
       expect(res.status).toBe(204);
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
       expect(calledReq.method).toBe("DELETE");
-      expect(calledReq.url).toBe("https://id.0g0.xyz/api/services/service-1/redirect-uris/uri-1");
+      expect(calledReq.url).toBe(
+        `https://id.0g0.xyz/api/services/${VALID_SERVICE_ID}/redirect-uris/${VALID_URI_ID}`,
+      );
     });
   });
 
@@ -549,17 +570,17 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1/users");
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}/users`);
       expect(res.status).toBe(401);
       expect(idpFetch).not.toHaveBeenCalled();
     });
 
     it("管理者セッションでIdPにGETして認可済みユーザー一覧を返す", async () => {
-      const mockUsers = [{ id: "user-1", email: "user@example.com", name: "User One" }];
+      const mockUsers = [{ id: VALID_USER_ID, email: "user@example.com", name: "User One" }];
       const idpFetch = mockIdp(200, { data: mockUsers, total: 1 });
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1/users", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}/users`, {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
@@ -572,7 +593,7 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = mockIdp(200, { data: [], total: 0 });
       const app = buildApp(idpFetch);
 
-      await app.request("/api/services/service-1/users", {
+      await app.request(`/api/services/${VALID_SERVICE_ID}/users`, {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
@@ -586,7 +607,7 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = mockIdp(200, { data: [], total: 0 });
       const app = buildApp(idpFetch);
 
-      await app.request("/api/services/service-1/users?limit=10&offset=20", {
+      await app.request(`/api/services/${VALID_SERVICE_ID}/users?limit=10&offset=20`, {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
@@ -594,14 +615,14 @@ describe("admin BFF — /api/services", () => {
       const url = new URL(calledReq.url);
       expect(url.searchParams.get("limit")).toBe("10");
       expect(url.searchParams.get("offset")).toBe("20");
-      expect(url.pathname).toBe("/api/services/service-1/users");
+      expect(url.pathname).toBe(`/api/services/${VALID_SERVICE_ID}/users`);
     });
 
     it("IdPが404を返した場合はそのまま伝播する", async () => {
       const idpFetch = mockIdp(404, { error: { code: "NOT_FOUND" } });
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/no-such/users", {
+      const res = await app.request(`/api/services/${NONEXISTENT_ID}/users`, {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
@@ -614,7 +635,7 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1/users/user-1", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}/users/${VALID_USER_ID}`, {
         method: "DELETE",
       });
       expect(res.status).toBe(401);
@@ -625,7 +646,7 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1/users/user-1", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}/users/${VALID_USER_ID}`, {
         method: "DELETE",
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
@@ -634,27 +655,31 @@ describe("admin BFF — /api/services", () => {
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
       expect(calledReq.method).toBe("DELETE");
-      expect(calledReq.url).toBe("https://id.0g0.xyz/api/services/service-1/users/user-1");
+      expect(calledReq.url).toBe(
+        `https://id.0g0.xyz/api/services/${VALID_SERVICE_ID}/users/${VALID_USER_ID}`,
+      );
     });
 
     it("サービスIDとユーザーIDをIdPのURLに正しく含める", async () => {
       const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
       const app = buildApp(idpFetch);
 
-      await app.request("/api/services/svc-abc/users/usr-xyz", {
+      await app.request(`/api/services/${VALID_SERVICE_ID}/users/${VALID_USER_ID}`, {
         method: "DELETE",
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
-      expect(calledReq.url).toBe("https://id.0g0.xyz/api/services/svc-abc/users/usr-xyz");
+      expect(calledReq.url).toBe(
+        `https://id.0g0.xyz/api/services/${VALID_SERVICE_ID}/users/${VALID_USER_ID}`,
+      );
     });
 
     it("Originヘッダーを付与してIdPに送信する", async () => {
       const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
       const app = buildApp(idpFetch);
 
-      await app.request("/api/services/service-1/users/user-1", {
+      await app.request(`/api/services/${VALID_SERVICE_ID}/users/${VALID_USER_ID}`, {
         method: "DELETE",
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
@@ -667,12 +692,69 @@ describe("admin BFF — /api/services", () => {
       const idpFetch = mockIdp(404, { error: { code: "NOT_FOUND" } });
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/services/service-1/users/no-such-user", {
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}/users/${NONEXISTENT_ID}`, {
         method: "DELETE",
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe("パスパラメータバリデーション", () => {
+    it("不正なサービスID形式で400を返す（GET /:id）", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/services/not-a-uuid", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string; message: string } }>();
+      expect(body.error.code).toBe("BAD_REQUEST");
+      expect(body.error.message).toBe("Invalid service ID format");
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("不正なサービスID形式で400を返す（GET /:id/redirect-uris）", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/services/invalid!/redirect-uris", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(400);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("不正なユーザーID形式で400を返す（DELETE /:id/users/:userId）", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}/users/not-a-uuid`, {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string; message: string } }>();
+      expect(body.error.code).toBe("BAD_REQUEST");
+      expect(body.error.message).toBe("Invalid user ID format");
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("不正なURI ID形式で400を返す（DELETE /:id/redirect-uris/:uriId）", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request(`/api/services/${VALID_SERVICE_ID}/redirect-uris/not-a-uuid`, {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string; message: string } }>();
+      expect(body.error.code).toBe("BAD_REQUEST");
+      expect(body.error.message).toBe("Invalid URI ID format");
+      expect(idpFetch).not.toHaveBeenCalled();
     });
   });
 });

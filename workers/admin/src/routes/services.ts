@@ -5,11 +5,26 @@ import {
   parsePagination,
   proxyMutate,
   proxyResponse,
+  UUID_RE,
 } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
 import { SESSION_COOKIE } from "./auth";
 
 const app = new Hono<{ Bindings: BffEnv }>();
+
+// サービスID形式検証ミドルウェア（:id パラメータを持つすべてのルートに適用）
+app.use("/:id", async (c, next) => {
+  if (!UUID_RE.test(c.req.param("id"))) {
+    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid service ID format" } }, 400);
+  }
+  await next();
+});
+app.use("/:id/*", async (c, next) => {
+  if (!UUID_RE.test(c.req.param("id"))) {
+    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid service ID format" } }, 400);
+  }
+  await next();
+});
 
 // GET /api/services
 app.get("/", async (c) => {
@@ -109,10 +124,14 @@ app.get("/:id/users", async (c) => {
 
 // DELETE /api/services/:id/users/:userId — ユーザーのサービスアクセスを失効
 app.delete("/:id/users/:userId", async (c) => {
+  const userId = c.req.param("userId");
+  if (!UUID_RE.test(userId)) {
+    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid user ID format" } }, 400);
+  }
   return proxyMutate(
     c,
     SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}/users/${c.req.param("userId")}`,
+    `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}/users/${userId}`,
   );
 });
 
@@ -128,10 +147,14 @@ app.patch("/:id/owner", async (c) => {
 
 // DELETE /api/services/:id/redirect-uris/:uriId
 app.delete("/:id/redirect-uris/:uriId", async (c) => {
+  const uriId = c.req.param("uriId");
+  if (!UUID_RE.test(uriId)) {
+    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid URI ID format" } }, 400);
+  }
   return proxyMutate(
     c,
     SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}/redirect-uris/${c.req.param("uriId")}`,
+    `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}/redirect-uris/${uriId}`,
   );
 });
 
