@@ -163,6 +163,7 @@ const mockEnv = {
   JWT_PRIVATE_KEY: "mock-private-key",
   JWT_PUBLIC_KEY: "mock-public-key",
   COOKIE_SECRET: "mock-cookie-secret",
+  INTERNAL_SERVICE_SECRET: "mock-internal-secret",
 };
 
 const mockUser = {
@@ -202,6 +203,16 @@ async function sendRequest(
   const { method = "GET", body, headers = {} } = options;
   const reqHeaders: Record<string, string> = { ...headers };
   if (body) reqHeaders["Content-Type"] = "application/json";
+  // serviceBindingMiddleware で保護されたパスには内部シークレットを自動付与
+  // timingSafeEqual モックをミドルウェア通過のため一時的に true に設定
+  if (
+    path.startsWith("/auth/exchange") ||
+    path.startsWith("/auth/refresh") ||
+    path.startsWith("/auth/logout")
+  ) {
+    reqHeaders["X-Internal-Secret"] ??= "mock-internal-secret";
+    vi.mocked(timingSafeEqual).mockReturnValueOnce(true);
+  }
 
   return app.request(
     new Request(`${baseUrl}${path}`, {
@@ -587,6 +598,8 @@ describe("POST /auth/exchange", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    // serviceBindingMiddleware 通過用（X-Internal-Secret ヘッダー検証）
+    vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(sha256).mockResolvedValue("hashed-code");
     vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
       id: "code-id",
@@ -608,7 +621,10 @@ describe("POST /auth/exchange", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/exchange`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Secret": "mock-internal-secret",
+        },
         body: "not-json",
       }),
       undefined,
@@ -715,6 +731,8 @@ describe("POST /auth/refresh", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    // serviceBindingMiddleware 通過用
+    vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(sha256).mockResolvedValue("hashed-token");
     vi.mocked(generateToken).mockReturnValue("new-refresh-token-raw");
     vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(mockRefreshToken as never);
@@ -728,7 +746,10 @@ describe("POST /auth/refresh", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/refresh`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Secret": "mock-internal-secret",
+        },
         body: "not-json",
       }),
       undefined,
@@ -970,6 +991,8 @@ describe("POST /auth/logout", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    // serviceBindingMiddleware 通過用
+    vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(sha256).mockResolvedValue("hashed-token");
     vi.mocked(findRefreshTokenByHash).mockResolvedValue(mockRefreshToken as never);
     vi.mocked(revokeRefreshToken).mockResolvedValue(undefined as never);
@@ -979,7 +1002,10 @@ describe("POST /auth/logout", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/logout`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Secret": "mock-internal-secret",
+        },
         body: "not-json",
       }),
       undefined,
@@ -1988,6 +2014,8 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    // serviceBindingMiddleware 通過用
+    vi.mocked(timingSafeEqual).mockReturnValue(true);
     // sha256 は呼び出し引数に応じて返す値を変える
     vi.mocked(sha256).mockImplementation(async (input: string) => {
       if (input === "my-secret") return "secret-hash-abc";
@@ -2029,6 +2057,7 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-Internal-Secret": "mock-internal-secret",
           Authorization: "Bearer some-token",
         },
         body: JSON.stringify({
@@ -2048,6 +2077,7 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-Internal-Secret": "mock-internal-secret",
           Authorization: "Basic not-valid-base64!!!",
         },
         body: JSON.stringify({
@@ -2069,6 +2099,7 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-Internal-Secret": "mock-internal-secret",
           Authorization: `Basic ${credentials}`,
         },
         body: JSON.stringify({
@@ -2095,6 +2126,7 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-Internal-Secret": "mock-internal-secret",
           Authorization: `Basic ${credentials}`,
         },
         body: JSON.stringify({
@@ -2109,13 +2141,15 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
   });
 
   it("client_secret が不一致 → 401を返す", async () => {
-    vi.mocked(timingSafeEqual).mockReturnValue(false);
+    // 1回目: middleware の X-Internal-Secret 検証 → true、2回目以降: ルートハンドラの client_secret 比較 → false
+    vi.mocked(timingSafeEqual).mockReturnValueOnce(true).mockReturnValue(false);
     const credentials = btoa("client-abc:wrong-secret");
     const res = await app.request(
       new Request(`${baseUrl}/auth/exchange`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-Internal-Secret": "mock-internal-secret",
           Authorization: `Basic ${credentials}`,
         },
         body: JSON.stringify({
@@ -2153,6 +2187,7 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-Internal-Secret": "mock-internal-secret",
           Authorization: `Basic ${credentials}`,
         },
         body: JSON.stringify({
@@ -2175,6 +2210,7 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-Internal-Secret": "mock-internal-secret",
           Authorization: `Basic ${credentials}`,
         },
         body: JSON.stringify({

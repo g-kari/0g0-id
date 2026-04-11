@@ -22,8 +22,30 @@ const SECRET = "test-internal-secret-12345";
 
 describe("serviceBindingMiddleware", () => {
   describe("INTERNAL_SERVICE_SECRET が未設定の場合", () => {
-    it("ヘッダーなしでもリクエストを通過させる", async () => {
+    it("開発環境（IDP_ORIGIN未設定）ではヘッダーなしでもリクエストを通過させる", async () => {
       const { app, env } = buildApp({});
+      const res = await app.request(
+        new Request(`${baseUrl}/auth/exchange`, { method: "POST" }),
+        undefined,
+        env,
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("本番環境（IDP_ORIGIN=https://）では403を返す", async () => {
+      const { app, env } = buildApp({ IDP_ORIGIN: "https://id.0g0.xyz" });
+      const res = await app.request(
+        new Request(`${baseUrl}/auth/exchange`, { method: "POST" }),
+        undefined,
+        env,
+      );
+      expect(res.status).toBe(403);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe("FORBIDDEN");
+    });
+
+    it("開発環境（IDP_ORIGIN=http://）ではリクエストを通過させる", async () => {
+      const { app, env } = buildApp({ IDP_ORIGIN: "http://localhost:8787" });
       const res = await app.request(
         new Request(`${baseUrl}/auth/exchange`, { method: "POST" }),
         undefined,

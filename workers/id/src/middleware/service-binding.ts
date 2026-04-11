@@ -5,7 +5,6 @@ import { authenticateService } from "../utils/service-auth";
 
 const INTERNAL_SECRET_HEADER = "X-Internal-Secret";
 const sbLogger = createLogger("service-binding");
-let warnedMissingSecret = false;
 
 /**
  * BFF→IdP間のService Bindings呼び出しを検証するミドルウェア。
@@ -20,14 +19,19 @@ let warnedMissingSecret = false;
 export const serviceBindingMiddleware = createMiddleware<{ Bindings: IdpEnv }>(async (c, next) => {
   const secret = c.env.INTERNAL_SERVICE_SECRET;
 
-  // シークレット未設定時はスキップ（開発環境向けグレースフルデグラデーション）
+  // シークレット未設定時の処理
   if (!secret) {
-    if (!warnedMissingSecret && c.env.IDP_ORIGIN?.startsWith("https://")) {
-      sbLogger.warn(
-        "INTERNAL_SERVICE_SECRET が未設定です。Service Bindings保護が無効になっています。本番環境では設定を推奨します。",
+    // 本番環境（https://）ではシークレット必須 — 設定漏れによるセキュリティホールを防止
+    if (c.env.IDP_ORIGIN?.startsWith("https://")) {
+      sbLogger.error(
+        "INTERNAL_SERVICE_SECRET が未設定です。本番環境ではService Bindings保護が必須のため、リクエストを拒否します。",
       );
-      warnedMissingSecret = true;
+      return c.json(
+        { error: { code: "FORBIDDEN", message: "Service binding misconfigured" } },
+        403,
+      );
     }
+    // 開発環境のみスキップ（グレースフルデグラデーション）
     await next();
     return;
   }
