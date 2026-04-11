@@ -1,5 +1,15 @@
 # TODO
 
+## 機能追加（2026-04-12）
+
+- ✅ **MCP サービス管理ツール4件追加**
+  - `updateServiceTool` (`update_service`): サービスのname・allowed_scopesを更新
+  - `listRedirectUrisTool` (`list_redirect_uris`): リダイレクトURI一覧取得
+  - `addRedirectUriTool` (`add_redirect_uri`): リダイレクトURI追加（normalizeRedirectUriでhttps/localhost検証）
+  - `deleteRedirectUriTool` (`delete_redirect_uri`): リダイレクトURI削除
+  - テスト21件追加（mcp worker: 163 → 184テスト）
+  - `workers/mcp/src/tools/services.ts`, `services.test.ts`, `tools/index.ts`, `index.ts` 更新
+
 ## テストカバレッジ追加（2026-04-11）
 
 - ✅ **`packages/shared/src/db/services.test.ts`: TTLキャッシュ動作と invalidateServiceCache のテスト4件追加**
