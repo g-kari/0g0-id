@@ -2,6 +2,15 @@
 
 ## テストカバレッジ追加（2026-04-11）
 
+- ✅ **`packages/shared/src/db/services.test.ts`: TTLキャッシュ動作と invalidateServiceCache のテスト4件追加**
+  - `findServiceByClientId` — 同じ client_id への2回目はキャッシュから返す（DBを呼ばない）（1件）
+  - `findServiceByClientId` — null を返す client_id はキャッシュしない（2回ともDBを呼ぶ）（1件）
+  - `invalidateServiceCache` — キャッシュを無効化してDBから再取得させる（1件）
+  - `invalidateServiceCache` — 存在しないIDでも安全に実行できる（1件）
+  - packages/shared: 660 → 664テスト（+4）、全2129テストパス
+
+## テストカバレッジ追加（2026-04-11）
+
 - ✅ **`workers/admin/src/routes/audit-logs.test.ts`: audit-logs バリデーション未テストケース5件追加**
   - 不正UUID形式の `admin_user_id` → 400 BAD_REQUEST・IdP未呼び出し（1件）
   - 不正UUID形式の `target_id` → 400 BAD_REQUEST・IdP未呼び出し（1件）
