@@ -11,6 +11,7 @@ import {
   updateServiceFields,
   rotateClientSecret,
   transferServiceOwnership,
+  invalidateServiceCache,
 } from './services';
 import type { Service } from '../types';
 import { makeD1Mock } from './test-helpers';
@@ -326,5 +327,56 @@ describe('transferServiceOwnership', () => {
     const db = makeD1Mock(baseService);
     await transferServiceOwnership(db, 'service-1', 'user-2');
     expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('RETURNING *'));
+  });
+});
+
+describe('findServiceByClientId — TTLキャッシュ動作', () => {
+  it('同じclient_idへの2回目の呼び出しはキャッシュから返す（DBを呼ばない）', async () => {
+    const cacheService = { ...baseService, id: 'cache-hit-svc', client_id: 'client_cache_hit' };
+    const db = makeD1Mock(cacheService);
+
+    const result1 = await findServiceByClientId(db, 'client_cache_hit');
+    expect(result1).toEqual(cacheService);
+    expect(db.prepare).toHaveBeenCalledTimes(1);
+
+    const result2 = await findServiceByClientId(db, 'client_cache_hit');
+    expect(result2).toEqual(cacheService);
+    // キャッシュヒットなのでprepareは追加で呼ばれない
+    expect(db.prepare).toHaveBeenCalledTimes(1);
+  });
+
+  it('nullを返すclient_idはキャッシュしない（2回ともDBを呼ぶ）', async () => {
+    const db = makeD1Mock(null);
+
+    const result1 = await findServiceByClientId(db, 'client_not_exist_unique_xyz');
+    expect(result1).toBeNull();
+    expect(db.prepare).toHaveBeenCalledTimes(1);
+
+    const result2 = await findServiceByClientId(db, 'client_not_exist_unique_xyz');
+    expect(result2).toBeNull();
+    // nullはキャッシュされないので再度DBを呼ぶ
+    expect(db.prepare).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('invalidateServiceCache', () => {
+  it('キャッシュを無効化してDBから再取得させる', async () => {
+    const invSvc = { ...baseService, id: 'invalidate-svc-1', client_id: 'client_invalidate_1' };
+    const db = makeD1Mock(invSvc);
+
+    // 1回目: DBに問い合わせ＆キャッシュに保存
+    await findServiceByClientId(db, 'client_invalidate_1');
+    expect(db.prepare).toHaveBeenCalledTimes(1);
+
+    // キャッシュを無効化
+    invalidateServiceCache('invalidate-svc-1');
+
+    // 2回目: キャッシュが無効化されたのでDBを再度呼ぶ
+    await findServiceByClientId(db, 'client_invalidate_1');
+    expect(db.prepare).toHaveBeenCalledTimes(2);
+  });
+
+  it('存在しないIDを指定しても安全に実行できる（エラーなし）', () => {
+    expect(() => invalidateServiceCache('non-existent-id-xyz')).not.toThrow();
   });
 });
