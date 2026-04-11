@@ -35,6 +35,15 @@ describe('parsePagination', () => {
     const result = parsePagination({ offset: '-1' });
     expect('error' in result).toBe(true);
   });
+
+  it('エラーオブジェクトに code と message が含まれる', () => {
+    const result = parsePagination({ limit: 'abc' });
+    expect('error' in result).toBe(true);
+    if ('error' in result) {
+      expect(result.error.code).toBe('BAD_REQUEST');
+      expect(typeof result.error.message).toBe('string');
+    }
+  });
 });
 
 describe('parseDays', () => {

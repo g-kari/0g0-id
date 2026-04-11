@@ -235,7 +235,7 @@ app.get('/me/login-history', authMiddleware, rejectServiceTokenMiddleware, rejec
     { defaultLimit: 20, maxLimit: 100 }
   );
   if ('error' in pagination) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
+    return c.json({ error: pagination.error }, 400);
   }
   const { limit, offset } = pagination;
   const providerParam = c.req.query('provider') || undefined;
@@ -463,7 +463,7 @@ app.get('/:id/login-history', authMiddleware, adminMiddleware, async (c) => {
     { defaultLimit: 20, maxLimit: 100 }
   );
   if ('error' in pagination) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
+    return c.json({ error: pagination.error }, 400);
   }
   const { limit, offset } = pagination;
   const providerParam = c.req.query('provider') || undefined;
@@ -822,7 +822,7 @@ app.get('/', authMiddleware, adminMiddleware, async (c) => {
     { defaultLimit: 50, maxLimit: 100 }
   );
   if ('error' in pagination) {
-    return c.json({ error: { code: 'BAD_REQUEST', message: pagination.error } }, 400);
+    return c.json({ error: pagination.error }, 400);
   }
   const { limit, offset } = pagination;
 

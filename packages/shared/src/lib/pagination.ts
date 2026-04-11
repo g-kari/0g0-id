@@ -1,4 +1,4 @@
-export type PaginationResult = { limit: number; offset: number } | { error: string };
+export type PaginationResult = { limit: number; offset: number } | { error: { code: string; message: string } };
 
 /**
  * クエリパラメータから limit / offset をパースし、バリデーションする。
@@ -9,17 +9,17 @@ export function parsePagination(
   options: { defaultLimit: number; maxLimit: number } = { defaultLimit: 20, maxLimit: 100 }
 ): PaginationResult {
   if (query.limit !== undefined && !/^\d+$/.test(query.limit)) {
-    return { error: 'limit は1以上の整数で指定してください' };
+    return { error: { code: 'BAD_REQUEST', message: 'limit は1以上の整数で指定してください' } };
   }
   if (query.offset !== undefined && !/^\d+$/.test(query.offset)) {
-    return { error: 'offset は0以上の整数で指定してください' };
+    return { error: { code: 'BAD_REQUEST', message: 'offset は0以上の整数で指定してください' } };
   }
 
   const limitRaw = query.limit !== undefined ? parseInt(query.limit, 10) : options.defaultLimit;
   const offsetRaw = query.offset !== undefined ? parseInt(query.offset, 10) : 0;
 
   if (query.limit !== undefined && limitRaw < 1) {
-    return { error: 'limit は1以上の整数で指定してください' };
+    return { error: { code: 'BAD_REQUEST', message: 'limit は1以上の整数で指定してください' } };
   }
 
   return {
