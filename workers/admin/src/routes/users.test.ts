@@ -792,6 +792,20 @@ describe('admin BFF — /api/users', () => {
       const url = new URL(calledReq.url);
       expect(url.searchParams.has('provider')).toBe(false);
     });
+
+    it('不正なproviderで400を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request(`/api/users/${USER_ID}/login-history?provider=invalid-provider`, {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('BAD_REQUEST');
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET /:id/providers — ユーザーのSNSプロバイダー連携状態', () => {
@@ -1226,6 +1240,20 @@ describe('GET /api/users/:id/login-stats — プロバイダー別ログイン�
 
     expect(res.status).toBe(404);
   });
+
+  it('不正なdaysで400を返す', async () => {
+    const idpFetch = vi.fn();
+    const app = buildApp(idpFetch);
+
+    const res = await app.request(`/api/users/${USER_ID}/login-stats?days=invalid`, {
+      headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INVALID_PARAMETER');
+    expect(idpFetch).not.toHaveBeenCalled();
+  });
 });
 
 describe('GET /api/users/:id/login-trends — 日別ログイントレンド', () => {
@@ -1288,5 +1316,19 @@ describe('GET /api/users/:id/login-trends — 日別ログイントレンド', (
     });
 
     expect(res.status).toBe(404);
+  });
+
+  it('不正なdaysで400を返す', async () => {
+    const idpFetch = vi.fn();
+    const app = buildApp(idpFetch);
+
+    const res = await app.request(`/api/users/${USER_ID}/login-trends?days=invalid`, {
+      headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INVALID_PARAMETER');
+    expect(idpFetch).not.toHaveBeenCalled();
   });
 });
