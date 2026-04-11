@@ -51,6 +51,7 @@ import {
   getJWTKeys,
   cleanupExpiredAuthCodes,
   deleteExpiredDeviceCodes,
+  cleanupExpiredMcpSessions,
   cleanupExpiredRevokedAccessTokens,
   deleteExpiredRefreshTokens,
 } from '@0g0-id/shared';
@@ -229,12 +230,15 @@ describe('scheduled handler', () => {
   beforeEach(() => {
     vi.mocked(cleanupExpiredAuthCodes).mockClear();
     vi.mocked(deleteExpiredDeviceCodes).mockClear();
+    vi.mocked(cleanupExpiredMcpSessions).mockClear();
     vi.mocked(cleanupExpiredRevokedAccessTokens).mockClear();
     vi.mocked(deleteExpiredRefreshTokens).mockClear();
   });
 
-  it('認可コードとデバイスコードのクリーンアップを実行する', async () => {
+  it('全クリーンアップ処理を実行する', async () => {
     vi.mocked(cleanupExpiredAuthCodes).mockResolvedValue(5);
+    vi.mocked(cleanupExpiredRevokedAccessTokens).mockResolvedValue(3);
+    vi.mocked(deleteExpiredRefreshTokens).mockResolvedValue(2);
 
     const waitUntilFn = vi.fn();
     const ctx = { waitUntil: waitUntilFn } as unknown as ExecutionContext;
@@ -248,6 +252,7 @@ describe('scheduled handler', () => {
 
     expect(cleanupExpiredAuthCodes).toHaveBeenCalledWith(mockEnv.DB);
     expect(deleteExpiredDeviceCodes).toHaveBeenCalledWith(mockEnv.DB);
+    expect(cleanupExpiredMcpSessions).toHaveBeenCalledWith(mockEnv.DB);
     expect(cleanupExpiredRevokedAccessTokens).toHaveBeenCalledWith(mockEnv.DB);
     expect(deleteExpiredRefreshTokens).toHaveBeenCalledWith(mockEnv.DB);
   });
