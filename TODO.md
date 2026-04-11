@@ -79,6 +79,20 @@
   - `beforeEach` でモックをリセットし、各テストが独立した状態で実行されるよう整備
   - id worker: 894 → 898テスト（+4）、全テストパス
 
+## テストカバレッジ追加（2026-04-12）
+
+- ✅ **`workers/admin/src/routes/metrics.test.ts`: GET /api/metrics 未テストエンドポイント・バリデーションケース15件追加**
+  - `GET /login-trends`: 不正なdays（abc）→ 400 INVALID_PARAMETER・IdP未呼び出し（1件）
+  - `GET /login-trends`: days=0（範囲外）→ 400 INVALID_PARAMETER・IdP未呼び出し（1件）
+  - `GET /suspicious-logins`: 不正なhours（abc）→ 400・IdP未呼び出し（1件）
+  - `GET /suspicious-logins`: hours=0（範囲外）→ 400・IdP未呼び出し（1件）
+  - `GET /suspicious-logins`: hours=721（範囲外）→ 400・IdP未呼び出し（1件）
+  - `GET /suspicious-logins`: 不正なmin_countries（abc）→ 400・IdP未呼び出し（1件）
+  - `GET /suspicious-logins`: min_countries=0（範囲外）→ 400・IdP未呼び出し（1件）
+  - `GET /suspicious-logins`: min_countries=101（範囲外）→ 400・IdP未呼び出し（1件）
+  - `GET /user-registrations`: テストなし → 7件新規追加（401・200・URL確認・days転送・days=abc→400・days=0→400・500）
+  - admin worker: 202 → 217テスト（+15）、全テストパス
+
 ## 残課題（要対応）
 
 なし

@@ -176,6 +176,30 @@ describe('admin BFF — /api/metrics', () => {
 
       expect(res.status).toBe(500);
     });
+
+    it('不正なdays（abc）で400を返す（IdP呼び出しなし）', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/login-trends?days=abc', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('days=0（範囲外）で400を返す（IdP呼び出しなし）', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/login-trends?days=0', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET /services — サービス別統計', () => {
@@ -301,6 +325,159 @@ describe('admin BFF — /api/metrics', () => {
       const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR' } });
       const app = buildApp(idpFetch);
       const res = await app.request('/api/metrics/suspicious-logins', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(500);
+    });
+
+    it('不正なhours（abc）で400を返す（IdP呼び出しなし）', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/suspicious-logins?hours=abc', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('hours=0（範囲外）で400を返す（IdP呼び出しなし）', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/suspicious-logins?hours=0', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('hours=721（範囲外）で400を返す（IdP呼び出しなし）', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/suspicious-logins?hours=721', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('不正なmin_countries（abc）で400を返す（IdP呼び出しなし）', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/suspicious-logins?min_countries=abc', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('min_countries=0（範囲外）で400を返す（IdP呼び出しなし）', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/suspicious-logins?min_countries=0', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('min_countries=101（範囲外）で400を返す（IdP呼び出しなし）', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/suspicious-logins?min_countries=101', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /user-registrations — 日別新規ユーザー登録数', () => {
+    const mockRegistrations = [
+      { date: '2024-01-01', count: 5 },
+      { date: '2024-01-02', count: 8 },
+    ];
+
+    it('セッションなしで401を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/user-registrations');
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('管理者セッションでIdPへプロキシして登録数データを返す', async () => {
+      const idpFetch = mockIdp(200, { data: mockRegistrations, days: 30 });
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/user-registrations', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof mockRegistrations; days: number }>();
+      expect(body.data).toHaveLength(2);
+      expect(body.data[0].count).toBe(5);
+      expect(idpFetch).toHaveBeenCalledOnce();
+    });
+
+    it('IdP への呼び出しURLに /api/metrics/user-registrations が含まれる', async () => {
+      const idpFetch = mockIdp(200, { data: mockRegistrations, days: 30 });
+      const app = buildApp(idpFetch);
+      await app.request('/api/metrics/user-registrations', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      const calledUrl = vi.mocked(idpFetch).mock.calls[0][0].url;
+      expect(calledUrl).toContain('/api/metrics/user-registrations');
+    });
+
+    it('daysクエリパラメータをIdPに転送する', async () => {
+      const idpFetch = mockIdp(200, { data: mockRegistrations, days: 7 });
+      const app = buildApp(idpFetch);
+      await app.request('/api/metrics/user-registrations?days=7', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      const calledUrl = new URL(vi.mocked(idpFetch).mock.calls[0][0].url);
+      expect(calledUrl.searchParams.get('days')).toBe('7');
+    });
+
+    it('不正なdays（abc）で400を返す（IdP呼び出しなし）', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/user-registrations?days=abc', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('days=0（範囲外）で400を返す（IdP呼び出しなし）', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/user-registrations?days=0', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('INVALID_PARAMETER');
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('IdP が500を返した場合は500をプロキシする', async () => {
+      const idpFetch = mockIdp(500, { error: { code: 'INTERNAL_ERROR' } });
+      const app = buildApp(idpFetch);
+      const res = await app.request('/api/metrics/user-registrations', {
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
       expect(res.status).toBe(500);
