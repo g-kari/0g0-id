@@ -8,7 +8,7 @@
   - `vite` / `vitest` を `@voidzero-dev/vite-plus-core` / `@voidzero-dev/vite-plus-test` にoverride
   - `vp fmt` でOxfmtによる全ファイルフォーマット適用
   - `vp check` でlint（Oxlint）+ fmt（Oxfmt）+ typecheck（tsgolint）をエラー0に
-  - workers/*/vite.config.ts: `@cloudflare/vite-plugin` との型互換性修正（`UserConfig` 型キャスト）
+  - workers/\*/vite.config.ts: `@cloudflare/vite-plugin` との型互換性修正（`UserConfig` 型キャスト）
 - ✅ **pre-commit フック設定**
   - `vite.config.ts` に `staged` 設定追加（`vp check --fix` をステージファイルに実行）
   - `.git/hooks/pre-commit` で `vp staged` + `vp test run` を実行
