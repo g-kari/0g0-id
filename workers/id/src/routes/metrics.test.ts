@@ -289,6 +289,20 @@ describe('GET /api/metrics', () => {
     );
     expect(res.status).toBe(401);
   });
+
+  it('DB例外時に500を返す', async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(countUsers).mockRejectedValue(new Error('DB connection error'));
+
+    const res = await app.request(
+      makeRequest('/api/metrics', 'admin-token'),
+      undefined,
+      mockEnv as unknown as Record<string, string>
+    );
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+  });
 });
 
 describe('GET /api/metrics/login-trends', () => {
