@@ -1,5 +1,22 @@
 # TODO
 
+## Vite+ 導入・pre-commit フック設定（2026-04-12）
+
+- ✅ **Vite+ ツールチェーン移行**
+  - `vp migrate --no-interactive` で既存プロジェクトをVite+に移行
+  - `vitest` → `vite-plus/test` のimport自動書き換え（96ファイル）
+  - `vite` / `vitest` を `@voidzero-dev/vite-plus-core` / `@voidzero-dev/vite-plus-test` にoverride
+  - `vp fmt` でOxfmtによる全ファイルフォーマット適用
+  - `vp check` でlint（Oxlint）+ fmt（Oxfmt）+ typecheck（tsgolint）をエラー0に
+  - workers/*/vite.config.ts: `@cloudflare/vite-plugin` との型互換性修正（`UserConfig` 型キャスト）
+- ✅ **pre-commit フック設定**
+  - `vite.config.ts` に `staged` 設定追加（`vp check --fix` をステージファイルに実行）
+  - `.git/hooks/pre-commit` で `vp staged` + `vp test run` を実行
+- ✅ **CI ワークフロー更新**
+  - `.github/workflows/ci.yml` を `vp check` + `vp test run` に変更
+  - Vite+ CLI セットアップステップ追加
+- 全2180テスト合格、エラー0件
+
 ## コードレビュー・バグ修正（2026-04-12）
 
 - ✅ **MCPツール2件の挙動改善**
