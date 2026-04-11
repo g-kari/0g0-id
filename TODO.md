@@ -1,5 +1,16 @@
 # TODO
 
+## テストカバレッジ追加（2026-04-11）
+
+- ✅ **`packages/shared/src/lib/fetch-retry.test.ts`: fetchWithRetry の未テストケース6件追加**
+  - `fetch` が例外をスローした場合もリトライして成功するケース（1件）
+  - `fetch` が繰り返し例外をスローした場合は最終的にエラーをスロー（1件）
+  - 非Errorオブジェクトのスローは `Network error` としてラップされる（1件）
+  - `Retry-After` ヘッダー（秒数形式）: 指定秒数×1000ms をバックオフ遅延として使用（1件）
+  - `Retry-After` が60秒超の場合は60,000msにキャップ（1件）
+  - `Retry-After` が無効値の場合は calcBackoffDelay にフォールバック（1件）
+  - packages/shared: 654 → 660テスト（+6）、全2113テストパス
+
 ## リファクタリング（2026-04-11）
 
 - ✅ **`packages/shared/src/db/device-codes.ts`: deprecated な `updateDeviceCodePolledAt` 関数を削除**
