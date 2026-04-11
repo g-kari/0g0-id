@@ -2,6 +2,12 @@
 
 ## 機能追加（2026-04-12）
 
+- ✅ **MCP サービスユーザー管理ツール2件追加**
+  - `listServiceUsersTool` (`list_service_users`): サービス認可済みユーザー一覧をページネーション付きで取得
+  - `revokeServiceUserAccessTool` (`revoke_service_user_access`): 指定ユーザーの特定サービスへのアクセスを失効（監査ログ付き）
+  - テスト12件追加（mcp worker: 184 → 196テスト）
+  - `workers/mcp/src/tools/services.ts`, `services.test.ts`, `tools/index.ts`, `index.ts`, `index.test.ts` 更新
+
 - ✅ **MCP サービス管理ツール4件追加**
   - `updateServiceTool` (`update_service`): サービスのname・allowed_scopesを更新
   - `listRedirectUrisTool` (`list_redirect_uris`): リダイレクトURI一覧取得
