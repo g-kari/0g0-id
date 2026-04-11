@@ -1241,3 +1241,11 @@
   - `findUserIdByPairwiseSub`: user_id返却・null・bindパラメータ・SQL条件確認（4件）
   - `revokeTokenByIdForUser`: 件数・0件・reason有無・SQL条件確認（5件）
   - packages/shared: 625 → 649テスト（+24）、全2087テストパス
+
+## テストカバレッジ追加（2026-04-11）
+
+### 追加したテスト
+
+#### packages/shared/src/db/auth-codes.test.ts ✅
+- `cleanupExpiredAuthCodes`: 期限切れ・使用済みエントリ削除件数返却・削除0件・DELETE SQL条件確認・meta.changes undefined→0
+- 計 4テスト（packages/shared: 649 → 653テスト、全2095テストパス）
