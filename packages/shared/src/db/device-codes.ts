@@ -96,17 +96,6 @@ export async function tryUpdateDeviceCodePolledAt(
   return (result.meta?.changes ?? 0) > 0;
 }
 
-/** @deprecated tryUpdateDeviceCodePolledAt を使用してください */
-export async function updateDeviceCodePolledAt(
-  db: D1Database,
-  id: string
-): Promise<void> {
-  await db
-    .prepare(`UPDATE device_codes SET last_polled_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`)
-    .bind(id)
-    .run();
-}
-
 export async function deleteDeviceCode(db: D1Database, id: string): Promise<void> {
   await db.prepare(`DELETE FROM device_codes WHERE id = ?`).bind(id).run();
 }
