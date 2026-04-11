@@ -1,5 +1,14 @@
 # TODO
 
+## セキュリティ強化: user BFFパスパラメータバリデーション（2026-04-12）
+
+- ✅ **user BFFルートの未検証パスパラメータにバリデーション追加**
+  - `sessions/:sessionId`: UUID形式バリデーション追加（`UUID_RE`）、不正形式は400 BAD_REQUEST
+  - `connections/:serviceId`: UUID形式バリデーション追加（`UUID_RE`）、不正形式は400 BAD_REQUEST
+  - `providers/:provider`: `isValidProvider`バリデーション追加、無効プロバイダーは400 BAD_REQUEST
+  - 未検証の入力がIdP URLパスに直接挿入されていた防御層の不足を解消
+  - テスト7件追加（user worker: 196 → 203テスト）、全2188テスト通過
+
 ## セキュリティ修正（2026-04-12）
 
 - ✅ **serviceBindingMiddleware: 本番環境での INTERNAL_SERVICE_SECRET 未設定時ブロック**
