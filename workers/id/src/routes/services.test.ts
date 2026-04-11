@@ -68,6 +68,7 @@ import {
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
   revokeUserServiceTokens,
+  revokeAllServiceTokens,
   countServices,
   createAdminAuditLog,
   verifyAccessToken,
@@ -719,6 +720,7 @@ describe('DELETE /api/services/:id', () => {
     vi.mocked(findUserById).mockResolvedValue(mockAdminUser);
     vi.mocked(findServiceById).mockResolvedValue(mockService);
     vi.mocked(deleteService).mockResolvedValue();
+    vi.mocked(revokeAllServiceTokens).mockResolvedValue(3);
     vi.mocked(createAdminAuditLog).mockResolvedValue(undefined);
   });
 
@@ -737,6 +739,18 @@ describe('DELETE /api/services/:id', () => {
     expect(vi.mocked(deleteService)).toHaveBeenCalledWith(expect.anything(), 'service-1');
   });
 
+  it('削除前に全アクティブトークンを失効させる', async () => {
+    await sendRequest(app, '/api/services/service-1', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(vi.mocked(revokeAllServiceTokens)).toHaveBeenCalledWith(
+      expect.anything(),
+      'service-1',
+      'service_delete'
+    );
+  });
+
   it('サービスが存在しない場合 → 404を返す', async () => {
     vi.mocked(findServiceById).mockResolvedValue(null);
     const res = await sendRequest(app, '/api/services/no-such', {
@@ -748,7 +762,20 @@ describe('DELETE /api/services/:id', () => {
     expect(body.error.code).toBe('NOT_FOUND');
   });
 
-  it('サービス削除時に監査ログが記録される', async () => {
+  it('revokeAllServiceTokens が失敗した場合 → 500を返す', async () => {
+    vi.mocked(revokeAllServiceTokens).mockRejectedValue(new Error('DB error'));
+    const res = await sendRequest(app, '/api/services/service-1', {
+      method: 'DELETE',
+      origin: 'https://admin.0g0.xyz',
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+    // トークン失効エラー時はサービスを削除しない
+    expect(vi.mocked(deleteService)).not.toHaveBeenCalled();
+  });
+
+  it('サービス削除時に監査ログが記録される（revoked_token_count含む）', async () => {
     await sendRequest(app, '/api/services/service-1', {
       method: 'DELETE',
       origin: 'https://admin.0g0.xyz',
@@ -760,7 +787,7 @@ describe('DELETE /api/services/:id', () => {
         action: 'service.delete',
         targetType: 'service',
         targetId: 'service-1',
-        details: { name: 'Test Service' },
+        details: { name: 'Test Service', revoked_token_count: 3 },
       })
     );
   });
