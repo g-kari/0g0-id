@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createAuthCode, findAndConsumeAuthCode } from './auth-codes';
+import { createAuthCode, findAndConsumeAuthCode, cleanupExpiredAuthCodes } from './auth-codes';
 import type { AuthCode } from '../types';
 import { makeD1Mock } from './test-helpers';
 
@@ -94,5 +94,45 @@ describe('findAndConsumeAuthCode', () => {
 
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
     expect(stmt.bind).toHaveBeenCalledWith('hash-abc123');
+  });
+});
+
+describe('cleanupExpiredAuthCodes', () => {
+  it('期限切れ・使用済みエントリを削除して件数を返す', async () => {
+    const db = makeD1Mock(null, [], 3);
+    const count = await cleanupExpiredAuthCodes(db);
+    expect(count).toBe(3);
+  });
+
+  it('削除対象がない場合は 0 を返す', async () => {
+    const db = makeD1Mock(null, [], 0);
+    const count = await cleanupExpiredAuthCodes(db);
+    expect(count).toBe(0);
+  });
+
+  it('DELETE 文に auth_codes テーブルと expires_at/used_at の条件が含まれる', async () => {
+    const db = makeD1Mock(null, [], 1);
+    await cleanupExpiredAuthCodes(db);
+
+    expect(db.prepare).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM auth_codes')
+    );
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain('expires_at');
+    expect(sql).toContain('used_at IS NOT NULL');
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.run).toHaveBeenCalled();
+  });
+
+  it('meta.changes が undefined の場合は 0 を返す', async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue(null),
+      run: vi.fn().mockResolvedValue({ meta: {} }), // changes 未定義
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt), _stmt: stmt } as unknown as D1Database & { _stmt: typeof stmt };
+    const count = await cleanupExpiredAuthCodes(db);
+    expect(count).toBe(0);
   });
 });
