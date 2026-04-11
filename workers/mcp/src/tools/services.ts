@@ -436,11 +436,19 @@ export const addRedirectUriTool: McpTool = {
       return { content: [{ type: 'text', text: 'サービスが見つかりません' }], isError: true };
     }
 
-    const added = await addRedirectUri(context.db, {
-      id: crypto.randomUUID(),
-      serviceId,
-      uri: normalized,
-    });
+    let added;
+    try {
+      added = await addRedirectUri(context.db, {
+        id: crypto.randomUUID(),
+        serviceId,
+        uri: normalized,
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('UNIQUE constraint failed')) {
+        return { content: [{ type: 'text', text: 'そのリダイレクトURIは既に登録されています' }], isError: true };
+      }
+      throw err;
+    }
 
     await createAdminAuditLog(context.db, {
       adminUserId: context.userId,
@@ -601,8 +609,7 @@ export const revokeServiceUserAccessTool: McpTool = {
     const revokedCount = await revokeUserServiceTokens(context.db, userId, serviceId, 'admin_action');
     if (revokedCount === 0) {
       return {
-        content: [{ type: 'text', text: `ユーザー ${user.name} (${user.email}) はサービス "${service.name}" へのアクティブなアクセスを持っていません` }],
-        isError: true,
+        content: [{ type: 'text', text: `ユーザー ${user.name} (${user.email}) はサービス "${service.name}" へのアクティブなトークンを持っていません（既に失効済みまたは未認可）` }],
       };
     }
 

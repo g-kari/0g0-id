@@ -536,6 +536,33 @@ describe('addRedirectUriTool', () => {
     expect(result.isError).toBe(true);
     expect(vi.mocked(addRedirectUri)).not.toHaveBeenCalled();
   });
+
+  it('重複URIの場合はエラー（UNIQUE制約違反）', async () => {
+    vi.mocked(normalizeRedirectUri).mockReturnValue('https://example.com/callback');
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(addRedirectUri).mockRejectedValue(new Error('UNIQUE constraint failed'));
+
+    const result = await addRedirectUriTool.handler(
+      { service_id: 'svc-1', uri: 'https://example.com/callback' },
+      mockContext,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('既に登録されています');
+    expect(vi.mocked(createAdminAuditLog)).not.toHaveBeenCalled();
+  });
+
+  it('UNIQUE制約以外のDB例外はそのままthrowする', async () => {
+    vi.mocked(normalizeRedirectUri).mockReturnValue('https://example.com/callback');
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(addRedirectUri).mockRejectedValue(new Error('D1_ERROR: database is locked'));
+
+    await expect(
+      addRedirectUriTool.handler(
+        { service_id: 'svc-1', uri: 'https://example.com/callback' },
+        mockContext,
+      ),
+    ).rejects.toThrow('D1_ERROR: database is locked');
+  });
 });
 
 // ===== delete_redirect_uri =====
@@ -785,7 +812,7 @@ describe('revokeServiceUserAccessTool', () => {
     expect(vi.mocked(revokeUserServiceTokens)).not.toHaveBeenCalled();
   });
 
-  it('アクティブなトークンがない場合はエラー（監査ログなし）', async () => {
+  it('アクティブなトークンがない場合は成功レスポンス（監査ログなし）', async () => {
     vi.mocked(findServiceById).mockResolvedValue(mockService as never);
     vi.mocked(findUserById).mockResolvedValue(mockUser as never);
     vi.mocked(revokeUserServiceTokens).mockResolvedValue(0);
@@ -794,7 +821,8 @@ describe('revokeServiceUserAccessTool', () => {
       { service_id: 'svc-1', user_id: 'user-1' },
       mockContext,
     );
-    expect(result.isError).toBe(true);
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toContain('アクティブなトークンを持っていません');
     expect(vi.mocked(createAdminAuditLog)).not.toHaveBeenCalled();
   });
 });
