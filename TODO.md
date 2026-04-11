@@ -1,5 +1,11 @@
 # TODO
 
+## リファクタリング（2026-04-11）
+
+- ✅ **`packages/shared/src/db/device-codes.ts`: deprecated な `updateDeviceCodePolledAt` 関数を削除**
+  - `tryUpdateDeviceCodePolledAt` が実装されて以降、コードベース全体でどこからも参照されていなかったため削除
+  - 全2091テスト・型チェックともにパス
+
 ## テストカバレッジ追加（2026-04-11）
 
 - ✅ **`workers/mcp/src/index.test.ts`: MCPワーカー index のユニットテスト4件追加**
