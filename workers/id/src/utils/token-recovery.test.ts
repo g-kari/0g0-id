@@ -64,4 +64,10 @@ describe('attemptUnrevokeToken', () => {
     await expect(attemptUnrevokeToken(mockDb, 'token-1', '[test]')).resolves.toBeUndefined();
     expect(unrevokeRefreshToken).not.toHaveBeenCalled();
   });
+
+  it('unrevokeRefreshToken が例外を投げても reject せず resolve する', async () => {
+    vi.mocked(findRefreshTokenById).mockResolvedValue(makeToken('rotation'));
+    vi.mocked(unrevokeRefreshToken).mockRejectedValue(new Error('unrevoke failed'));
+    await expect(attemptUnrevokeToken(mockDb, 'token-1', '[test]')).resolves.toBeUndefined();
+  });
 });
