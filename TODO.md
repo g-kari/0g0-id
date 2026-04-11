@@ -1,5 +1,13 @@
 # TODO
 
+## CI/CD 追加（2026-04-12）
+
+- ✅ **GitHub Actions CI ワークフロー追加**
+  - `.github/workflows/ci.yml` 作成
+  - push/PR 時に型チェック（`npm run typecheck`）とテスト（`npm test`）を自動実行
+  - Node.js 22 + npm ci でセットアップ
+  - dependabot.yml で `github-actions` エコシステムの自動更新も設定済み
+
 ## 機能追加（2026-04-12）
 
 - ✅ **MCP サービスユーザー管理ツール2件追加**
