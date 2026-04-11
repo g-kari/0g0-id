@@ -194,5 +194,59 @@ describe('admin BFF — /api/audit-logs', () => {
 
       expect(res.status).toBe(500);
     });
+
+    it('不正なUUID形式のadmin_user_id → 400を返し、IdP未呼び出し', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/audit-logs?admin_user_id=invalid-uuid', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('BAD_REQUEST');
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('不正なUUID形式のtarget_id → 400を返し、IdP未呼び出し', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/audit-logs?target_id=not-a-uuid', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('BAD_REQUEST');
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('不正な形式のaction（大文字含む）→ 400を返し、IdP未呼び出し', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/audit-logs?action=INVALID_FORMAT', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe('BAD_REQUEST');
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it('limit=0 → 400を返す', async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request('/api/audit-logs?limit=0', {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(400);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
   });
 });
