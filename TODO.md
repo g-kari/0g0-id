@@ -1,5 +1,13 @@
 # TODO
 
+## コードレビュー・バグ修正（2026-04-12）
+
+- ✅ **MCPツール2件の挙動改善**
+  - `addRedirectUriTool`: UNIQUE制約違反（重複URI追加）時に未ハンドリング例外が発生する問題を修正。try/catchで`UNIQUE constraint failed`をキャッチし、ユーザーフレンドリーなエラーメッセージを返すように。それ以外のDB例外はre-throw
+  - `revokeServiceUserAccessTool`: トークン0件の失効を`isError: true`として返していた問題を修正。トークンが既に失効済み・未認可の場合は正常レスポンス（`isError`なし）に変更
+  - テスト追加: 重複URI挿入テスト・非UNIQUE例外のre-throwテスト・トークン0件の成功レスポンステスト（+2テスト、mcp worker: 196 → 198テスト）
+  - `workers/mcp/src/tools/services.ts`, `services.test.ts` 更新
+
 ## CI/CD 追加（2026-04-12）
 
 - ✅ **GitHub Actions CI ワークフロー追加**
