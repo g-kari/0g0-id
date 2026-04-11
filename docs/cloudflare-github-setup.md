@@ -81,6 +81,59 @@ echo "admin@0g0.xyz" | npx wrangler secret put BOOTSTRAP_ADMIN_EMAIL
 
 ---
 
+## 3.5. GitHub OAuth プロバイダーの設定（オプション）
+
+GitHub ログイン/アカウント連携を有効化する場合のみ実施してください。Google 認証のみ使う場合はスキップ可能です。
+
+### GitHub OAuth App の作成
+
+> **注意:** **GitHub Apps** ではなく **OAuth Apps** を使用してください。
+
+1. GitHub にログインし [https://github.com/settings/developers](https://github.com/settings/developers) を開く
+2. 「OAuth Apps」→「New OAuth App」をクリック
+3. 以下の値を入力:
+
+| フィールド | 設定値 |
+|---|---|
+| Application name | `0g0-id`（任意） |
+| Homepage URL | `https://id.0g0.xyz` |
+| Authorization callback URL | `https://id.0g0.xyz/auth/callback` |
+
+4. 「Register application」をクリック
+5. 作成後の画面で「Generate a new client secret」をクリックし **Client Secret** を生成
+6. **Client ID** と **Client Secret** をメモしておく（Client Secret はこの画面でしか確認できません）
+
+> ローカル開発用に別の OAuth App を作成し、callback URL を `http://localhost:8787/auth/callback` に設定することを推奨します。
+
+### Cloudflare Workers へのシークレット設定
+
+`workers/id` ディレクトリで実行:
+
+```bash
+cd workers/id
+
+echo "<GitHub OAuth App の Client ID>" | npx wrangler secret put GITHUB_CLIENT_ID
+echo "<GitHub OAuth App の Client Secret>" | npx wrangler secret put GITHUB_CLIENT_SECRET
+```
+
+| シークレット名 | 説明 |
+|---|---|
+| `GITHUB_CLIENT_ID` | GitHub OAuth App の Client ID |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth App の Client Secret |
+
+> **重要:** `GITHUB_CLIENT_ID` と `GITHUB_CLIENT_SECRET` は**両方セット**してください。片方だけ設定すると起動時のバリデーションエラー（`GitHub の CLIENT_ID と CLIENT_SECRET は両方設定してください`）でリクエストが全て 503 になります。
+
+### ローカル開発時の `.dev.vars` への追記
+
+`workers/id/.dev.vars` に以下を追加:
+
+```
+GITHUB_CLIENT_ID=<ローカル開発用 Client ID>
+GITHUB_CLIENT_SECRET=<ローカル開発用 Client Secret>
+```
+
+---
+
 ## 4. GitHub リポジトリ接続（Cloudflare Dashboard）
 
 同じリポジトリを 3 つの Worker それぞれに接続します。
