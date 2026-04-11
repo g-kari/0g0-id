@@ -1,5 +1,14 @@
 # TODO
 
+## セキュリティ強化: admin BFF servicesパスパラメータバリデーション（2026-04-12）
+
+- ✅ **admin BFF servicesルートの未検証パスパラメータにバリデーション追加**
+  - `:id`（サービスID）: UUID形式バリデーションミドルウェア追加（`/:id` + `/:id/*` の両方）、不正形式は400 BAD_REQUEST
+  - `:userId`（ユーザーID）: DELETE `/:id/users/:userId` にUUID形式バリデーション追加
+  - `:uriId`（URI ID）: DELETE `/:id/redirect-uris/:uriId` にUUID形式バリデーション追加
+  - user BFF同様、未検証の入力がIdP URLパスに直接挿入されていた防御層の不足を解消
+  - テスト4件追加（admin services: 41 → 45テスト）、全2192テスト通過
+
 ## セキュリティ強化: user BFFパスパラメータバリデーション（2026-04-12）
 
 - ✅ **user BFFルートの未検証パスパラメータにバリデーション追加**
