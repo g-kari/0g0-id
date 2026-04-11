@@ -2,6 +2,14 @@
 
 ## テストカバレッジ追加（2026-04-11）
 
+- ✅ **`workers/id/src/routes/users.test.ts`: GET /api/users の banned フィルターテスト3件追加**
+  - `banned=true` → `filter.banned=true` として `listUsers`/`countUsers` に渡す（1件）
+  - `banned=false` → `filter.banned=false` として渡す（1件）
+  - `banned=maybe` など不正値 → `filter.banned` を設定しない（1件）
+  - id worker: 898 → 901テスト（+3）、全テストパス
+
+## テストカバレッジ追加（2026-04-11）
+
 - ✅ **`packages/shared/src/lib/fetch-retry.test.ts`: fetchWithRetry の未テストケース6件追加**
   - `fetch` が例外をスローした場合もリトライして成功するケース（1件）
   - `fetch` が繰り返し例外をスローした場合は最終的にエラーをスロー（1件）
