@@ -2,6 +2,14 @@
 
 ## テストカバレッジ追加（2026-04-11）
 
+- ✅ **`workers/admin/src/routes/users.test.ts`: admin users ルートの未テストエラーケース3件追加**
+  - `GET /:id/login-history`: 不正なprovider（`invalid-provider`）→ 400 BAD_REQUEST・IdP未呼び出し（1件）
+  - `GET /:id/login-stats`: 不正なdays（`invalid`）→ 400 INVALID_PARAMETER・IdP未呼び出し（1件）
+  - `GET /:id/login-trends`: 不正なdays（`invalid`）→ 400 INVALID_PARAMETER・IdP未呼び出し（1件）
+  - admin worker: 93 → 96テスト（+3）、全テストパス
+
+## テストカバレッジ追加（2026-04-11）
+
 - ✅ **`workers/id/src/routes/services.test.ts`: DELETE /api/services/:id の revokeAllServiceTokens 検証2件追加**
   - `revokeAllServiceTokens` import 追加・beforeEach でモック戻り値設定（3件）
   - 削除前にトークン失効が呼ばれることを検証するテスト追加（1件）
