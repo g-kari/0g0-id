@@ -1,6 +1,13 @@
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
-import { fetchWithAuth, proxyMutate, proxyResponse, parseSession, sha256 } from "@0g0-id/shared";
+import {
+  fetchWithAuth,
+  proxyMutate,
+  proxyResponse,
+  parseSession,
+  sha256,
+  UUID_RE,
+} from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
 import { SESSION_COOKIE } from "./auth";
 
@@ -37,11 +44,11 @@ app.delete("/others", async (c) => {
 
 // DELETE /api/me/sessions/:sessionId — 特定セッションのみログアウト
 app.delete("/:sessionId", async (c) => {
-  return proxyMutate(
-    c,
-    SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/users/me/tokens/${c.req.param("sessionId")}`,
-  );
+  const sessionId = c.req.param("sessionId");
+  if (!UUID_RE.test(sessionId)) {
+    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid session ID format" } }, 400);
+  }
+  return proxyMutate(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/me/tokens/${sessionId}`);
 });
 
 // DELETE /api/me/sessions — 全デバイスからログアウト（全リフレッシュトークン無効化）

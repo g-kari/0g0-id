@@ -104,6 +104,28 @@ describe("user BFF — /api/providers", () => {
   });
 
   describe("DELETE /:provider — プロバイダー連携解除", () => {
+    it("無効なプロバイダー名で400を返す（IdP未呼び出し）", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/providers/facebook", { method: "DELETE" });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe("BAD_REQUEST");
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("空文字列のプロバイダー名で400を返す（IdP未呼び出し）", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/providers/Twitter", { method: "DELETE" });
+
+      expect(res.status).toBe(400);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
     it("セッションなしで401を返す", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);

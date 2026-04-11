@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { fetchWithAuth, proxyMutate, proxyResponse } from "@0g0-id/shared";
+import { fetchWithAuth, proxyMutate, proxyResponse, UUID_RE } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
 import { SESSION_COOKIE } from "./auth";
 
@@ -17,10 +17,14 @@ app.get("/", async (c) => {
 
 // DELETE /api/connections/:serviceId
 app.delete("/:serviceId", async (c) => {
+  const serviceId = c.req.param("serviceId");
+  if (!UUID_RE.test(serviceId)) {
+    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid service ID format" } }, 400);
+  }
   return proxyMutate(
     c,
     SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/users/me/connections/${c.req.param("serviceId")}`,
+    `${c.env.IDP_ORIGIN}/api/users/me/connections/${serviceId}`,
   );
 });
 

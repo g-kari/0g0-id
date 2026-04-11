@@ -109,11 +109,37 @@ describe("user BFF — /api/me/sessions", () => {
   });
 
   describe("DELETE /:sessionId — 特定セッションのみログアウト", () => {
+    it("不正なsessionId形式で400を返す（IdP未呼び出し）", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/me/sessions/not-a-uuid", { method: "DELETE" });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe("BAD_REQUEST");
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("UUID風だが不正な形式のsessionIdで400を返す（IdP未呼び出し）", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/me/sessions/550e8400-e29b-41d4-a716-ZZZZZZZZZZZZ", {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(400);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
     it("セッションなしで401を返す", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/me/sessions/token-abc", { method: "DELETE" });
+      const res = await app.request("/api/me/sessions/550e8400-e29b-41d4-a716-446655440000", {
+        method: "DELETE",
+      });
 
       expect(res.status).toBe(401);
       expect(idpFetch).not.toHaveBeenCalled();
@@ -123,7 +149,7 @@ describe("user BFF — /api/me/sessions", () => {
       const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/me/sessions/token-abc", {
+      const res = await app.request("/api/me/sessions/550e8400-e29b-41d4-a716-446655440000", {
         method: "DELETE",
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
@@ -135,21 +161,23 @@ describe("user BFF — /api/me/sessions", () => {
       const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
       const app = buildApp(idpFetch);
 
-      await app.request("/api/me/sessions/token-abc", {
+      await app.request("/api/me/sessions/550e8400-e29b-41d4-a716-446655440000", {
         method: "DELETE",
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
       expect(calledReq.method).toBe("DELETE");
-      expect(calledReq.url).toBe("https://id.0g0.xyz/api/users/me/tokens/token-abc");
+      expect(calledReq.url).toBe(
+        "https://id.0g0.xyz/api/users/me/tokens/550e8400-e29b-41d4-a716-446655440000",
+      );
     });
 
     it("AuthorizationヘッダーにアクセストークンをBearerで付与する", async () => {
       const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
       const app = buildApp(idpFetch);
 
-      await app.request("/api/me/sessions/token-abc", {
+      await app.request("/api/me/sessions/550e8400-e29b-41d4-a716-446655440000", {
         method: "DELETE",
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
@@ -162,7 +190,7 @@ describe("user BFF — /api/me/sessions", () => {
       const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
       const app = buildApp(idpFetch);
 
-      await app.request("/api/me/sessions/token-abc", {
+      await app.request("/api/me/sessions/550e8400-e29b-41d4-a716-446655440000", {
         method: "DELETE",
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
@@ -183,7 +211,7 @@ describe("user BFF — /api/me/sessions", () => {
       );
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/me/sessions/no-such-token", {
+      const res = await app.request("/api/me/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", {
         method: "DELETE",
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });

@@ -98,11 +98,37 @@ describe("user BFF — /api/connections", () => {
   });
 
   describe("DELETE /:serviceId — サービス連携解除", () => {
+    const validServiceId = "550e8400-e29b-41d4-a716-446655440000";
+
+    it("不正なserviceId形式で400を返す（IdP未呼び出し）", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/connections/not-a-uuid", { method: "DELETE" });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe("BAD_REQUEST");
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("UUID風だが不正な形式のserviceIdで400を返す（IdP未呼び出し）", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/connections/550e8400-e29b-41d4-a716-ZZZZZZZZZZZZ", {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(400);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
     it("セッションなしで401を返す", async () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/connections/service-1", { method: "DELETE" });
+      const res = await app.request(`/api/connections/${validServiceId}`, { method: "DELETE" });
 
       expect(res.status).toBe(401);
       expect(idpFetch).not.toHaveBeenCalled();
@@ -112,7 +138,7 @@ describe("user BFF — /api/connections", () => {
       const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/connections/service-1", {
+      const res = await app.request(`/api/connections/${validServiceId}`, {
         method: "DELETE",
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
@@ -121,29 +147,28 @@ describe("user BFF — /api/connections", () => {
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
       expect(calledReq.method).toBe("DELETE");
-      expect(calledReq.url).toBe("https://id.0g0.xyz/api/users/me/connections/service-1");
+      expect(calledReq.url).toBe(`https://id.0g0.xyz/api/users/me/connections/${validServiceId}`);
     });
 
     it("serviceIdをIdPのURLに正しく含める", async () => {
+      const otherId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
       const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
       const app = buildApp(idpFetch);
 
-      await app.request("/api/connections/specific-service-xyz", {
+      await app.request(`/api/connections/${otherId}`, {
         method: "DELETE",
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
 
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
-      expect(calledReq.url).toBe(
-        "https://id.0g0.xyz/api/users/me/connections/specific-service-xyz",
-      );
+      expect(calledReq.url).toBe(`https://id.0g0.xyz/api/users/me/connections/${otherId}`);
     });
 
     it("Originヘッダーを付与してIdPに送信する", async () => {
       const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
       const app = buildApp(idpFetch);
 
-      await app.request("/api/connections/service-1", {
+      await app.request(`/api/connections/${validServiceId}`, {
         method: "DELETE",
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
@@ -156,7 +181,7 @@ describe("user BFF — /api/connections", () => {
       const idpFetch = mockIdp(404, { error: { code: "NOT_FOUND" } });
       const app = buildApp(idpFetch);
 
-      const res = await app.request("/api/connections/nonexistent-service", {
+      const res = await app.request(`/api/connections/${validServiceId}`, {
         method: "DELETE",
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
@@ -168,7 +193,7 @@ describe("user BFF — /api/connections", () => {
       const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
       const app = buildApp(idpFetch);
 
-      await app.request("/api/connections/service-1", {
+      await app.request(`/api/connections/${validServiceId}`, {
         method: "DELETE",
         headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
       });
