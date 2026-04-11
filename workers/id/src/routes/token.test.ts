@@ -39,7 +39,6 @@ vi.mock("@0g0-id/shared", () => ({
 import {
   findRefreshTokenByHash,
   findServiceByClientId,
-  findServiceById,
   findUserById,
   revokeRefreshToken,
   sha256,

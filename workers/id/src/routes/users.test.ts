@@ -79,7 +79,6 @@ import {
   listUserConnections,
   revokeUserServiceTokens,
   revokeUserTokens,
-  deleteMcpSessionsByUser,
   revokeTokenByIdForUser,
   revokeOtherUserTokens,
   listActiveSessionsByUserId,
@@ -92,7 +91,6 @@ import {
   getUserDailyLoginTrends,
   banUser,
   unbanUser,
-  createAdminAuditLog,
   verifyAccessToken,
   type UserFilter,
 } from "@0g0-id/shared";

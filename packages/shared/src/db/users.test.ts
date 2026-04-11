@@ -462,7 +462,6 @@ describe("upsertXUser", () => {
 
 describe("listUsers", () => {
   it("ユーザー一覧を返す", async () => {
-    const db = makeD1Mock(null);
     // all()の結果をモックに含める
     const stmt = {
       bind: vi.fn().mockReturnThis(),

@@ -298,7 +298,7 @@ describe("createMcpRoutes - GET /mcp", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toContain("text/event-stream");
     // SSEストリームは閉じないため、ヘッダーのみ確認してボディ読み取りはスキップ
-    res.body?.cancel();
+    void res.body?.cancel();
   });
 });
 
