@@ -24,6 +24,7 @@
     "vite-plus": "latest"
   },
   "overrides": {
+    "esbuild": "^0.28.0",
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",
     "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
   },
