@@ -53,6 +53,8 @@ vi.mock('./tools', () => ({
   listRedirectUrisTool: {},
   addRedirectUriTool: {},
   deleteRedirectUriTool: {},
+  listServiceUsersTool: {},
+  revokeServiceUserAccessTool: {},
   getAuditLogsTool: {},
   getAuditStatsTool: {},
   getSystemMetricsTool: {},
