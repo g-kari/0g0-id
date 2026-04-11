@@ -2,6 +2,15 @@
 
 ## テストカバレッジ追加（2026-04-11）
 
+- ✅ **`workers/id/src/routes/services.test.ts`: DELETE /api/services/:id の revokeAllServiceTokens 検証2件追加**
+  - `revokeAllServiceTokens` import 追加・beforeEach でモック戻り値設定（3件）
+  - 削除前にトークン失効が呼ばれることを検証するテスト追加（1件）
+  - `revokeAllServiceTokens` 例外時に 500 かつ `deleteService` 未呼び出しを検証（1件）
+  - 監査ログの `details` に `revoked_token_count` が含まれることを検証するよう修正
+  - id worker: 901 → 903テスト（+2）、全2118テストパス
+
+## テストカバレッジ追加（2026-04-11）
+
 - ✅ **`workers/id/src/routes/users.test.ts`: GET /api/users の banned フィルターテスト3件追加**
   - `banned=true` → `filter.banned=true` として `listUsers`/`countUsers` に渡す（1件）
   - `banned=false` → `filter.banned=false` として渡す（1件）
