@@ -15,6 +15,16 @@
   - `onError` ハンドラ: 未処理例外で500 + INTERNAL_ERROR（1件）
   - mcp worker: 159 → 163テスト（+4）、全2091テストパス
 
+## テストカバレッジ追加（2026-04-11）
+
+- ✅ **`admin.test.ts`: adminMiddleware セキュリティ境界ケース4件追加**
+  - `jti` が未設定のトークン → 401 UNAUTHORIZED
+  - 失効済みトークン (`isAccessTokenRevoked=true`) → 401 UNAUTHORIZED
+  - BAN済み管理者 (`banned_at != null`) → 401 UNAUTHORIZED
+  - `findUserById` が null（ユーザー未存在）→ 401 UNAUTHORIZED
+  - `beforeEach` でモックをリセットし、各テストが独立した状態で実行されるよう整備
+  - id worker: 894 → 898テスト（+4）、全テストパス
+
 ## 残課題（要対応）
 
 なし
