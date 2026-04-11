@@ -7,6 +7,12 @@ import {
   deleteService,
   revokeAllServiceTokens,
   rotateClientSecret,
+  updateServiceFields,
+  listRedirectUris,
+  addRedirectUri,
+  findRedirectUriById,
+  deleteRedirectUri,
+  normalizeRedirectUri,
   generateClientId,
   generateClientSecret,
   sha256,
@@ -276,6 +282,223 @@ export const rotateServiceSecretTool: McpTool = {
           text: `シークレットをローテーションしました。新しい client_secret は以下のレスポンスのみで返却されます（再取得不可）。\n\n${JSON.stringify(result, null, 2)}`,
         },
       ],
+    };
+  },
+};
+
+export const updateServiceTool: McpTool = {
+  definition: {
+    name: 'update_service',
+    description: 'サービスの名前または許可スコープを更新する',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        service_id: { type: 'string', description: 'サービスID' },
+        name: { type: 'string', description: '新しいサービス名（省略可）' },
+        allowed_scopes: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '許可するスコープの配列（省略可）。例: ["openid", "profile", "email"]',
+        },
+      },
+      required: ['service_id'],
+    },
+  },
+  handler: async (params, context) => {
+    const serviceId = params.service_id;
+    if (typeof serviceId !== 'string' || serviceId.length === 0) {
+      return { content: [{ type: 'text', text: 'service_id は必須です' }], isError: true };
+    }
+
+    const service = await findServiceById(context.db, serviceId);
+    if (!service) {
+      return { content: [{ type: 'text', text: 'サービスが見つかりません' }], isError: true };
+    }
+
+    const name = typeof params.name === 'string' && params.name.length > 0 ? params.name : undefined;
+    const allowedScopes = Array.isArray(params.allowed_scopes)
+      ? JSON.stringify(params.allowed_scopes as string[])
+      : undefined;
+
+    if (!name && !allowedScopes) {
+      return {
+        content: [{ type: 'text', text: 'name または allowed_scopes のいずれかを指定してください' }],
+        isError: true,
+      };
+    }
+
+    const updated = await updateServiceFields(context.db, serviceId, {
+      ...(name ? { name } : {}),
+      ...(allowedScopes ? { allowedScopes } : {}),
+    });
+
+    if (!updated) {
+      return { content: [{ type: 'text', text: 'サービスの更新に失敗しました' }], isError: true };
+    }
+
+    await createAdminAuditLog(context.db, {
+      adminUserId: context.userId,
+      action: 'service.update',
+      targetType: 'service',
+      targetId: serviceId,
+      details: {
+        ...(name ? { name } : {}),
+        ...(params.allowed_scopes ? { allowed_scopes: params.allowed_scopes } : {}),
+      },
+    });
+
+    const result = {
+      id: updated.id,
+      name: updated.name,
+      client_id: updated.client_id,
+      allowed_scopes: updated.allowed_scopes,
+      owner_user_id: updated.owner_user_id,
+      updated_at: updated.updated_at,
+    };
+
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  },
+};
+
+export const listRedirectUrisTool: McpTool = {
+  definition: {
+    name: 'list_redirect_uris',
+    description: 'サービスに登録されているリダイレクトURIの一覧を取得する',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        service_id: { type: 'string', description: 'サービスID' },
+      },
+      required: ['service_id'],
+    },
+  },
+  handler: async (params, context) => {
+    const serviceId = params.service_id;
+    if (typeof serviceId !== 'string' || serviceId.length === 0) {
+      return { content: [{ type: 'text', text: 'service_id は必須です' }], isError: true };
+    }
+
+    const service = await findServiceById(context.db, serviceId);
+    if (!service) {
+      return { content: [{ type: 'text', text: 'サービスが見つかりません' }], isError: true };
+    }
+
+    const uris = await listRedirectUris(context.db, serviceId);
+    const result = {
+      service_id: serviceId,
+      service_name: service.name,
+      redirect_uris: uris,
+      total: uris.length,
+    };
+
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  },
+};
+
+export const addRedirectUriTool: McpTool = {
+  definition: {
+    name: 'add_redirect_uri',
+    description: 'サービスにリダイレクトURIを追加する（https必須、localhostのみhttp可、フラグメント禁止）',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        service_id: { type: 'string', description: 'サービスID' },
+        uri: { type: 'string', description: '追加するリダイレクトURI' },
+      },
+      required: ['service_id', 'uri'],
+    },
+  },
+  handler: async (params, context) => {
+    const serviceId = params.service_id;
+    if (typeof serviceId !== 'string' || serviceId.length === 0) {
+      return { content: [{ type: 'text', text: 'service_id は必須です' }], isError: true };
+    }
+
+    const uri = params.uri;
+    if (typeof uri !== 'string' || uri.length === 0) {
+      return { content: [{ type: 'text', text: 'uri は必須です' }], isError: true };
+    }
+
+    const normalized = normalizeRedirectUri(uri);
+    if (!normalized) {
+      return {
+        content: [{ type: 'text', text: '無効なリダイレクトURIです（https必須、フラグメント禁止、localhostのみhttp可）' }],
+        isError: true,
+      };
+    }
+
+    const service = await findServiceById(context.db, serviceId);
+    if (!service) {
+      return { content: [{ type: 'text', text: 'サービスが見つかりません' }], isError: true };
+    }
+
+    const added = await addRedirectUri(context.db, {
+      id: crypto.randomUUID(),
+      serviceId,
+      uri: normalized,
+    });
+
+    await createAdminAuditLog(context.db, {
+      adminUserId: context.userId,
+      action: 'service.redirect_uri_added',
+      targetType: 'service',
+      targetId: serviceId,
+      details: { uri: normalized },
+    });
+
+    return { content: [{ type: 'text', text: JSON.stringify(added, null, 2) }] };
+  },
+};
+
+export const deleteRedirectUriTool: McpTool = {
+  definition: {
+    name: 'delete_redirect_uri',
+    description: 'サービスからリダイレクトURIを削除する',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        service_id: { type: 'string', description: 'サービスID' },
+        uri_id: { type: 'string', description: '削除するリダイレクトURIのID' },
+      },
+      required: ['service_id', 'uri_id'],
+    },
+  },
+  handler: async (params, context) => {
+    const serviceId = params.service_id;
+    if (typeof serviceId !== 'string' || serviceId.length === 0) {
+      return { content: [{ type: 'text', text: 'service_id は必須です' }], isError: true };
+    }
+
+    const uriId = params.uri_id;
+    if (typeof uriId !== 'string' || uriId.length === 0) {
+      return { content: [{ type: 'text', text: 'uri_id は必須です' }], isError: true };
+    }
+
+    const service = await findServiceById(context.db, serviceId);
+    if (!service) {
+      return { content: [{ type: 'text', text: 'サービスが見つかりません' }], isError: true };
+    }
+
+    const existing = await findRedirectUriById(context.db, uriId, serviceId);
+    if (!existing) {
+      return { content: [{ type: 'text', text: 'リダイレクトURIが見つかりません' }], isError: true };
+    }
+
+    const changes = await deleteRedirectUri(context.db, uriId, serviceId);
+    if (changes === 0) {
+      return { content: [{ type: 'text', text: 'リダイレクトURIの削除に失敗しました' }], isError: true };
+    }
+
+    await createAdminAuditLog(context.db, {
+      adminUserId: context.userId,
+      action: 'service.redirect_uri_deleted',
+      targetType: 'service',
+      targetId: serviceId,
+      details: { uri: existing.uri },
+    });
+
+    return {
+      content: [{ type: 'text', text: `リダイレクトURI "${existing.uri}" を削除しました。` }],
     };
   },
 };

@@ -8,6 +8,12 @@ vi.mock('@0g0-id/shared', () => ({
   deleteService: vi.fn(),
   revokeAllServiceTokens: vi.fn(),
   rotateClientSecret: vi.fn(),
+  updateServiceFields: vi.fn(),
+  listRedirectUris: vi.fn(),
+  addRedirectUri: vi.fn(),
+  findRedirectUriById: vi.fn(),
+  deleteRedirectUri: vi.fn(),
+  normalizeRedirectUri: vi.fn(),
   generateClientId: vi.fn(),
   generateClientSecret: vi.fn(),
   sha256: vi.fn(),
@@ -22,6 +28,12 @@ import {
   deleteService,
   revokeAllServiceTokens,
   rotateClientSecret,
+  updateServiceFields,
+  listRedirectUris,
+  addRedirectUri,
+  findRedirectUriById,
+  deleteRedirectUri,
+  normalizeRedirectUri,
   generateClientId,
   generateClientSecret,
   sha256,
@@ -32,8 +44,12 @@ import {
   listServicesTool,
   getServiceTool,
   createServiceTool,
+  updateServiceTool,
   deleteServiceTool,
   rotateServiceSecretTool,
+  listRedirectUrisTool,
+  addRedirectUriTool,
+  deleteRedirectUriTool,
 } from './services';
 import type { McpContext } from '../mcp';
 
@@ -313,6 +329,282 @@ describe('rotateServiceSecretTool', () => {
     vi.mocked(rotateClientSecret).mockResolvedValue(null as never);
 
     const result = await rotateServiceSecretTool.handler({ service_id: 'svc-1' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(createAdminAuditLog)).not.toHaveBeenCalled();
+  });
+});
+
+// ===== update_service =====
+describe('updateServiceTool', () => {
+  const updatedService = { ...mockService, name: 'Updated Name', updated_at: '2024-06-01T00:00:00Z' };
+
+  it('nameを更新する', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(updateServiceFields).mockResolvedValue(updatedService as never);
+
+    const result = await updateServiceTool.handler({ service_id: 'svc-1', name: 'Updated Name' }, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.name).toBe('Updated Name');
+    expect(vi.mocked(updateServiceFields)).toHaveBeenCalledWith(
+      mockContext.db,
+      'svc-1',
+      expect.objectContaining({ name: 'Updated Name' }),
+    );
+    expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
+      mockContext.db,
+      expect.objectContaining({ action: 'service.update', targetId: 'svc-1' }),
+    );
+  });
+
+  it('allowed_scopesを更新する', async () => {
+    const scopeUpdated = { ...mockService, allowed_scopes: '["openid","email"]' };
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(updateServiceFields).mockResolvedValue(scopeUpdated as never);
+
+    const result = await updateServiceTool.handler(
+      { service_id: 'svc-1', allowed_scopes: ['openid', 'email'] },
+      mockContext,
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(vi.mocked(updateServiceFields)).toHaveBeenCalledWith(
+      mockContext.db,
+      'svc-1',
+      expect.objectContaining({ allowedScopes: '["openid","email"]' }),
+    );
+  });
+
+  it('nameもallowed_scopesも未指定はエラー', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+
+    const result = await updateServiceTool.handler({ service_id: 'svc-1' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(updateServiceFields)).not.toHaveBeenCalled();
+  });
+
+  it('service_id未指定はエラー', async () => {
+    const result = await updateServiceTool.handler({}, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(updateServiceFields)).not.toHaveBeenCalled();
+  });
+
+  it('サービスが見つからない場合はエラー', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(null);
+
+    const result = await updateServiceTool.handler({ service_id: 'nonexistent', name: 'X' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(updateServiceFields)).not.toHaveBeenCalled();
+  });
+
+  it('updateServiceFieldsがnullを返した場合はエラー', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(updateServiceFields).mockResolvedValue(null as never);
+
+    const result = await updateServiceTool.handler({ service_id: 'svc-1', name: 'X' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(createAdminAuditLog)).not.toHaveBeenCalled();
+  });
+});
+
+// ===== list_redirect_uris =====
+describe('listRedirectUrisTool', () => {
+  const mockUri = {
+    id: 'uri-1',
+    service_id: 'svc-1',
+    uri: 'https://example.com/callback',
+    created_at: '2024-01-01T00:00:00Z',
+  };
+
+  it('リダイレクトURI一覧を返す', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(listRedirectUris).mockResolvedValue([mockUri] as never);
+
+    const result = await listRedirectUrisTool.handler({ service_id: 'svc-1' }, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.total).toBe(1);
+    expect(parsed.redirect_uris).toHaveLength(1);
+    expect(parsed.redirect_uris[0].id).toBe('uri-1');
+    expect(parsed.service_name).toBe('Test Service');
+    expect(vi.mocked(listRedirectUris)).toHaveBeenCalledWith(mockContext.db, 'svc-1');
+  });
+
+  it('URIがない場合は空配列を返す', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(listRedirectUris).mockResolvedValue([]);
+
+    const result = await listRedirectUrisTool.handler({ service_id: 'svc-1' }, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.total).toBe(0);
+    expect(parsed.redirect_uris).toHaveLength(0);
+  });
+
+  it('service_id未指定はエラー', async () => {
+    const result = await listRedirectUrisTool.handler({}, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(listRedirectUris)).not.toHaveBeenCalled();
+  });
+
+  it('サービスが見つからない場合はエラー', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(null);
+
+    const result = await listRedirectUrisTool.handler({ service_id: 'nonexistent' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(listRedirectUris)).not.toHaveBeenCalled();
+  });
+});
+
+// ===== add_redirect_uri =====
+describe('addRedirectUriTool', () => {
+  const mockUri = {
+    id: 'uri-1',
+    service_id: 'svc-1',
+    uri: 'https://example.com/callback',
+    created_at: '2024-01-01T00:00:00Z',
+  };
+
+  it('有効なURIを追加する', async () => {
+    vi.mocked(normalizeRedirectUri).mockReturnValue('https://example.com/callback');
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(addRedirectUri).mockResolvedValue(mockUri as never);
+
+    const result = await addRedirectUriTool.handler(
+      { service_id: 'svc-1', uri: 'https://example.com/callback' },
+      mockContext,
+    );
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.id).toBe('uri-1');
+    expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
+      mockContext.db,
+      expect.objectContaining({
+        action: 'service.redirect_uri_added',
+        targetId: 'svc-1',
+        details: { uri: 'https://example.com/callback' },
+      }),
+    );
+  });
+
+  it('無効なURI（normalizeRedirectUriがnullを返す）→ エラー', async () => {
+    vi.mocked(normalizeRedirectUri).mockReturnValue(null);
+
+    const result = await addRedirectUriTool.handler(
+      { service_id: 'svc-1', uri: 'http://evil.com/callback' },
+      mockContext,
+    );
+
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(addRedirectUri)).not.toHaveBeenCalled();
+  });
+
+  it('service_id未指定はエラー', async () => {
+    const result = await addRedirectUriTool.handler({ uri: 'https://example.com/callback' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(addRedirectUri)).not.toHaveBeenCalled();
+  });
+
+  it('uri未指定はエラー', async () => {
+    const result = await addRedirectUriTool.handler({ service_id: 'svc-1' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(addRedirectUri)).not.toHaveBeenCalled();
+  });
+
+  it('サービスが見つからない場合はエラー', async () => {
+    vi.mocked(normalizeRedirectUri).mockReturnValue('https://example.com/callback');
+    vi.mocked(findServiceById).mockResolvedValue(null);
+
+    const result = await addRedirectUriTool.handler(
+      { service_id: 'nonexistent', uri: 'https://example.com/callback' },
+      mockContext,
+    );
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(addRedirectUri)).not.toHaveBeenCalled();
+  });
+});
+
+// ===== delete_redirect_uri =====
+describe('deleteRedirectUriTool', () => {
+  const mockUri = {
+    id: 'uri-1',
+    service_id: 'svc-1',
+    uri: 'https://example.com/callback',
+    created_at: '2024-01-01T00:00:00Z',
+  };
+
+  it('リダイレクトURIを削除し監査ログを記録する', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(findRedirectUriById).mockResolvedValue(mockUri as never);
+    vi.mocked(deleteRedirectUri).mockResolvedValue(1);
+
+    const result = await deleteRedirectUriTool.handler(
+      { service_id: 'svc-1', uri_id: 'uri-1' },
+      mockContext,
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toContain('削除しました');
+    expect(vi.mocked(deleteRedirectUri)).toHaveBeenCalledWith(mockContext.db, 'uri-1', 'svc-1');
+    expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
+      mockContext.db,
+      expect.objectContaining({
+        action: 'service.redirect_uri_deleted',
+        targetId: 'svc-1',
+        details: { uri: 'https://example.com/callback' },
+      }),
+    );
+  });
+
+  it('service_id未指定はエラー', async () => {
+    const result = await deleteRedirectUriTool.handler({ uri_id: 'uri-1' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(deleteRedirectUri)).not.toHaveBeenCalled();
+  });
+
+  it('uri_id未指定はエラー', async () => {
+    const result = await deleteRedirectUriTool.handler({ service_id: 'svc-1' }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(deleteRedirectUri)).not.toHaveBeenCalled();
+  });
+
+  it('サービスが見つからない場合はエラー', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(null);
+
+    const result = await deleteRedirectUriTool.handler(
+      { service_id: 'nonexistent', uri_id: 'uri-1' },
+      mockContext,
+    );
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(deleteRedirectUri)).not.toHaveBeenCalled();
+  });
+
+  it('リダイレクトURIが見つからない場合はエラー', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(findRedirectUriById).mockResolvedValue(null);
+
+    const result = await deleteRedirectUriTool.handler(
+      { service_id: 'svc-1', uri_id: 'nonexistent' },
+      mockContext,
+    );
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(deleteRedirectUri)).not.toHaveBeenCalled();
+    expect(vi.mocked(createAdminAuditLog)).not.toHaveBeenCalled();
+  });
+
+  it('deleteRedirectUriが0件を返した場合はエラー', async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(findRedirectUriById).mockResolvedValue(mockUri as never);
+    vi.mocked(deleteRedirectUri).mockResolvedValue(0);
+
+    const result = await deleteRedirectUriTool.handler(
+      { service_id: 'svc-1', uri_id: 'uri-1' },
+      mockContext,
+    );
     expect(result.isError).toBe(true);
     expect(vi.mocked(createAdminAuditLog)).not.toHaveBeenCalled();
   });

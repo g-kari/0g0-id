@@ -18,8 +18,12 @@ export {
   listServicesTool,
   getServiceTool,
   createServiceTool,
+  updateServiceTool,
   deleteServiceTool,
   rotateServiceSecretTool,
+  listRedirectUrisTool,
+  addRedirectUriTool,
+  deleteRedirectUriTool,
 } from './services';
 
 export {
