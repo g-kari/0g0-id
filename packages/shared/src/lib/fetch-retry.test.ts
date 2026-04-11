@@ -76,4 +76,95 @@ describe('fetchWithRetry', () => {
 
     expect(fetch).toHaveBeenCalledWith('https://api.example.com/data', options);
   });
+
+  it('fetchが例外をスローした場合もリトライする', async () => {
+    vi.mocked(fetch)
+      .mockRejectedValueOnce(new Error('network error'))
+      .mockResolvedValueOnce(new Response('OK', { status: 200 }));
+
+    const result = await fetchWithRetry('https://example.com', {});
+    expect(result.status).toBe(200);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('fetchが繰り返し例外をスローした場合は network error を投げる', async () => {
+    vi.mocked(fetch).mockRejectedValue(new Error('network error'));
+
+    await expect(fetchWithRetry('https://example.com', {})).rejects.toThrow('network error');
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('fetchが非Errorオブジェクトをスローした場合は Network error を投げる', async () => {
+    vi.mocked(fetch).mockRejectedValue('raw string error');
+
+    await expect(fetchWithRetry('https://example.com', {})).rejects.toThrow('Network error');
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  describe('Retry-After ヘッダー', () => {
+    it('秒数形式の Retry-After をバックオフ遅延として使用する', async () => {
+      const delays: number[] = [];
+      vi.stubGlobal('setTimeout', (fn: () => void, delay: number) => {
+        delays.push(delay);
+        fn();
+        return 0;
+      });
+
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          new Response('Rate Limited', {
+            status: 429,
+            headers: { 'Retry-After': '5' },
+          })
+        )
+        .mockResolvedValueOnce(new Response('OK', { status: 200 }));
+
+      const result = await fetchWithRetry('https://example.com', {});
+      expect(result.status).toBe(200);
+      expect(delays[0]).toBe(5000);
+    });
+
+    it('Retry-After が大きすぎる場合は 60,000ms にキャップされる', async () => {
+      const delays: number[] = [];
+      vi.stubGlobal('setTimeout', (fn: () => void, delay: number) => {
+        delays.push(delay);
+        fn();
+        return 0;
+      });
+
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          new Response('Rate Limited', {
+            status: 429,
+            headers: { 'Retry-After': '9999' },
+          })
+        )
+        .mockResolvedValueOnce(new Response('OK', { status: 200 }));
+
+      await fetchWithRetry('https://example.com', {});
+      expect(delays[0]).toBe(60_000);
+    });
+
+    it('Retry-After が無効な値の場合はバックオフ遅延にフォールバックする', async () => {
+      const delays: number[] = [];
+      vi.stubGlobal('setTimeout', (fn: () => void, delay: number) => {
+        delays.push(delay);
+        fn();
+        return 0;
+      });
+
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          new Response('Rate Limited', {
+            status: 429,
+            headers: { 'Retry-After': 'invalid-value' },
+          })
+        )
+        .mockResolvedValueOnce(new Response('OK', { status: 200 }));
+
+      await fetchWithRetry('https://example.com', {});
+      expect(delays[0]).toBeGreaterThan(0);
+      expect(delays[0]).toBeLessThanOrEqual(500);
+    });
+  });
 });
