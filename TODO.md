@@ -1,5 +1,17 @@
 # TODO
 
+## 機能追加: MCPツール get_active_user_stats・get_daily_active_users 追加（2026-04-12）
+
+### 対応内容
+
+- `getActiveUserStatsTool` (`get_active_user_stats`): DAU/WAU/MAU（日次・週次・月次アクティブユーザー数）を単独取得
+  - admin BFF に active-users エンドポイントが追加されたが MCP ツールが未対応だった
+  - `getActiveUserStats(context.db)` を直接呼び出し、`{ data: { dau, wau, mau } }` を返す
+- `getDailyActiveUsersTool` (`get_daily_active_users`): 日別アクティブユーザー数の推移を取得（days: 1〜90、デフォルト30）
+  - `getDailyActiveUsers(context.db, days)` を呼び出し、`{ data: [...], days }` を返す
+- `workers/mcp/src/tools/index.ts`・`workers/mcp/src/index.ts` にエクスポート・登録追加
+- テスト9件追加（mcp: 198 → 207テスト）、全2250テストパス
+
 ## 機能追加: admin BFF active-users エンドポイント追加（2026-04-12）
 
 ### 対応内容
