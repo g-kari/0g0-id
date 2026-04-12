@@ -239,7 +239,7 @@ describe("handleDeviceCodeGrant", () => {
     expect(body.error).toBe("invalid_grant");
   });
 
-  it("期限切れデバイスコード → invalid_grant + 400", async () => {
+  it("期限切れデバイスコード → expired_token + 400", async () => {
     vi.mocked(findDeviceCodeByHash).mockResolvedValue({
       ...mockDeviceCode,
       expires_at: new Date(Date.now() - 1000).toISOString(),
@@ -248,7 +248,7 @@ describe("handleDeviceCodeGrant", () => {
     const res = await handleDeviceCodeGrant(c as never, baseParams);
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
-    expect(body.error).toBe("invalid_grant");
+    expect(body.error).toBe("expired_token");
   });
 
   it("拒否済みデバイスコード → access_denied + 400", async () => {
@@ -278,8 +278,8 @@ describe("handleDeviceCodeGrant", () => {
     const c = makeContext();
     const res = await handleDeviceCodeGrant(c as never, baseParams);
     expect(res.status).toBe(400);
-    // Retry-After ヘッダーにポーリング間隔（5秒）が設定されていること
-    expect(res.headers.get("Retry-After")).toBe("5");
+    // Retry-After ヘッダーにポーリング間隔の2倍（10秒）が設定されていること
+    expect(res.headers.get("Retry-After")).toBe("10");
   });
 
   it("authorization_pending には Retry-After ヘッダーが含まれない", async () => {

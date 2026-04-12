@@ -141,6 +141,10 @@ async function resolveOAuthClient(
   if (!service) {
     return { ok: false, error: "invalid_client", status: 401 };
   }
+  // confidentialクライアント（client_secret_hash設定済み）はBasic認証必須
+  if (service.client_secret_hash) {
+    return { ok: false, error: "invalid_client", status: 401 };
+  }
   return { ok: true, service, isPublicClient: true };
 }
 
@@ -453,9 +457,7 @@ async function introspectRefreshToken(
     if (!refreshToken) return null;
     if (refreshToken.revoked_at !== null) return { active: false };
     if (refreshToken.service_id !== service.id) {
-      console.warn(
-        `[introspect] service_id mismatch: token.service_id=${refreshToken.service_id}, requesting service.id=${service.id}`,
-      );
+      tokenLogger.warn(`[introspect] service_id mismatch for requesting service.id=${service.id}`);
       return { active: false };
     }
     if (new Date(refreshToken.expires_at) < new Date()) {

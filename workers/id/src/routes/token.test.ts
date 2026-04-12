@@ -82,6 +82,12 @@ const mockService = {
   updated_at: "2024-01-01T00:00:00Z",
 };
 
+/** パブリッククライアント（client_secret_hash なし）— Basic認証なしのテスト用 */
+const mockPublicService = {
+  ...mockService,
+  client_secret_hash: null,
+};
+
 const mockUser = {
   id: "user-1",
   google_sub: "google-sub-1",
@@ -1076,7 +1082,7 @@ describe("POST /api/token/ — authorization_code grant", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(sha256).mockResolvedValue("hashed-value");
-    vi.mocked(findServiceByClientId).mockResolvedValue(mockService as never);
+    vi.mocked(findServiceByClientId).mockResolvedValue(mockPublicService as never);
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(findAndConsumeAuthCode).mockResolvedValue(mockAuthCode as never);
     vi.mocked(normalizeRedirectUri).mockReturnValue("http://localhost:51234/callback");
@@ -1475,7 +1481,7 @@ describe("POST /api/token/ — refresh_token grant", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(sha256).mockResolvedValue("hashed-token");
-    vi.mocked(findServiceByClientId).mockResolvedValue(mockService as never);
+    vi.mocked(findServiceByClientId).mockResolvedValue(mockPublicService as never);
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(mockRefreshToken as never);
     vi.mocked(findRefreshTokenByHash).mockResolvedValue(mockRefreshToken as never);

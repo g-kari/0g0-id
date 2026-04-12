@@ -27,7 +27,7 @@ import {
   rejectServiceTokenMiddleware,
   rejectBannedUserMiddleware,
 } from "../middleware/auth";
-import { parseAllowedScopes, resolveEffectiveScope } from "../utils/scopes";
+import { resolveEffectiveScope } from "../utils/scopes";
 import { issueTokenPair, buildTokenResponse } from "../utils/token-pair";
 
 const deviceLogger = createLogger("device");
@@ -154,7 +154,7 @@ app.post("/code", tokenApiRateLimitMiddleware, async (c) => {
         deviceCodeHash,
         userCode: currentUserCode,
         serviceId: service.id,
-        scope: resolvedScope ?? null,
+        scope: resolvedScope,
         expiresAt,
       });
       saved = true;
@@ -264,9 +264,8 @@ app.post(
       // actionなし → 情報取得のみ（BFFの検証ステップ用）
       if (!action) {
         const serviceInfo = await findServiceById(c.env.DB, deviceCode.service_id);
-        const scopes = serviceInfo?.allowed_scopes
-          ? parseAllowedScopes(serviceInfo.allowed_scopes)
-          : [];
+        // リクエスト時のスコープを返す（サービス全スコープではなく実際に要求されたスコープ）
+        const scopes = deviceCode.scope ? deviceCode.scope.split(" ").filter(Boolean) : ["openid"];
         return c.json({
           data: {
             service_name: serviceInfo?.name ?? "Unknown",
@@ -357,7 +356,7 @@ export async function handleDeviceCodeGrant(
     } catch (err) {
       deviceLogger.warn("handleDeviceCodeGrant: deleteDeviceCode (expired) failed", err);
     }
-    return c.json({ error: "invalid_grant", error_description: "Device code has expired" }, 400);
+    return c.json({ error: "expired_token", error_description: "Device code has expired" }, 400);
   }
 
   // 拒否済みチェック
@@ -388,8 +387,10 @@ export async function handleDeviceCodeGrant(
       );
     }
     if (!pollingAllowed) {
-      // RFC 8628 §3.5: slow_down には Retry-After ヘッダーを付与する
-      return c.json({ error: "slow_down" }, 400, { "Retry-After": String(POLLING_INTERVAL_SEC) });
+      // RFC 8628 §3.5: slow_down時はクライアントに間隔を+5秒させるため、2倍の値を返す
+      return c.json({ error: "slow_down" }, 400, {
+        "Retry-After": String(POLLING_INTERVAL_SEC * 2),
+      });
     }
     return c.json({ error: "authorization_pending" }, 400);
   }
