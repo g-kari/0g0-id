@@ -24,6 +24,7 @@ import {
   revokeUserSessionsTool,
   getUserOwnedServicesTool,
   getUserAuthorizedServicesTool,
+  updateUserRoleTool,
   listServicesTool,
   getServiceTool,
   createServiceTool,
@@ -35,6 +36,7 @@ import {
   deleteRedirectUriTool,
   listServiceUsersTool,
   revokeServiceUserAccessTool,
+  transferServiceOwnershipTool,
   getAuditLogsTool,
   getAuditStatsTool,
   getSystemMetricsTool,
@@ -79,6 +81,7 @@ mcpServer.registerTool(listUserSessionsTool);
 mcpServer.registerTool(revokeUserSessionsTool);
 mcpServer.registerTool(getUserOwnedServicesTool);
 mcpServer.registerTool(getUserAuthorizedServicesTool);
+mcpServer.registerTool(updateUserRoleTool);
 
 // サービス管理ツールを登録
 mcpServer.registerTool(listServicesTool);
@@ -92,6 +95,7 @@ mcpServer.registerTool(addRedirectUriTool);
 mcpServer.registerTool(deleteRedirectUriTool);
 mcpServer.registerTool(listServiceUsersTool);
 mcpServer.registerTool(revokeServiceUserAccessTool);
+mcpServer.registerTool(transferServiceOwnershipTool);
 
 // 監査ログツールを登録
 mcpServer.registerTool(getAuditLogsTool);

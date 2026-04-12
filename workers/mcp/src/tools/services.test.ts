@@ -11,6 +11,7 @@ vi.mock("@0g0-id/shared", () => ({
   revokeUserServiceTokens: vi.fn(),
   rotateClientSecret: vi.fn(),
   updateServiceFields: vi.fn(),
+  transferServiceOwnership: vi.fn(),
   listRedirectUris: vi.fn(),
   addRedirectUri: vi.fn(),
   findRedirectUriById: vi.fn(),
@@ -35,6 +36,7 @@ import {
   revokeUserServiceTokens,
   rotateClientSecret,
   updateServiceFields,
+  transferServiceOwnership,
   listRedirectUris,
   addRedirectUri,
   findRedirectUriById,
@@ -60,6 +62,7 @@ import {
   deleteRedirectUriTool,
   listServiceUsersTool,
   revokeServiceUserAccessTool,
+  transferServiceOwnershipTool,
 } from "./services";
 import type { McpContext } from "../mcp";
 
@@ -843,5 +846,107 @@ describe("revokeServiceUserAccessTool", () => {
     expect(result.isError).toBeUndefined();
     expect(result.content[0].text).toContain("アクティブなトークンを持っていません");
     expect(vi.mocked(createAdminAuditLog)).not.toHaveBeenCalled();
+  });
+});
+
+// ===== transfer_service_ownership =====
+describe("transferServiceOwnershipTool", () => {
+  const mockNewOwner = {
+    id: "user-2",
+    email: "newowner@example.com",
+    name: "New Owner",
+    role: "user" as const,
+    banned_at: null,
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z",
+  };
+
+  it("サービスの所有権を転送し監査ログを記録する", async () => {
+    const updatedService = { ...mockService, owner_user_id: "user-2" };
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(findUserById).mockResolvedValue(mockNewOwner as never);
+    vi.mocked(transferServiceOwnership).mockResolvedValue(updatedService as never);
+
+    const result = await transferServiceOwnershipTool.handler(
+      { service_id: "svc-1", new_owner_user_id: "user-2" },
+      mockContext,
+    );
+
+    expect(result.isError).toBeUndefined();
+    const text = result.content[0].text;
+    expect(text).toContain("転送しました");
+    expect(text).toContain("user-2");
+    expect(vi.mocked(transferServiceOwnership)).toHaveBeenCalledWith(
+      mockContext.db,
+      "svc-1",
+      "user-2",
+    );
+    expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
+      mockContext.db,
+      expect.objectContaining({
+        action: "service.ownership_transferred",
+        targetId: "svc-1",
+        details: expect.objectContaining({ to_owner_user_id: "user-2" }),
+      }),
+    );
+  });
+
+  it("既に同じオーナーの場合は転送せずメッセージを返す", async () => {
+    const sameOwnerService = { ...mockService, owner_user_id: "admin-1" };
+    const sameOwnerUser = { ...mockNewOwner, id: "admin-1" };
+    vi.mocked(findServiceById).mockResolvedValue(sameOwnerService as never);
+    vi.mocked(findUserById).mockResolvedValue(sameOwnerUser as never);
+
+    const result = await transferServiceOwnershipTool.handler(
+      { service_id: "svc-1", new_owner_user_id: "admin-1" },
+      mockContext,
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toContain("既に");
+    expect(vi.mocked(transferServiceOwnership)).not.toHaveBeenCalled();
+  });
+
+  it("service_id未指定はエラー", async () => {
+    const result = await transferServiceOwnershipTool.handler(
+      { new_owner_user_id: "user-2" },
+      mockContext,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("service_id は必須");
+    expect(vi.mocked(findServiceById)).not.toHaveBeenCalled();
+  });
+
+  it("new_owner_user_id未指定はエラー", async () => {
+    const result = await transferServiceOwnershipTool.handler({ service_id: "svc-1" }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("new_owner_user_id は必須");
+    expect(vi.mocked(findServiceById)).not.toHaveBeenCalled();
+  });
+
+  it("サービスが見つからない場合はエラー", async () => {
+    vi.mocked(findServiceById).mockResolvedValue(null);
+    vi.mocked(findUserById).mockResolvedValue(mockNewOwner as never);
+
+    const result = await transferServiceOwnershipTool.handler(
+      { service_id: "nonexistent", new_owner_user_id: "user-2" },
+      mockContext,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("サービスが見つかりません");
+    expect(vi.mocked(transferServiceOwnership)).not.toHaveBeenCalled();
+  });
+
+  it("新しいオーナーのユーザーが見つからない場合はエラー", async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
+    vi.mocked(findUserById).mockResolvedValue(null);
+
+    const result = await transferServiceOwnershipTool.handler(
+      { service_id: "svc-1", new_owner_user_id: "nonexistent" },
+      mockContext,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("ユーザーが見つかりません");
+    expect(vi.mocked(transferServiceOwnership)).not.toHaveBeenCalled();
   });
 });

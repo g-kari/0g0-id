@@ -6,6 +6,7 @@ import {
   banUser,
   unbanUser,
   deleteUser,
+  updateUserRole,
   getUserProviders,
   getLoginEventsByUserId,
   getUserLoginProviderStats,
@@ -485,6 +486,75 @@ export const getUserAuthorizedServicesTool: McpTool = {
       user: { id: user.id, email: user.email, name: user.name },
       authorized_services: connections,
       total: connections.length,
+    };
+
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  },
+};
+
+export const updateUserRoleTool: McpTool = {
+  definition: {
+    name: "update_user_role",
+    description: "ユーザーのロールを変更する（user ↔ admin）",
+    inputSchema: {
+      type: "object",
+      properties: {
+        user_id: { type: "string", description: "ロールを変更するユーザーのID" },
+        role: {
+          type: "string",
+          enum: ["user", "admin"],
+          description: '新しいロール（"user" または "admin"）',
+        },
+      },
+      required: ["user_id", "role"],
+    },
+  },
+  handler: async (params, context) => {
+    const userId = params.user_id;
+    if (typeof userId !== "string" || userId.length === 0) {
+      return { content: [{ type: "text", text: "user_id は必須です" }], isError: true };
+    }
+
+    const role = params.role;
+    if (role !== "user" && role !== "admin") {
+      return {
+        content: [{ type: "text", text: 'role は "user" または "admin" を指定してください' }],
+        isError: true,
+      };
+    }
+
+    const existing = await findUserById(context.db, userId);
+    if (!existing) {
+      return { content: [{ type: "text", text: "ユーザーが見つかりません" }], isError: true };
+    }
+
+    if (existing.role === role) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `ユーザー ${existing.name} (${existing.email}) のロールは既に "${role}" です`,
+          },
+        ],
+      };
+    }
+
+    const updated = await updateUserRole(context.db, userId, role);
+
+    await createAdminAuditLog(context.db, {
+      adminUserId: context.userId,
+      action: "user.role_change",
+      targetType: "user",
+      targetId: userId,
+      details: { from: existing.role, to: role },
+    });
+
+    const result = {
+      id: updated.id,
+      email: updated.email,
+      name: updated.name,
+      role: updated.role,
+      updated_at: updated.updated_at,
     };
 
     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };

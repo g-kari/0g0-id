@@ -7,6 +7,7 @@ vi.mock("@0g0-id/shared", () => ({
   banUser: vi.fn(),
   unbanUser: vi.fn(),
   deleteUser: vi.fn(),
+  updateUserRole: vi.fn(),
   getUserProviders: vi.fn(),
   getLoginEventsByUserId: vi.fn(),
   getUserLoginProviderStats: vi.fn(),
@@ -26,6 +27,7 @@ import {
   banUser,
   unbanUser,
   deleteUser,
+  updateUserRole,
   getUserProviders,
   getLoginEventsByUserId,
   getUserLoginProviderStats,
@@ -52,6 +54,7 @@ import {
   revokeUserSessionsTool,
   getUserOwnedServicesTool,
   getUserAuthorizedServicesTool,
+  updateUserRoleTool,
 } from "./users";
 import type { McpContext } from "../mcp";
 
@@ -693,5 +696,71 @@ describe("getUserAuthorizedServicesTool", () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("見つかりません");
     expect(vi.mocked(listUserConnections)).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateUserRoleTool", () => {
+  it("ユーザーのロールを user → admin に変更し監査ログを記録する", async () => {
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, role: "user" });
+    vi.mocked(updateUserRole).mockResolvedValue({ ...mockUser, role: "admin" } as never);
+
+    const result = await updateUserRoleTool.handler(
+      { user_id: "user-1", role: "admin" },
+      mockContext,
+    );
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.role).toBe("admin");
+    expect(vi.mocked(updateUserRole)).toHaveBeenCalledWith(mockContext.db, "user-1", "admin");
+    expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
+      mockContext.db,
+      expect.objectContaining({
+        action: "user.role_change",
+        targetId: "user-1",
+        details: { from: "user", to: "admin" },
+      }),
+    );
+  });
+
+  it("既に同じロールの場合は変更せずメッセージを返す", async () => {
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, role: "admin" });
+
+    const result = await updateUserRoleTool.handler(
+      { user_id: "user-1", role: "admin" },
+      mockContext,
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toContain("既に");
+    expect(vi.mocked(updateUserRole)).not.toHaveBeenCalled();
+  });
+
+  it("user_id未指定はエラー", async () => {
+    const result = await updateUserRoleTool.handler({ role: "admin" }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("user_id は必須");
+    expect(vi.mocked(findUserById)).not.toHaveBeenCalled();
+  });
+
+  it("不正なroleはエラー", async () => {
+    const result = await updateUserRoleTool.handler(
+      { user_id: "user-1", role: "superadmin" },
+      mockContext,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("role");
+    expect(vi.mocked(findUserById)).not.toHaveBeenCalled();
+  });
+
+  it("ユーザーが見つからない場合はエラー", async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+
+    const result = await updateUserRoleTool.handler(
+      { user_id: "nonexistent", role: "admin" },
+      mockContext,
+    );
+    expect(result.isError).toBe(true);
+    expect(vi.mocked(updateUserRole)).not.toHaveBeenCalled();
   });
 });

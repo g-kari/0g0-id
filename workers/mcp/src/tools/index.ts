@@ -12,6 +12,7 @@ export {
   revokeUserSessionsTool,
   getUserOwnedServicesTool,
   getUserAuthorizedServicesTool,
+  updateUserRoleTool,
 } from "./users";
 
 export {
@@ -26,6 +27,7 @@ export {
   deleteRedirectUriTool,
   listServiceUsersTool,
   revokeServiceUserAccessTool,
+  transferServiceOwnershipTool,
 } from "./services";
 
 export { getAuditLogsTool, getAuditStatsTool } from "./audit";

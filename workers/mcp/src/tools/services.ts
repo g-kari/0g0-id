@@ -10,6 +10,7 @@ import {
   revokeUserServiceTokens,
   rotateClientSecret,
   updateServiceFields,
+  transferServiceOwnership,
   listRedirectUris,
   addRedirectUri,
   findRedirectUriById,
@@ -660,6 +661,94 @@ export const revokeServiceUserAccessTool: McpTool = {
         {
           type: "text",
           text: `ユーザー ${user.name} (${user.email}) のサービス "${service.name}" へのアクセスを失効させました。（トークン ${revokedCount} 件を失効）`,
+        },
+      ],
+    };
+  },
+};
+
+export const transferServiceOwnershipTool: McpTool = {
+  definition: {
+    name: "transfer_service_ownership",
+    description: "サービスの所有権を別のユーザーに転送する",
+    inputSchema: {
+      type: "object",
+      properties: {
+        service_id: { type: "string", description: "所有権を転送するサービスのID" },
+        new_owner_user_id: { type: "string", description: "新しいオーナーのユーザーID" },
+      },
+      required: ["service_id", "new_owner_user_id"],
+    },
+  },
+  handler: async (params, context) => {
+    const serviceId = params.service_id;
+    if (typeof serviceId !== "string" || serviceId.length === 0) {
+      return { content: [{ type: "text", text: "service_id は必須です" }], isError: true };
+    }
+
+    const newOwnerUserId = params.new_owner_user_id;
+    if (typeof newOwnerUserId !== "string" || newOwnerUserId.length === 0) {
+      return { content: [{ type: "text", text: "new_owner_user_id は必須です" }], isError: true };
+    }
+
+    const [service, newOwner] = await Promise.all([
+      findServiceById(context.db, serviceId),
+      findUserById(context.db, newOwnerUserId),
+    ]);
+
+    if (!service) {
+      return { content: [{ type: "text", text: "サービスが見つかりません" }], isError: true };
+    }
+    if (!newOwner) {
+      return {
+        content: [{ type: "text", text: "新しいオーナーのユーザーが見つかりません" }],
+        isError: true,
+      };
+    }
+
+    if (service.owner_user_id === newOwnerUserId) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `サービス "${service.name}" の所有者は既に ${newOwner.name} (${newOwner.email}) です`,
+          },
+        ],
+      };
+    }
+
+    const updated = await transferServiceOwnership(context.db, serviceId, newOwnerUserId);
+    if (!updated) {
+      return {
+        content: [{ type: "text", text: "所有権の転送に失敗しました" }],
+        isError: true,
+      };
+    }
+
+    await createAdminAuditLog(context.db, {
+      adminUserId: context.userId,
+      action: "service.ownership_transferred",
+      targetType: "service",
+      targetId: serviceId,
+      details: {
+        from_owner_user_id: service.owner_user_id,
+        to_owner_user_id: newOwnerUserId,
+      },
+    });
+
+    const result = {
+      id: updated.id,
+      name: updated.name,
+      client_id: updated.client_id,
+      owner_user_id: updated.owner_user_id,
+      updated_at: updated.updated_at,
+    };
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `サービス "${service.name}" の所有権を ${newOwner.name} (${newOwner.email}) に転送しました。\n\n${JSON.stringify(result, null, 2)}`,
         },
       ],
     };
