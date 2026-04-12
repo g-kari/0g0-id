@@ -40,6 +40,8 @@ import {
   getSystemMetricsTool,
   getSuspiciousLoginsTool,
   getServiceTokenStatsTool,
+  getActiveUserStatsTool,
+  getDailyActiveUsersTool,
 } from "./tools";
 
 type Env = {
@@ -97,6 +99,8 @@ mcpServer.registerTool(getAuditStatsTool);
 mcpServer.registerTool(getSystemMetricsTool);
 mcpServer.registerTool(getSuspiciousLoginsTool);
 mcpServer.registerTool(getServiceTokenStatsTool);
+mcpServer.registerTool(getActiveUserStatsTool);
+mcpServer.registerTool(getDailyActiveUsersTool);
 
 const app = new Hono<Env>();
 

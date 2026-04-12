@@ -24,7 +24,13 @@ import {
   getServiceTokenStats,
 } from "@0g0-id/shared";
 
-import { getSystemMetricsTool, getSuspiciousLoginsTool, getServiceTokenStatsTool } from "./metrics";
+import {
+  getSystemMetricsTool,
+  getSuspiciousLoginsTool,
+  getServiceTokenStatsTool,
+  getActiveUserStatsTool,
+  getDailyActiveUsersTool,
+} from "./metrics";
 import type { McpContext } from "../mcp";
 
 const mockContext: McpContext = {
@@ -220,5 +226,89 @@ describe("getServiceTokenStatsTool", () => {
 
     expect(vi.mocked(getServiceTokenStats)).toHaveBeenCalledWith(mockContext.db);
     expect(vi.mocked(getServiceTokenStats)).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ===== get_active_user_stats =====
+describe("getActiveUserStatsTool", () => {
+  it("DAU/WAU/MAUをdataに含むレスポンスを返す", async () => {
+    const result = await getActiveUserStatsTool.handler({}, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.data.dau).toBe(10);
+    expect(parsed.data.wau).toBe(30);
+    expect(parsed.data.mau).toBe(80);
+  });
+
+  it("getActiveUserStatsにDBが渡される", async () => {
+    await getActiveUserStatsTool.handler({}, mockContext);
+
+    expect(vi.mocked(getActiveUserStats)).toHaveBeenCalledWith(mockContext.db);
+    expect(vi.mocked(getActiveUserStats)).toHaveBeenCalledTimes(1);
+  });
+
+  it("dau/wau/mauが0のときも正常に返す", async () => {
+    vi.mocked(getActiveUserStats).mockResolvedValue({ dau: 0, wau: 0, mau: 0 } as never);
+
+    const result = await getActiveUserStatsTool.handler({}, mockContext);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.data.dau).toBe(0);
+    expect(parsed.data.wau).toBe(0);
+    expect(parsed.data.mau).toBe(0);
+  });
+});
+
+// ===== get_daily_active_users =====
+describe("getDailyActiveUsersTool", () => {
+  it("dataとdaysを含むレスポンスを返す", async () => {
+    const mockData = [
+      { date: "2026-04-11", count: 5 },
+      { date: "2026-04-12", count: 8 },
+    ];
+    vi.mocked(getDailyActiveUsers).mockResolvedValue(mockData as never);
+
+    const result = await getDailyActiveUsersTool.handler({}, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.data).toHaveLength(2);
+    expect(parsed.data[0].date).toBe("2026-04-11");
+    expect(parsed.days).toBe(30);
+  });
+
+  it("デフォルトは30日", async () => {
+    await getDailyActiveUsersTool.handler({}, mockContext);
+
+    expect(vi.mocked(getDailyActiveUsers)).toHaveBeenCalledWith(mockContext.db, 30);
+  });
+
+  it("daysパラメータを指定できる", async () => {
+    await getDailyActiveUsersTool.handler({ days: 7 }, mockContext);
+
+    expect(vi.mocked(getDailyActiveUsers)).toHaveBeenCalledWith(mockContext.db, 7);
+    const result = await getDailyActiveUsersTool.handler({ days: 7 }, mockContext);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.days).toBe(7);
+  });
+
+  it("daysは最大90にクランプする", async () => {
+    const result = await getDailyActiveUsersTool.handler({ days: 365 }, mockContext);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.days).toBe(90);
+  });
+
+  it("days=0はfalsyなのでデフォルト30になる", async () => {
+    const result = await getDailyActiveUsersTool.handler({ days: 0 }, mockContext);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.days).toBe(30);
+  });
+
+  it("空配列のときもdataは[]を返す", async () => {
+    vi.mocked(getDailyActiveUsers).mockResolvedValue([]);
+
+    const result = await getDailyActiveUsersTool.handler({}, mockContext);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.data).toEqual([]);
   });
 });

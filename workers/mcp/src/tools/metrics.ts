@@ -119,3 +119,36 @@ export const getServiceTokenStatsTool: McpTool = {
     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
   },
 };
+
+export const getActiveUserStatsTool: McpTool = {
+  definition: {
+    name: "get_active_user_stats",
+    description: "DAU/WAU/MAU（日次・週次・月次アクティブユーザー数）を取得する",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  handler: async (_params, context) => {
+    const stats = await getActiveUserStats(context.db);
+    return { content: [{ type: "text", text: JSON.stringify({ data: stats }, null, 2) }] };
+  },
+};
+
+export const getDailyActiveUsersTool: McpTool = {
+  definition: {
+    name: "get_daily_active_users",
+    description: "日別アクティブユーザー数の推移を取得する",
+    inputSchema: {
+      type: "object",
+      properties: {
+        days: { type: "number", description: "遡る日数（1〜90、デフォルト: 30）" },
+      },
+    },
+  },
+  handler: async (params, context) => {
+    const days = Math.max(1, Math.min(90, Number(params.days) || 30));
+    const data = await getDailyActiveUsers(context.db, days);
+    return { content: [{ type: "text", text: JSON.stringify({ data, days }, null, 2) }] };
+  },
+};

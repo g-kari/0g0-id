@@ -30,4 +30,10 @@ export {
 
 export { getAuditLogsTool, getAuditStatsTool } from "./audit";
 
-export { getSystemMetricsTool, getSuspiciousLoginsTool, getServiceTokenStatsTool } from "./metrics";
+export {
+  getSystemMetricsTool,
+  getSuspiciousLoginsTool,
+  getServiceTokenStatsTool,
+  getActiveUserStatsTool,
+  getDailyActiveUsersTool,
+} from "./metrics";
