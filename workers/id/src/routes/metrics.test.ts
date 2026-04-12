@@ -437,6 +437,22 @@ describe("GET /api/metrics/login-trends", () => {
     const body = await res.json<{ data: unknown[] }>();
     expect(body.data).toEqual([]);
   });
+
+  it("DB例外時に500を返す", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(parseDays).mockReturnValue(undefined);
+    vi.mocked(getDailyLoginTrends).mockRejectedValue(new Error("DB connection error"));
+
+    const res = await app.request(
+      makeRequest("/api/metrics/login-trends", "admin-token"),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("INTERNAL_ERROR");
+  });
 });
 
 describe("GET /api/metrics - 国別ログイン統計", () => {
@@ -571,6 +587,20 @@ describe("GET /api/metrics/services", () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ data: [] }>();
     expect(body.data).toEqual([]);
+  });
+
+  it("DB例外時に500を返す", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getServiceTokenStats).mockRejectedValueOnce(new Error("DB connection error"));
+    const app = buildApp();
+    const res = await app.request(
+      makeRequest("/api/metrics/services", "admin-token"),
+      undefined,
+      mockEnv,
+    );
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("INTERNAL_ERROR");
   });
 });
 
@@ -729,6 +759,22 @@ describe("GET /api/metrics/suspicious-logins", () => {
     const body = await res.json<{ data: unknown[] }>();
     expect(body.data).toEqual([]);
   });
+
+  it("DB例外時に500を返す", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(getSuspiciousMultiCountryLogins).mockRejectedValueOnce(
+      new Error("DB connection error"),
+    );
+    const app = buildApp();
+    const res = await app.request(
+      makeRequest("/api/metrics/suspicious-logins", "admin-token"),
+      undefined,
+      mockEnv,
+    );
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("INTERNAL_ERROR");
+  });
 });
 
 describe("GET /api/metrics/user-registrations", () => {
@@ -849,6 +895,21 @@ describe("GET /api/metrics/user-registrations", () => {
     const body = await res.json<{ data: unknown[] }>();
     expect(body.data).toEqual([]);
   });
+
+  it("DB例外時に500を返す", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValueOnce(mockAdminPayload);
+    vi.mocked(parseDays).mockReturnValue(undefined);
+    vi.mocked(getDailyUserRegistrations).mockRejectedValueOnce(new Error("DB connection error"));
+    const app = buildApp();
+    const res = await app.request(
+      makeRequest("/api/metrics/user-registrations", "admin-token"),
+      undefined,
+      mockEnv,
+    );
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("INTERNAL_ERROR");
+  });
 });
 
 describe("GET /api/metrics/active-users", () => {
@@ -910,6 +971,21 @@ describe("GET /api/metrics/active-users", () => {
     );
 
     expect(getActiveUserStats).toHaveBeenCalledWith(mockEnv.DB);
+  });
+
+  it("DB例外時に500を返す", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getActiveUserStats).mockRejectedValue(new Error("DB connection error"));
+
+    const res = await app.request(
+      makeRequest("/api/metrics/active-users", "admin-token"),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("INTERNAL_ERROR");
   });
 });
 
@@ -1046,5 +1122,21 @@ describe("GET /api/metrics/active-users/daily", () => {
     );
 
     expect(getDailyActiveUsers).not.toHaveBeenCalled();
+  });
+
+  it("DB例外時に500を返す", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(parseDays).mockReturnValue(undefined);
+    vi.mocked(getDailyActiveUsers).mockRejectedValue(new Error("DB connection error"));
+
+    const res = await app.request(
+      makeRequest("/api/metrics/active-users/daily", "admin-token"),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("INTERNAL_ERROR");
   });
 });

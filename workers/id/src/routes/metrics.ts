@@ -78,15 +78,22 @@ app.get("/login-trends", authMiddleware, adminMiddleware, async (c) => {
   }
   const days = daysResult?.days ?? 30;
 
-  const trends = await getDailyLoginTrends(c.env.DB, days);
-
-  return c.json({ data: trends, days });
+  try {
+    const trends = await getDailyLoginTrends(c.env.DB, days);
+    return c.json({ data: trends, days });
+  } catch {
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+  }
 });
 
 // GET /api/metrics/services — サービス別アクティブトークン統計
 app.get("/services", authMiddleware, adminMiddleware, async (c) => {
-  const stats = await getServiceTokenStats(c.env.DB);
-  return c.json({ data: stats });
+  try {
+    const stats = await getServiceTokenStats(c.env.DB);
+    return c.json({ data: stats });
+  } catch {
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+  }
 });
 
 // GET /api/metrics/suspicious-logins?hours=24&min_countries=2
@@ -100,9 +107,12 @@ app.get("/suspicious-logins", authMiddleware, adminMiddleware, async (c) => {
   const minCountries = Math.min(Math.max(Number.isNaN(parsedMin) ? 2 : parsedMin, 2), 10);
 
   const sinceIso = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
-  const logins = await getSuspiciousMultiCountryLogins(c.env.DB, sinceIso, minCountries);
-
-  return c.json({ data: logins, meta: { hours, min_countries: minCountries } });
+  try {
+    const logins = await getSuspiciousMultiCountryLogins(c.env.DB, sinceIso, minCountries);
+    return c.json({ data: logins, meta: { hours, min_countries: minCountries } });
+  } catch {
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+  }
 });
 
 // GET /api/metrics/user-registrations?days=30 — 日別新規ユーザー登録数
@@ -113,15 +123,22 @@ app.get("/user-registrations", authMiddleware, adminMiddleware, async (c) => {
   }
   const days = daysResult?.days ?? 30;
 
-  const registrations = await getDailyUserRegistrations(c.env.DB, days);
-
-  return c.json({ data: registrations, days });
+  try {
+    const registrations = await getDailyUserRegistrations(c.env.DB, days);
+    return c.json({ data: registrations, days });
+  } catch {
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+  }
 });
 
 // GET /api/metrics/active-users - DAU/WAU/MAU アクティブユーザー数
 app.get("/active-users", authMiddleware, adminMiddleware, async (c) => {
-  const stats = await getActiveUserStats(c.env.DB);
-  return c.json({ data: stats });
+  try {
+    const stats = await getActiveUserStats(c.env.DB);
+    return c.json({ data: stats });
+  } catch {
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+  }
 });
 
 // GET /api/metrics/active-users/daily?days=30 - 日別アクティブユーザー数推移
@@ -131,8 +148,12 @@ app.get("/active-users/daily", authMiddleware, adminMiddleware, async (c) => {
     return c.json({ error: daysResult.error }, 400);
   }
   const days = daysResult?.days ?? 30;
-  const data = await getDailyActiveUsers(c.env.DB, days);
-  return c.json({ data, days });
+  try {
+    const data = await getDailyActiveUsers(c.env.DB, days);
+    return c.json({ data, days });
+  } catch {
+    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+  }
 });
 
 export default app;
