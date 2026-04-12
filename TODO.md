@@ -19,7 +19,7 @@
 - テスト全2204件通過（変更なし）
 - 🔍 **残課題（未対応）**
   - `POST /api/device/verify`のCSRF保護: Bearerトークン認証のためCSRFリスクは低いが、他のBFFエンドポイントとの一貫性検討（前回からの持ち越し）
-  - `handleRefreshTokenGrant`: `storedToken.scope`が`null`の旧トークンで`resolveEffectiveScope(null, ...)`が`"openid"`のみを返す問題 — 旧トークンのスコープ喪失リスク
+  - ✅ `handleRefreshTokenGrant`: `storedToken.scope`が`null`の旧トークンで`resolveEffectiveScope(null, ...)`が`"openid"`のみを返す問題 — `parseAllowedScopes(service.allowed_scopes).join(" ") || "openid"`で全許可スコープを正しく継承するよう修正
 
 ## バグ修正: refresh_tokenグラントのserviceMismatch+isExpired同時成立時のunrevoke防止（2026-04-12）
 
