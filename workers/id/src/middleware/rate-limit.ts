@@ -3,6 +3,7 @@ import type { Context, HonoRequest } from "hono";
 import type { IdpEnv, RateLimitBinding } from "@0g0-id/shared";
 import { createLogger } from "@0g0-id/shared";
 import { getClientIp } from "../utils/ip";
+import { parseBasicAuth } from "../utils/service-auth";
 
 /**
  * バインディング未設定の警告を1isolateにつき1回だけ出力するための追跡Set。
@@ -16,14 +17,7 @@ const rateLimitLogger = createLogger("rate-limit");
 
 /** Basic認証ヘッダーから client_id を抽出する。取得できない場合は null を返す */
 function extractClientId(authHeader: string | undefined): string | null {
-  if (!authHeader?.startsWith("Basic ")) return null;
-  try {
-    const credentials = atob(authHeader.slice(6));
-    const colonIndex = credentials.indexOf(":");
-    return colonIndex !== -1 ? credentials.slice(0, colonIndex) : null;
-  } catch {
-    return null;
-  }
+  return parseBasicAuth(authHeader)?.clientId ?? null;
 }
 
 /** リクエストボディから client_id を抽出する。取得できない場合は null を返す */

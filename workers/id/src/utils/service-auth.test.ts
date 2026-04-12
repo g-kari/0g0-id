@@ -8,7 +8,7 @@ vi.mock("@0g0-id/shared", () => ({
 }));
 
 import { findServiceByClientId, sha256, timingSafeEqual } from "@0g0-id/shared";
-import { authenticateService, serviceAuthMiddleware } from "./service-auth";
+import { authenticateService, parseBasicAuth, serviceAuthMiddleware } from "./service-auth";
 import type { Service } from "@0g0-id/shared";
 
 const mockService: Service = {
@@ -23,6 +23,50 @@ const mockService: Service = {
 };
 
 const mockDb = {} as D1Database;
+
+// ===== parseBasicAuth =====
+describe("parseBasicAuth", () => {
+  it("Authorizationヘッダーが undefined の場合 null を返す", () => {
+    expect(parseBasicAuth(undefined)).toBeNull();
+  });
+
+  it("Basic スキームでない場合 null を返す", () => {
+    expect(parseBasicAuth("Bearer token")).toBeNull();
+  });
+
+  it("無効な Base64 の場合 null を返す", () => {
+    expect(parseBasicAuth("Basic !!!invalid!!!")).toBeNull();
+  });
+
+  it("コロンがない場合 null を返す", () => {
+    const encoded = btoa("nocredshere");
+    expect(parseBasicAuth(`Basic ${encoded}`)).toBeNull();
+  });
+
+  it("正常な認証情報をパースして返す", () => {
+    const encoded = btoa("client123:secret456");
+    expect(parseBasicAuth(`Basic ${encoded}`)).toEqual({
+      clientId: "client123",
+      clientSecret: "secret456",
+    });
+  });
+
+  it("シークレットにコロンが含まれる場合、最初のコロンで分割する", () => {
+    const encoded = btoa("clientId:secret:with:colons");
+    expect(parseBasicAuth(`Basic ${encoded}`)).toEqual({
+      clientId: "clientId",
+      clientSecret: "secret:with:colons",
+    });
+  });
+
+  it("clientId が空文字の場合も返す", () => {
+    const encoded = btoa(":secretonly");
+    expect(parseBasicAuth(`Basic ${encoded}`)).toEqual({
+      clientId: "",
+      clientSecret: "secretonly",
+    });
+  });
+});
 
 // ===== authenticateService =====
 describe("authenticateService", () => {

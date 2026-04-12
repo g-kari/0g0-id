@@ -5,25 +5,36 @@ import type { IdpEnv, Service } from "@0g0-id/shared";
 type ServiceVariables = { service: Service };
 
 /**
- * Basic認証でサービス認証を行い、サービス情報を返す。
- * 認証失敗時は null を返す。
- * DB障害・暗号処理エラーは throw して呼び出し元で 500 として扱う。
+ * Basic 認証ヘッダーをパースして clientId と clientSecret を返す。
+ * ヘッダーが不正・存在しない場合は null を返す。
  */
-export async function authenticateService(db: D1Database, authHeader: string | undefined) {
+export function parseBasicAuth(
+  authHeader: string | undefined,
+): { clientId: string; clientSecret: string } | null {
   if (!authHeader?.startsWith("Basic ")) return null;
-
   let credentials: string;
   try {
     credentials = atob(authHeader.slice(6));
   } catch {
     return null;
   }
-
   const colonIndex = credentials.indexOf(":");
   if (colonIndex === -1) return null;
+  return {
+    clientId: credentials.slice(0, colonIndex),
+    clientSecret: credentials.slice(colonIndex + 1),
+  };
+}
 
-  const clientId = credentials.slice(0, colonIndex);
-  const clientSecret = credentials.slice(colonIndex + 1);
+/**
+ * Basic認証でサービス認証を行い、サービス情報を返す。
+ * 認証失敗時は null を返す。
+ * DB障害・暗号処理エラーは throw して呼び出し元で 500 として扱う。
+ */
+export async function authenticateService(db: D1Database, authHeader: string | undefined) {
+  const parsed = parseBasicAuth(authHeader);
+  if (!parsed) return null;
+  const { clientId, clientSecret } = parsed;
 
   try {
     const service = await findServiceByClientId(db, clientId);
