@@ -483,4 +483,133 @@ describe("admin BFF — /api/metrics", () => {
       expect(res.status).toBe(500);
     });
   });
+
+  describe("GET /active-users — DAU/WAU/MAU アクティブユーザー数", () => {
+    const mockActiveUsers = {
+      dau: 42,
+      wau: 150,
+      mau: 500,
+    };
+
+    it("セッションなしで401を返す", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request("/api/metrics/active-users");
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("管理者セッションでIdPへプロキシしてアクティブユーザー統計を返す", async () => {
+      const idpFetch = mockIdp(200, { data: mockActiveUsers });
+      const app = buildApp(idpFetch);
+      const res = await app.request("/api/metrics/active-users", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof mockActiveUsers }>();
+      expect(body.data.dau).toBe(42);
+      expect(body.data.wau).toBe(150);
+      expect(body.data.mau).toBe(500);
+    });
+
+    it("IdP への呼び出しURLに /api/metrics/active-users が含まれ /daily を含まない", async () => {
+      const idpFetch = mockIdp(200, { data: mockActiveUsers });
+      const app = buildApp(idpFetch);
+      await app.request("/api/metrics/active-users", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      const calledUrl = vi.mocked(idpFetch).mock.calls[0][0].url;
+      expect(calledUrl).toContain("/api/metrics/active-users");
+      expect(calledUrl).not.toContain("/daily");
+    });
+
+    it("IdP が500を返した場合は500をプロキシする", async () => {
+      const idpFetch = mockIdp(500, { error: { code: "INTERNAL_ERROR" } });
+      const app = buildApp(idpFetch);
+      const res = await app.request("/api/metrics/active-users", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(500);
+    });
+  });
+
+  describe("GET /active-users/daily — 日別アクティブユーザー数推移", () => {
+    const mockDailyActiveUsers = [
+      { date: "2024-01-01", count: 40 },
+      { date: "2024-01-02", count: 55 },
+    ];
+
+    it("セッションなしで401を返す", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request("/api/metrics/active-users/daily");
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("管理者セッションでIdPへプロキシして日別データを返す", async () => {
+      const idpFetch = mockIdp(200, { data: mockDailyActiveUsers, days: 30 });
+      const app = buildApp(idpFetch);
+      const res = await app.request("/api/metrics/active-users/daily", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof mockDailyActiveUsers; days: number }>();
+      expect(body.data).toHaveLength(2);
+      expect(body.data[0].count).toBe(40);
+    });
+
+    it("IdP への呼び出しURLに /api/metrics/active-users/daily が含まれる", async () => {
+      const idpFetch = mockIdp(200, { data: mockDailyActiveUsers, days: 30 });
+      const app = buildApp(idpFetch);
+      await app.request("/api/metrics/active-users/daily", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      const calledUrl = vi.mocked(idpFetch).mock.calls[0][0].url;
+      expect(calledUrl).toContain("/api/metrics/active-users/daily");
+    });
+
+    it("daysクエリパラメータをIdPに転送する", async () => {
+      const idpFetch = mockIdp(200, { data: mockDailyActiveUsers, days: 7 });
+      const app = buildApp(idpFetch);
+      await app.request("/api/metrics/active-users/daily?days=7", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      const calledUrl = new URL(vi.mocked(idpFetch).mock.calls[0][0].url);
+      expect(calledUrl.searchParams.get("days")).toBe("7");
+    });
+
+    it("不正なdays（abc）で400を返す（IdP呼び出しなし）", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request("/api/metrics/active-users/daily?days=abc", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe("INVALID_PARAMETER");
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("days=0（範囲外）で400を返す（IdP呼び出しなし）", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request("/api/metrics/active-users/daily?days=0", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe("INVALID_PARAMETER");
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("IdP が500を返した場合は500をプロキシする", async () => {
+      const idpFetch = mockIdp(500, { error: { code: "INTERNAL_ERROR" } });
+      const app = buildApp(idpFetch);
+      const res = await app.request("/api/metrics/active-users/daily", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(500);
+    });
+  });
 });
