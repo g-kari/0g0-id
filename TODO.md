@@ -1,5 +1,17 @@
 # TODO
 
+## 2026-04-12: リファクタリング: well-known.ts 共通メタデータ集約
+
+### 対応内容
+- `workers/id/src/routes/well-known.ts` の `openid-configuration` と `oauth-authorization-server` で重複していた RFC 8414 共通フィールドを `buildBaseMetadata()` ヘルパーに抽出
+- OIDC固有フィールド（`userinfo_endpoint`, `end_session_endpoint`, `id_token_signing_alg_values_supported`）のみ `openid-configuration` 側に残す
+- 両エンドポイントが独立して保守されることによるドリフトリスクを解消
+- 76行 → 46行（差分 -30行）
+
+### テスト結果
+- 全 2213 件通過（変更なし）
+
+
 ## 2026-04-12: テスト改善: sessions.ts テストカバレッジ強化
 
 ### 対応内容
