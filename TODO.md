@@ -1,5 +1,14 @@
 # TODO
 
+## 機能追加: admin BFF active-users エンドポイント追加（2026-04-12）
+
+### 対応内容
+
+- IdPコア（workers/id）に実装済みだった2エンドポイントが admin BFF に欠落していた
+  - `GET /api/metrics/active-users` — DAU/WAU/MAU アクティブユーザー統計をプロキシ
+  - `GET /api/metrics/active-users/daily?days=N` — 日別アクティブユーザー推移をプロキシ（days バリデーション付き）
+- テスト11件追加（admin worker: 221 → 232テスト）、全2241テストパス
+
 ## コードレビュー修正: metrics.ts DB例外ハンドリング漏れ（2026-04-12）
 
 ### 対応内容
