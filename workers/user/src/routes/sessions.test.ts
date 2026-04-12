@@ -1,13 +1,11 @@
 import { describe, it, expect, vi } from "vite-plus/test";
 import { encodeSession, sha256 } from "@0g0-id/shared";
 import { Hono } from "hono";
+
 import sessionsRoutes from "./sessions";
 
-const baseUrl = "http://localhost";
 const SESSION_COOKIE = "__Host-user-session";
-const validSessionId = "123e4567-e89b-12d3-a456-426614174000";
-
-type IdpFetch = (req: Request) => Promise<Response>;
+const baseUrl = "https://user.0g0.xyz";
 
 async function makeSessionCookie(opts: { refreshToken?: string } = {}): Promise<string> {
   const { refreshToken = "mock-refresh-token" } = opts;
@@ -19,196 +17,411 @@ async function makeSessionCookie(opts: { refreshToken?: string } = {}): Promise<
   return encodeSession(session, "test-secret");
 }
 
-function buildApp(idpFetch: IdpFetch) {
+function buildApp(idpFetch: (req: Request) => Promise<Response>) {
   const app = new Hono<{
-    Bindings: { IDP: { fetch: IdpFetch }; IDP_ORIGIN: string; SESSION_SECRET: string };
+    Bindings: { IDP: { fetch: typeof idpFetch }; IDP_ORIGIN: string; SESSION_SECRET: string };
   }>();
   app.route("/api/me/sessions", sessionsRoutes);
   return {
-    request: (path: string, init?: RequestInit) =>
-      app.request(new Request(`${baseUrl}${path}`, init), undefined, {
+    request: (path: string, init?: RequestInit) => {
+      const req = new Request(`${baseUrl}${path}`, init);
+      return app.request(req, undefined, {
         IDP: { fetch: idpFetch },
         IDP_ORIGIN: "https://id.0g0.xyz",
         SESSION_SECRET: "test-secret",
-      }),
+      });
+    },
   };
 }
 
-function mockIdp(status: number, body: unknown): IdpFetch {
-  return vi.fn().mockResolvedValue(
-    new Response(status === 204 ? null : JSON.stringify(body), {
-      status,
-      headers: status === 204 ? {} : { "Content-Type": "application/json" },
-    }),
-  );
-}
+describe("user BFF — /api/me/sessions", () => {
+  describe("GET / — アクティブセッション一覧", () => {
+    it("セッションなしで401を返す", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
 
-// ===== GET /api/me/sessions =====
+      const res = await app.request("/api/me/sessions");
 
-describe("GET /api/me/sessions", () => {
-  it("セッションなしで401を返す（IdP未呼び出し）", async () => {
-    const idpFetch = vi.fn();
-    const app = buildApp(idpFetch);
-    const res = await app.request("/api/me/sessions");
-    expect(res.status).toBe(401);
-    expect(idpFetch).not.toHaveBeenCalled();
-  });
-
-  it("有効なセッションでIdPにGETリクエストを送りレスポンスを返す", async () => {
-    const sessions = [{ id: validSessionId, created_at: "2026-01-01T00:00:00Z" }];
-    const idpFetch = mockIdp(200, { data: sessions });
-    const app = buildApp(idpFetch);
-    const res = await app.request("/api/me/sessions", {
-      headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
     });
-    expect(res.status).toBe(200);
-    expect(idpFetch).toHaveBeenCalledTimes(1);
-    const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
-    expect(calledReq.url).toBe("https://id.0g0.xyz/api/users/me/tokens");
-    expect(calledReq.headers.get("Authorization")).toBe("Bearer mock-access-token");
-  });
 
-  it("IdPが500を返すとその応答を伝播する", async () => {
-    const idpFetch = mockIdp(500, { error: { code: "INTERNAL_ERROR" } });
-    const app = buildApp(idpFetch);
-    const res = await app.request("/api/me/sessions", {
-      headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+    it("セッションありでIdPへGETしてセッション一覧を返す", async () => {
+      const mockSessions = [
+        {
+          id: "token-1",
+          service_id: null,
+          service_name: null,
+          created_at: "2024-01-01T00:00:00Z",
+          expires_at: "2025-12-31T23:59:59Z",
+        },
+      ];
+      const idpFetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ data: mockSessions }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/me/sessions", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: unknown[] }>();
+      expect(body.data).toHaveLength(1);
     });
-    expect(res.status).toBe(500);
-  });
-});
 
-// ===== DELETE /api/me/sessions/others =====
+    it("IdPの /api/users/me/tokens エンドポイントをGETで呼び出す", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ data: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+      const app = buildApp(idpFetch);
 
-describe("DELETE /api/me/sessions/others", () => {
-  it("セッションなしで401を返す（IdP未呼び出し）", async () => {
-    const idpFetch = vi.fn();
-    const app = buildApp(idpFetch);
-    const res = await app.request("/api/me/sessions/others", { method: "DELETE" });
-    expect(res.status).toBe(401);
-    expect(idpFetch).not.toHaveBeenCalled();
-  });
+      await app.request("/api/me/sessions", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
 
-  it("不正なセッションCookieで401を返す（IdP未呼び出し）", async () => {
-    const idpFetch = vi.fn();
-    const app = buildApp(idpFetch);
-    const res = await app.request("/api/me/sessions/others", {
-      method: "DELETE",
-      headers: { Cookie: `${SESSION_COOKIE}=invalid-value` },
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.method).toBe("GET");
+      expect(calledReq.url).toBe("https://id.0g0.xyz/api/users/me/tokens");
     });
-    expect(res.status).toBe(401);
-    expect(idpFetch).not.toHaveBeenCalled();
-  });
 
-  it("有効なセッションでsha256(refresh_token)をtoken_hashとしてIdPにDELETEを送る", async () => {
-    const refreshToken = "test-refresh-token-xyz";
-    const idpFetch = mockIdp(204, null);
-    const app = buildApp(idpFetch);
-    const res = await app.request("/api/me/sessions/others", {
-      method: "DELETE",
-      headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie({ refreshToken })}` },
+    it("AuthorizationヘッダーにアクセストークンをBearerで付与する", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ data: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+      const app = buildApp(idpFetch);
+
+      await app.request("/api/me/sessions", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.headers.get("Authorization")).toBe("Bearer mock-access-token");
     });
-    expect(res.status).toBe(204);
-    expect(idpFetch).toHaveBeenCalledTimes(1);
-    const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
-    expect(calledReq.method).toBe("DELETE");
-    expect(calledReq.url).toBe("https://id.0g0.xyz/api/users/me/tokens/others");
-    const body = await calledReq.json<{ token_hash: string }>();
-    expect(body.token_hash).toBe(await sha256(refreshToken));
   });
 
-  it("IdPがエラーを返すとその応答を伝播する", async () => {
-    const idpFetch = mockIdp(500, { error: { code: "INTERNAL_ERROR" } });
-    const app = buildApp(idpFetch);
-    const res = await app.request("/api/me/sessions/others", {
-      method: "DELETE",
-      headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+  describe("DELETE /:sessionId — 特定セッションのみログアウト", () => {
+    it("不正なsessionId形式で400を返す（IdP未呼び出し）", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/me/sessions/not-a-uuid", { method: "DELETE" });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe("BAD_REQUEST");
+      expect(idpFetch).not.toHaveBeenCalled();
     });
-    expect(res.status).toBe(500);
-  });
-});
 
-// ===== DELETE /api/me/sessions/:sessionId =====
+    it("UUID風だが不正な形式のsessionIdで400を返す（IdP未呼び出し）", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
 
-describe("DELETE /api/me/sessions/:sessionId", () => {
-  it("セッションなしで401を返す（IdP未呼び出し）", async () => {
-    const idpFetch = vi.fn();
-    const app = buildApp(idpFetch);
-    const res = await app.request(`/api/me/sessions/${validSessionId}`, { method: "DELETE" });
-    expect(res.status).toBe(401);
-    expect(idpFetch).not.toHaveBeenCalled();
-  });
+      const res = await app.request("/api/me/sessions/550e8400-e29b-41d4-a716-ZZZZZZZZZZZZ", {
+        method: "DELETE",
+      });
 
-  it("不正なUUID形式で400を返す（IdP未呼び出し）", async () => {
-    const idpFetch = vi.fn();
-    const app = buildApp(idpFetch);
-    const res = await app.request("/api/me/sessions/not-a-uuid", {
-      method: "DELETE",
-      headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      expect(res.status).toBe(400);
+      expect(idpFetch).not.toHaveBeenCalled();
     });
-    expect(res.status).toBe(400);
-    const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
-    expect(idpFetch).not.toHaveBeenCalled();
-  });
 
-  it("有効なセッションとUUIDでIdPに特定トークンのDELETEを送る", async () => {
-    const idpFetch = mockIdp(204, null);
-    const app = buildApp(idpFetch);
-    const res = await app.request(`/api/me/sessions/${validSessionId}`, {
-      method: "DELETE",
-      headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+    it("セッションなしで401を返す", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/me/sessions/550e8400-e29b-41d4-a716-446655440000", {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
     });
-    expect(res.status).toBe(204);
-    expect(idpFetch).toHaveBeenCalledTimes(1);
-    const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
-    expect(calledReq.url).toBe(`https://id.0g0.xyz/api/users/me/tokens/${validSessionId}`);
-    expect(calledReq.method).toBe("DELETE");
-  });
 
-  it("IdPが404を返すとその応答を伝播する", async () => {
-    const idpFetch = mockIdp(404, { error: { code: "NOT_FOUND" } });
-    const app = buildApp(idpFetch);
-    const res = await app.request(`/api/me/sessions/${validSessionId}`, {
-      method: "DELETE",
-      headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+    it("セッションありでIdPへDELETEして204を返す", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/me/sessions/550e8400-e29b-41d4-a716-446655440000", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(204);
     });
-    expect(res.status).toBe(404);
-  });
-});
 
-// ===== DELETE /api/me/sessions =====
+    it("IdPの /api/users/me/tokens/:tokenId エンドポイントをDELETEで呼び出す", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
 
-describe("DELETE /api/me/sessions", () => {
-  it("セッションなしで401を返す（IdP未呼び出し）", async () => {
-    const idpFetch = vi.fn();
-    const app = buildApp(idpFetch);
-    const res = await app.request("/api/me/sessions", { method: "DELETE" });
-    expect(res.status).toBe(401);
-    expect(idpFetch).not.toHaveBeenCalled();
-  });
+      await app.request("/api/me/sessions/550e8400-e29b-41d4-a716-446655440000", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
 
-  it("有効なセッションで全セッションのDELETEをIdPに送る", async () => {
-    const idpFetch = mockIdp(204, null);
-    const app = buildApp(idpFetch);
-    const res = await app.request("/api/me/sessions", {
-      method: "DELETE",
-      headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.method).toBe("DELETE");
+      expect(calledReq.url).toBe(
+        "https://id.0g0.xyz/api/users/me/tokens/550e8400-e29b-41d4-a716-446655440000",
+      );
     });
-    expect(res.status).toBe(204);
-    expect(idpFetch).toHaveBeenCalledTimes(1);
-    const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
-    expect(calledReq.method).toBe("DELETE");
-    expect(calledReq.url).toBe("https://id.0g0.xyz/api/users/me/tokens");
+
+    it("AuthorizationヘッダーにアクセストークンをBearerで付与する", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request("/api/me/sessions/550e8400-e29b-41d4-a716-446655440000", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.headers.get("Authorization")).toBe("Bearer mock-access-token");
+    });
+
+    it("OriginヘッダーをIdPのoriginに設定して送信する", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request("/api/me/sessions/550e8400-e29b-41d4-a716-446655440000", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.headers.get("Origin")).toBe("https://id.0g0.xyz");
+    });
+
+    it("IdPが404を返した場合はそのまま伝播する", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ error: { code: "NOT_FOUND", message: "Session not found" } }),
+          {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/me/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(404);
+    });
   });
 
-  it("IdPがエラーを返すとその応答を伝播する", async () => {
-    const idpFetch = mockIdp(500, { error: { code: "INTERNAL_ERROR" } });
-    const app = buildApp(idpFetch);
-    const res = await app.request("/api/me/sessions", {
-      method: "DELETE",
-      headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+  describe("DELETE /others — 現在のセッション以外の全セッションを終了", () => {
+    it("セッションなしで401を返す", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/me/sessions/others", { method: "DELETE" });
+
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
     });
-    expect(res.status).toBe(500);
+
+    it("不正なセッションCookieで401を返す（IdP未呼び出し）", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/me/sessions/others", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=invalid-cookie-value` },
+      });
+
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("セッションありでIdPへDELETEして他セッションを終了する", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/me/sessions/others", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(204);
+    });
+
+    it("IdPの /api/users/me/tokens/others エンドポイントをDELETEで呼び出す", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request("/api/me/sessions/others", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.method).toBe("DELETE");
+      expect(calledReq.url).toBe("https://id.0g0.xyz/api/users/me/tokens/others");
+    });
+
+    it("リクエストボディに token_hash（SHA256(refresh_token)）の正確な値を含める", async () => {
+      const refreshToken = "test-refresh-token-xyz";
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request("/api/me/sessions/others", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie({ refreshToken })}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      const body = await calledReq.json<{ token_hash: string }>();
+      // SHA256(refreshToken) の厳密な一致を確認
+      expect(body.token_hash).toBe(await sha256(refreshToken));
+    });
+
+    it("Content-Type: application/json ヘッダーを付与してIdPに送信する", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request("/api/me/sessions/others", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.headers.get("Content-Type")).toBe("application/json");
+    });
+
+    it("AuthorizationヘッダーにアクセストークンをBearerで付与する", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request("/api/me/sessions/others", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.headers.get("Authorization")).toBe("Bearer mock-access-token");
+    });
+
+    it("OriginヘッダーをIdPのoriginに設定して送信する", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request("/api/me/sessions/others", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.headers.get("Origin")).toBe("https://id.0g0.xyz");
+    });
+
+    it("IdPが500を返した場合はそのまま伝播する", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: { code: "INTERNAL_ERROR" } }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/me/sessions/others", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(500);
+    });
+  });
+
+  describe("DELETE / — 全デバイスからログアウト", () => {
+    it("セッションなしで401を返す", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/me/sessions", { method: "DELETE" });
+
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("セッションありでIdPへDELETEしてトークンを全無効化する", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/me/sessions", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(204);
+    });
+
+    it("IdPの /api/users/me/tokens エンドポイントをDELETEで呼び出す", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request("/api/me/sessions", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.method).toBe("DELETE");
+      expect(calledReq.url).toBe("https://id.0g0.xyz/api/users/me/tokens");
+    });
+
+    it("AuthorizationヘッダーにアクセストークンをBearerで付与する", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request("/api/me/sessions", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.headers.get("Authorization")).toBe("Bearer mock-access-token");
+    });
+
+    it("OriginヘッダーをIdPのoriginに設定して送信する", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request("/api/me/sessions", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.headers.get("Origin")).toBe("https://id.0g0.xyz");
+    });
+
+    it("IdPが500を返した場合はそのまま伝播する", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: { code: "INTERNAL_ERROR" } }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/me/sessions", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(500);
+    });
   });
 });
