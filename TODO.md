@@ -1,5 +1,18 @@
 # TODO
 
+## 2026-04-12: リファクタリング: parseBasicAuth 共通化
+
+### 対応内容
+- `rate-limit.ts` と `service-auth.ts` で重複していた Basic 認証ヘッダーパースロジックを統合
+- `workers/id/src/utils/service-auth.ts` に `parseBasicAuth(authHeader)` 関数を新規 export
+  - `{ clientId: string; clientSecret: string } | null` を返す
+  - `atob` デコード失敗・コロンなしは null
+- `rate-limit.ts` の `extractClientId` を `parseBasicAuth` を使う1行実装に簡略化
+- `service-auth.test.ts` に `parseBasicAuth` のテスト 7 件追加
+
+### テスト結果
+- 全 2212 件通過（+7 件追加）
+
 ## コードレビュー修正: トークン・デバイスコードエンドポイントのセキュリティ・RFC準拠改善（2026-04-12）
 
 - ✅ **resolveOAuthClient: confidentialクライアントのBasic認証バイパス防止**
@@ -9,7 +22,7 @@
   - `error: "invalid_grant"` → `error: "expired_token"` に修正
   - クライアントが期限切れを正しく検出してユーザーに再試行を促すために必要
 - ✅ **slow_down Retry-After値: RFC 8628 §3.5 +5秒ルール準拠**
-  - `Retry-After: 5` → `Retry-After: 10`（POLLING_INTERVAL_SEC * 2）に修正
+  - `Retry-After: 5` → `Retry-After: 10`（POLLING_INTERVAL_SEC \* 2）に修正
 - ✅ **/verify情報取得: サービス全スコープ→リクエスト時スコープに修正**
   - `serviceInfo.allowed_scopes`（サービス全スコープ）→ `deviceCode.scope`（リクエスト時スコープ）
   - ユーザー同意画面で実際に要求されたスコープのみを表示する（最小権限の原則）
