@@ -1,5 +1,23 @@
 # TODO
 
+## 機能追加: MCPツール get_login_trends・get_user_registrations 追加（2026-04-13）
+
+### 対応内容
+
+- `getLoginTrendsTool` (`get_login_trends`): 日別ログイン数の推移を取得
+  - `getDailyLoginTrends(context.db, days)` を呼び出し、`{ data: [...], days }` を返す
+  - days: 1〜365、デフォルト30
+- `getUserRegistrationsTool` (`get_user_registrations`): 日別ユーザー登録数の推移を取得
+  - `getDailyUserRegistrations(context.db, days)` を呼び出し、`{ data: [...], days }` を返す
+  - days: 1〜365、デフォルト30
+- `workers/mcp/src/tools/index.ts`・`workers/mcp/src/index.ts` にエクスポート・登録追加
+- テスト12件追加（mcp: 208 → 220テスト）、全2266テストパス
+
+### 背景
+
+- IdP metrics エンドポイント `GET /login-trends`・`GET /user-registrations` に対応するMCPツールが未実装だった
+- `getSystemMetricsTool` にはこれらのデータが含まれるが、単独取得用ツールがなかった
+
 ## テストカバレッジ追加（2026-04-12）: bffCsrfMiddleware安全メソッド・unbanUserTool
 
 ### 対応内容
