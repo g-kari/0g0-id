@@ -381,6 +381,13 @@ async function handleRefreshTokenGrant(
     if (currentToken && currentToken.revoked_reason === "reuse_detected") {
       return c.json({ error: "invalid_grant", error_description: "Token reuse detected" }, 400);
     }
+    // 期限切れトークン: rotation済み状態のまま拒否（unrevokeは不要かつ危険）
+    // revokedを戻すとreuse detectionロジックが誤動作するリスクがある
+    // NOTE: isExpiredをserviceMismatchより先にチェックする
+    //   両方trueの場合にunrevokeが走ると、期限切れトークンが復活してしまうため
+    if (isExpired) {
+      return c.json({ error: "invalid_grant", error_description: "Refresh token expired" }, 400);
+    }
     if (serviceMismatch) {
       // 別サービス向けのトークン → 元に戻して拒否
       await attemptUnrevokeToken(c.env.DB, storedToken.id, "[token] service_id mismatch 後");
@@ -389,9 +396,6 @@ async function handleRefreshTokenGrant(
         400,
       );
     }
-    // 期限切れトークン: rotation済み状態のまま拒否（unrevokeは不要かつ危険）
-    // revokedを戻すとreuse detectionロジックが誤動作するリスクがある
-    return c.json({ error: "invalid_grant", error_description: "Refresh token expired" }, 400);
   }
 
   // ユーザー情報取得

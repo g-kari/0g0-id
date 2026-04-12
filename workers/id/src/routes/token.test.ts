@@ -1716,6 +1716,28 @@ describe("POST /api/token/ — refresh_token grant", () => {
     expect(vi.mocked(unrevokeRefreshToken)).not.toHaveBeenCalled();
   });
 
+  it("service_id不一致 + 期限切れ → unrevokeせず expired を返す（isExpired優先）", async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue({
+      ...mockRefreshToken,
+      service_id: "other-service-id",
+      expires_at: new Date(Date.now() - 1000).toISOString(),
+    } as never);
+    const res = await sendRequest(app, "/api/token", {
+      method: "POST",
+      formBody: {
+        grant_type: "refresh_token",
+        refresh_token: "mismatch-and-expired-token",
+        client_id: "test-client-id",
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string; error_description: string }>();
+    expect(body.error).toBe("invalid_grant");
+    expect(body.error_description).toBe("Refresh token expired");
+    // 期限切れが優先されるため、unrevokeは呼ばれない
+    expect(vi.mocked(unrevokeRefreshToken)).not.toHaveBeenCalled();
+  });
+
   it("ユーザーが存在しない → { error: invalid_grant } + 400", async () => {
     vi.mocked(findUserById).mockResolvedValue(null);
     const res = await sendRequest(app, "/api/token", {
