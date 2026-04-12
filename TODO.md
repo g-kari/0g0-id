@@ -1,5 +1,22 @@
 # TODO
 
+## テストカバレッジ追加（2026-04-12）: bffCsrfMiddleware安全メソッド・unbanUserTool
+
+### 対応内容
+
+- `packages/shared/src/middleware/bff.test.ts` に3件追加
+  - `GETリクエスト → CSRF検証をスキップして通過する`（安全メソッドのCSRFスキップ動作を明示）
+  - `DELETEリクエストでOriginなし → 403を返す`（POST以外の安全でないメソッドも保護対象）
+  - `PATCHリクエストでOriginが一致 → 通過する`（PATCH正常系）
+  - `buildCsrfApp` に GET/DELETE/PATCH ルートを追加
+- `workers/mcp/src/tools/users.test.ts` に1件追加
+  - `unbanUserTool > user_id未指定はエラー`（banUserTool等と対称性を確保）
+- `workers/mcp/src/index.test.ts`: `getActiveUserStatsTool`・`getDailyActiveUsersTool` のモック補完
+
+### テスト数推移
+
+- 全 2254 件通過（2250 → 2254）
+
 ## 機能追加: MCPツール get_active_user_stats・get_daily_active_users 追加（2026-04-12）
 
 ### 対応内容
