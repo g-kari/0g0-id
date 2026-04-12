@@ -1,5 +1,17 @@
 # TODO
 
+## 2026-04-12: テスト改善: sessions.ts テストカバレッジ強化
+
+### 対応内容
+- `workers/user/src/routes/sessions.test.ts` に2件追加（既存26件 → 28件）
+  - `DELETE /others`: 不正なセッションCookieで401を返すテスト（parseSession失敗パス）
+  - `DELETE /others`: `sha256(refresh_token)` の厳密な値一致検証（64文字16進チェックから強化）
+- `makeSessionCookie` を `refreshToken` オプション対応に拡張
+- `sha256` を `@0g0-id/shared` からimport追加
+
+### テスト結果
+- 全 2213 件通過（+1 件追加）
+
 ## 2026-04-12: リファクタリング: parseBasicAuth 共通化
 
 ### 対応内容
