@@ -1,5 +1,16 @@
 # TODO
 
+## バグ修正: handleDeviceCodeGrantのスコープ未検証を修正（2026-04-12）
+
+- ✅ **handleDeviceCodeGrantでresolveEffectiveScopeのundefinedガードが欠落していた問題を修正**
+  - `resolveEffectiveScope`が`undefined`を返した場合（全スコープ無効）にガードなしで`issueTokenPair`が呼ばれていた
+  - `handleAuthorizationCodeGrant`（token.ts:287）や`authorizeHandler`（auth.ts:1193）には同じガードが存在しており、device grantだけ欠落
+  - `{ error: "invalid_scope", error_description: "No valid scope" }` + 400を返すガードを追加
+  - テスト1件追加（2202 → 2203テスト）、全2203テスト通過
+- 🔍 **コードレビューで発見した他の指摘事項（未対応）**
+  - `POST /api/device/verify`のCSRF保護: Bearerトークン認証のためCSRFリスクは低いが、他のBFFエンドポイントとの一貫性検討
+  - `refresh_token`グラントの`serviceMismatch`と`isExpired`の条件分岐: `attemptUnrevokeToken`が`serviceMismatch`経由で呼ばれる場合のリスク分析
+
 ## セキュリティ強化: IdPコアルートのパスパラメータバリデーション追加（2026-04-12）
 
 - ✅ **IdPコア（workers/id）の未検証パスパラメータにバリデーション追加**
