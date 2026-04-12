@@ -1,5 +1,26 @@
 # TODO
 
+## コードレビュー修正: トークン・デバイスコードエンドポイントのセキュリティ・RFC準拠改善（2026-04-12）
+
+- ✅ **resolveOAuthClient: confidentialクライアントのBasic認証バイパス防止**
+  - `client_secret_hash`が設定されたconfidentialクライアントがAuthorizationヘッダーなしでpublicクライアントとして通過できるバイパスを防止
+  - `findServiceByClientId`取得後に`client_secret_hash`の存在チェックを追加
+- ✅ **device code期限切れエラーコード: RFC 8628 §3.5準拠**
+  - `error: "invalid_grant"` → `error: "expired_token"` に修正
+  - クライアントが期限切れを正しく検出してユーザーに再試行を促すために必要
+- ✅ **slow_down Retry-After値: RFC 8628 §3.5 +5秒ルール準拠**
+  - `Retry-After: 5` → `Retry-After: 10`（POLLING_INTERVAL_SEC * 2）に修正
+- ✅ **/verify情報取得: サービス全スコープ→リクエスト時スコープに修正**
+  - `serviceInfo.allowed_scopes`（サービス全スコープ）→ `deviceCode.scope`（リクエスト時スコープ）
+  - ユーザー同意画面で実際に要求されたスコープのみを表示する（最小権限の原則）
+- ✅ **introspectRefreshToken: console.warn→tokenLogger.warn統一**
+  - プロジェクト規約の`createLogger`に統一、相手のservice_idをログから除去（情報漏洩防止）
+- ✅ **device.ts: resolvedScope ?? null 冗長フォールバック除去、未使用import削除**
+- テスト全2204件通過（変更なし）
+- 🔍 **残課題（未対応）**
+  - `POST /api/device/verify`のCSRF保護: Bearerトークン認証のためCSRFリスクは低いが、他のBFFエンドポイントとの一貫性検討（前回からの持ち越し）
+  - `handleRefreshTokenGrant`: `storedToken.scope`が`null`の旧トークンで`resolveEffectiveScope(null, ...)`が`"openid"`のみを返す問題 — 旧トークンのスコープ喪失リスク
+
 ## バグ修正: refresh_tokenグラントのserviceMismatch+isExpired同時成立時のunrevoke防止（2026-04-12）
 
 - ✅ **serviceMismatchとisExpiredが両方trueの場合に期限切れトークンがunrevokeされるバグを修正**
