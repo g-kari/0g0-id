@@ -357,6 +357,19 @@ describe("handleDeviceCodeGrant", () => {
     await handleDeviceCodeGrant(c as never, baseParams);
     expect(signIdToken).toHaveBeenCalled();
   });
+
+  it("全スコープが無効（resolveEffectiveScope → undefined）→ invalid_scope + 400", async () => {
+    vi.mocked(findDeviceCodeByHash).mockResolvedValue(approvedDeviceCode as never);
+    vi.mocked(resolveEffectiveScope).mockReturnValue(undefined as never);
+    const c = makeContext();
+    const res = await handleDeviceCodeGrant(c as never, baseParams);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; error_description: string };
+    expect(body.error).toBe("invalid_scope");
+    expect(body.error_description).toBe("No valid scope");
+    // issueTokenPair は呼ばれないこと
+    expect(issueTokenPair).not.toHaveBeenCalled();
+  });
 });
 
 // ===== POST /api/device/code — デバイス認可リクエスト =====
