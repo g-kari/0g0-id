@@ -8,7 +8,8 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "Asia/Tokyo"
-    minimum-release-age: 3
+    cooldown:
+      default-days: 3
     open-pull-requests-limit: 10
     groups:
       typescript:
@@ -37,6 +38,8 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "Asia/Tokyo"
+    cooldown:
+      default-days: 3
     labels:
       - "dependencies"
       - "github-actions"
