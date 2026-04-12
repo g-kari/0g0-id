@@ -24,7 +24,7 @@ import {
   tokenApiRateLimitMiddleware,
 } from "../middleware/rate-limit";
 import { authenticateService } from "../utils/service-auth";
-import { resolveEffectiveScope } from "../utils/scopes";
+import { parseAllowedScopes, resolveEffectiveScope } from "../utils/scopes";
 import { handleDeviceCodeGrant } from "./device";
 import { issueTokenPair, buildTokenResponse } from "../utils/token-pair";
 import { attemptUnrevokeToken } from "../utils/token-recovery";
@@ -412,7 +412,8 @@ async function handleRefreshTokenGrant(
   }
 
   // スコープ引き継ぎ
-  const refreshScope = storedToken.scope ?? resolveEffectiveScope(null, service.allowed_scopes);
+  const refreshScope =
+    storedToken.scope ?? (parseAllowedScopes(service.allowed_scopes).join(" ") || "openid");
 
   const issueResult = await issueTokenPairWithRecovery(
     c.env.DB,

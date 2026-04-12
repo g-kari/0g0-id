@@ -1814,6 +1814,25 @@ describe("POST /api/token/ — refresh_token grant", () => {
     expect(body.scope).toBe("profile email");
   });
 
+  it("スコープがnull（古いトークン）→ サービスのallowed_scopesが引き継がれる", async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue({
+      ...mockRefreshToken,
+      scope: null,
+    } as never);
+    const res = await sendRequest(app, "/api/token", {
+      method: "POST",
+      formBody: {
+        grant_type: "refresh_token",
+        refresh_token: "valid-token",
+        client_id: "test-client-id",
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ scope: string }>();
+    // allowed_scopes = ["profile", "email"] → "profile email" が引き継がれる（"openid" のみにならない）
+    expect(body.scope).toBe("profile email");
+  });
+
   it("issueTokenPairが例外をスロー → { error: server_error } + 500", async () => {
     vi.mocked(signAccessToken).mockRejectedValue(new Error("key not available"));
     const res = await sendRequest(app, "/api/token", {
