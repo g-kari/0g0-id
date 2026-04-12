@@ -1,5 +1,14 @@
 # TODO
 
+## セキュリティ強化: IdPコアルートのパスパラメータバリデーション追加（2026-04-12）
+
+- ✅ **IdPコア（workers/id）の未検証パスパラメータにバリデーション追加**
+  - `users.ts`: `:id`（UUID）ミドルウェア（`/:id` + `/:id/*`）、`/me/connections/:serviceId`・`/me/tokens/:tokenId`・`/:id/tokens/:tokenId`にUUID検証
+  - `services.ts`: `:id`（UUID）ミドルウェア（`/:id` + `/:id/*`）、`/:id/users/:userId`・`/:id/redirect-uris/:uriId`にUUID検証
+  - `external.ts`: `/users/:sub`にsha256ハッシュ形式（64文字hex）検証
+  - BFF側は前回対応済みだったが、IdPコア本体にも防御層を追加（defense-in-depth）
+  - テスト10件追加（2192 → 2202テスト）、全2202テスト通過
+
 ## セキュリティ強化: admin BFF servicesパスパラメータバリデーション（2026-04-12）
 
 - ✅ **admin BFF servicesルートの未検証パスパラメータにバリデーション追加**
