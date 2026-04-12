@@ -1,5 +1,27 @@
 # TODO
 
+## 機能追加: MCPツール update_user_role・transfer_service_ownership 追加（2026-04-13）
+
+### 対応内容
+
+- `updateUserRoleTool` (`update_user_role`): ユーザーのロール（user ↔ admin）を変更
+  - `updateUserRole(context.db, userId, role)` を呼び出し
+  - 既に同一ロールの場合はスキップメッセージを返す（副作用なし）
+  - 監査ログ（`user.role_change`）を記録（from/to 付き）
+  - バリデーション: user_id 必須、role は "user" または "admin" のみ
+- `transferServiceOwnershipTool` (`transfer_service_ownership`): サービスの所有権を別ユーザーへ転送
+  - `transferServiceOwnership(context.db, serviceId, newOwnerUserId)` を呼び出し
+  - 既に同一オーナーの場合はスキップメッセージを返す（副作用なし）
+  - 監査ログ（`service.ownership_transferred`）を記録（from/to owner_user_id 付き）
+  - バリデーション: service_id・new_owner_user_id 必須、双方の存在確認
+- `workers/mcp/src/tools/users.ts`・`services.ts`・`tools/index.ts`・`index.ts` 更新
+- テスト11件追加（mcp: 220 → 231テスト）、全2277テストパス
+
+### 背景
+
+- admin REST API（`PATCH /:id/role`、`PATCH /services/:id/owner`）は実装済みだったが、対応 MCP ツールが欠落していた
+- MCP 経由でのユーザー管理・サービス管理の操作に空白があった
+
 ## 機能追加: MCPツール get_login_trends・get_user_registrations 追加（2026-04-13）
 
 ### 対応内容
