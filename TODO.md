@@ -1,5 +1,21 @@
 # TODO
 
+## コードレビュー修正: metrics.ts DB例外ハンドリング漏れ（2026-04-12）
+
+### 対応内容
+
+- `workers/id/src/routes/metrics.ts` の6エンドポイントに try/catch を追加
+  - `GET /login-trends`: `getDailyLoginTrends` のDB例外を捕捉
+  - `GET /services`: `getServiceTokenStats` のDB例外を捕捉
+  - `GET /suspicious-logins`: `getSuspiciousMultiCountryLogins` のDB例外を捕捉
+  - `GET /user-registrations`: `getDailyUserRegistrations` のDB例外を捕捉
+  - `GET /active-users`: `getActiveUserStats` のDB例外を捕捉
+  - `GET /active-users/daily`: `getDailyActiveUsers` のDB例外を捕捉
+- 原因: `GET /` メイン統計エンドポイントには try/catch があったが、その他6エンドポイントはグローバル `onError` 任せだった
+  - グローバルハンドラでも500が返るが、エラーメッセージが不統一・エンドポイント固有のコンテキストが欠落
+- `metrics.test.ts` に6件のDBエラーテストを追加
+- workers/id: 937 → 943テスト（+6）、全2230テストパス
+
 ## テストカバレッジ追加（2026-04-12）: well-known.test.ts device_authorization_endpoint 等
 
 ### 追加したテスト
@@ -7,15 +23,18 @@
 #### workers/id/src/routes/well-known.test.ts ✅
 
 **GET /.well-known/openid-configuration（+3件）**
+
 - `device_authorization_endpoint` が含まれる（RFC 8628 Device Flow）
 - `end_session_endpoint` が含まれる（OIDC Session Management）
 - `grant_types_supported` に device_code・authorization_code・refresh_token が含まれる
 
 **GET /.well-known/oauth-authorization-server（+2件）**
+
 - `device_authorization_endpoint` が含まれる（RFC 8628 Device Flow）
 - `grant_types_supported` に device_code・authorization_code・refresh_token が含まれる
 
 ### テスト数推移
+
 - workers/id: 932 → 937テスト（+5）、全 2224 件パス
 
 ## 2026-04-12: テストカバレッジ追加: device.test.ts DBエラーケース
