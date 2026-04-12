@@ -244,6 +244,13 @@ describe("unbanUserTool", () => {
     );
   });
 
+  it("user_id未指定はエラー", async () => {
+    const result = await unbanUserTool.handler({}, mockContext);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("user_id は必須");
+    expect(vi.mocked(findUserById)).not.toHaveBeenCalled();
+  });
+
   it("ユーザーが見つからない場合はエラー", async () => {
     vi.mocked(findUserById).mockResolvedValue(null);
 

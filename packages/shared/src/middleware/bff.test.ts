@@ -10,7 +10,10 @@ const mockEnv = {
 function buildCsrfApp() {
   const app = new Hono<{ Bindings: BffEnv }>();
   app.use("*", bffCsrfMiddleware);
+  app.get("/api/test", (c) => c.json({ ok: true }));
   app.post("/api/test", (c) => c.json({ ok: true }));
+  app.delete("/api/test", (c) => c.json({ ok: true }));
+  app.patch("/api/test", (c) => c.json({ ok: true }));
   return app;
 }
 
@@ -71,6 +74,38 @@ describe("bffCsrfMiddleware", () => {
     expect(res.status).toBe(403);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("GETリクエスト → CSRF検証をスキップして通過する（安全メソッド）", async () => {
+    const res = await buildCsrfApp().request(
+      new Request("https://user.0g0.xyz/api/test"),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("DELETEリクエストでOriginなし → 403を返す（安全でないメソッド）", async () => {
+    const res = await buildCsrfApp().request(
+      new Request("https://user.0g0.xyz/api/test", { method: "DELETE" }),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("PATCHリクエストでOriginが一致 → 通過する", async () => {
+    const res = await buildCsrfApp().request(
+      new Request("https://user.0g0.xyz/api/test", {
+        method: "PATCH",
+        headers: { Origin: "https://user.0g0.xyz" },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+    expect(res.status).toBe(200);
   });
 
   it("RefererヘッダーのみでOriginなし → 403を返す（CSRFバイパス不可）", async () => {
