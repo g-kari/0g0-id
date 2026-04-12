@@ -8,6 +8,7 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "Asia/Tokyo"
+    minimum-release-age: 3
     open-pull-requests-limit: 10
     groups:
       typescript:
