@@ -1,5 +1,15 @@
 # TODO
 
+## バグ修正: refresh_tokenグラントのserviceMismatch+isExpired同時成立時のunrevoke防止（2026-04-12）
+
+- ✅ **serviceMismatchとisExpiredが両方trueの場合に期限切れトークンがunrevokeされるバグを修正**
+  - `handleRefreshTokenGrant`の`serviceMismatch || isExpired`分岐内で`serviceMismatch`が先にチェックされていた
+  - 両方trueの場合、`attemptUnrevokeToken`が呼ばれて期限切れトークンが復活してしまう問題
+  - `isExpired`を`serviceMismatch`より先にチェックすることで、期限切れトークンは絶対にunrevokeされないよう修正
+  - テスト1件追加（2203 → 2204テスト）、全2204テスト通過
+- 🔍 **残課題（未対応）**
+  - `POST /api/device/verify`のCSRF保護: Bearerトークン認証のためCSRFリスクは低いが、他のBFFエンドポイントとの一貫性検討（前回からの持ち越し）
+
 ## バグ修正: handleDeviceCodeGrantのスコープ未検証を修正（2026-04-12）
 
 - ✅ **handleDeviceCodeGrantでresolveEffectiveScopeのundefinedガードが欠落していた問題を修正**
@@ -9,7 +19,7 @@
   - テスト1件追加（2202 → 2203テスト）、全2203テスト通過
 - 🔍 **コードレビューで発見した他の指摘事項（未対応）**
   - `POST /api/device/verify`のCSRF保護: Bearerトークン認証のためCSRFリスクは低いが、他のBFFエンドポイントとの一貫性検討
-  - `refresh_token`グラントの`serviceMismatch`と`isExpired`の条件分岐: `attemptUnrevokeToken`が`serviceMismatch`経由で呼ばれる場合のリスク分析
+  - ~~`refresh_token`グラントの`serviceMismatch`と`isExpired`の条件分岐: `attemptUnrevokeToken`が`serviceMismatch`経由で呼ばれる場合のリスク分析~~ → 対応済み（2026-04-12）
 
 ## セキュリティ強化: IdPコアルートのパスパラメータバリデーション追加（2026-04-12）
 
