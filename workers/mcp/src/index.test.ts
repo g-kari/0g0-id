@@ -64,6 +64,8 @@ vi.mock("./tools", () => ({
   getServiceTokenStatsTool: {},
   getActiveUserStatsTool: {},
   getDailyActiveUsersTool: {},
+  getLoginTrendsTool: {},
+  getUserRegistrationsTool: {},
 }));
 
 import { mcpAuthMiddleware } from "./middleware/auth";

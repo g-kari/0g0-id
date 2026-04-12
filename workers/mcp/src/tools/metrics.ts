@@ -152,3 +152,39 @@ export const getDailyActiveUsersTool: McpTool = {
     return { content: [{ type: "text", text: JSON.stringify({ data, days }, null, 2) }] };
   },
 };
+
+export const getLoginTrendsTool: McpTool = {
+  definition: {
+    name: "get_login_trends",
+    description: "日別ログイン数の推移を取得する",
+    inputSchema: {
+      type: "object",
+      properties: {
+        days: { type: "number", description: "遡る日数（1〜365、デフォルト: 30）" },
+      },
+    },
+  },
+  handler: async (params, context) => {
+    const days = Math.max(1, Math.min(365, Number(params.days) || 30));
+    const data = await getDailyLoginTrends(context.db, days);
+    return { content: [{ type: "text", text: JSON.stringify({ data, days }, null, 2) }] };
+  },
+};
+
+export const getUserRegistrationsTool: McpTool = {
+  definition: {
+    name: "get_user_registrations",
+    description: "日別ユーザー登録数の推移を取得する",
+    inputSchema: {
+      type: "object",
+      properties: {
+        days: { type: "number", description: "遡る日数（1〜365、デフォルト: 30）" },
+      },
+    },
+  },
+  handler: async (params, context) => {
+    const days = Math.max(1, Math.min(365, Number(params.days) || 30));
+    const data = await getDailyUserRegistrations(context.db, days);
+    return { content: [{ type: "text", text: JSON.stringify({ data, days }, null, 2) }] };
+  },
+};

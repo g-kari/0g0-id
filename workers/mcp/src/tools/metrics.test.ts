@@ -30,6 +30,8 @@ import {
   getServiceTokenStatsTool,
   getActiveUserStatsTool,
   getDailyActiveUsersTool,
+  getLoginTrendsTool,
+  getUserRegistrationsTool,
 } from "./metrics";
 import type { McpContext } from "../mcp";
 
@@ -308,6 +310,114 @@ describe("getDailyActiveUsersTool", () => {
     vi.mocked(getDailyActiveUsers).mockResolvedValue([]);
 
     const result = await getDailyActiveUsersTool.handler({}, mockContext);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.data).toEqual([]);
+  });
+});
+
+// ===== get_login_trends =====
+describe("getLoginTrendsTool", () => {
+  it("dataとdaysを含むレスポンスを返す", async () => {
+    const mockData = [
+      { date: "2026-04-11", count: 12 },
+      { date: "2026-04-12", count: 20 },
+    ];
+    vi.mocked(getDailyLoginTrends).mockResolvedValue(mockData as never);
+
+    const result = await getLoginTrendsTool.handler({}, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.data).toHaveLength(2);
+    expect(parsed.data[0].date).toBe("2026-04-11");
+    expect(parsed.days).toBe(30);
+  });
+
+  it("デフォルトは30日", async () => {
+    await getLoginTrendsTool.handler({}, mockContext);
+
+    expect(vi.mocked(getDailyLoginTrends)).toHaveBeenCalledWith(mockContext.db, 30);
+  });
+
+  it("daysパラメータを指定できる", async () => {
+    await getLoginTrendsTool.handler({ days: 7 }, mockContext);
+
+    expect(vi.mocked(getDailyLoginTrends)).toHaveBeenCalledWith(mockContext.db, 7);
+    const result = await getLoginTrendsTool.handler({ days: 7 }, mockContext);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.days).toBe(7);
+  });
+
+  it("daysは最大365にクランプする", async () => {
+    const result = await getLoginTrendsTool.handler({ days: 1000 }, mockContext);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.days).toBe(365);
+  });
+
+  it("days=0はfalsyなのでデフォルト30になる", async () => {
+    const result = await getLoginTrendsTool.handler({ days: 0 }, mockContext);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.days).toBe(30);
+  });
+
+  it("空配列のときもdataは[]を返す", async () => {
+    vi.mocked(getDailyLoginTrends).mockResolvedValue([]);
+
+    const result = await getLoginTrendsTool.handler({}, mockContext);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.data).toEqual([]);
+  });
+});
+
+// ===== get_user_registrations =====
+describe("getUserRegistrationsTool", () => {
+  it("dataとdaysを含むレスポンスを返す", async () => {
+    const mockData = [
+      { date: "2026-04-11", count: 3 },
+      { date: "2026-04-12", count: 7 },
+    ];
+    vi.mocked(getDailyUserRegistrations).mockResolvedValue(mockData as never);
+
+    const result = await getUserRegistrationsTool.handler({}, mockContext);
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.data).toHaveLength(2);
+    expect(parsed.data[0].date).toBe("2026-04-11");
+    expect(parsed.days).toBe(30);
+  });
+
+  it("デフォルトは30日", async () => {
+    await getUserRegistrationsTool.handler({}, mockContext);
+
+    expect(vi.mocked(getDailyUserRegistrations)).toHaveBeenCalledWith(mockContext.db, 30);
+  });
+
+  it("daysパラメータを指定できる", async () => {
+    await getUserRegistrationsTool.handler({ days: 14 }, mockContext);
+
+    expect(vi.mocked(getDailyUserRegistrations)).toHaveBeenCalledWith(mockContext.db, 14);
+    const result = await getUserRegistrationsTool.handler({ days: 14 }, mockContext);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.days).toBe(14);
+  });
+
+  it("daysは最大365にクランプする", async () => {
+    const result = await getUserRegistrationsTool.handler({ days: 9999 }, mockContext);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.days).toBe(365);
+  });
+
+  it("days=0はfalsyなのでデフォルト30になる", async () => {
+    const result = await getUserRegistrationsTool.handler({ days: 0 }, mockContext);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.days).toBe(30);
+  });
+
+  it("空配列のときもdataは[]を返す", async () => {
+    vi.mocked(getDailyUserRegistrations).mockResolvedValue([]);
+
+    const result = await getUserRegistrationsTool.handler({}, mockContext);
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.data).toEqual([]);
   });

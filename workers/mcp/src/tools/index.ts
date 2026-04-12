@@ -36,4 +36,6 @@ export {
   getServiceTokenStatsTool,
   getActiveUserStatsTool,
   getDailyActiveUsersTool,
+  getLoginTrendsTool,
+  getUserRegistrationsTool,
 } from "./metrics";
