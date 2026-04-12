@@ -90,4 +90,28 @@ app.get("/user-registrations", async (c) => {
   return proxyResponse(res);
 });
 
+// GET /api/metrics/active-users — DAU/WAU/MAU アクティブユーザー数
+app.get("/active-users", async (c) => {
+  const res = await fetchWithAuth(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/metrics/active-users`,
+  );
+  return proxyResponse(res);
+});
+
+// GET /api/metrics/active-users/daily?days=30 — 日別アクティブユーザー数推移
+app.get("/active-users/daily", async (c) => {
+  const url = new URL(`${c.env.IDP_ORIGIN}/api/metrics/active-users/daily`);
+  const daysResult = parseDays(c.req.query("days"));
+  if (daysResult !== undefined) {
+    if ("error" in daysResult) {
+      return c.json({ error: { code: "INVALID_PARAMETER", message: daysResult.error } }, 400);
+    }
+    url.searchParams.set("days", String(daysResult.days));
+  }
+  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  return proxyResponse(res);
+});
+
 export default app;
