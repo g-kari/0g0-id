@@ -195,6 +195,41 @@ describe("GET /.well-known/openid-configuration", () => {
     expect(body.response_modes_supported).toContain("query");
   });
 
+  it("device_authorization_endpoint が含まれる（RFC 8628 Device Flow）", async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/openid-configuration`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>,
+    );
+    const body = await res.json<{ device_authorization_endpoint: string }>();
+    expect(body.device_authorization_endpoint).toBe("https://id.0g0.xyz/api/device/code");
+  });
+
+  it("end_session_endpoint が含まれる（OIDC Session Management）", async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/openid-configuration`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>,
+    );
+    const body = await res.json<{ end_session_endpoint: string }>();
+    expect(body.end_session_endpoint).toBe("https://id.0g0.xyz/auth/logout");
+  });
+
+  it("grant_types_supported に device_code グラントが含まれる（RFC 8628）", async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/openid-configuration`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>,
+    );
+    const body = await res.json<{ grant_types_supported: string[] }>();
+    expect(body.grant_types_supported).toContain("urn:ietf:params:oauth:grant-type:device_code");
+    expect(body.grant_types_supported).toContain("authorization_code");
+    expect(body.grant_types_supported).toContain("refresh_token");
+  });
+
   it("claims_supported に必須クレームを含む", async () => {
     const app = buildAppWithOrigin();
     const res = await app.request(
@@ -302,5 +337,29 @@ describe("GET /.well-known/oauth-authorization-server", () => {
       mockEnvWithOrigin as unknown as Record<string, string>,
     );
     expect(res.headers.get("Cache-Control")).toBe("public, max-age=86400");
+  });
+
+  it("device_authorization_endpoint が含まれる（RFC 8628 Device Flow）", async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/oauth-authorization-server`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>,
+    );
+    const body = await res.json<{ device_authorization_endpoint: string }>();
+    expect(body.device_authorization_endpoint).toBe("https://id.0g0.xyz/api/device/code");
+  });
+
+  it("grant_types_supported に device_code グラントが含まれる（RFC 8628）", async () => {
+    const app = buildAppWithOrigin();
+    const res = await app.request(
+      new Request(`${baseUrl}/.well-known/oauth-authorization-server`),
+      undefined,
+      mockEnvWithOrigin as unknown as Record<string, string>,
+    );
+    const body = await res.json<{ grant_types_supported: string[] }>();
+    expect(body.grant_types_supported).toContain("urn:ietf:params:oauth:grant-type:device_code");
+    expect(body.grant_types_supported).toContain("authorization_code");
+    expect(body.grant_types_supported).toContain("refresh_token");
   });
 });
