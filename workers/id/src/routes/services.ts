@@ -24,6 +24,7 @@ import {
   revokeAllServiceTokens,
   createAdminAuditLog,
   parsePagination,
+  UUID_RE,
   createLogger,
 } from "@0g0-id/shared";
 import type { IdpEnv, TokenPayload } from "@0g0-id/shared";
@@ -82,6 +83,20 @@ const TransferOwnerSchema = z.object({
 });
 
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
+
+// サービスID形式検証ミドルウェア（:id パラメータを持つすべてのルートに適用）
+app.use("/:id", async (c, next) => {
+  if (!UUID_RE.test(c.req.param("id"))) {
+    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid service ID format" } }, 400);
+  }
+  await next();
+});
+app.use("/:id/*", async (c, next) => {
+  if (!UUID_RE.test(c.req.param("id"))) {
+    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid service ID format" } }, 400);
+  }
+  await next();
+});
 
 // GET /api/services
 app.get("/", authMiddleware, adminMiddleware, async (c) => {
@@ -555,6 +570,9 @@ app.get("/:id/users", authMiddleware, adminMiddleware, async (c) => {
 app.delete("/:id/users/:userId", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const serviceId = c.req.param("id");
   const userId = c.req.param("userId");
+  if (!UUID_RE.test(userId)) {
+    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid user ID format" } }, 400);
+  }
 
   let service: Awaited<ReturnType<typeof findServiceById>>;
   let user: Awaited<ReturnType<typeof findUserById>>;
@@ -620,6 +638,9 @@ app.delete(
   async (c) => {
     const serviceId = c.req.param("id");
     const uriId = c.req.param("uriId");
+    if (!UUID_RE.test(uriId)) {
+      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid URI ID format" } }, 400);
+    }
 
     let service: Awaited<ReturnType<typeof findServiceById>>;
     let redirectUri: Awaited<ReturnType<typeof findRedirectUriById>>;

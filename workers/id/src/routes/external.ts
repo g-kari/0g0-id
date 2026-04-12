@@ -108,6 +108,9 @@ app.get("/users", externalApiRateLimitMiddleware, serviceAuthMiddleware, async (
 app.get("/users/:sub", externalApiRateLimitMiddleware, serviceAuthMiddleware, async (c) => {
   const service = c.get("service");
   const requestedSub = c.req.param("sub");
+  if (!/^[0-9a-f]{64}$/i.test(requestedSub)) {
+    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid sub format" } }, 400);
+  }
 
   try {
     // pairwise_subカラムによるインデックス検索（O(1)）

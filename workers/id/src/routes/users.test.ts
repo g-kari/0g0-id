@@ -32,6 +32,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     banUser: vi.fn(),
     unbanUser: vi.fn(),
     createAdminAuditLog: vi.fn(),
+    UUID_RE: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
     isValidProvider: (value: string) => ["google", "line", "twitch", "github", "x"].includes(value),
     parseDays: (
       daysParam: string | undefined,
@@ -111,7 +112,7 @@ const mockEnv = {
 // 管理者トークンペイロード
 const mockAdminPayload = {
   iss: "https://id.0g0.xyz",
-  sub: "admin-user-id",
+  sub: "00000000-0000-0000-0000-000000000001",
   aud: "https://id.0g0.xyz",
   exp: Math.floor(Date.now() / 1000) + 3600,
   iat: Math.floor(Date.now() / 1000),
@@ -124,13 +125,13 @@ const mockAdminPayload = {
 // 一般ユーザートークンペイロード
 const mockUserPayload = {
   ...mockAdminPayload,
-  sub: "regular-user-id",
+  sub: "00000000-0000-0000-0000-000000000002",
   email: "user@example.com",
   role: "user" as const,
 };
 
 const mockUser = {
-  id: "user-1",
+  id: "00000000-0000-0000-0000-000000000004",
   google_sub: "google-sub-1",
   line_sub: null,
   twitch_sub: null,
@@ -150,7 +151,7 @@ const mockUser = {
 
 // adminMiddlewareのBANチェック用モックユーザー
 const mockAdminUser = {
-  id: "admin-user-id",
+  id: "00000000-0000-0000-0000-000000000001",
   email: "admin@example.com",
   role: "admin",
   banned_at: null,
@@ -218,7 +219,7 @@ describe("GET /api/users/me", () => {
     const res = await sendRequest(app, "/api/users/me");
     expect(res.status).toBe(200);
     const body = await res.json<{ data: Record<string, unknown> }>();
-    expect(body.data.id).toBe("user-1");
+    expect(body.data.id).toBe("00000000-0000-0000-0000-000000000004");
     expect(body.data.email).toBe("test@example.com");
     expect(body.data.name).toBe("Test User");
     expect(body.data.picture).toBe("https://example.com/pic.jpg");
@@ -265,7 +266,7 @@ describe("GET /api/users/me/data-export", () => {
   const mockLoginHistory = [
     {
       id: "event-1",
-      user_id: "user-1",
+      user_id: "00000000-0000-0000-0000-000000000004",
       provider: "google",
       ip_address: "1.2.3.4",
       user_agent: "Mozilla/5.0",
@@ -305,7 +306,7 @@ describe("GET /api/users/me/data-export", () => {
     const body = await res.json<{ data: Record<string, unknown> }>();
     expect(body.data.exported_at).toBeDefined();
     expect(body.data.profile).toMatchObject({
-      id: "user-1",
+      id: "00000000-0000-0000-0000-000000000004",
       email: "test@example.com",
       email_verified: true,
       name: "Test User",
@@ -367,7 +368,7 @@ describe("GET /api/users/me/security-summary", () => {
 
   const mockLastLogin = {
     id: "event-1",
-    user_id: "regular-user-id",
+    user_id: "00000000-0000-0000-0000-000000000002",
     provider: "google",
     ip_address: "1.2.3.4",
     user_agent: "Mozilla/5.0",
@@ -643,7 +644,7 @@ describe("GET /api/users/me/connections", () => {
   const app = buildApp();
   const mockConnections = [
     {
-      service_id: "service-1",
+      service_id: "00000000-0000-0000-0000-000000000010",
       service_name: "Test Service",
       client_id: "client-abc",
       first_authorized_at: "2024-01-01T00:00:00Z",
@@ -668,7 +669,7 @@ describe("GET /api/users/me/connections", () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ data: unknown[] }>();
     expect(body.data).toHaveLength(1);
-    expect(body.data[0]).toMatchObject({ service_id: "service-1" });
+    expect(body.data[0]).toMatchObject({ service_id: "00000000-0000-0000-0000-000000000010" });
   });
 
   it("連携なしの場合は空配列を返す", async () => {
@@ -692,26 +693,38 @@ describe("DELETE /api/users/me/connections/:serviceId", () => {
   });
 
   it("Originヘッダーなし（CSRF）→ 403を返す", async () => {
-    const res = await sendRequest(app, "/api/users/me/connections/service-1", {
-      method: "DELETE",
-    });
+    const res = await sendRequest(
+      app,
+      "/api/users/me/connections/00000000-0000-0000-0000-000000000010",
+      {
+        method: "DELETE",
+      },
+    );
     expect(res.status).toBe(403);
   });
 
   it("連携を解除して204を返す", async () => {
-    const res = await sendRequest(app, "/api/users/me/connections/service-1", {
-      method: "DELETE",
-      origin: "https://user.0g0.xyz",
-    });
+    const res = await sendRequest(
+      app,
+      "/api/users/me/connections/00000000-0000-0000-0000-000000000010",
+      {
+        method: "DELETE",
+        origin: "https://user.0g0.xyz",
+      },
+    );
     expect(res.status).toBe(204);
   });
 
   it("連携が存在しない場合 → 404を返す", async () => {
     vi.mocked(revokeUserServiceTokens).mockResolvedValue(0);
-    const res = await sendRequest(app, "/api/users/me/connections/no-such-service", {
-      method: "DELETE",
-      origin: "https://user.0g0.xyz",
-    });
+    const res = await sendRequest(
+      app,
+      "/api/users/me/connections/00000000-0000-0000-0000-000000000089",
+      {
+        method: "DELETE",
+        origin: "https://user.0g0.xyz",
+      },
+    );
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("NOT_FOUND");
@@ -844,33 +857,38 @@ describe("GET /api/users/:id", () => {
   });
 
   it("認証なし → 401を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1", { withAuth: false });
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004", {
+      withAuth: false,
+    });
     expect(res.status).toBe(401);
   });
 
   it("管理者でない場合 → 403を返す", async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
-    const res = await sendRequest(app, "/api/users/user-1");
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004");
     expect(res.status).toBe(403);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("FORBIDDEN");
   });
 
   it("ユーザー詳細を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1");
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004");
     expect(res.status).toBe(200);
     const body = await res.json<{ data: Record<string, unknown> }>();
-    expect(body.data.id).toBe("user-1");
+    expect(body.data.id).toBe("00000000-0000-0000-0000-000000000004");
     expect(body.data.email).toBe("test@example.com");
     expect(body.data.name).toBe("Test User");
     expect(body.data.phone).toBe("090-0000-0000");
     expect(body.data.address).toBe("Tokyo");
     expect(body.data.role).toBe("user");
-    expect(vi.mocked(findUserById)).toHaveBeenCalledWith(expect.anything(), "user-1");
+    expect(vi.mocked(findUserById)).toHaveBeenCalledWith(
+      expect.anything(),
+      "00000000-0000-0000-0000-000000000004",
+    );
   });
 
   it("内部フィールド（google_sub等）を含まない", async () => {
-    const res = await sendRequest(app, "/api/users/user-1");
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004");
     const body = await res.json<{ data: Record<string, unknown> }>();
     expect(body.data).not.toHaveProperty("google_sub");
     expect(body.data).not.toHaveProperty("line_sub");
@@ -880,7 +898,7 @@ describe("GET /api/users/:id", () => {
 
   it("存在しないユーザーID → 404を返す", async () => {
     vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
-    const res = await sendRequest(app, "/api/users/no-such-user");
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000099");
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("NOT_FOUND");
@@ -901,7 +919,7 @@ describe("PATCH /api/users/:id/role", () => {
 
   it("管理者でない場合 → 403を返す", async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
-    const res = await sendRequest(app, "/api/users/user-1/role", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/role", {
       method: "PATCH",
       body: { role: "admin" },
       origin: "https://admin.0g0.xyz",
@@ -912,7 +930,7 @@ describe("PATCH /api/users/:id/role", () => {
   });
 
   it("Originヘッダーなし（CSRF）→ 403を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/role", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/role", {
       method: "PATCH",
       body: { role: "admin" },
     });
@@ -920,7 +938,7 @@ describe("PATCH /api/users/:id/role", () => {
   });
 
   it("ロールを変更して返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/role", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/role", {
       method: "PATCH",
       body: { role: "admin" },
       origin: "https://admin.0g0.xyz",
@@ -932,7 +950,7 @@ describe("PATCH /api/users/:id/role", () => {
 
   it("自分自身のロール変更 → 403を返す", async () => {
     // admin-user-id が自分自身のロールを変更しようとする
-    const res = await sendRequest(app, "/api/users/admin-user-id/role", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000001/role", {
       method: "PATCH",
       body: { role: "user" },
       origin: "https://admin.0g0.xyz",
@@ -944,7 +962,7 @@ describe("PATCH /api/users/:id/role", () => {
 
   it("存在しないユーザーID → 404を返す", async () => {
     vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
-    const res = await sendRequest(app, "/api/users/no-such-user/role", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000099/role", {
       method: "PATCH",
       body: { role: "admin" },
       origin: "https://admin.0g0.xyz",
@@ -955,7 +973,7 @@ describe("PATCH /api/users/:id/role", () => {
   });
 
   it("不正なrole値 → 400を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/role", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/role", {
       method: "PATCH",
       body: { role: "superuser" },
       origin: "https://admin.0g0.xyz",
@@ -966,14 +984,14 @@ describe("PATCH /api/users/:id/role", () => {
   });
 
   it("ロール変更後に既存トークンを失効させる", async () => {
-    await sendRequest(app, "/api/users/user-1/role", {
+    await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/role", {
       method: "PATCH",
       body: { role: "admin" },
       origin: "https://admin.0g0.xyz",
     });
     expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(
       expect.anything(),
-      "user-1",
+      "00000000-0000-0000-0000-000000000004",
       "security_event",
     );
   });
@@ -994,7 +1012,7 @@ describe("DELETE /api/users/:id", () => {
 
   it("管理者でない場合 → 403を返す", async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
-    const res = await sendRequest(app, "/api/users/user-1", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004", {
       method: "DELETE",
       origin: "https://admin.0g0.xyz",
     });
@@ -1002,12 +1020,14 @@ describe("DELETE /api/users/:id", () => {
   });
 
   it("Originヘッダーなし（CSRF）→ 403を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1", { method: "DELETE" });
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004", {
+      method: "DELETE",
+    });
     expect(res.status).toBe(403);
   });
 
   it("ユーザーを削除して204を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004", {
       method: "DELETE",
       origin: "https://admin.0g0.xyz",
     });
@@ -1016,7 +1036,7 @@ describe("DELETE /api/users/:id", () => {
 
   it("自分自身の削除 → 403を返す", async () => {
     // admin-user-id が自分自身を削除しようとする
-    const res = await sendRequest(app, "/api/users/admin-user-id", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000001", {
       method: "DELETE",
       origin: "https://admin.0g0.xyz",
     });
@@ -1027,7 +1047,7 @@ describe("DELETE /api/users/:id", () => {
 
   it("存在しないユーザーID → 404を返す", async () => {
     vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
-    const res = await sendRequest(app, "/api/users/no-such-user", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000099", {
       method: "DELETE",
       origin: "https://admin.0g0.xyz",
     });
@@ -1038,7 +1058,7 @@ describe("DELETE /api/users/:id", () => {
 
   it("サービスを所有している場合 → 409を返す", async () => {
     vi.mocked(countServicesByOwner).mockResolvedValue(2);
-    const res = await sendRequest(app, "/api/users/user-1", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004", {
       method: "DELETE",
       origin: "https://admin.0g0.xyz",
     });
@@ -1049,16 +1069,19 @@ describe("DELETE /api/users/:id", () => {
   });
 
   it("削除前にトークンを失効させる", async () => {
-    await sendRequest(app, "/api/users/user-1", {
+    await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004", {
       method: "DELETE",
       origin: "https://admin.0g0.xyz",
     });
     expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(
       expect.anything(),
-      "user-1",
+      "00000000-0000-0000-0000-000000000004",
       "admin_action",
     );
-    expect(vi.mocked(deleteUser)).toHaveBeenCalledWith(expect.anything(), "user-1");
+    expect(vi.mocked(deleteUser)).toHaveBeenCalledWith(
+      expect.anything(),
+      "00000000-0000-0000-0000-000000000004",
+    );
   });
 });
 
@@ -1297,7 +1320,7 @@ describe("GET /api/users/me/login-history", () => {
   const mockLoginEvents = [
     {
       id: "event-1",
-      user_id: "regular-user-id",
+      user_id: "00000000-0000-0000-0000-000000000002",
       provider: "google",
       ip_address: "127.0.0.1",
       user_agent: "Mozilla/5.0",
@@ -1330,7 +1353,7 @@ describe("GET /api/users/me/login-history", () => {
     await sendRequest(app, "/api/users/me/login-history");
     expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
       expect.anything(),
-      "regular-user-id",
+      "00000000-0000-0000-0000-000000000002",
       20,
       0,
       undefined,
@@ -1348,7 +1371,7 @@ describe("GET /api/users/me/login-history", () => {
     expect(res.status).toBe(200);
     expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
       expect.anything(),
-      "regular-user-id",
+      "00000000-0000-0000-0000-000000000002",
       5,
       10,
       undefined,
@@ -1366,7 +1389,7 @@ describe("GET /api/users/me/login-history", () => {
     expect(res.status).toBe(200);
     expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
       expect.anything(),
-      "regular-user-id",
+      "00000000-0000-0000-0000-000000000002",
       100,
       0,
       undefined,
@@ -1384,7 +1407,7 @@ describe("GET /api/users/me/login-history", () => {
     expect(res.status).toBe(200);
     expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
       expect.anything(),
-      "regular-user-id",
+      "00000000-0000-0000-0000-000000000002",
       20,
       0,
       "google",
@@ -1407,14 +1430,14 @@ describe("GET /api/users/:id/services", () => {
 
   const mockConnections = [
     {
-      service_id: "service-1",
+      service_id: "00000000-0000-0000-0000-000000000010",
       service_name: "Test Service",
       client_id: "client-abc",
       first_authorized_at: "2024-01-01T00:00:00Z",
       last_authorized_at: "2024-01-02T00:00:00Z",
     },
     {
-      service_id: "service-2",
+      service_id: "00000000-0000-0000-0000-000000000011",
       service_name: "Another Service",
       client_id: "client-xyz",
       first_authorized_at: "2024-02-01T00:00:00Z",
@@ -1430,13 +1453,15 @@ describe("GET /api/users/:id/services", () => {
   });
 
   it("認証なし → 401を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/services", { withAuth: false });
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/services", {
+      withAuth: false,
+    });
     expect(res.status).toBe(401);
   });
 
   it("管理者でない場合 → 403を返す", async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
-    const res = await sendRequest(app, "/api/users/user-1/services");
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/services");
     expect(res.status).toBe(403);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("FORBIDDEN");
@@ -1444,35 +1469,41 @@ describe("GET /api/users/:id/services", () => {
 
   it("対象ユーザーが存在しない場合 → 404を返す", async () => {
     vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
-    const res = await sendRequest(app, "/api/users/no-such/services");
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000098/services");
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("NOT_FOUND");
   });
 
   it("認可済みサービス一覧を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/services");
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/services");
     expect(res.status).toBe(200);
     const body = await res.json<{ data: unknown[] }>();
     expect(body.data).toHaveLength(2);
-    expect(body.data[0]).toMatchObject({ service_id: "service-1", service_name: "Test Service" });
+    expect(body.data[0]).toMatchObject({
+      service_id: "00000000-0000-0000-0000-000000000010",
+      service_name: "Test Service",
+    });
     expect(body.data[1]).toMatchObject({
-      service_id: "service-2",
+      service_id: "00000000-0000-0000-0000-000000000011",
       service_name: "Another Service",
     });
   });
 
   it("認可済みサービスがない場合は空配列を返す", async () => {
     vi.mocked(listUserConnections).mockResolvedValue([]);
-    const res = await sendRequest(app, "/api/users/user-1/services");
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/services");
     expect(res.status).toBe(200);
     const body = await res.json<{ data: unknown[] }>();
     expect(body.data).toHaveLength(0);
   });
 
   it("対象ユーザーのIDでlistUserConnectionsを呼ぶ", async () => {
-    await sendRequest(app, "/api/users/user-1/services");
-    expect(vi.mocked(listUserConnections)).toHaveBeenCalledWith(expect.anything(), "user-1");
+    await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/services");
+    expect(vi.mocked(listUserConnections)).toHaveBeenCalledWith(
+      expect.anything(),
+      "00000000-0000-0000-0000-000000000004",
+    );
   });
 });
 
@@ -1483,7 +1514,7 @@ describe("GET /api/users/:id/login-history", () => {
   const mockLoginEvents = [
     {
       id: "event-2",
-      user_id: "user-1",
+      user_id: "00000000-0000-0000-0000-000000000004",
       provider: "google",
       ip_address: "192.168.0.1",
       user_agent: "Chrome/120",
@@ -1492,7 +1523,7 @@ describe("GET /api/users/:id/login-history", () => {
     },
     {
       id: "event-1",
-      user_id: "user-1",
+      user_id: "00000000-0000-0000-0000-000000000004",
       provider: "github",
       ip_address: "192.168.0.2",
       user_agent: "Firefox/120",
@@ -1509,13 +1540,20 @@ describe("GET /api/users/:id/login-history", () => {
   });
 
   it("認証なし → 401を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/login-history", { withAuth: false });
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/login-history",
+      { withAuth: false },
+    );
     expect(res.status).toBe(401);
   });
 
   it("管理者でない場合 → 403を返す", async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
-    const res = await sendRequest(app, "/api/users/user-1/login-history");
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/login-history",
+    );
     expect(res.status).toBe(403);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("FORBIDDEN");
@@ -1523,14 +1561,20 @@ describe("GET /api/users/:id/login-history", () => {
 
   it("対象ユーザーが存在しない場合 → 404を返す", async () => {
     vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
-    const res = await sendRequest(app, "/api/users/no-such/login-history");
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000098/login-history",
+    );
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("NOT_FOUND");
   });
 
   it("ログイン履歴とtotalを返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/login-history");
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/login-history",
+    );
     expect(res.status).toBe(200);
     const body = await res.json<{ data: unknown[]; total: number }>();
     expect(body.data).toHaveLength(2);
@@ -1538,10 +1582,10 @@ describe("GET /api/users/:id/login-history", () => {
   });
 
   it("対象ユーザーのuser_idでgetLoginEventsByUserIdを呼ぶ", async () => {
-    await sendRequest(app, "/api/users/user-1/login-history");
+    await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/login-history");
     expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
       expect.anything(),
-      "user-1",
+      "00000000-0000-0000-0000-000000000004",
       20,
       0,
       undefined,
@@ -1550,16 +1594,19 @@ describe("GET /api/users/:id/login-history", () => {
 
   it("limitとoffsetをクエリパラメータから受け取る", async () => {
     const res = await app.request(
-      new Request(`${baseUrl}/api/users/user-1/login-history?limit=10&offset=5`, {
-        headers: { Authorization: "Bearer mock-token" },
-      }),
+      new Request(
+        `${baseUrl}/api/users/00000000-0000-0000-0000-000000000004/login-history?limit=10&offset=5`,
+        {
+          headers: { Authorization: "Bearer mock-token" },
+        },
+      ),
       undefined,
       mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
       expect.anything(),
-      "user-1",
+      "00000000-0000-0000-0000-000000000004",
       10,
       5,
       undefined,
@@ -1568,16 +1615,19 @@ describe("GET /api/users/:id/login-history", () => {
 
   it("limitの上限は100", async () => {
     const res = await app.request(
-      new Request(`${baseUrl}/api/users/user-1/login-history?limit=500`, {
-        headers: { Authorization: "Bearer mock-token" },
-      }),
+      new Request(
+        `${baseUrl}/api/users/00000000-0000-0000-0000-000000000004/login-history?limit=500`,
+        {
+          headers: { Authorization: "Bearer mock-token" },
+        },
+      ),
       undefined,
       mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
       expect.anything(),
-      "user-1",
+      "00000000-0000-0000-0000-000000000004",
       100,
       0,
       undefined,
@@ -1586,16 +1636,19 @@ describe("GET /api/users/:id/login-history", () => {
 
   it("providerクエリパラメータでフィルタリングできる", async () => {
     const res = await app.request(
-      new Request(`${baseUrl}/api/users/user-1/login-history?provider=line`, {
-        headers: { Authorization: "Bearer mock-token" },
-      }),
+      new Request(
+        `${baseUrl}/api/users/00000000-0000-0000-0000-000000000004/login-history?provider=line`,
+        {
+          headers: { Authorization: "Bearer mock-token" },
+        },
+      ),
       undefined,
       mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
       expect.anything(),
-      "user-1",
+      "00000000-0000-0000-0000-000000000004",
       20,
       0,
       "line",
@@ -1623,13 +1676,17 @@ describe("GET /api/users/:id/providers", () => {
   });
 
   it("認証なし → 401を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/providers", { withAuth: false });
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/providers",
+      { withAuth: false },
+    );
     expect(res.status).toBe(401);
   });
 
   it("管理者でない場合 → 403を返す", async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
-    const res = await sendRequest(app, "/api/users/user-1/providers");
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/providers");
     expect(res.status).toBe(403);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("FORBIDDEN");
@@ -1637,14 +1694,14 @@ describe("GET /api/users/:id/providers", () => {
 
   it("対象ユーザーが存在しない場合 → 404を返す", async () => {
     vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
-    const res = await sendRequest(app, "/api/users/no-such/providers");
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000098/providers");
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("NOT_FOUND");
   });
 
   it("プロバイダー連携状態の一覧を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/providers");
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/providers");
     expect(res.status).toBe(200);
     const body = await res.json<{ data: ProviderStatus[] }>();
     expect(body.data).toHaveLength(5);
@@ -1654,8 +1711,11 @@ describe("GET /api/users/:id/providers", () => {
   });
 
   it("対象ユーザーのIDでgetUserProvidersを呼ぶ", async () => {
-    await sendRequest(app, "/api/users/user-1/providers");
-    expect(vi.mocked(getUserProviders)).toHaveBeenCalledWith(expect.anything(), "user-1");
+    await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/providers");
+    expect(vi.mocked(getUserProviders)).toHaveBeenCalledWith(
+      expect.anything(),
+      "00000000-0000-0000-0000-000000000004",
+    );
   });
 });
 
@@ -1665,22 +1725,22 @@ describe("GET /api/users/:id/owned-services", () => {
 
   const mockOwnedServices = [
     {
-      id: "service-1",
+      id: "00000000-0000-0000-0000-000000000010",
       name: "My Service",
       client_id: "client-abc",
       client_secret_hash: "hash-1",
       allowed_scopes: '["profile","email"]',
-      owner_user_id: "user-1",
+      owner_user_id: "00000000-0000-0000-0000-000000000004",
       created_at: "2024-01-01T00:00:00Z",
       updated_at: "2024-01-01T00:00:00Z",
     },
     {
-      id: "service-2",
+      id: "00000000-0000-0000-0000-000000000011",
       name: "Another Owned Service",
       client_id: "client-xyz",
       client_secret_hash: "hash-2",
       allowed_scopes: '["profile"]',
-      owner_user_id: "user-1",
+      owner_user_id: "00000000-0000-0000-0000-000000000004",
       created_at: "2024-02-01T00:00:00Z",
       updated_at: "2024-02-01T00:00:00Z",
     },
@@ -1694,13 +1754,20 @@ describe("GET /api/users/:id/owned-services", () => {
   });
 
   it("認証なし → 401を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/owned-services", { withAuth: false });
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/owned-services",
+      { withAuth: false },
+    );
     expect(res.status).toBe(401);
   });
 
   it("管理者でない場合 → 403を返す", async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
-    const res = await sendRequest(app, "/api/users/user-1/owned-services");
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/owned-services",
+    );
     expect(res.status).toBe(403);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("FORBIDDEN");
@@ -1708,39 +1775,60 @@ describe("GET /api/users/:id/owned-services", () => {
 
   it("対象ユーザーが存在しない場合 → 404を返す", async () => {
     vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
-    const res = await sendRequest(app, "/api/users/no-such/owned-services");
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000098/owned-services",
+    );
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("NOT_FOUND");
   });
 
   it("所有サービス一覧を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/owned-services");
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/owned-services",
+    );
     expect(res.status).toBe(200);
     const body = await res.json<{ data: unknown[] }>();
     expect(body.data).toHaveLength(2);
-    expect(body.data[0]).toMatchObject({ id: "service-1", name: "My Service" });
-    expect(body.data[1]).toMatchObject({ id: "service-2", name: "Another Owned Service" });
+    expect(body.data[0]).toMatchObject({
+      id: "00000000-0000-0000-0000-000000000010",
+      name: "My Service",
+    });
+    expect(body.data[1]).toMatchObject({
+      id: "00000000-0000-0000-0000-000000000011",
+      name: "Another Owned Service",
+    });
   });
 
   it("所有サービスがない場合は空配列を返す", async () => {
     vi.mocked(listServicesByOwner).mockResolvedValue([]);
-    const res = await sendRequest(app, "/api/users/user-1/owned-services");
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/owned-services",
+    );
     expect(res.status).toBe(200);
     const body = await res.json<{ data: unknown[] }>();
     expect(body.data).toHaveLength(0);
   });
 
   it("レスポンスにclient_secret_hashを含まない", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/owned-services");
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/owned-services",
+    );
     expect(res.status).toBe(200);
     const body = await res.json<{ data: Record<string, unknown>[] }>();
     expect(body.data[0]).not.toHaveProperty("client_secret_hash");
   });
 
   it("対象ユーザーのIDでlistServicesByOwnerを呼ぶ", async () => {
-    await sendRequest(app, "/api/users/user-1/owned-services");
-    expect(vi.mocked(listServicesByOwner)).toHaveBeenCalledWith(expect.anything(), "user-1");
+    await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/owned-services");
+    expect(vi.mocked(listServicesByOwner)).toHaveBeenCalledWith(
+      expect.anything(),
+      "00000000-0000-0000-0000-000000000004",
+    );
   });
 });
 
@@ -1854,29 +1942,41 @@ describe("DELETE /api/users/me/tokens/:tokenId", () => {
   });
 
   it("Authorizationヘッダーなし → 401を返す", async () => {
-    const res = await sendRequest(app, "/api/users/me/tokens/token-abc", {
-      method: "DELETE",
-      withAuth: false,
-    });
+    const res = await sendRequest(
+      app,
+      "/api/users/me/tokens/00000000-0000-0000-0000-000000000020",
+      {
+        method: "DELETE",
+        withAuth: false,
+      },
+    );
     expect(res.status).toBe(401);
   });
 
   it("Originヘッダーなし（CSRF）→ 403を返す", async () => {
-    const res = await sendRequest(app, "/api/users/me/tokens/token-abc", {
-      method: "DELETE",
-    });
+    const res = await sendRequest(
+      app,
+      "/api/users/me/tokens/00000000-0000-0000-0000-000000000020",
+      {
+        method: "DELETE",
+      },
+    );
     expect(res.status).toBe(403);
   });
 
   it("指定セッションを失効させて204を返す", async () => {
-    const res = await sendRequest(app, "/api/users/me/tokens/token-abc", {
-      method: "DELETE",
-      origin: "https://user.0g0.xyz",
-    });
+    const res = await sendRequest(
+      app,
+      "/api/users/me/tokens/00000000-0000-0000-0000-000000000020",
+      {
+        method: "DELETE",
+        origin: "https://user.0g0.xyz",
+      },
+    );
     expect(res.status).toBe(204);
     expect(vi.mocked(revokeTokenByIdForUser)).toHaveBeenCalledWith(
       expect.anything(),
-      "token-abc",
+      "00000000-0000-0000-0000-000000000020",
       mockUserPayload.sub,
       "user_logout",
     );
@@ -1884,10 +1984,14 @@ describe("DELETE /api/users/me/tokens/:tokenId", () => {
 
   it("存在しないor他ユーザーのセッションID → 404を返す", async () => {
     vi.mocked(revokeTokenByIdForUser).mockResolvedValue(0);
-    const res = await sendRequest(app, "/api/users/me/tokens/no-such-token", {
-      method: "DELETE",
-      origin: "https://user.0g0.xyz",
-    });
+    const res = await sendRequest(
+      app,
+      "/api/users/me/tokens/00000000-0000-0000-0000-000000000029",
+      {
+        method: "DELETE",
+        origin: "https://user.0g0.xyz",
+      },
+    );
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("NOT_FOUND");
@@ -1895,10 +1999,14 @@ describe("DELETE /api/users/me/tokens/:tokenId", () => {
 
   it("他ユーザーのトークンIDは失効できない（所有権チェック）", async () => {
     vi.mocked(revokeTokenByIdForUser).mockResolvedValue(0);
-    const res = await sendRequest(app, "/api/users/me/tokens/other-user-token", {
-      method: "DELETE",
-      origin: "https://user.0g0.xyz",
-    });
+    const res = await sendRequest(
+      app,
+      "/api/users/me/tokens/00000000-0000-0000-0000-000000000028",
+      {
+        method: "DELETE",
+        origin: "https://user.0g0.xyz",
+      },
+    );
     expect(res.status).toBe(404);
   });
 });
@@ -2011,18 +2119,21 @@ describe("GET /api/users/:id/tokens", () => {
   });
 
   it("管理者: 存在するユーザーのアクティブセッション一覧を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/tokens");
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/tokens");
     expect(res.status).toBe(200);
     const body = await res.json<{ data: typeof mockSessions }>();
     expect(body.data).toHaveLength(2);
     expect(body.data[0].id).toBe("rt-1");
     expect(body.data[1].service_name).toBe("My Service");
-    expect(vi.mocked(listActiveSessionsByUserId)).toHaveBeenCalledWith(mockEnv.DB, "user-1");
+    expect(vi.mocked(listActiveSessionsByUserId)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      "00000000-0000-0000-0000-000000000004",
+    );
   });
 
   it("管理者: 存在しないユーザー → 404を返す", async () => {
     vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
-    const res = await sendRequest(app, "/api/users/no-such-user/tokens");
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000099/tokens");
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("NOT_FOUND");
@@ -2030,7 +2141,7 @@ describe("GET /api/users/:id/tokens", () => {
 
   it("管理者: セッションが0件でも空配列を返す", async () => {
     vi.mocked(listActiveSessionsByUserId).mockResolvedValue([]);
-    const res = await sendRequest(app, "/api/users/user-1/tokens");
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/tokens");
     expect(res.status).toBe(200);
     const body = await res.json<{ data: unknown[] }>();
     expect(body.data).toHaveLength(0);
@@ -2038,12 +2149,14 @@ describe("GET /api/users/:id/tokens", () => {
 
   it("一般ユーザー → 403を返す", async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
-    const res = await sendRequest(app, "/api/users/user-1/tokens");
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/tokens");
     expect(res.status).toBe(403);
   });
 
   it("未認証 → 401を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/tokens", { withAuth: false });
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/tokens", {
+      withAuth: false,
+    });
     expect(res.status).toBe(401);
   });
 });
@@ -2059,7 +2172,7 @@ describe("DELETE /api/users/:id/tokens", () => {
   });
 
   it("Authorizationヘッダーなし → 401を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/tokens", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/tokens", {
       method: "DELETE",
       withAuth: false,
     });
@@ -2068,7 +2181,7 @@ describe("DELETE /api/users/:id/tokens", () => {
 
   it("管理者以外 → 403を返す", async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
-    const res = await sendRequest(app, "/api/users/user-1/tokens", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/tokens", {
       method: "DELETE",
       origin: "https://admin.0g0.xyz",
     });
@@ -2076,13 +2189,15 @@ describe("DELETE /api/users/:id/tokens", () => {
   });
 
   it("Originヘッダーなし（CSRF）→ 403を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/tokens", { method: "DELETE" });
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/tokens", {
+      method: "DELETE",
+    });
     expect(res.status).toBe(403);
   });
 
   it("対象ユーザーが存在しない → 404を返す", async () => {
     vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
-    const res = await sendRequest(app, "/api/users/nonexistent/tokens", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000096/tokens", {
       method: "DELETE",
       origin: "https://admin.0g0.xyz",
     });
@@ -2092,14 +2207,14 @@ describe("DELETE /api/users/:id/tokens", () => {
   });
 
   it("対象ユーザーの全リフレッシュトークンを無効化して204を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/tokens", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/tokens", {
       method: "DELETE",
       origin: "https://admin.0g0.xyz",
     });
     expect(res.status).toBe(204);
     expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(
       expect.anything(),
-      "user-1",
+      "00000000-0000-0000-0000-000000000004",
       "admin_action",
     );
   });
@@ -2117,72 +2232,100 @@ describe("DELETE /api/users/:id/tokens/:tokenId", () => {
   });
 
   it("Authorizationヘッダーなし → 401を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/tokens/token-abc", {
-      method: "DELETE",
-      withAuth: false,
-    });
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/tokens/00000000-0000-0000-0000-000000000020",
+      {
+        method: "DELETE",
+        withAuth: false,
+      },
+    );
     expect(res.status).toBe(401);
   });
 
   it("管理者以外 → 403を返す", async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
-    const res = await sendRequest(app, "/api/users/user-1/tokens/token-abc", {
-      method: "DELETE",
-      origin: "https://admin.0g0.xyz",
-    });
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/tokens/00000000-0000-0000-0000-000000000020",
+      {
+        method: "DELETE",
+        origin: "https://admin.0g0.xyz",
+      },
+    );
     expect(res.status).toBe(403);
   });
 
   it("Originヘッダーなし（CSRF）→ 403を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/tokens/token-abc", { method: "DELETE" });
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/tokens/00000000-0000-0000-0000-000000000020",
+      { method: "DELETE" },
+    );
     expect(res.status).toBe(403);
   });
 
   it("対象ユーザーが存在しない → 404を返す", async () => {
     vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
-    const res = await sendRequest(app, "/api/users/nonexistent/tokens/token-abc", {
-      method: "DELETE",
-      origin: "https://admin.0g0.xyz",
-    });
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000096/tokens/00000000-0000-0000-0000-000000000020",
+      {
+        method: "DELETE",
+        origin: "https://admin.0g0.xyz",
+      },
+    );
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("NOT_FOUND");
   });
 
   it("指定セッションを失効させて204を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/tokens/token-abc", {
-      method: "DELETE",
-      origin: "https://admin.0g0.xyz",
-    });
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/tokens/00000000-0000-0000-0000-000000000020",
+      {
+        method: "DELETE",
+        origin: "https://admin.0g0.xyz",
+      },
+    );
     expect(res.status).toBe(204);
     expect(vi.mocked(revokeTokenByIdForUser)).toHaveBeenCalledWith(
       expect.anything(),
-      "token-abc",
-      "user-1",
+      "00000000-0000-0000-0000-000000000020",
+      "00000000-0000-0000-0000-000000000004",
       "admin_action",
     );
   });
 
   it("存在しないor他ユーザー所属のセッションID → 404を返す", async () => {
     vi.mocked(revokeTokenByIdForUser).mockResolvedValue(0);
-    const res = await sendRequest(app, "/api/users/user-1/tokens/no-such-token", {
-      method: "DELETE",
-      origin: "https://admin.0g0.xyz",
-    });
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/tokens/00000000-0000-0000-0000-000000000029",
+      {
+        method: "DELETE",
+        origin: "https://admin.0g0.xyz",
+      },
+    );
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("NOT_FOUND");
   });
 
   it("ユーザーIDとトークンIDの両方をrevokeTokenByIdForUserに渡す", async () => {
-    await sendRequest(app, "/api/users/target-user-xyz/tokens/specific-token-id", {
-      method: "DELETE",
-      origin: "https://admin.0g0.xyz",
-    });
+    await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000005/tokens/00000000-0000-0000-0000-000000000021",
+      {
+        method: "DELETE",
+        origin: "https://admin.0g0.xyz",
+      },
+    );
     expect(vi.mocked(revokeTokenByIdForUser)).toHaveBeenCalledWith(
       expect.anything(),
-      "specific-token-id",
-      "target-user-xyz",
+      "00000000-0000-0000-0000-000000000021",
+      "00000000-0000-0000-0000-000000000005",
       "admin_action",
     );
   });
@@ -2278,17 +2421,20 @@ describe("PATCH /api/users/:id/ban — ユーザー停止", () => {
     vi.resetAllMocks();
     app = buildApp();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
-    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: "target-user-id" });
+    vi.mocked(findUserById).mockResolvedValue({
+      ...mockUser,
+      id: "00000000-0000-0000-0000-000000000003",
+    });
     vi.mocked(banUser).mockResolvedValue({
       ...mockUser,
-      id: "target-user-id",
+      id: "00000000-0000-0000-0000-000000000003",
       banned_at: "2026-03-24T00:00:00Z",
     });
     vi.mocked(revokeUserTokens).mockResolvedValue(undefined);
   });
 
   it("対象ユーザーを停止し200を返す", async () => {
-    const res = await sendRequest(app, "/api/users/target-user-id/ban", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000003/ban", {
       method: "PATCH",
       origin: "https://id.0g0.xyz",
     });
@@ -2297,7 +2443,7 @@ describe("PATCH /api/users/:id/ban — ユーザー停止", () => {
     expect(body.data.banned_at).toBe("2026-03-24T00:00:00Z");
     expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(
       expect.anything(),
-      "target-user-id",
+      "00000000-0000-0000-0000-000000000003",
       "security_event",
     );
   });
@@ -2313,8 +2459,12 @@ describe("PATCH /api/users/:id/ban — ユーザー停止", () => {
   });
 
   it("管理者ユーザーを停止しようとした場合 → 403を返す", async () => {
-    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: "target-user-id", role: "admin" });
-    const res = await sendRequest(app, "/api/users/target-user-id/ban", {
+    vi.mocked(findUserById).mockResolvedValue({
+      ...mockUser,
+      id: "00000000-0000-0000-0000-000000000003",
+      role: "admin",
+    });
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000003/ban", {
       method: "PATCH",
       origin: "https://id.0g0.xyz",
     });
@@ -2328,10 +2478,10 @@ describe("PATCH /api/users/:id/ban — ユーザー停止", () => {
       .mockResolvedValueOnce(mockAdminUser)
       .mockResolvedValueOnce({
         ...mockUser,
-        id: "target-user-id",
+        id: "00000000-0000-0000-0000-000000000003",
         banned_at: "2026-01-01T00:00:00Z",
       });
-    const res = await sendRequest(app, "/api/users/target-user-id/ban", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000003/ban", {
       method: "PATCH",
       origin: "https://id.0g0.xyz",
     });
@@ -2342,7 +2492,7 @@ describe("PATCH /api/users/:id/ban — ユーザー停止", () => {
 
   it("ユーザーが存在しない場合 → 404を返す", async () => {
     vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
-    const res = await sendRequest(app, "/api/users/not-exist/ban", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000097/ban", {
       method: "PATCH",
       origin: "https://id.0g0.xyz",
     });
@@ -2359,12 +2509,20 @@ describe("DELETE /api/users/:id/ban — ユーザー停止解除", () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
     vi.mocked(findUserById)
       .mockResolvedValueOnce(mockAdminUser)
-      .mockResolvedValue({ ...mockUser, id: "target-user-id", banned_at: "2026-01-01T00:00:00Z" });
-    vi.mocked(unbanUser).mockResolvedValue({ ...mockUser, id: "target-user-id", banned_at: null });
+      .mockResolvedValue({
+        ...mockUser,
+        id: "00000000-0000-0000-0000-000000000003",
+        banned_at: "2026-01-01T00:00:00Z",
+      });
+    vi.mocked(unbanUser).mockResolvedValue({
+      ...mockUser,
+      id: "00000000-0000-0000-0000-000000000003",
+      banned_at: null,
+    });
   });
 
   it("停止中ユーザーを解除し200を返す", async () => {
-    const res = await sendRequest(app, "/api/users/target-user-id/ban", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000003/ban", {
       method: "DELETE",
       origin: "https://id.0g0.xyz",
     });
@@ -2377,8 +2535,12 @@ describe("DELETE /api/users/:id/ban — ユーザー停止解除", () => {
     vi.mocked(findUserById).mockReset();
     vi.mocked(findUserById)
       .mockResolvedValueOnce(mockAdminUser)
-      .mockResolvedValue({ ...mockUser, id: "target-user-id", banned_at: null });
-    const res = await sendRequest(app, "/api/users/target-user-id/ban", {
+      .mockResolvedValue({
+        ...mockUser,
+        id: "00000000-0000-0000-0000-000000000003",
+        banned_at: null,
+      });
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000003/ban", {
       method: "DELETE",
       origin: "https://id.0g0.xyz",
     });
@@ -2390,7 +2552,7 @@ describe("DELETE /api/users/:id/ban — ユーザー停止解除", () => {
   it("ユーザーが存在しない場合 → 404を返す", async () => {
     vi.mocked(findUserById).mockReset();
     vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
-    const res = await sendRequest(app, "/api/users/not-exist/ban", {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000097/ban", {
       method: "DELETE",
       origin: "https://id.0g0.xyz",
     });
@@ -2411,18 +2573,28 @@ describe("GET /api/users/:id/login-stats", () => {
     vi.resetAllMocks();
     app = buildApp();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
-    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: "user-1" });
+    vi.mocked(findUserById).mockResolvedValue({
+      ...mockUser,
+      id: "00000000-0000-0000-0000-000000000004",
+    });
     vi.mocked(getUserLoginProviderStats).mockResolvedValue(mockStats);
   });
 
   it("認証なし → 401を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/login-stats", { withAuth: false });
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/login-stats",
+      { withAuth: false },
+    );
     expect(res.status).toBe(401);
   });
 
   it("管理者でない場合 → 403を返す", async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
-    const res = await sendRequest(app, "/api/users/user-1/login-stats");
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/login-stats",
+    );
     expect(res.status).toBe(403);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("FORBIDDEN");
@@ -2430,14 +2602,20 @@ describe("GET /api/users/:id/login-stats", () => {
 
   it("対象ユーザーが存在しない場合 → 404を返す", async () => {
     vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
-    const res = await sendRequest(app, "/api/users/no-such/login-stats");
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000098/login-stats",
+    );
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("NOT_FOUND");
   });
 
   it("プロバイダー別統計とdaysを返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/login-stats");
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/login-stats",
+    );
     expect(res.status).toBe(200);
     const body = await res.json<{ data: unknown[]; days: number }>();
     expect(body.data).toHaveLength(2);
@@ -2446,7 +2624,7 @@ describe("GET /api/users/:id/login-stats", () => {
 
   it("daysクエリパラメータを受け取る", async () => {
     const res = await app.request(
-      new Request(`${baseUrl}/api/users/user-1/login-stats?days=7`, {
+      new Request(`${baseUrl}/api/users/00000000-0000-0000-0000-000000000004/login-stats?days=7`, {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
@@ -2457,14 +2635,14 @@ describe("GET /api/users/:id/login-stats", () => {
     expect(body.days).toBe(7);
     expect(vi.mocked(getUserLoginProviderStats)).toHaveBeenCalledWith(
       expect.anything(),
-      "user-1",
+      "00000000-0000-0000-0000-000000000004",
       expect.any(String),
     );
   });
 
   it("daysが範囲外の場合 → 400を返す", async () => {
     const res = await app.request(
-      new Request(`${baseUrl}/api/users/user-1/login-stats?days=0`, {
+      new Request(`${baseUrl}/api/users/00000000-0000-0000-0000-000000000004/login-stats?days=0`, {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
@@ -2490,18 +2668,28 @@ describe("GET /api/users/:id/login-trends", () => {
     vi.resetAllMocks();
     app = buildApp();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
-    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: "user-1" });
+    vi.mocked(findUserById).mockResolvedValue({
+      ...mockUser,
+      id: "00000000-0000-0000-0000-000000000004",
+    });
     vi.mocked(getUserDailyLoginTrends).mockResolvedValue(mockTrends);
   });
 
   it("認証なし → 401を返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/login-trends", { withAuth: false });
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/login-trends",
+      { withAuth: false },
+    );
     expect(res.status).toBe(401);
   });
 
   it("管理者でない場合 → 403を返す", async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
-    const res = await sendRequest(app, "/api/users/user-1/login-trends");
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/login-trends",
+    );
     expect(res.status).toBe(403);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("FORBIDDEN");
@@ -2509,14 +2697,20 @@ describe("GET /api/users/:id/login-trends", () => {
 
   it("対象ユーザーが存在しない場合 → 404を返す", async () => {
     vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
-    const res = await sendRequest(app, "/api/users/no-such/login-trends");
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000098/login-trends",
+    );
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("NOT_FOUND");
   });
 
   it("日別ログイントレンドとdaysを返す", async () => {
-    const res = await sendRequest(app, "/api/users/user-1/login-trends");
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/login-trends",
+    );
     expect(res.status).toBe(200);
     const body = await res.json<{ data: unknown[]; days: number }>();
     expect(body.data).toHaveLength(3);
@@ -2525,9 +2719,12 @@ describe("GET /api/users/:id/login-trends", () => {
 
   it("daysクエリパラメータを受け取る", async () => {
     const res = await app.request(
-      new Request(`${baseUrl}/api/users/user-1/login-trends?days=14`, {
-        headers: { Authorization: "Bearer mock-token" },
-      }),
+      new Request(
+        `${baseUrl}/api/users/00000000-0000-0000-0000-000000000004/login-trends?days=14`,
+        {
+          headers: { Authorization: "Bearer mock-token" },
+        },
+      ),
       undefined,
       mockEnv,
     );
@@ -2536,16 +2733,19 @@ describe("GET /api/users/:id/login-trends", () => {
     expect(body.days).toBe(14);
     expect(vi.mocked(getUserDailyLoginTrends)).toHaveBeenCalledWith(
       expect.anything(),
-      "user-1",
+      "00000000-0000-0000-0000-000000000004",
       14,
     );
   });
 
   it("daysが範囲外の場合 → 400を返す", async () => {
     const res = await app.request(
-      new Request(`${baseUrl}/api/users/user-1/login-trends?days=366`, {
-        headers: { Authorization: "Bearer mock-token" },
-      }),
+      new Request(
+        `${baseUrl}/api/users/00000000-0000-0000-0000-000000000004/login-trends?days=366`,
+        {
+          headers: { Authorization: "Bearer mock-token" },
+        },
+      ),
       undefined,
       mockEnv,
     );
@@ -2688,5 +2888,73 @@ describe("GET /api/users/me/login-trends", () => {
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("BAD_REQUEST");
+  });
+});
+
+// ===== パスパラメータバリデーション =====
+describe("パスパラメータバリデーション", () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockAdminUser);
+  });
+
+  it("GET /:id — 不正なID形式 → 400を返す", async () => {
+    const res = await sendRequest(app, "/api/users/not-a-uuid");
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.message).toBe("Invalid user ID format");
+  });
+
+  it("GET /:id/tokens — 不正なID形式 → 400を返す（/:id/*ミドルウェア）", async () => {
+    const res = await sendRequest(app, "/api/users/not-a-uuid/tokens");
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.message).toBe("Invalid user ID format");
+  });
+
+  it("DELETE /me/connections/:serviceId — 不正なserviceId形式 → 400を返す", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    const res = await sendRequest(app, "/api/users/me/connections/invalid-service-id", {
+      method: "DELETE",
+      origin: "https://user.0g0.xyz",
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.message).toBe("Invalid service ID format");
+  });
+
+  it("DELETE /me/tokens/:tokenId — 不正なtokenId形式 → 400を返す", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    const res = await sendRequest(app, "/api/users/me/tokens/invalid-token-id", {
+      method: "DELETE",
+      origin: "https://user.0g0.xyz",
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.message).toBe("Invalid token ID format");
+  });
+
+  it("DELETE /:id/tokens/:tokenId — 有効なIDだが不正なtokenId形式 → 400を返す", async () => {
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/tokens/invalid-token-id",
+      {
+        method: "DELETE",
+        origin: "https://admin.0g0.xyz",
+      },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.message).toBe("Invalid token ID format");
   });
 });

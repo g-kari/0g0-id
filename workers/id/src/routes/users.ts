@@ -27,6 +27,7 @@ import {
   parseDays,
   parsePagination,
   isValidProvider,
+  UUID_RE,
   type OAuthProvider,
   type UserFilter,
   createLogger,
@@ -146,6 +147,24 @@ async function performUserDeletion(
 }
 
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
+
+// ユーザーID形式検証ミドルウェア（:id パラメータを持つすべてのルートに適用、/me は除外）
+app.use("/:id", async (c, next) => {
+  const id = c.req.param("id");
+  if (id === "me") return next();
+  if (!UUID_RE.test(id)) {
+    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid user ID format" } }, 400);
+  }
+  await next();
+});
+app.use("/:id/*", async (c, next) => {
+  const id = c.req.param("id");
+  if (id === "me") return next();
+  if (!UUID_RE.test(id)) {
+    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid user ID format" } }, 400);
+  }
+  await next();
+});
 
 // GET /api/users/me
 app.get(
@@ -437,6 +456,9 @@ app.delete(
   async (c) => {
     const tokenUser = c.get("user");
     const serviceId = c.req.param("serviceId");
+    if (!UUID_RE.test(serviceId)) {
+      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid service ID format" } }, 400);
+    }
     const revoked = await revokeUserServiceTokens(
       c.env.DB,
       tokenUser.sub,
@@ -496,6 +518,9 @@ app.delete(
   async (c) => {
     const tokenUser = c.get("user");
     const tokenId = c.req.param("tokenId");
+    if (!UUID_RE.test(tokenId)) {
+      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid token ID format" } }, 400);
+    }
     const revoked = await revokeTokenByIdForUser(c.env.DB, tokenId, tokenUser.sub, "user_logout");
     if (revoked === 0) {
       return c.json({ error: { code: "NOT_FOUND", message: "Session not found" } }, 404);
@@ -849,6 +874,9 @@ app.get("/:id/tokens", authMiddleware, adminMiddleware, async (c) => {
 app.delete("/:id/tokens/:tokenId", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const targetId = c.req.param("id");
   const tokenId = c.req.param("tokenId");
+  if (!UUID_RE.test(tokenId)) {
+    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid token ID format" } }, 400);
+  }
   const tokenUser = c.get("user");
 
   const targetUser = await findUserById(c.env.DB, targetId);

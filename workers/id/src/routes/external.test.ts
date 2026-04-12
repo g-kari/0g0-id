@@ -133,7 +133,7 @@ const mockUser = {
   updated_at: "2024-01-01T00:00:00Z",
 };
 
-const PAIRWISE_SUB = "pairwise-sub-hash";
+const PAIRWISE_SUB = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
 
 describe("GET /api/external/users/:sub", () => {
   const app = buildApp();
@@ -177,6 +177,16 @@ describe("GET /api/external/users/:sub", () => {
       mockTimingSafeEqual.mockReturnValue(false);
       const res = await requestExternalUser(app, "user-1", "client-abc", "wrong-secret");
       expect(res.status).toBe(401);
+    });
+  });
+
+  describe("パスパラメータバリデーション", () => {
+    it("不正なsub形式（非hex文字列） → 400を返す", async () => {
+      const res = await requestExternalUser(app, "invalid-sub-not-hex");
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string; message: string } }>();
+      expect(body.error.code).toBe("BAD_REQUEST");
+      expect(body.error.message).toBe("Invalid sub format");
     });
   });
 
