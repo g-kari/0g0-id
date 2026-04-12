@@ -1,5 +1,22 @@
 # TODO
 
+## 2026-04-12: テストカバレッジ追加: device.test.ts DBエラーケース
+
+### 対応内容
+- `handleDeviceCodeGrant` の DBエラー未テストパスに6件追加（926 → 932テスト）
+  - `findServiceByClientId` DB エラー → server_error + 500
+  - `findDeviceCodeByHash` DB エラー → server_error + 500
+  - `tryUpdateDeviceCodePolledAt` DB エラー → server_error + 500
+  - `findUserById` DB エラー（承認済みコード）→ server_error + 500
+  - `deleteApprovedDeviceCode` DB エラー → server_error + 500
+  - `findDeviceCodeByUserCode` DB エラー（POST /api/device/verify）→ 500 INTERNAL_ERROR
+- 持ち越し残課題「`POST /api/device/verify` CSRF保護」を解決済みに記録
+  - `index.ts` で `app.use("/api/*", bffCsrfMiddleware)` が適用済みのためdeviceルートも保護済み
+  - BFF全エンドポイントとの一貫性が確認できた
+
+### テスト結果
+- workers/id: 926 → 932テスト（+6）、全テストパス
+
 ## 2026-04-12: リファクタリング: well-known.ts 共通メタデータ集約
 
 ### 対応内容

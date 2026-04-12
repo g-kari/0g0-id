@@ -370,6 +370,54 @@ describe("handleDeviceCodeGrant", () => {
     // issueTokenPair は呼ばれないこと
     expect(issueTokenPair).not.toHaveBeenCalled();
   });
+
+  // ===== DB エラー =====
+  it("findServiceByClientId DB エラー → server_error + 500", async () => {
+    vi.mocked(findServiceByClientId).mockRejectedValue(new Error("DB error"));
+    const c = makeContext();
+    const res = await handleDeviceCodeGrant(c as never, baseParams);
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("server_error");
+  });
+
+  it("findDeviceCodeByHash DB エラー → server_error + 500", async () => {
+    vi.mocked(findDeviceCodeByHash).mockRejectedValue(new Error("DB error"));
+    const c = makeContext();
+    const res = await handleDeviceCodeGrant(c as never, baseParams);
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("server_error");
+  });
+
+  it("tryUpdateDeviceCodePolledAt DB エラー → server_error + 500", async () => {
+    vi.mocked(tryUpdateDeviceCodePolledAt).mockRejectedValue(new Error("DB error"));
+    const c = makeContext();
+    const res = await handleDeviceCodeGrant(c as never, baseParams);
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("server_error");
+  });
+
+  it("findUserById DB エラー（承認済みコード）→ server_error + 500", async () => {
+    vi.mocked(findDeviceCodeByHash).mockResolvedValue(approvedDeviceCode as never);
+    vi.mocked(findUserById).mockRejectedValue(new Error("DB error"));
+    const c = makeContext();
+    const res = await handleDeviceCodeGrant(c as never, baseParams);
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("server_error");
+  });
+
+  it("deleteApprovedDeviceCode DB エラー → server_error + 500", async () => {
+    vi.mocked(findDeviceCodeByHash).mockResolvedValue(approvedDeviceCode as never);
+    vi.mocked(deleteApprovedDeviceCode).mockRejectedValue(new Error("DB error"));
+    const c = makeContext();
+    const res = await handleDeviceCodeGrant(c as never, baseParams);
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("server_error");
+  });
 });
 
 // ===== POST /api/device/code — デバイス認可リクエスト =====
@@ -722,5 +770,14 @@ describe("POST /api/device/verify", () => {
     expect(res.status).toBe(200);
     // findDeviceCodeByUserCode には正規化後（ハイフンなし）の値が渡される
     expect(findDeviceCodeByUserCode).toHaveBeenCalledWith(mockEnv.DB, "ABCDEFGH");
+  });
+
+  // 13. findDeviceCodeByUserCode DB エラー → 500 INTERNAL_ERROR
+  it("findDeviceCodeByUserCode DB エラー → 500 INTERNAL_ERROR", async () => {
+    vi.mocked(findDeviceCodeByUserCode).mockRejectedValue(new Error("DB error"));
+    const res = await postVerify({ user_code: validUserCode });
+    expect(res.status).toBe(500);
+    const json = await res.json<{ error: string }>();
+    expect(json.error).toBe("INTERNAL_ERROR");
   });
 });
