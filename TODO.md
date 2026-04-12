@@ -1,8 +1,27 @@
 # TODO
 
+## テストカバレッジ追加（2026-04-12）: well-known.test.ts device_authorization_endpoint 等
+
+### 追加したテスト
+
+#### workers/id/src/routes/well-known.test.ts ✅
+
+**GET /.well-known/openid-configuration（+3件）**
+- `device_authorization_endpoint` が含まれる（RFC 8628 Device Flow）
+- `end_session_endpoint` が含まれる（OIDC Session Management）
+- `grant_types_supported` に device_code・authorization_code・refresh_token が含まれる
+
+**GET /.well-known/oauth-authorization-server（+2件）**
+- `device_authorization_endpoint` が含まれる（RFC 8628 Device Flow）
+- `grant_types_supported` に device_code・authorization_code・refresh_token が含まれる
+
+### テスト数推移
+- workers/id: 932 → 937テスト（+5）、全 2224 件パス
+
 ## 2026-04-12: テストカバレッジ追加: device.test.ts DBエラーケース
 
 ### 対応内容
+
 - `handleDeviceCodeGrant` の DBエラー未テストパスに6件追加（926 → 932テスト）
   - `findServiceByClientId` DB エラー → server_error + 500
   - `findDeviceCodeByHash` DB エラー → server_error + 500
@@ -15,23 +34,26 @@
   - BFF全エンドポイントとの一貫性が確認できた
 
 ### テスト結果
+
 - workers/id: 926 → 932テスト（+6）、全テストパス
 
 ## 2026-04-12: リファクタリング: well-known.ts 共通メタデータ集約
 
 ### 対応内容
+
 - `workers/id/src/routes/well-known.ts` の `openid-configuration` と `oauth-authorization-server` で重複していた RFC 8414 共通フィールドを `buildBaseMetadata()` ヘルパーに抽出
 - OIDC固有フィールド（`userinfo_endpoint`, `end_session_endpoint`, `id_token_signing_alg_values_supported`）のみ `openid-configuration` 側に残す
 - 両エンドポイントが独立して保守されることによるドリフトリスクを解消
 - 76行 → 46行（差分 -30行）
 
 ### テスト結果
-- 全 2213 件通過（変更なし）
 
+- 全 2213 件通過（変更なし）
 
 ## 2026-04-12: テスト改善: sessions.ts テストカバレッジ強化
 
 ### 対応内容
+
 - `workers/user/src/routes/sessions.test.ts` に2件追加（既存26件 → 28件）
   - `DELETE /others`: 不正なセッションCookieで401を返すテスト（parseSession失敗パス）
   - `DELETE /others`: `sha256(refresh_token)` の厳密な値一致検証（64文字16進チェックから強化）
@@ -39,11 +61,13 @@
 - `sha256` を `@0g0-id/shared` からimport追加
 
 ### テスト結果
+
 - 全 2213 件通過（+1 件追加）
 
 ## 2026-04-12: リファクタリング: parseBasicAuth 共通化
 
 ### 対応内容
+
 - `rate-limit.ts` と `service-auth.ts` で重複していた Basic 認証ヘッダーパースロジックを統合
 - `workers/id/src/utils/service-auth.ts` に `parseBasicAuth(authHeader)` 関数を新規 export
   - `{ clientId: string; clientSecret: string } | null` を返す
@@ -52,6 +76,7 @@
 - `service-auth.test.ts` に `parseBasicAuth` のテスト 7 件追加
 
 ### テスト結果
+
 - 全 2212 件通過（+7 件追加）
 
 ## コードレビュー修正: トークン・デバイスコードエンドポイントのセキュリティ・RFC準拠改善（2026-04-12）
