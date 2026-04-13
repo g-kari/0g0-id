@@ -1,5 +1,21 @@
 # TODO
 
+## バグ修正: fetchWithAuth 誤ログアウト修正（2026-04-13）
+
+### 対応内容
+
+- `packages/shared/src/lib/bff.ts` の `fetchWithAuth` 関数のリフレッシュエラーハンドリングを修正
+- **429（レートリミット）**: 以前は汎用 `else` ブランチに落ちてセッションCookieを削除し401を返していた
+  → 専用ブランチを追加してCookie削除なしで503（`SERVICE_UNAVAILABLE`）を返すよう修正
+- **TOKEN_ROTATED（並行リクエスト競合）**: 以前は401を返していた
+  → セッションCookieを削除しない503（`TOKEN_ROTATED`）を返すよう修正（リトライ可能）
+- 両ケースのユニットテストを2件追加（bff.test.ts）
+
+### 背景
+
+- 高負荷時やタブ複数起動時にリフレッシュエンドポイントが429やTOKEN_ROTATEDを返すとユーザーがログアウトしてしまう事象が発生
+- レートリミット・並行ローテーションはセッション自体が無効なわけではないため、Cookieを削除すべきでなかった
+
 ## 機能追加: MCPツール update_user_role・transfer_service_ownership 追加（2026-04-13）
 
 ### 対応内容
