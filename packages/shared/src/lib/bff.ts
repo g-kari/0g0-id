@@ -257,11 +257,12 @@ export async function fetchWithAuth(
     } else if (refreshRes.status >= 500) {
       // リフレッシュエンドポイントが5xx → 502（認証失敗ではなくアップストリーム障害）
       return errorResponse(502, "UPSTREAM_ERROR", "Identity provider error");
+    } else if (refreshRes.status === 429) {
+      // レートリミット: セッションは有効のままなのでCookieは削除しない。
+      // クライアントがリトライできるよう503を返す（ログアウトさせない）。
+      return errorResponse(503, "SERVICE_UNAVAILABLE", "Too many requests, please retry later");
     } else {
       // 400/401: リフレッシュ失敗。エラーコードによってセッション削除の判断を分ける。
-      // TOKEN_ROTATED は並行リクエスト競合（race condition）で発生する一時的なエラー。
-      // セッション Cookie を削除してしまうと、並行する別リクエストの成功で更新されたクッキーが消えてしまう。
-      // 真にセッションが無効な場合（TOKEN_REUSE・TOKEN_EXPIRED 等）のみ削除する。
       let errorCode: string | undefined;
       try {
         const body = await refreshRes.clone().json<{ error?: { code?: string } }>();
@@ -269,14 +270,21 @@ export async function fetchWithAuth(
       } catch {
         // パース失敗時はターミナルエラーとして扱う
       }
-      if (errorCode !== "TOKEN_ROTATED") {
-        deleteCookie(c, sessionCookieName, {
-          path: "/",
-          secure: true,
-          httpOnly: true,
-          sameSite: "Lax",
-        });
+
+      if (errorCode === "TOKEN_ROTATED") {
+        // 並行リクエスト競合: 別の並行リクエストが既にトークンをローテーション済み。
+        // セッションCookieは有効（別リクエストが更新済み）なので削除しない。
+        // クライアントがリトライできるよう503を返す（ログアウトさせない）。
+        return errorResponse(503, "TOKEN_ROTATED", "Token rotation in progress, please retry");
       }
+
+      // TOKEN_REUSE・TOKEN_EXPIRED・INVALID_TOKEN 等の真のセッション無効時のみCookieを削除する
+      deleteCookie(c, sessionCookieName, {
+        path: "/",
+        secure: true,
+        httpOnly: true,
+        sameSite: "Lax",
+      });
       return errorResponse(401, "UNAUTHORIZED", "Session expired");
     }
   }

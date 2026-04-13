@@ -167,6 +167,66 @@ describe("fetchWithAuth", () => {
     const body = await result.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("UPSTREAM_ERROR");
   });
+
+  it("リフレッシュが429を返した場合は503を返しCookieを削除しない", async () => {
+    vi.mocked(deleteCookie).mockClear();
+    const cookie = await encodeSession(mockSession, TEST_SECRET);
+    vi.mocked(getCookie).mockReturnValue(cookie);
+
+    const { fetchWithAuth } = await import("./bff");
+    const idpFetch = vi
+      .fn()
+      // 1回目: アクセストークン期限切れ
+      .mockResolvedValueOnce(new Response("Unauthorized", { status: 401 }))
+      // 2回目: リフレッシュエンドポイントへのリクエストにレートリミット
+      .mockResolvedValueOnce(new Response("Too Many Requests", { status: 429 }));
+    const ctx = {
+      req: {},
+      env: {
+        IDP: { fetch: idpFetch },
+        IDP_ORIGIN: "https://id.0g0.xyz",
+        SESSION_SECRET: TEST_SECRET,
+      },
+    } as unknown as Parameters<typeof fetchWithAuth>[0];
+
+    const result = await fetchWithAuth(ctx, "__session", "https://id.0g0.xyz/api/me");
+    expect(result.status).toBe(503);
+    const body = await result.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("SERVICE_UNAVAILABLE");
+    // セッションCookieは削除されない（ログアウトさせない）
+    expect(vi.mocked(deleteCookie)).not.toHaveBeenCalled();
+  });
+
+  it("リフレッシュがTOKEN_ROTATEDを返した場合は503を返しCookieを削除しない", async () => {
+    vi.mocked(deleteCookie).mockClear();
+    const cookie = await encodeSession(mockSession, TEST_SECRET);
+    vi.mocked(getCookie).mockReturnValue(cookie);
+
+    const { fetchWithAuth } = await import("./bff");
+    const idpFetch = vi
+      .fn()
+      // 1回目: アクセストークン期限切れ
+      .mockResolvedValueOnce(new Response("Unauthorized", { status: 401 }))
+      // 2回目: 並行リクエストが既にトークンをローテーション済み
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { code: "TOKEN_ROTATED" } }), { status: 401 }),
+      );
+    const ctx = {
+      req: {},
+      env: {
+        IDP: { fetch: idpFetch },
+        IDP_ORIGIN: "https://id.0g0.xyz",
+        SESSION_SECRET: TEST_SECRET,
+      },
+    } as unknown as Parameters<typeof fetchWithAuth>[0];
+
+    const result = await fetchWithAuth(ctx, "__session", "https://id.0g0.xyz/api/me");
+    expect(result.status).toBe(503);
+    const body = await result.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("TOKEN_ROTATED");
+    // セッションCookieは削除されない（ログアウトさせない）
+    expect(vi.mocked(deleteCookie)).not.toHaveBeenCalled();
+  });
 });
 
 describe("fetchWithJsonBody", () => {
