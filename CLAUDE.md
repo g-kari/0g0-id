@@ -2,53 +2,59 @@
 
 ## アーキテクチャ
 
-- **id.0g0.xyz** (`workers/id`) — IdPコアAPI（認証・JWT・DB・トークン）
-- **user.0g0.xyz** (`workers/user`) — ユーザー向けBFF（ログインUI・プロフィール）
-- **admin.0g0.xyz** (`workers/admin`) — 管理画面BFF（サービス管理・ユーザー管理）
-- **mcp.0g0.xyz** (`workers/mcp`) — MCP Worker
-- **packages/shared** — 共通型定義・ライブラリ（直接ソース参照、ビルドステップなし）
+| Worker | ドメイン | 役割 |
+|--------|----------|------|
+| `workers/id` | id.0g0.xyz | IdPコアAPI（認証・JWT・DB・トークン） |
+| `workers/user` | user.0g0.xyz | ユーザー向けBFF（ログインUI・プロフィール） |
+| `workers/admin` | admin.0g0.xyz | 管理画面BFF（サービス管理・ユーザー管理） |
+| `workers/mcp` | mcp.0g0.xyz | MCP Worker |
+| `packages/shared` | — | 共通型定義・ライブラリ（直接ソース参照、ビルドステップなし） |
+
+## 重要な設計
+
+- JWT署名: **ES256**（jose + WebCrypto）、アクセストークン15分・リフレッシュトークン30日
+- BFF → id: Service Bindings でサーバー間呼び出し、ワンタイム認可コード方式でトークン受け渡し
+- トークンローテーション時の競合: `TOKEN_ROTATED` は並行リクエスト競合（セッション有効）→ 503で返しCookie削除不可
+
+## 開発コマンド
+
+```bash
+npx vp check          # lint + format + typecheck（コミット前に必須）
+npx vp check --fix    # 自動修正
+npx vp test run       # 全テスト実行
+```
 
 ## マイグレーション
 
-### ⚠️ 必須ルール: 新しいマイグレーションファイルを追加したら必ずローカルで本番DBに適用してからpushすること
+### ⚠️ 必須: 新しいマイグレーションファイルを追加したら必ずpush前に本番DBへ適用すること
 
-マイグレーションを適用せずにデプロイすると、新カラムを参照するコードが本番で `D1_ERROR: no such column` を起こす。
+適用せずデプロイすると `D1_ERROR: no such column` が本番で発生する。
 
 ```bash
-# 本番DBに適用（push前に必ず実行）
-npm run migrate:id
+npm run migrate:id    # 本番DBに適用（push前に必ず実行）
 ```
-
-## JWT / BFF
-
-- JWT署名: **ES256**（jose + WebCrypto）、アクセストークン15分・リフレッシュトークン30日
-- BFF（user/admin）→ id へは Service Bindings でサーバー間呼び出し、ワンタイム認可コード方式でトークン受け渡し
 
 ## 開発ツール
 
 ### ⚠️ Serena（セマンティックコーディングMCP）— 必須ツール
 
-> **このプロジェクトでは、コードの読み取り・検索・編集にSerenaを必ず利用すること。**
-> **SerenaのMCPツールが利用可能であれば、他の手段（Read/Edit/Grep/Glob等）の使用は禁止。**
+> **コードの読み取り・検索・編集には必ずSerenaを使うこと。**
+> **SerenaのMCPツールが利用可能な場合、Read/Edit/Grep/Glob等の使用は禁止。**
 
-| 操作                 | 使用するSerenaツール       |
-| -------------------- | -------------------------- |
-| シンボルの検索       | `find_symbol`              |
-| シンボルの参照先検索 | `find_referencing_symbols` |
-| ディレクトリ一覧     | `list_dir`                 |
-| ファイル検索         | `find_file`                |
-| コード読み取り       | `read_file`                |
-| シンボル一覧取得     | `get_symbols_overview`     |
-| シンボル単位の編集   | `replace_symbol_body`      |
-| コードの挿入（後）   | `insert_after_symbol`      |
-| コードの挿入（前）   | `insert_before_symbol`     |
-| パターン検索         | `search_for_pattern`       |
-| ファイル作成・上書き | `create_text_file`         |
+| 操作 | Serenaツール |
+|------|-------------|
+| シンボル検索 | `find_symbol` |
+| 参照先検索 | `find_referencing_symbols` |
+| ディレクトリ一覧 | `list_dir` |
+| ファイル検索 | `find_file` |
+| ファイル読み取り | `read_file` |
+| シンボル一覧 | `get_symbols_overview` |
+| シンボル単位の編集 | `replace_symbol_body` |
+| コンテンツ置換 | `replace_content` |
+| 挿入（後/前） | `insert_after_symbol` / `insert_before_symbol` |
+| パターン検索 | `search_for_pattern` |
+| ファイル作成・上書き | `create_text_file` |
 
-**禁止事項（SerenaのMCPツールが使える場合）:**
+**禁止（Serena利用可能時）:** `cat`, `sed`, `awk`, `grep`, `find` 等のシェルコマンド、行番号ベースの編集
 
-- `cat`, `sed`, `awk`, `grep`, `find` 等のシェルコマンドによるファイル操作
-- Claude Code組み込みのRead/Edit/Grep/Glob ツールによるファイル操作
-- 行番号ベースの編集（シンボル単位の編集を優先）
-
-**例外:** Serenaのセッションが未初期化・ツールが利用不可の場合のみ、代替手段を使用可。
+**例外:** Serenaが未初期化・利用不可の場合のみ代替手段を使用可。
