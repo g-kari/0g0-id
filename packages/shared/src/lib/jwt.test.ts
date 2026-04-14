@@ -140,6 +140,24 @@ describe("signIdToken", () => {
     const payload = JSON.parse(decodeBase64Url(raw));
     expect(payload.picture).toBeUndefined();
   });
+
+  it("amrが指定された場合はamrクレームを含む（RFC 8176）", async () => {
+    const token = await signIdToken(
+      { ...idPayload, amr: ["google"] },
+      TEST_PRIVATE_KEY,
+      TEST_PUBLIC_KEY,
+    );
+    const raw = token.split(".")[1];
+    const payload = JSON.parse(decodeBase64Url(raw));
+    expect(payload.amr).toEqual(["google"]);
+  });
+
+  it("amrが未指定の場合はamrクレームを含まない", async () => {
+    const token = await signIdToken(idPayload, TEST_PRIVATE_KEY, TEST_PUBLIC_KEY);
+    const raw = token.split(".")[1];
+    const payload = JSON.parse(decodeBase64Url(raw));
+    expect(payload.amr).toBeUndefined();
+  });
 });
 
 describe("verifyAccessToken", () => {

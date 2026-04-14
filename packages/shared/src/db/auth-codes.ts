@@ -13,12 +13,13 @@ export async function createAuthCode(
     codeChallenge?: string | null;
     codeChallengeMethod?: string | null;
     scope?: string | null;
+    provider?: string | null;
   },
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO auth_codes (id, user_id, service_id, code_hash, redirect_to, expires_at, nonce, code_challenge, code_challenge_method, scope)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO auth_codes (id, user_id, service_id, code_hash, redirect_to, expires_at, nonce, code_challenge, code_challenge_method, scope, provider)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       params.id,
@@ -31,6 +32,7 @@ export async function createAuthCode(
       params.codeChallenge ?? null,
       params.codeChallengeMethod ?? null,
       params.scope ?? null,
+      params.provider ?? null,
     )
     .run();
 }

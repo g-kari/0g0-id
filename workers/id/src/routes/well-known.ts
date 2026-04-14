@@ -49,6 +49,7 @@ function buildBaseMetadata(issuer: string) {
       "phone_number",
       "address",
       "updated_at",
+      "amr",
     ],
   };
 }

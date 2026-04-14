@@ -60,6 +60,7 @@ export interface AuthCode {
   code_challenge: string | null;
   code_challenge_method: string | null;
   scope: string | null;
+  provider: string | null;
 }
 
 export interface RefreshToken {

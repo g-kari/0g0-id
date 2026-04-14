@@ -314,6 +314,8 @@ async function handleAuthorizationCodeGrant(
           picture: user.picture,
           authTime,
           nonce: authCode.nonce ?? undefined,
+          // RFC 8176: 認証方式リスト。ソーシャルログインのプロバイダーを記録する
+          amr: authCode.provider ? [authCode.provider] : undefined,
         },
         c.env.JWT_PRIVATE_KEY,
         c.env.JWT_PUBLIC_KEY,

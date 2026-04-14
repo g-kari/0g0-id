@@ -80,6 +80,8 @@ export async function signIdToken(
     picture: string | null;
     authTime: number;
     nonce?: string;
+    /** RFC 8176: 認証方式リスト（例: ["google"], ["github"]） */
+    amr?: string[];
   },
   privateKeyPem: string,
   publicKeyPem: string,
@@ -93,6 +95,7 @@ export async function signIdToken(
     ...(payload.picture !== null ? { picture: payload.picture } : {}),
     auth_time: payload.authTime,
     ...(payload.nonce !== undefined ? { nonce: payload.nonce } : {}),
+    ...(payload.amr !== undefined ? { amr: payload.amr } : {}),
   })
     .setProtectedHeader({ alg: "ES256", kid })
     .setIssuer(payload.iss)
