@@ -1,9 +1,7 @@
-// API fetch ヘルパー
-
 export async function apiFetch<T>(
   path: string,
   options?: RequestInit,
-): Promise<{ data: T } | { error: { code: string; message: string } }> {
+): Promise<T | { error: { code: string; message: string } }> {
   const res = await fetch(path, {
     credentials: "same-origin",
     headers: {
@@ -12,17 +10,25 @@ export async function apiFetch<T>(
     },
     ...options,
   });
-
   if (res.status === 401) {
-    if (typeof window !== "undefined") window.location.href = "/";
-    return { error: { code: "UNAUTHORIZED", message: "Unauthorized" } };
+    window.location.href = "/";
+    throw new Error("Unauthorized");
   }
-
-  return res.json();
+  if (!res.ok) {
+    const body = await (res.json() as Promise<{ error?: { message?: string } }>).catch(
+      (): { error?: { message?: string } } => ({}),
+    );
+    return { error: { code: "HTTP_ERROR", message: body?.error?.message ?? `HTTP ${res.status}` } };
+  }
+  return res.json() as Promise<T>;
 }
 
 export function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("ja-JP");
+  return new Date(iso).toLocaleDateString("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
 }
 
 export function formatDatetime(iso: string): string {

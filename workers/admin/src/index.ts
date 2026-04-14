@@ -62,6 +62,11 @@ app.get("/api/health", (c) => {
   return c.json({ status: "ok", worker: "admin", timestamp: new Date().toISOString() });
 });
 
+// /api/* の未定義 GET ルートは 404 を返す（SPA fallback に流れないようにする）
+app.get("/api/*", (c) => {
+  return c.json({ error: { code: "NOT_FOUND", message: "Not found" } }, 404);
+});
+
 // SPA フォールバック: /api/* と /auth/* 以外はSPA (200.html) へ
 app.get("*", async (c) => {
   const url = new URL("/200.html", c.req.url);

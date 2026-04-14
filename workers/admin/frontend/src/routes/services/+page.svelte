@@ -125,18 +125,18 @@
     <div class="modal" role="dialog" aria-modal="true" onclick={(e) => e.stopPropagation()}>
       <div class="modal-header">
         <h2 class="modal-title">{newServiceResult ? '作成完了' : '新規サービス追加'}</h2>
-        <button class="btn btn-ghost" style="padding:4px 10px;" onclick={closeAdd}>✕</button>
+        <button class="btn btn-ghost" style="padding:4px 10px;" aria-label="閉じる" onclick={closeAdd}>✕</button>
       </div>
 
       {#if newServiceResult}
         <div class="alert alert-success">サービスを作成しました。シークレットは一度しか表示されません。</div>
         <div class="form-group">
-          <label>Client ID</label>
-          <input type="text" readonly value={newServiceResult.client_id} />
+          <label for="result-client-id">Client ID</label>
+          <input id="result-client-id" type="text" readonly value={newServiceResult.client_id} />
         </div>
         <div class="form-group">
-          <label>Client Secret（コピーして保存してください）</label>
-          <input type="text" readonly value={newServiceResult.client_secret} />
+          <label for="result-client-secret">Client Secret（コピーして保存してください）</label>
+          <input id="result-client-secret" type="text" readonly value={newServiceResult.client_secret} />
         </div>
         <button class="btn btn-primary" onclick={closeAdd}>閉じる</button>
       {:else}
