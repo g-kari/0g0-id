@@ -1,5 +1,27 @@
 # TODO
 
+## 機能追加: IDトークンにamrクレームを追加（2026-04-14）
+
+### 対応内容
+
+- OAuth + OIDC セキュリティ記事をベースに実装を調査 → `amr` クレームが唯一の欠如と判明
+- `auth_codes` テーブルに `provider` カラム追加（マイグレーション 0022、本番DB適用済み）
+- `/auth/callback` でauth code作成時にソーシャルプロバイダー名（`google`, `line`, `twitch`, `github`, `x`）を保存
+- `signIdToken` に `amr?: string[]` を追加（RFC 8176 準拠）
+- `/auth/exchange` および `/api/token` のIDトークン発行で `amr: [provider]` を付与
+- `well-known` の `claims_supported` に `"amr"` を追加
+
+### 記事との照合結果（全項目確認済み）
+
+- Discovery endpoint / JWKS / ES256 署名 / kid: ✅
+- redirect_uri 完全一致検証（登録制）: ✅
+- PKCE S256 必須（state・nonce・code_challenge）: ✅
+- トークンローテーション / TOKEN_REUSE 検知: ✅
+- RFC 7009 リボーク / RFC 7662 イントロスペクション: ✅
+- ペアワイズ sub / 最小スコープ / Implicit Flow 拒否: ✅
+- BFF: 独自セッションCookie / HTTP-only / state照合 / ログアウト時リボーク: ✅
+- amr クレーム: ✅ （今回追加）
+
 ## バグ修正: fetchWithAuth 誤ログアウト修正（2026-04-13）
 
 ### 対応内容
