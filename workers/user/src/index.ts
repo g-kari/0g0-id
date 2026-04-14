@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 
 import type { BffEnv } from "@0g0-id/shared";
+
+// ASSETS binding: Cloudflare Workers Assets を Service Binding として使用
+type UserEnv = BffEnv & { ASSETS: Fetcher };
 import {
   logger,
   securityHeaders,
@@ -21,7 +24,7 @@ import deviceRoutes from "./routes/device";
 
 const appLogger = createLogger("user");
 
-const app = new Hono<{ Bindings: BffEnv }>();
+const app = new Hono<{ Bindings: UserEnv }>();
 
 app.use("*", logger());
 app.use("*", securityHeaders());
@@ -49,6 +52,12 @@ app.route("/api/device", deviceRoutes);
 
 app.get("/api/health", (c) => {
   return c.json({ status: "ok", worker: "user", timestamp: new Date().toISOString() });
+});
+
+// SPA フォールバック: /api/* と /auth/* 以外はSPA (200.html) へ
+app.get("*", async (c) => {
+  const url = new URL("/200.html", c.req.url);
+  return c.env.ASSETS.fetch(new Request(url.toString()));
 });
 
 app.onError((err, c) => {

@@ -160,7 +160,7 @@ describe("user BFF — /auth", () => {
       });
 
       expect(res.status).toBe(302);
-      expect(res.headers.get("Location")).toBe("/profile.html");
+      expect(res.headers.get("Location")).toBe("/profile");
 
       const setCookieHeader = res.headers.get("Set-Cookie") ?? "";
       expect(setCookieHeader).toContain(SESSION_COOKIE);
@@ -256,7 +256,7 @@ describe("user BFF — /auth", () => {
       });
 
       expect(res.status).toBe(302);
-      expect(res.headers.get("Location")).toBe("/profile.html?error=invalid_provider");
+      expect(res.headers.get("Location")).toBe("/profile?error=invalid_provider");
     });
 
     it("link-intentエンドポイントを呼び出してlink_tokenをIdPのURLに含める", async () => {
@@ -298,7 +298,7 @@ describe("user BFF — /auth", () => {
       });
 
       expect(res.status).toBe(302);
-      expect(res.headers.get("Location")).toBe("/profile.html?error=link_failed");
+      expect(res.headers.get("Location")).toBe("/profile?error=link_failed");
     });
 
     it("stateクエリパラメータをIdPのURLに含める", async () => {

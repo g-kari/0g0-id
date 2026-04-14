@@ -10,7 +10,8 @@ invocation_logs = true
 routes = [{ pattern = "admin.0g0.xyz", custom_domain = true }]
 
 [assets]
-directory = "./public"
+directory = "./dist"
+binding = "ASSETS"
 
 [vars]
 IDP_ORIGIN = "https://id.0g0.xyz"

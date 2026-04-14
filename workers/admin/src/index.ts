@@ -2,6 +2,9 @@ import { Hono } from "hono";
 
 import { getCookie, deleteCookie } from "hono/cookie";
 import type { BffEnv } from "@0g0-id/shared";
+
+// ASSETS binding: Cloudflare Workers Assets を Service Binding として使用
+type AdminEnv = BffEnv & { ASSETS: Fetcher };
 import {
   logger,
   securityHeaders,
@@ -20,7 +23,7 @@ import auditLogsRoutes from "./routes/audit-logs";
 
 const appLogger = createLogger("admin");
 
-const app = new Hono<{ Bindings: BffEnv }>();
+const app = new Hono<{ Bindings: AdminEnv }>();
 
 app.use("*", logger());
 app.use("*", securityHeaders());
@@ -57,6 +60,12 @@ app.route("/api/audit-logs", auditLogsRoutes);
 
 app.get("/api/health", (c) => {
   return c.json({ status: "ok", worker: "admin", timestamp: new Date().toISOString() });
+});
+
+// SPA フォールバック: /api/* と /auth/* 以外はSPA (200.html) へ
+app.get("*", async (c) => {
+  const url = new URL("/200.html", c.req.url);
+  return c.env.ASSETS.fetch(new Request(url.toString()));
 });
 
 app.onError((err, c) => {

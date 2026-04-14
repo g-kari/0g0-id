@@ -160,7 +160,7 @@ describe("admin BFF — /auth", () => {
       });
 
       expect(res.status).toBe(302);
-      expect(res.headers.get("location")).toBe("/dashboard.html");
+      expect(res.headers.get("location")).toBe("/dashboard");
 
       const setCookie = res.headers.get("set-cookie") ?? "";
       expect(setCookie).toContain(SESSION_COOKIE);

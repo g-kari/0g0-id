@@ -72,7 +72,7 @@ app.get("/callback", async (c) => {
     user: result.data.user,
   });
 
-  return c.redirect("/dashboard.html");
+  return c.redirect("/dashboard");
 });
 
 // POST /auth/logout

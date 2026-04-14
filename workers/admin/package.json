@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "vp dev",
-    "build": "vp build",
+    "build": "cd frontend && npm run build && cd .. && vp build",
+    "build:frontend": "cd frontend && npm run build",
     "deploy": "vp build && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vp test run"

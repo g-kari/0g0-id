@@ -70,7 +70,7 @@ app.get("/callback", async (c) => {
     user: result.data.user,
   });
 
-  return c.redirect("/profile.html");
+  return c.redirect("/profile");
 });
 
 // POST /auth/logout
@@ -96,7 +96,7 @@ app.post("/link", async (c) => {
   const body = await c.req.parseBody().catch(() => ({}) as Record<string, string>);
   const provider = (body["provider"] as string) ?? c.req.query("provider") ?? "google";
   if (!isValidProvider(provider)) {
-    return c.redirect("/profile.html?error=invalid_provider");
+    return c.redirect("/profile?error=invalid_provider");
   }
 
   // ログイン済みセッションからアクセストークンを取得
@@ -119,13 +119,13 @@ app.post("/link", async (c) => {
       }),
     );
     if (!res.ok) {
-      return c.redirect("/profile.html?error=link_failed");
+      return c.redirect("/profile?error=link_failed");
     }
     const data = await res.json<{ data: { link_token: string } }>();
     linkToken = data.data.link_token;
   } catch (err) {
     userAuthLogger.error("[link] Failed to obtain link token from IdP", err);
-    return c.redirect("/profile.html?error=link_failed");
+    return c.redirect("/profile?error=link_failed");
   }
 
   const state = generateToken(16);
