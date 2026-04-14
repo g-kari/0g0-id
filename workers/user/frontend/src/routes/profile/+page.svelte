@@ -136,6 +136,7 @@
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <a href="/sessions" class="btn btn-ghost">セッション管理</a>
           <a href="/connections" class="btn btn-ghost">連携サービス</a>
+          <a href="/providers" class="btn btn-ghost">SNS連携</a>
         </div>
         <button class="btn btn-danger" disabled={logoutLoading} onclick={logout}>
           {logoutLoading ? 'ログアウト中...' : 'ログアウト'}
