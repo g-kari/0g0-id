@@ -6,6 +6,8 @@
     <title>0g0 ID - デバイス認証</title>
     <meta name="description" content="デバイス認証コードを入力してください" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="/style.css" />
     <style>
       .code-input-group {
@@ -30,7 +32,7 @@
       .code-input:focus {
         outline: none;
         border-color: var(--accent);
-        box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+        box-shadow: 0 0 0 3px rgba(115, 134, 45, 0.15);
       }
       .code-separator {
         font-size: 1.25rem;
@@ -47,15 +49,15 @@
       .scope-badge {
         display: inline-block;
         padding: 0.25rem 0.625rem;
-        background: rgba(109, 40, 217, 0.08);
-        color: var(--primary);
+        background: rgba(115, 134, 45, 0.1);
+        color: var(--accent);
         border-radius: 9999px;
         font-size: 0.8125rem;
         font-weight: 500;
       }
       .service-name {
         font-weight: 600;
-        color: var(--primary-dark);
+        color: var(--color-text);
       }
       .success-icon {
         display: flex;
@@ -105,15 +107,9 @@
         margin-bottom: 1rem;
       }
 
-      @media (prefers-color-scheme: dark) {
-        .scope-badge {
-          background: rgba(139, 92, 246, 0.15);
-          color: var(--accent);
-        }
-        .code-input {
-          background: #0c0c14;
-          color: var(--text);
-        }
+      .code-input {
+        background: var(--color-surface);
+        color: var(--color-text);
       }
     </style>
   </head>
