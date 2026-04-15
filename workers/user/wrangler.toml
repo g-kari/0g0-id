@@ -12,6 +12,7 @@ routes = [{ pattern = "user.0g0.xyz", custom_domain = true }]
 [assets]
 directory = "./dist"
 binding = "ASSETS"
+run_worker_first = ["/*", "!/_app/*", "!/favicon.svg", "!/robots.txt"]
 
 [vars]
 IDP_ORIGIN = "https://id.0g0.xyz"
