@@ -357,7 +357,11 @@ describe("GET /auth/login", () => {
   it("有効なlink_token → linkUserIdをstate cookieに設定してリダイレクト", async () => {
     // verifyCookieモックはdecodeURIComponent(atob(decodeURIComponent(value)))を返す
     // signCookieモックはbtoa(encodeURIComponent(payload))を返すため、その形式でトークンを作成
-    const validPayload = JSON.stringify({ sub: "existing-user-id", exp: Date.now() + 60000 });
+    const validPayload = JSON.stringify({
+      purpose: "link",
+      sub: "existing-user-id",
+      exp: Date.now() + 60000,
+    });
     const validToken = btoa(encodeURIComponent(validPayload));
     const res = await sendRequest(
       app,
@@ -386,11 +390,28 @@ describe("GET /auth/login", () => {
 
   it("期限切れlink_token → 400を返す", async () => {
     // 期限切れペイロードをverifyCookieが返す場合
-    const expiredPayload = JSON.stringify({ sub: "user-1", exp: Date.now() - 1000 });
+    const expiredPayload = JSON.stringify({
+      purpose: "link",
+      sub: "user-1",
+      exp: Date.now() - 1000,
+    });
     const expiredToken = btoa(encodeURIComponent(expiredPayload));
     const res = await sendRequest(
       app,
       `/auth/login?redirect_to=https://user.0g0.xyz/callback&state=bff-state&provider=google&link_token=${encodeURIComponent(expiredToken)}`,
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("INVALID_LINK_TOKEN");
+  });
+
+  it("purposeフィールドがないlink_token → 400を返す", async () => {
+    // purpose未設定のペイロード（旧形式）
+    const noPurposePayload = JSON.stringify({ sub: "user-1", exp: Date.now() + 60000 });
+    const noPurposeToken = btoa(encodeURIComponent(noPurposePayload));
+    const res = await sendRequest(
+      app,
+      `/auth/login?redirect_to=https://user.0g0.xyz/callback&state=bff-state&provider=google&link_token=${encodeURIComponent(noPurposeToken)}`,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -1164,7 +1185,7 @@ describe("POST /auth/link-intent", () => {
     const body = await res.json<{ data: { link_token: string } }>();
     // signCookieが呼ばれ、sub: 'user-1'を含むペイロードで署名されることを確認
     expect(vi.mocked(signCookie)).toHaveBeenCalledWith(
-      expect.stringContaining('"sub":"user-1"'),
+      expect.stringContaining('"purpose":"link"'),
       mockEnv.COOKIE_SECRET,
     );
     // 返されたlink_tokenはsignCookieの戻り値（DBへの保存は不要）

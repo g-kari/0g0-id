@@ -378,16 +378,21 @@ app.get("/login", authRateLimitMiddleware, async (c) => {
         400,
       );
     }
-    let parsed: { sub: string; exp: number };
+    let parsed: { purpose: string; sub: string; exp: number };
     try {
-      parsed = JSON.parse(payload) as { sub: string; exp: number };
+      parsed = JSON.parse(payload) as { purpose: string; sub: string; exp: number };
     } catch {
       return c.json(
         { error: { code: "INVALID_LINK_TOKEN", message: "Invalid or expired link token" } },
         400,
       );
     }
-    if (!parsed.sub || typeof parsed.exp !== "number" || parsed.exp < Date.now()) {
+    if (
+      parsed.purpose !== "link" ||
+      !parsed.sub ||
+      typeof parsed.exp !== "number" ||
+      parsed.exp < Date.now()
+    ) {
       return c.json(
         { error: { code: "INVALID_LINK_TOKEN", message: "Invalid or expired link token" } },
         400,
@@ -898,6 +903,7 @@ app.post(
 
     // HMAC-SHA256署名付きトークンを生成（DBアクセス不要、自己完結型）
     const tokenPayload = JSON.stringify({
+      purpose: "link",
       sub: tokenUser.sub,
       exp: Date.now() + 5 * 60 * 1000, // 5分
     });
