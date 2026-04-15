@@ -1,0 +1,46 @@
+---
+import Base from './Base.astro';
+
+interface Props {
+  title: string;
+}
+const { title } = Astro.props;
+const pathname = Astro.url.pathname;
+
+const links = [
+  { href: '/dashboard', label: 'ダッシュボード', icon: '📊' },
+  { href: '/users', label: 'ユーザー管理', icon: '👥' },
+  { href: '/services', label: 'サービス管理', icon: '🔧' },
+];
+---
+<Base title={title}>
+  <div class="admin-layout">
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <span style="font-size:1.25rem; font-weight:700;">🔐 0g0 Admin</span>
+      </div>
+      <nav class="sidebar-nav">
+        {links.map(link => (
+          <a
+            href={link.href}
+            class:list={['sidebar-link', { active: pathname.startsWith(link.href) }]}
+          >
+            <span>{link.icon}</span>
+            <span>{link.label}</span>
+          </a>
+        ))}
+      </nav>
+      <div class="sidebar-footer">
+        <form method="post" action="/auth/logout">
+          <button type="submit" class="sidebar-link" style="width:100%; background:none; border:none; cursor:pointer; text-align:left;">
+            <span>🚪</span>
+            <span>ログアウト</span>
+          </button>
+        </form>
+      </div>
+    </aside>
+    <main class="main-content">
+      <slot />
+    </main>
+  </div>
+</Base>

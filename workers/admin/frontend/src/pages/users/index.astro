@@ -1,0 +1,100 @@
+---
+import Admin from '../../layouts/Admin.astro';
+---
+<Admin title="ユーザー管理 — 0g0 Admin">
+  <div class="page-header" style="display:flex; align-items:center; justify-content:space-between;">
+    <div>
+      <h1 class="page-title">ユーザー管理</h1>
+      <p class="page-subtitle" id="user-count">読み込み中...</p>
+    </div>
+    <div class="form-group" style="flex-direction:row; align-items:center; gap:8px;">
+      <label for="status-filter" style="white-space:nowrap;">状態:</label>
+      <select id="status-filter">
+        <option value="all">すべて</option>
+        <option value="active">アクティブ</option>
+        <option value="banned">BAN</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="loading" style="display:flex; justify-content:center; padding:3rem;">
+    <div class="spinner"></div>
+  </div>
+  <div id="error" class="alert alert-error" style="display:none;" aria-live="polite"></div>
+  <div id="table-wrap" class="card" style="padding:0; overflow:hidden; display:none;">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>名前</th>
+          <th>メールアドレス</th>
+          <th>ロール</th>
+          <th>状態</th>
+          <th>登録日</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="user-tbody"></tbody>
+    </table>
+    <div id="empty-message" style="padding:2rem; text-align:center; color:var(--color-muted); display:none;">ユーザーが見つかりません</div>
+  </div>
+</Admin>
+
+<script>
+  import { apiFetch, formatDate } from '../../lib/api';
+
+  interface User {
+    id: string;
+    name: string | null;
+    email: string;
+    role: 'admin' | 'user';
+    status: 'active' | 'banned';
+    created_at: string;
+  }
+
+  const loadingEl = document.getElementById('loading')!;
+  const errorEl = document.getElementById('error')!;
+  const tableWrap = document.getElementById('table-wrap')!;
+  const tbody = document.getElementById('user-tbody')!;
+  const emptyMsg = document.getElementById('empty-message')!;
+  const countEl = document.getElementById('user-count')!;
+  const filterEl = document.getElementById('status-filter') as HTMLSelectElement;
+
+  async function loadUsers(): Promise<void> {
+    loadingEl.style.display = 'flex';
+    errorEl.style.display = 'none';
+    tableWrap.style.display = 'none';
+
+    try {
+      const status = filterEl.value;
+      const params = status !== 'all' ? `?status=${status}` : '';
+      const users = await apiFetch<User[]>(`/api/users${params}`);
+
+      countEl.textContent = `${users.length} 件`;
+      tbody.innerHTML = users
+        .map(
+          (user) => `
+        <tr>
+          <td>${user.name ?? '—'}</td>
+          <td style="color:var(--color-muted); font-size:0.875rem;">${user.email}</td>
+          <td><span class="badge badge-${user.role}">${user.role === 'admin' ? '管理者' : 'ユーザー'}</span></td>
+          <td><span class="badge badge-${user.status}">${user.status === 'active' ? 'アクティブ' : 'BAN'}</span></td>
+          <td style="color:var(--color-muted); font-size:0.875rem;">${formatDate(user.created_at)}</td>
+          <td><a href="/users/${user.id}" class="btn btn-ghost" style="padding:4px 10px; font-size:0.8rem;">詳細</a></td>
+        </tr>
+      `,
+        )
+        .join('');
+
+      emptyMsg.style.display = users.length === 0 ? '' : 'none';
+      tableWrap.style.display = '';
+    } catch (e) {
+      errorEl.textContent = e instanceof Error ? e.message : '読み込みに失敗しました';
+      errorEl.style.display = '';
+    } finally {
+      loadingEl.style.display = 'none';
+    }
+  }
+
+  filterEl.addEventListener('change', loadUsers);
+  loadUsers();
+</script>

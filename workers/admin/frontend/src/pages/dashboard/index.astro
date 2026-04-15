@@ -1,0 +1,65 @@
+---
+import Admin from '../../layouts/Admin.astro';
+---
+<Admin title="ダッシュボード — 0g0 Admin">
+  <div class="page-header">
+    <h1 class="page-title">ダッシュボード</h1>
+    <p class="page-subtitle">システム概況</p>
+  </div>
+
+  <div id="loading" style="display:flex; justify-content:center; padding:3rem;">
+    <div class="spinner"></div>
+  </div>
+  <div id="error" class="alert alert-error" style="display:none;" aria-live="polite"></div>
+  <div id="cards" style="display:none;"></div>
+</Admin>
+
+<script>
+  import { apiFetch } from '../../lib/api';
+
+  interface Metrics {
+    total_users: number;
+    admin_count: number;
+    service_count: number;
+    active_sessions: number;
+    banned_users: number;
+    logins_24h: number;
+    logins_7d: number;
+  }
+
+  const loadingEl = document.getElementById('loading')!;
+  const errorEl = document.getElementById('error')!;
+  const cardsEl = document.getElementById('cards')!;
+
+  try {
+    const metrics = await apiFetch<Metrics>('/api/metrics');
+    const cards = [
+      { label: '総ユーザー数', value: metrics.total_users, icon: '👥' },
+      { label: '管理者数', value: metrics.admin_count, icon: '🛡️' },
+      { label: '登録サービス数', value: metrics.service_count, icon: '🔧' },
+      { label: 'アクティブセッション', value: metrics.active_sessions, icon: '🟢' },
+      { label: 'BANユーザー', value: metrics.banned_users, icon: '🚫' },
+      { label: '24時間ログイン', value: metrics.logins_24h, icon: '📈' },
+      { label: '7日間ログイン', value: metrics.logins_7d, icon: '📊' },
+    ];
+
+    cardsEl.style.display = '';
+    cardsEl.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:1rem;';
+    cardsEl.innerHTML = cards
+      .map(
+        (card) => `
+      <div class="card" style="text-align:center;">
+        <div style="font-size:2rem; margin-bottom:0.5rem;">${card.icon}</div>
+        <div style="font-size:2rem; font-weight:700; color:var(--color-text);">${card.value.toLocaleString()}</div>
+        <div style="color:var(--color-muted); font-size:0.875rem; margin-top:4px;">${card.label}</div>
+      </div>
+    `,
+      )
+      .join('');
+  } catch (e) {
+    errorEl.textContent = e instanceof Error ? e.message : '読み込みに失敗しました';
+    errorEl.style.display = '';
+  } finally {
+    loadingEl.style.display = 'none';
+  }
+</script>

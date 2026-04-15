@@ -1,0 +1,210 @@
+---
+import Admin from '../../layouts/Admin.astro';
+---
+<Admin title="サービス管理 — 0g0 Admin">
+  <div class="page-header" style="display:flex; align-items:center; justify-content:space-between;">
+    <div>
+      <h1 class="page-title">サービス管理</h1>
+      <p class="page-subtitle" id="service-count">読み込み中...</p>
+    </div>
+    <button class="btn btn-primary" id="btn-add">+ 追加</button>
+  </div>
+
+  <div id="error" class="alert alert-error" style="display:none; margin-bottom:1rem;" aria-live="polite"></div>
+
+  <div id="loading" style="display:flex; justify-content:center; padding:3rem;">
+    <div class="spinner"></div>
+  </div>
+  <div id="table-wrap" class="card" style="padding:0; overflow:hidden; display:none;">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>サービス名</th>
+          <th>Client ID</th>
+          <th>登録日</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="service-tbody"></tbody>
+    </table>
+    <div id="empty-message" style="padding:2rem; text-align:center; color:var(--color-muted); display:none;">サービスが登録されていません</div>
+  </div>
+
+  <!-- Add Modal -->
+  <div id="modal-backdrop" class="modal-backdrop" style="display:none;">
+    <div class="modal" role="dialog" aria-modal="true" id="modal">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-title">新規サービス追加</h2>
+        <button class="btn btn-ghost" style="padding:4px 10px;" aria-label="閉じる" id="btn-modal-close">✕</button>
+      </div>
+
+      <!-- Form state -->
+      <div id="modal-form">
+        <div class="form-group">
+          <label for="service-name">サービス名</label>
+          <input id="service-name" type="text" placeholder="例: My App" />
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:1.25rem;">
+          <button class="btn btn-ghost" id="btn-cancel">キャンセル</button>
+          <button class="btn btn-primary" id="btn-create">作成</button>
+        </div>
+      </div>
+
+      <!-- Result state -->
+      <div id="modal-result" style="display:none;">
+        <div class="alert alert-success">サービスを作成しました。シークレットは一度しか表示されません。</div>
+        <div class="form-group" style="margin-top:1rem;">
+          <label for="result-client-id">Client ID</label>
+          <input id="result-client-id" type="text" readonly />
+        </div>
+        <div class="form-group" style="margin-top:0.75rem;">
+          <label for="result-client-secret">Client Secret（コピーして保存してください）</label>
+          <input id="result-client-secret" type="text" readonly />
+        </div>
+        <button class="btn btn-primary" id="btn-result-close" style="margin-top:1.25rem;">閉じる</button>
+      </div>
+    </div>
+  </div>
+</Admin>
+
+<script>
+  import { apiFetch, formatDate } from '../../lib/api';
+
+  interface Service {
+    id: string;
+    name: string;
+    client_id: string;
+    created_at: string;
+  }
+
+  interface NewServiceResult {
+    id: string;
+    name: string;
+    client_id: string;
+    client_secret: string;
+  }
+
+  let services: Service[] = [];
+
+  const loadingEl = document.getElementById('loading')!;
+  const errorEl = document.getElementById('error')!;
+  const tableWrap = document.getElementById('table-wrap')!;
+  const tbody = document.getElementById('service-tbody')!;
+  const emptyMsg = document.getElementById('empty-message')!;
+  const countEl = document.getElementById('service-count')!;
+
+  const modalBackdrop = document.getElementById('modal-backdrop')!;
+  const modal = document.getElementById('modal')!;
+  const modalForm = document.getElementById('modal-form')!;
+  const modalResult = document.getElementById('modal-result')!;
+  const modalTitle = document.getElementById('modal-title')!;
+  const serviceNameInput = document.getElementById('service-name') as HTMLInputElement;
+  const btnCreate = document.getElementById('btn-create')!;
+  const resultClientId = document.getElementById('result-client-id') as HTMLInputElement;
+  const resultClientSecret = document.getElementById('result-client-secret') as HTMLInputElement;
+
+  function renderTable(): void {
+    countEl.textContent = `${services.length} 件`;
+    tbody.innerHTML = services
+      .map(
+        (service) => `
+      <tr>
+        <td style="font-weight:500;">${service.name}</td>
+        <td><code style="font-size:0.8rem; background:var(--color-surface); padding:2px 6px; border-radius:4px;">${service.client_id}</code></td>
+        <td style="color:var(--color-muted); font-size:0.875rem;">${formatDate(service.created_at)}</td>
+        <td style="display:flex; gap:6px;">
+          <a href="/services/${service.id}" class="btn btn-ghost" style="padding:4px 10px; font-size:0.8rem;">詳細</a>
+          <button class="btn btn-danger btn-delete" style="padding:4px 10px; font-size:0.8rem;" data-id="${service.id}" data-name="${service.name}">削除</button>
+        </td>
+      </tr>
+    `,
+      )
+      .join('');
+
+    emptyMsg.style.display = services.length === 0 ? '' : 'none';
+    tableWrap.style.display = '';
+
+    tbody.querySelectorAll('.btn-delete').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        const target = e.currentTarget as HTMLButtonElement;
+        const id = target.dataset.id!;
+        const name = target.dataset.name!;
+        if (!confirm(`「${name}」を削除しますか？`)) return;
+        try {
+          await apiFetch(`/api/services/${id}`, { method: 'DELETE' });
+          services = services.filter((s) => s.id !== id);
+          renderTable();
+        } catch (err) {
+          showError(err instanceof Error ? err.message : '削除に失敗しました');
+        }
+      });
+    });
+  }
+
+  function showError(msg: string): void {
+    errorEl.textContent = msg;
+    errorEl.style.display = '';
+  }
+
+  function openModal(): void {
+    modalForm.style.display = '';
+    modalResult.style.display = 'none';
+    modalTitle.textContent = '新規サービス追加';
+    serviceNameInput.value = '';
+    btnCreate.textContent = '作成';
+    (btnCreate as HTMLButtonElement).disabled = false;
+    modalBackdrop.style.display = '';
+  }
+
+  function closeModal(): void {
+    modalBackdrop.style.display = 'none';
+  }
+
+  document.getElementById('btn-add')!.addEventListener('click', openModal);
+  document.getElementById('btn-modal-close')!.addEventListener('click', closeModal);
+  document.getElementById('btn-cancel')!.addEventListener('click', closeModal);
+  document.getElementById('btn-result-close')!.addEventListener('click', closeModal);
+  modalBackdrop.addEventListener('click', (e) => {
+    if (e.target === modalBackdrop) closeModal();
+  });
+  modal.addEventListener('click', (e) => e.stopPropagation());
+
+  btnCreate.addEventListener('click', async () => {
+    const name = serviceNameInput.value.trim();
+    if (!name) return;
+    btnCreate.textContent = '作成中...';
+    (btnCreate as HTMLButtonElement).disabled = true;
+
+    try {
+      const result = await apiFetch<NewServiceResult>('/api/services', {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      });
+
+      services = [
+        ...services,
+        { id: result.id, name: result.name, client_id: result.client_id, created_at: new Date().toISOString() },
+      ];
+      renderTable();
+
+      modalForm.style.display = 'none';
+      modalResult.style.display = '';
+      modalTitle.textContent = '作成完了';
+      resultClientId.value = result.client_id;
+      resultClientSecret.value = result.client_secret;
+    } catch (err) {
+      showError(err instanceof Error ? err.message : '作成に失敗しました');
+      closeModal();
+    }
+  });
+
+  // Initial load
+  try {
+    services = await apiFetch<Service[]>('/api/services');
+    renderTable();
+  } catch (e) {
+    showError(e instanceof Error ? e.message : '読み込みに失敗しました');
+  } finally {
+    loadingEl.style.display = 'none';
+  }
+</script>

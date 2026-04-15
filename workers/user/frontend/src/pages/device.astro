@@ -1,0 +1,232 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="0g0 ID - デバイス認証">
+  <div class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-sm">
+      <div class="card">
+
+        <!-- Step: code -->
+        <div id="step-code">
+          <h1 class="text-2xl font-bold mb-1">デバイス認証</h1>
+          <p class="text-sm mb-6" style="color: var(--color-muted)">デバイスに表示されているコードを入力してください</p>
+          <div id="code-error" class="alert alert-error mb-4" role="alert" style="display:none"></div>
+          <form id="code-form" class="flex flex-col gap-4">
+            <div class="flex items-center gap-2">
+              <input id="code-left" type="text" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX" required aria-label="コード前半4文字" class="flex-1 text-center text-lg font-mono tracking-widest px-3 py-2.5 rounded-lg border outline-none" style="background: var(--color-surface); border-color: var(--color-border); color: var(--color-text)" />
+              <span class="text-xl font-bold" style="color: var(--color-muted)" aria-hidden="true">-</span>
+              <input id="code-right" type="text" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX" required aria-label="コード後半4文字" class="flex-1 text-center text-lg font-mono tracking-widest px-3 py-2.5 rounded-lg border outline-none" style="background: var(--color-surface); border-color: var(--color-border); color: var(--color-text)" />
+            </div>
+            <button type="submit" id="verify-btn" class="btn btn-primary btn-full">確認</button>
+          </form>
+        </div>
+
+        <!-- Step: login -->
+        <div id="step-login" style="display:none">
+          <h1 class="text-2xl font-bold mb-1">デバイス認証</h1>
+          <p class="text-sm mb-6" style="color: var(--color-muted)">デバイス認証を続けるにはサインインが必要です</p>
+          <div class="flex flex-col gap-3">
+            <a id="login-google" href="#" class="btn btn-google">Googleでサインイン</a>
+            <a id="login-line" href="#" class="btn btn-line">LINEでサインイン</a>
+            <a id="login-github" href="#" class="btn btn-github">GitHubでサインイン</a>
+          </div>
+        </div>
+
+        <!-- Step: approve -->
+        <div id="step-approve" style="display:none">
+          <h1 class="text-2xl font-bold mb-1">デバイス認証</h1>
+          <p class="text-sm mb-4" style="color: var(--color-muted)">
+            <strong id="approve-service" style="color: var(--color-text)"></strong> へのアクセスを許可しますか？
+          </p>
+          <div id="scopes-section" style="display:none">
+            <p class="text-sm mb-2" style="color: var(--color-muted)">要求されているスコープ:</p>
+            <div id="scopes-list" class="flex flex-wrap gap-1.5 mb-6"></div>
+          </div>
+          <div class="flex gap-3 mt-4">
+            <button id="approve-btn" class="btn btn-primary flex-1">許可する</button>
+            <button id="deny-btn" class="btn btn-ghost flex-1">拒否する</button>
+          </div>
+        </div>
+
+        <!-- Step: done -->
+        <div id="step-done" style="display:none">
+          <div class="text-center">
+            <div class="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4" style="background: rgba(45,122,58,0.1); color: var(--color-success)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-6 h-6"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <h1 class="text-2xl font-bold mb-2">認証完了</h1>
+            <p class="text-sm" style="color: var(--color-muted)">デバイスに戻って操作を続けてください</p>
+            <p class="text-sm mt-1" style="color: var(--color-muted)">このページは閉じて構いません</p>
+          </div>
+        </div>
+
+        <!-- Step: denied -->
+        <div id="step-denied" style="display:none">
+          <div class="text-center">
+            <div class="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4" style="background: rgba(192,57,43,0.1); color: var(--color-danger)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-6 h-6"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </div>
+            <h1 class="text-2xl font-bold mb-2">認証を拒否しました</h1>
+            <p class="text-sm" style="color: var(--color-muted)">デバイスへのアクセスは許可されませんでした</p>
+            <p class="text-sm mt-1" style="color: var(--color-muted)">このページは閉じて構いません</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</Base>
+
+<script>
+  type Step = 'code' | 'login' | 'approve' | 'done' | 'denied';
+
+  const steps = ['code', 'login', 'approve', 'done', 'denied'] as const;
+  const errorMessages: Record<string, string> = {
+    INVALID_CODE: '無効なコードです。もう一度確認してください。',
+    CODE_EXPIRED: 'コードの有効期限が切れています。デバイスで新しいコードを取得してください。',
+    CODE_ALREADY_USED: 'このコードは既に使用されています。',
+    BAD_REQUEST: '入力内容に誤りがあります。',
+  };
+
+  const codeLeft = document.getElementById('code-left') as HTMLInputElement;
+  const codeRight = document.getElementById('code-right') as HTMLInputElement;
+  const codeError = document.getElementById('code-error')!;
+  const codeForm = document.getElementById('code-form')!;
+  const verifyBtn = document.getElementById('verify-btn') as HTMLButtonElement;
+  const approveService = document.getElementById('approve-service')!;
+  const scopesSection = document.getElementById('scopes-section')!;
+  const scopesList = document.getElementById('scopes-list')!;
+  const approveBtn = document.getElementById('approve-btn') as HTMLButtonElement;
+  const denyBtn = document.getElementById('deny-btn') as HTMLButtonElement;
+
+  let verifiedUserCode = '';
+
+  function showStep(step: Step) {
+    for (const s of steps) {
+      document.getElementById(`step-${s}`)!.style.display = s === step ? '' : 'none';
+    }
+  }
+
+  function showCodeError(msg: string) {
+    codeError.textContent = msg;
+    codeError.style.display = '';
+  }
+
+  // Pre-fill from query params
+  const codeParam = new URL(window.location.href).searchParams.get('code');
+  if (codeParam) {
+    const m = codeParam.toUpperCase().replace(/[^A-Z0-9-]/g, '').match(/^([A-Z0-9]{4})-?([A-Z0-9]{4})$/);
+    if (m) { codeLeft.value = m[1]; codeRight.value = m[2]; }
+  }
+
+  // Input handling
+  codeLeft.addEventListener('input', (e) => {
+    const val = (e.target as HTMLInputElement).value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    codeLeft.value = val;
+    if (val.length >= 4) codeRight.focus();
+  });
+
+  codeLeft.addEventListener('paste', (e) => {
+    const pasted = (e as ClipboardEvent).clipboardData?.getData('text')?.trim().toUpperCase() ?? '';
+    const m = pasted.match(/^([A-Z0-9]{4})-?([A-Z0-9]{4})$/);
+    if (m) {
+      e.preventDefault();
+      codeLeft.value = m[1];
+      codeRight.value = m[2];
+      codeRight.focus();
+    }
+  });
+
+  codeRight.addEventListener('input', (e) => {
+    codeRight.value = (e.target as HTMLInputElement).value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  });
+
+  codeRight.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Backspace' && codeRight.value === '') {
+      codeLeft.focus();
+    }
+  });
+
+  function buildLoginUrl(provider: string): string {
+    const code = `${codeLeft.value}-${codeRight.value}`;
+    return `/auth/login?provider=${encodeURIComponent(provider)}&redirect_to=${encodeURIComponent(`/device?code=${code}`)}`;
+  }
+
+  // Login links
+  document.getElementById('login-google')!.addEventListener('click', (e) => { e.preventDefault(); window.location.href = buildLoginUrl('google'); });
+  document.getElementById('login-line')!.addEventListener('click', (e) => { e.preventDefault(); window.location.href = buildLoginUrl('line'); });
+  document.getElementById('login-github')!.addEventListener('click', (e) => { e.preventDefault(); window.location.href = buildLoginUrl('github'); });
+
+  // Verify
+  codeForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (codeLeft.value.length !== 4 || codeRight.value.length !== 4) {
+      showCodeError('8桁のコードを入力してください');
+      return;
+    }
+    verifyBtn.disabled = true;
+    verifyBtn.textContent = '確認中...';
+    codeError.style.display = 'none';
+    const userCode = `${codeLeft.value}-${codeRight.value}`;
+
+    try {
+      const res = await fetch('/api/device/verify', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_code: userCode }),
+      });
+      const data = await res.json();
+      if (res.status === 401) { showStep('login'); return; }
+      if (data.error) {
+        showCodeError(errorMessages[data.error.code] ?? data.error.message ?? '検証に失敗しました');
+        return;
+      }
+      verifiedUserCode = userCode;
+      approveService.textContent = data.data.service_name ?? '不明なサービス';
+      const scopes: string[] = data.data.scopes ?? [];
+      if (scopes.length > 0) {
+        scopesList.innerHTML = scopes.map(s => `<span class="text-xs font-medium px-2.5 py-1 rounded-full" style="background: rgba(115,134,45,0.1); color: var(--color-accent)">${s}</span>`).join('');
+        scopesSection.style.display = '';
+      }
+      showStep('approve');
+    } catch {
+      showCodeError('通信エラーが発生しました。再度お試しください。');
+    } finally {
+      verifyBtn.disabled = false;
+      verifyBtn.textContent = '確認';
+    }
+  });
+
+  // Approve/Deny
+  async function handleApproval(action: 'approve' | 'deny') {
+    approveBtn.disabled = true;
+    denyBtn.disabled = true;
+    if (action === 'approve') approveBtn.textContent = '処理中...';
+    try {
+      const res = await fetch('/api/device/approve', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_code: verifiedUserCode, action }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        showStep('code');
+        showCodeError(data.error.message ?? '処理に失敗しました');
+        return;
+      }
+      showStep(action === 'approve' ? 'done' : 'denied');
+    } catch {
+      showStep('code');
+      showCodeError('通信エラーが発生しました。再度お試しください。');
+    } finally {
+      approveBtn.disabled = false;
+      denyBtn.disabled = false;
+      approveBtn.textContent = '許可する';
+    }
+  }
+
+  approveBtn.addEventListener('click', () => handleApproval('approve'));
+  denyBtn.addEventListener('click', () => handleApproval('deny'));
+</script>

@@ -13,7 +13,7 @@ routes = [{ pattern = "user.0g0.xyz", custom_domain = true }]
 directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = ["/*", "!/_app/*", "!/favicon.svg", "!/robots.txt"]
+run_worker_first = ["/*", "!/_astro/*", "!/favicon.svg", "!/robots.txt"]
 
 [vars]
 IDP_ORIGIN = "https://id.0g0.xyz"
