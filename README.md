@@ -187,6 +187,15 @@ user/admin Worker は **Hono（API）+ Astro MPA（UI）** のハイブリッド
 
 詳細なエンドポイント一覧は [.claude/rules/api.md](.claude/rules/api.md) を参照してください。
 
+## MCP Server
+
+MCP 対応クライアント（Claude Code 等）から管理操作を実行するためのサーバーです。
+
+- エンドポイント: `https://mcp.0g0.xyz/mcp`
+- 認証: Bearer Token (ES256 JWT) + 管理者ロール必須
+
+ツール一覧・認証方式・セットアップ方法は [docs/mcp-server.md](docs/mcp-server.md) を参照してください。
+
 ## Cloudflare / GitHub 接続設定
 
 [docs/cloudflare-github-setup.md](docs/cloudflare-github-setup.md) を参照してください。
