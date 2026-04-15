@@ -6,7 +6,7 @@
     "dev": "vp dev",
     "build": "vp build",
     "build:frontend": "cd frontend && npm ci && npm run build",
-    "deploy": "npm run build:frontend && vp build && wrangler deploy",
+    "deploy": "vp build && npm run build:frontend && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vp test run --passWithNoTests"
   },

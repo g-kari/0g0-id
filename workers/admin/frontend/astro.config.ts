@@ -3,7 +3,7 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   output: "static",
-  outDir: "../dist",
+  outDir: "../dist/client",
   vite: {
     plugins: [tailwindcss() as any],
   },
