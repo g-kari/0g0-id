@@ -6,7 +6,7 @@
     "dev": "vp dev",
     "build": "vp build",
     "migrate": "wrangler d1 migrations apply 0g0-id-db --remote",
-    "deploy": "wrangler d1 migrations apply 0g0-id-db --remote && vp build && wrangler deploy && wrangler versions deploy --yes",
+    "deploy": "wrangler d1 migrations apply 0g0-id-db --remote && vp build && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vp test run"
   },
