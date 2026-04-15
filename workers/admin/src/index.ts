@@ -69,7 +69,7 @@ app.get("/api/*", (c) => {
 
 // SPA フォールバック: /api/* と /auth/* 以外はSPA (200.html) へ
 app.get("*", async (c) => {
-  const url = new URL("/200.html", c.req.url);
+  const url = new URL("/index.html", c.req.url);
   return c.env.ASSETS.fetch(new Request(url.toString()));
 });
 
