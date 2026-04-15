@@ -1,4 +1,10 @@
-import { generateToken, sha256, signAccessToken, createRefreshToken } from "@0g0-id/shared";
+import {
+  generateToken,
+  sha256,
+  signAccessToken,
+  signIdToken,
+  createRefreshToken,
+} from "@0g0-id/shared";
 import type { IdpEnv, User } from "@0g0-id/shared";
 
 /** リフレッシュトークンの有効期限（30日） */
@@ -74,4 +80,40 @@ export function buildTokenResponse(
   if (idToken) response["id_token"] = idToken;
   if (scope) response["scope"] = scope;
   return response;
+}
+
+/**
+ * OIDC IDトークンを発行する（openid スコープがある場合のみ）。
+ *
+ * pairwise sub の計算と signIdToken 呼び出しを共通化する。
+ */
+export async function issueIdToken(
+  env: IdpEnv,
+  user: User,
+  service: { client_id: string },
+  scope: string | undefined,
+  options?: { nonce?: string; amr?: string[] },
+): Promise<string | undefined> {
+  if (!scope?.split(" ").includes("openid")) {
+    return undefined;
+  }
+
+  const pairwiseSub = await sha256(`${service.client_id}:${user.id}`);
+  const authTime = Math.floor(Date.now() / 1000);
+
+  return signIdToken(
+    {
+      iss: env.IDP_ORIGIN,
+      sub: pairwiseSub,
+      aud: service.client_id,
+      email: user.email,
+      name: user.name,
+      picture: user.picture,
+      authTime,
+      nonce: options?.nonce,
+      amr: options?.amr,
+    },
+    env.JWT_PRIVATE_KEY,
+    env.JWT_PUBLIC_KEY,
+  );
 }

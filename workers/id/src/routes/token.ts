@@ -10,7 +10,6 @@ import {
   findAndConsumeAuthCode,
   findServiceByClientId,
   generateCodeChallenge,
-  signIdToken,
   timingSafeEqual,
   matchRedirectUri,
   normalizeRedirectUri,
@@ -26,7 +25,7 @@ import {
 import { authenticateService } from "../utils/service-auth";
 import { parseAllowedScopes, resolveEffectiveScope } from "../utils/scopes";
 import { handleDeviceCodeGrant } from "./device";
-import { issueTokenPair, buildTokenResponse } from "../utils/token-pair";
+import { issueTokenPair, buildTokenResponse, issueIdToken } from "../utils/token-pair";
 import { attemptUnrevokeToken } from "../utils/token-recovery";
 import {
   validateAndRevokeRefreshToken,
@@ -302,27 +301,10 @@ async function handleAuthorizationCodeGrant(
     });
 
     // OIDC ID トークン発行（openid スコープがある場合）
-    let idToken: string | undefined;
-    if (serviceScope?.split(" ").includes("openid")) {
-      const pairwiseSub = await sha256(`${service.client_id}:${user.id}`);
-      const authTime = Math.floor(Date.now() / 1000);
-      idToken = await signIdToken(
-        {
-          iss: c.env.IDP_ORIGIN,
-          sub: pairwiseSub,
-          aud: service.client_id,
-          email: user.email,
-          name: user.name,
-          picture: user.picture,
-          authTime,
-          nonce: authCode.nonce ?? undefined,
-          // RFC 8176: 認証方式リスト。ソーシャルログインのプロバイダーを記録する
-          amr: authCode.provider ? [authCode.provider] : undefined,
-        },
-        c.env.JWT_PRIVATE_KEY,
-        c.env.JWT_PUBLIC_KEY,
-      );
-    }
+    const idToken = await issueIdToken(c.env, user, service, serviceScope, {
+      nonce: authCode.nonce ?? undefined,
+      amr: authCode.provider ? [authCode.provider] : undefined,
+    });
 
     // レスポンス (RFC 6749 §5.1)
     return c.json(buildTokenResponse(accessToken, refreshToken, serviceScope, idToken));

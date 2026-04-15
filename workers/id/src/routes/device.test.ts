@@ -26,6 +26,7 @@ vi.mock("@0g0-id/shared", () => ({
 vi.mock("../utils/token-pair", () => ({
   issueTokenPair: vi.fn(),
   buildTokenResponse: vi.fn(),
+  issueIdToken: vi.fn(),
 }));
 
 // scopes ユーティリティのモック
@@ -69,11 +70,10 @@ import {
   denyDeviceCode,
   createDeviceCode,
   deleteExpiredDeviceCodes,
-  signIdToken,
 } from "@0g0-id/shared";
 import { parseAllowedScopes } from "../utils/scopes";
 
-import { issueTokenPair, buildTokenResponse } from "../utils/token-pair";
+import { issueTokenPair, buildTokenResponse, issueIdToken } from "../utils/token-pair";
 import { resolveEffectiveScope } from "../utils/scopes";
 
 import deviceRoutes, { handleDeviceCodeGrant } from "./device";
@@ -346,16 +346,13 @@ describe("handleDeviceCodeGrant", () => {
     expect(body.token_type).toBe("Bearer");
   });
 
-  it("承認済み（openid スコープあり）→ signIdToken が呼ばれる", async () => {
+  it("承認済み（openid スコープあり）→ issueIdToken が呼ばれる", async () => {
     vi.mocked(findDeviceCodeByHash).mockResolvedValue(approvedDeviceCode as never);
-    vi.mocked(sha256)
-      .mockResolvedValueOnce("hashed-device-code") // device_code ハッシュ
-      .mockResolvedValueOnce("pairwise-sub"); // pairwise sub
-    vi.mocked(signIdToken).mockResolvedValue("mock-id-token");
+    vi.mocked(issueIdToken).mockResolvedValue("mock-id-token");
     vi.mocked(resolveEffectiveScope).mockReturnValue("openid profile");
     const c = makeContext();
     await handleDeviceCodeGrant(c as never, baseParams);
-    expect(signIdToken).toHaveBeenCalled();
+    expect(issueIdToken).toHaveBeenCalled();
   });
 
   it("全スコープが無効（resolveEffectiveScope → undefined）→ invalid_scope + 400", async () => {

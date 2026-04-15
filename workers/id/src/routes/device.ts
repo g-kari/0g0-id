@@ -14,7 +14,6 @@ import {
   deleteDeviceCode,
   deleteApprovedDeviceCode,
   deleteExpiredDeviceCodes,
-  signIdToken,
 } from "@0g0-id/shared";
 import type { IdpEnv, TokenPayload, Service, DeviceCode, User } from "@0g0-id/shared";
 import type { TokenHandlerContext } from "./token";
@@ -28,7 +27,7 @@ import {
   rejectBannedUserMiddleware,
 } from "../middleware/auth";
 import { resolveEffectiveScope } from "../utils/scopes";
-import { issueTokenPair, buildTokenResponse } from "../utils/token-pair";
+import { issueTokenPair, buildTokenResponse, issueIdToken } from "../utils/token-pair";
 
 const deviceLogger = createLogger("device");
 
@@ -450,27 +449,8 @@ export async function handleDeviceCodeGrant(
     clientId: service.client_id,
     scope: serviceScope,
   });
-  const pairwiseSub = await sha256(`${service.client_id}:${user.id}`);
-
   // OIDC ID トークン発行（openid スコープがある場合）
-  let idToken: string | undefined;
-  const shouldIssueIdToken = serviceScope?.split(" ").includes("openid");
-  if (shouldIssueIdToken) {
-    const authTime = Math.floor(Date.now() / 1000);
-    idToken = await signIdToken(
-      {
-        iss: c.env.IDP_ORIGIN,
-        sub: pairwiseSub,
-        aud: service.client_id,
-        email: user.email,
-        name: user.name,
-        picture: user.picture,
-        authTime,
-      },
-      c.env.JWT_PRIVATE_KEY,
-      c.env.JWT_PUBLIC_KEY,
-    );
-  }
+  const idToken = await issueIdToken(c.env, user, service, serviceScope);
 
   // レスポンス (RFC 6749 §5.1)
   return c.json(buildTokenResponse(accessToken, refreshToken, serviceScope, idToken));
