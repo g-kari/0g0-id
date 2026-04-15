@@ -32,13 +32,7 @@ import Base from '../layouts/Base.astro';
 <script>
   import { apiFetch, formatDatetime } from '../lib/api';
   import { showToast } from '../lib/toast';
-
-  interface Session {
-    id: string;
-    service_name?: string;
-    created_at: string;
-    expires_at: string;
-  }
+  import type { ActiveSession } from '@0g0-id/api-types';
 
   const loadingEl = document.getElementById('loading')!;
   const errorEl = document.getElementById('error')!;
@@ -54,14 +48,14 @@ import Base from '../layouts/Base.astro';
     listEl.style.display = 'none';
     actionsEl.style.display = 'none';
 
-    const res = await apiFetch<Session[]>('/api/me/sessions');
+    const res = await apiFetch<ActiveSession[]>('/api/me/sessions');
     loadingEl.style.display = 'none';
     if ('error' in res) {
       errorEl.textContent = 'セッション一覧の取得に失敗しました';
       errorEl.style.display = '';
       return;
     }
-    const sessions = res as Session[];
+    const sessions = res as ActiveSession[];
     if (sessions.length === 0) {
       emptyEl.style.display = '';
       return;

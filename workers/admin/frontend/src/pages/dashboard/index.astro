@@ -16,23 +16,14 @@ import Admin from '../../layouts/Admin.astro';
 
 <script>
   import { apiFetch } from '../../lib/api';
-
-  interface Metrics {
-    total_users: number;
-    admin_users: number;
-    total_services: number;
-    active_sessions: number;
-    banned_users: number;
-    recent_logins_24h: number;
-    recent_logins_7d: number;
-  }
+  import type { AdminMetrics } from '@0g0-id/api-types';
 
   const loadingEl = document.getElementById('loading')!;
   const errorEl = document.getElementById('error')!;
   const cardsEl = document.getElementById('cards')!;
 
   try {
-    const metrics = await apiFetch<Metrics>('/api/metrics');
+    const metrics = await apiFetch<AdminMetrics>('/api/metrics');
     const cards = [
       { label: '総ユーザー数', value: metrics.total_users, icon: '👥' },
       { label: '管理者数', value: metrics.admin_users, icon: '🛡️' },

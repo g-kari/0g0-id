@@ -27,7 +27,7 @@ import {
   UUID_RE,
   createLogger,
 } from "@0g0-id/shared";
-import type { IdpEnv, TokenPayload } from "@0g0-id/shared";
+import type { IdpEnv, TokenPayload, ServiceSummary, NewServiceResult } from "@0g0-id/shared";
 import { authMiddleware } from "../middleware/auth";
 import { adminMiddleware } from "../middleware/admin";
 import { csrfMiddleware } from "../middleware/csrf";
@@ -123,14 +123,16 @@ app.get("/", authMiddleware, adminMiddleware, async (c) => {
   }
 
   return c.json({
-    data: services.map((s) => ({
-      id: s.id,
-      name: s.name,
-      client_id: s.client_id,
-      allowed_scopes: s.allowed_scopes,
-      owner_user_id: s.owner_user_id,
-      created_at: s.created_at,
-    })),
+    data: services.map(
+      (s): ServiceSummary => ({
+        id: s.id,
+        name: s.name,
+        client_id: s.client_id,
+        allowed_scopes: s.allowed_scopes,
+        owner_user_id: s.owner_user_id,
+        created_at: s.created_at,
+      }),
+    ),
     total,
     limit,
     offset,
@@ -215,7 +217,7 @@ app.post("/", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
         client_secret: clientSecret,
         allowed_scopes: service.allowed_scopes,
         created_at: service.created_at,
-      },
+      } satisfies NewServiceResult,
     },
     201,
   );

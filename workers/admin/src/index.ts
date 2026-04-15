@@ -69,10 +69,15 @@ app.get("/api/*", (c) => {
 
 // MPA フォールバック: /api/* と /auth/* 以外は対応するHTMLを返す
 // Astro MPA は /profile → /profile/index.html のようにディレクトリ構造で出力する
+// 動的ルート（/users/:uuid 等）は対応する detail ページにリライトする
+const UUID_DETAIL_RE = /^\/([^/]+)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 app.get("*", async (c) => {
   const path = new URL(c.req.url).pathname;
-  // /dashboard → /dashboard/index.html, / → /index.html
-  const htmlPath = path === "/" || path.endsWith(".html") ? path : `${path}/index.html`;
+  // /users/:uuid → /users/detail/index.html（動的ルートのリライト）
+  const match = UUID_DETAIL_RE.exec(path);
+  const resolved = match ? `/${match[1]}/detail/index.html` : path;
+  const htmlPath =
+    resolved === "/" || resolved.endsWith(".html") ? resolved : `${resolved}/index.html`;
   const url = new URL(htmlPath, c.req.url);
   return c.env.ASSETS.fetch(new Request(url.toString()));
 });

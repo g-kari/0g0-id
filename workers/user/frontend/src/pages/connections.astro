@@ -28,12 +28,7 @@ import Base from '../layouts/Base.astro';
 <script>
   import { apiFetch, formatDate } from '../lib/api';
   import { showToast } from '../lib/toast';
-
-  interface Connection {
-    service_id: string;
-    service_name: string;
-    first_authorized_at: string;
-  }
+  import type { UserConnection } from '@0g0-id/api-types';
 
   const loadingEl = document.getElementById('loading')!;
   const errorEl = document.getElementById('error')!;
@@ -46,14 +41,14 @@ import Base from '../layouts/Base.astro';
     emptyEl.style.display = 'none';
     listEl.style.display = 'none';
 
-    const res = await apiFetch<Connection[]>('/api/connections');
+    const res = await apiFetch<UserConnection[]>('/api/connections');
     loadingEl.style.display = 'none';
     if ('error' in res) {
       errorEl.textContent = '連携サービスの取得に失敗しました';
       errorEl.style.display = '';
       return;
     }
-    const connections = res as Connection[];
+    const connections = res as UserConnection[];
     if (connections.length === 0) {
       emptyEl.style.display = '';
       return;

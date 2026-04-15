@@ -41,15 +41,9 @@ import Admin from '../../layouts/Admin.astro';
 
 <script>
   import { apiFetch, formatDate } from '../../lib/api';
+  import type { AdminUserSummary } from '@0g0-id/api-types';
 
-  interface User {
-    id: string;
-    name: string | null;
-    email: string;
-    role: 'admin' | 'user';
-    status: 'active' | 'banned';
-    created_at: string;
-  }
+  type UserRow = AdminUserSummary & { status: 'active' | 'banned' };
 
   const loadingEl = document.getElementById('loading')!;
   const errorEl = document.getElementById('error')!;
@@ -67,7 +61,11 @@ import Admin from '../../layouts/Admin.astro';
     try {
       const status = filterEl.value;
       const params = status !== 'all' ? `?status=${status}` : '';
-      const users = await apiFetch<User[]>(`/api/users${params}`);
+      const raw = await apiFetch<AdminUserSummary[]>(`/api/users${params}`);
+      const users: UserRow[] = (raw as AdminUserSummary[]).map((u) => ({
+        ...u,
+        status: u.banned_at ? 'banned' as const : 'active' as const,
+      }));
 
       countEl.textContent = `${users.length} 件`;
       tbody.innerHTML = users

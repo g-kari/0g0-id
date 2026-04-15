@@ -31,13 +31,9 @@ import Base from '../layouts/Base.astro';
 <script>
   import { apiFetch } from '../lib/api';
   import { showToast } from '../lib/toast';
+  import type { ProviderStatus } from '@0g0-id/api-types';
 
-  type OAuthProvider = 'google' | 'line' | 'twitch' | 'github' | 'x';
-
-  interface ProviderStatus {
-    provider: OAuthProvider;
-    connected: boolean;
-  }
+  type OAuthProvider = ProviderStatus['provider'];
 
   const PROVIDER_LABELS: Record<OAuthProvider, string> = {
     google: 'Google', line: 'LINE', twitch: 'Twitch', github: 'GitHub', x: 'X（Twitter）',

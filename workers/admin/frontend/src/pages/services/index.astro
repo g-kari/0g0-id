@@ -69,22 +69,9 @@ import Admin from '../../layouts/Admin.astro';
 
 <script>
   import { apiFetch, formatDate } from '../../lib/api';
+  import type { ServiceSummary, NewServiceResult } from '@0g0-id/api-types';
 
-  interface Service {
-    id: string;
-    name: string;
-    client_id: string;
-    created_at: string;
-  }
-
-  interface NewServiceResult {
-    id: string;
-    name: string;
-    client_id: string;
-    client_secret: string;
-  }
-
-  let services: Service[] = [];
+  let services: ServiceSummary[] = [];
 
   const loadingEl = document.getElementById('loading')!;
   const errorEl = document.getElementById('error')!;
@@ -200,7 +187,7 @@ import Admin from '../../layouts/Admin.astro';
 
   // Initial load
   try {
-    services = await apiFetch<Service[]>('/api/services');
+    services = await apiFetch<ServiceSummary[]>('/api/services');
     renderTable();
   } catch (e) {
     showError(e instanceof Error ? e.message : '読み込みに失敗しました');

@@ -1,0 +1,268 @@
+---
+import Admin from '../../layouts/Admin.astro';
+---
+<Admin title="ユーザー詳細 — 0g0 Admin">
+  <div id="loading" style="text-align:center; padding:48px;">
+    <div class="spinner"></div>
+    <p style="color:var(--color-muted); margin-top:12px;">読み込み中...</p>
+  </div>
+  <div id="error" style="display:none; text-align:center; padding:48px;">
+    <p style="color:var(--color-danger);">ユーザー情報の取得に失敗しました</p>
+    <a href="/users" class="btn" style="margin-top:12px;">← ユーザー一覧に戻る</a>
+  </div>
+  <div id="content" style="display:none;">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px;">
+      <a href="/users" style="color:var(--color-muted); text-decoration:none; font-size:0.9rem;">← 一覧に戻る</a>
+    </div>
+    <div class="card" style="margin-bottom:24px;">
+      <div style="display:flex; align-items:center; gap:16px; padding:20px;">
+        <div id="avatar" style="width:56px; height:56px; border-radius:50%; background:var(--color-surface); display:flex; align-items:center; justify-content:center; font-size:1.5rem; overflow:hidden;"></div>
+        <div style="flex:1;">
+          <h1 class="page-title" id="user-name" style="margin:0;"></h1>
+          <p style="color:var(--color-muted); margin:4px 0 0;" id="user-email"></p>
+        </div>
+        <div style="display:flex; gap:8px;" id="badges"></div>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; margin-bottom:24px;">
+      <div class="card" style="padding:20px;">
+        <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">基本情報</h3>
+        <table style="width:100%; font-size:0.875rem;">
+          <tbody id="info-tbody"></tbody>
+        </table>
+      </div>
+      <div class="card" style="padding:20px;">
+        <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">プロバイダー連携</h3>
+        <div id="providers-list">読み込み中...</div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:20px; margin-bottom:24px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <h3 style="margin:0; font-size:0.9rem; color:var(--color-muted);">アクティブセッション</h3>
+        <button id="revoke-all-btn" class="btn btn-danger" style="font-size:0.8rem; padding:4px 10px; display:none;">全セッション無効化</button>
+      </div>
+      <div id="sessions-list">読み込み中...</div>
+    </div>
+
+    <div class="card" style="padding:20px;">
+      <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">操作</h3>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button id="toggle-role-btn" class="btn" style="font-size:0.85rem;"></button>
+        <button id="toggle-ban-btn" class="btn" style="font-size:0.85rem;"></button>
+        <button id="delete-btn" class="btn btn-danger" style="font-size:0.85rem;">ユーザー削除</button>
+      </div>
+    </div>
+  </div>
+</Admin>
+
+<script>
+  import { apiFetch, formatDate, formatDatetime } from '../../lib/api';
+  import type { AdminUserSummary, ProviderStatus, ActiveSession } from '@0g0-id/api-types';
+
+  function showToast(msg: string, type: 'success' | 'error' = 'success') {
+    const el = document.createElement('div');
+    el.textContent = msg;
+    el.style.cssText = `position:fixed;bottom:20px;right:20px;padding:10px 16px;border-radius:8px;color:#fff;font-size:0.875rem;z-index:9999;background:${type === 'error' ? 'var(--color-danger,#e53e3e)' : 'var(--color-success,#38a169)'}`;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+  }
+
+  // URL からユーザーIDを取得
+  const pathParts = window.location.pathname.split('/').filter(Boolean);
+  // /users/detail?id=xxx or /users/:id → detail page
+  const userId = new URLSearchParams(window.location.search).get('id')
+    || (pathParts.length >= 2 && pathParts[0] === 'users' ? pathParts[1] : null);
+
+  const loadingEl = document.getElementById('loading')!;
+  const errorEl = document.getElementById('error')!;
+  const contentEl = document.getElementById('content')!;
+
+  if (!userId) {
+    loadingEl.style.display = 'none';
+    errorEl.style.display = '';
+    throw new Error('No user ID');
+  }
+
+  type UserDetail = AdminUserSummary & {
+    phone?: string | null;
+    address?: string | null;
+    email_verified?: number;
+    google_sub?: string | null;
+    line_sub?: string | null;
+    twitch_sub?: string | null;
+    github_sub?: string | null;
+    x_sub?: string | null;
+    updated_at?: string;
+  };
+
+  try {
+    const [user, providers, sessions] = await Promise.all([
+      apiFetch<UserDetail>(`/api/users/${userId}`),
+      apiFetch<ProviderStatus[]>(`/api/users/${userId}/providers`),
+      apiFetch<ActiveSession[]>(`/api/users/${userId}/tokens`),
+    ]);
+
+    loadingEl.style.display = 'none';
+    contentEl.style.display = '';
+
+    // ヘッダー
+    const avatarEl = document.getElementById('avatar')!;
+    const nameEl = document.getElementById('user-name')!;
+    const emailEl = document.getElementById('user-email')!;
+    const badgesEl = document.getElementById('badges')!;
+
+    if (user.picture) {
+      avatarEl.innerHTML = `<img src="${user.picture}" style="width:100%;height:100%;object-fit:cover;" alt="">`;
+    } else {
+      avatarEl.textContent = (user.name || user.email)[0]?.toUpperCase() || '?';
+    }
+    nameEl.textContent = user.name || '(名前未設定)';
+    emailEl.textContent = user.email;
+
+    const isBanned = !!user.banned_at;
+    badgesEl.innerHTML = `
+      <span class="badge badge-${user.role}">${user.role === 'admin' ? '管理者' : 'ユーザー'}</span>
+      ${isBanned ? '<span class="badge badge-banned">BAN</span>' : '<span class="badge badge-active">アクティブ</span>'}
+    `;
+
+    // 基本情報テーブル
+    const infoTbody = document.getElementById('info-tbody')!;
+    const infoRows = [
+      ['ID', user.id],
+      ['作成日', formatDate(user.created_at)],
+      ['ロール', user.role === 'admin' ? '管理者' : 'ユーザー'],
+      ['状態', isBanned ? `BAN (${formatDate(user.banned_at!)})` : 'アクティブ'],
+    ];
+    infoTbody.innerHTML = infoRows.map(([label, value]) => `
+      <tr>
+        <td style="color:var(--color-muted); padding:4px 8px 4px 0; white-space:nowrap;">${label}</td>
+        <td style="padding:4px 0; word-break:break-all;">${value}</td>
+      </tr>
+    `).join('');
+
+    // プロバイダー
+    const providersEl = document.getElementById('providers-list')!;
+    const providerLabels: Record<string, string> = {
+      google: 'Google', line: 'LINE', twitch: 'Twitch', github: 'GitHub', x: 'X',
+    };
+    if (Array.isArray(providers)) {
+      providersEl.innerHTML = (providers as ProviderStatus[]).map((p) => `
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--color-border);">
+          <span>${providerLabels[p.provider] || p.provider}</span>
+          <span style="color:${p.connected ? 'var(--color-success)' : 'var(--color-muted)'};">${p.connected ? '✓ 連携済み' : '未連携'}</span>
+        </div>
+      `).join('');
+    }
+
+    // セッション
+    const sessionsEl = document.getElementById('sessions-list')!;
+    const revokeAllBtn = document.getElementById('revoke-all-btn')!;
+    if (Array.isArray(sessions) && (sessions as ActiveSession[]).length > 0) {
+      const sessionList = sessions as ActiveSession[];
+      revokeAllBtn.style.display = '';
+      sessionsEl.innerHTML = sessionList.map((s) => `
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--color-border);">
+          <div>
+            <div style="font-size:0.875rem;">${s.service_name || 'BFFセッション'}</div>
+            <div style="font-size:0.75rem; color:var(--color-muted);">作成: ${formatDatetime(s.created_at)} / 有効期限: ${formatDatetime(s.expires_at)}</div>
+          </div>
+          <button class="btn btn-ghost revoke-session-btn" data-id="${s.id}" style="font-size:0.75rem; padding:2px 8px;">無効化</button>
+        </div>
+      `).join('');
+
+      // 個別セッション無効化
+      document.querySelectorAll('.revoke-session-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const tokenId = (btn as HTMLElement).dataset.id;
+          if (!confirm('このセッションを無効化しますか？')) return;
+          const res = await apiFetch(`/api/users/${userId}/tokens/${tokenId}`, { method: 'DELETE' });
+          if (res && typeof res === 'object' && 'error' in res) {
+            showToast('セッション無効化に失敗しました', 'error');
+          } else {
+            showToast('セッションを無効化しました');
+            window.location.reload();
+          }
+        });
+      });
+    } else {
+      sessionsEl.innerHTML = '<p style="color:var(--color-muted); font-size:0.875rem;">アクティブなセッションはありません</p>';
+    }
+
+    // 全セッション無効化
+    revokeAllBtn.addEventListener('click', async () => {
+      if (!confirm('このユーザーの全セッションを無効化しますか？')) return;
+      const res = await apiFetch(`/api/users/${userId}/tokens`, { method: 'DELETE' });
+      if (res && typeof res === 'object' && 'error' in res) {
+        showToast('全セッション無効化に失敗しました', 'error');
+      } else {
+        showToast('全セッションを無効化しました');
+        window.location.reload();
+      }
+    });
+
+    // 操作ボタン
+    const toggleRoleBtn = document.getElementById('toggle-role-btn')!;
+    const toggleBanBtn = document.getElementById('toggle-ban-btn')!;
+    const deleteBtn = document.getElementById('delete-btn')!;
+
+    toggleRoleBtn.textContent = user.role === 'admin' ? 'ユーザーに降格' : '管理者に昇格';
+    toggleBanBtn.textContent = isBanned ? 'BAN解除' : 'ユーザーBAN';
+    if (isBanned) toggleBanBtn.classList.add('btn-ghost');
+    else toggleBanBtn.classList.add('btn-danger');
+
+    toggleRoleBtn.addEventListener('click', async () => {
+      const newRole = user.role === 'admin' ? 'user' : 'admin';
+      if (!confirm(`このユーザーを${newRole === 'admin' ? '管理者' : 'ユーザー'}に変更しますか？`)) return;
+      const res = await apiFetch(`/api/users/${userId}/role`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: newRole }),
+      });
+      if (res && typeof res === 'object' && 'error' in res) {
+        showToast('ロール変更に失敗しました', 'error');
+      } else {
+        showToast('ロールを変更しました');
+        window.location.reload();
+      }
+    });
+
+    toggleBanBtn.addEventListener('click', async () => {
+      if (isBanned) {
+        if (!confirm('このユーザーのBANを解除しますか？')) return;
+        const res = await apiFetch(`/api/users/${userId}/ban`, { method: 'DELETE' });
+        if (res && typeof res === 'object' && 'error' in res) {
+          showToast('BAN解除に失敗しました', 'error');
+        } else {
+          showToast('BANを解除しました');
+          window.location.reload();
+        }
+      } else {
+        if (!confirm('このユーザーをBANしますか？')) return;
+        const res = await apiFetch(`/api/users/${userId}/ban`, { method: 'PATCH' });
+        if (res && typeof res === 'object' && 'error' in res) {
+          showToast('BAN処理に失敗しました', 'error');
+        } else {
+          showToast('ユーザーをBANしました');
+          window.location.reload();
+        }
+      }
+    });
+
+    deleteBtn.addEventListener('click', async () => {
+      if (!confirm('このユーザーを完全に削除しますか？この操作は取り消せません。')) return;
+      const res = await apiFetch(`/api/users/${userId}`, { method: 'DELETE' });
+      if (res && typeof res === 'object' && 'error' in res) {
+        showToast('ユーザー削除に失敗しました', 'error');
+      } else {
+        showToast('ユーザーを削除しました');
+        window.location.href = '/users';
+      }
+    });
+
+  } catch {
+    loadingEl.style.display = 'none';
+    errorEl.style.display = '';
+  }
+</script>

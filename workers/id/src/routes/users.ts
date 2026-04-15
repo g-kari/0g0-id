@@ -32,7 +32,7 @@ import {
   type UserFilter,
   createLogger,
 } from "@0g0-id/shared";
-import type { IdpEnv, TokenPayload, User } from "@0g0-id/shared";
+import type { IdpEnv, TokenPayload, User, MyProfile, AdminUserSummary } from "@0g0-id/shared";
 import {
   authMiddleware,
   rejectServiceTokenMiddleware,
@@ -84,7 +84,7 @@ const usersLogger = createLogger("users");
 // ─── レスポンスシリアライズヘルパー ──────────────────────────────────────────
 
 /** /me 系エンドポイントのユーザープロフィール形式 */
-function formatMyProfile(user: User) {
+function formatMyProfile(user: User): MyProfile {
   return {
     id: user.id,
     email: user.email,
@@ -113,7 +113,7 @@ function formatAdminUserDetail(user: User) {
 }
 
 /** 管理者向けユーザーサマリー形式（一覧・ロール変更レスポンス用） */
-function formatAdminUserSummary(user: User) {
+function formatAdminUserSummary(user: User): AdminUserSummary {
   return {
     id: user.id,
     email: user.email,

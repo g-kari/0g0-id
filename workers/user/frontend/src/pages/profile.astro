@@ -58,16 +58,7 @@ import Base from '../layouts/Base.astro';
 <script>
   import { apiFetch } from '../lib/api';
   import { showToast } from '../lib/toast';
-
-  interface User {
-    id: string;
-    name: string | null;
-    email: string;
-    picture: string | null;
-    phone: string | null;
-    address: string | null;
-    role: 'admin' | 'user';
-  }
+  import type { MyProfile } from '@0g0-id/api-types';
 
   const loading = document.getElementById('loading')!;
   const content = document.getElementById('content')!;
@@ -106,7 +97,7 @@ import Base from '../layouts/Base.astro';
     renderAvatar(user);
   }
 
-  const res = await apiFetch<User>('/api/me');
+  const res = await apiFetch<MyProfile>('/api/me');
   loading.style.display = 'none';
   if ('error' in res) {
     showToast(res.error.message, 'error');
@@ -118,7 +109,7 @@ import Base from '../layouts/Base.astro';
   saveBtn.addEventListener('click', async () => {
     saveBtn.disabled = true;
     saveBtn.textContent = '保存中...';
-    const res = await apiFetch<User>('/api/me', {
+    const res = await apiFetch<MyProfile>('/api/me', {
       method: 'PATCH',
       body: JSON.stringify({
         name: nameInput.value || null,

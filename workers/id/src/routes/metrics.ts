@@ -15,7 +15,7 @@ import {
   getDailyActiveUsers,
   parseDays,
 } from "@0g0-id/shared";
-import type { IdpEnv, TokenPayload } from "@0g0-id/shared";
+import type { IdpEnv, TokenPayload, AdminMetrics } from "@0g0-id/shared";
 import { authMiddleware } from "../middleware/auth";
 import { adminMiddleware } from "../middleware/admin";
 
@@ -63,7 +63,7 @@ app.get("/", authMiddleware, adminMiddleware, async (c) => {
         recent_logins_7d: recentLogins7d,
         login_provider_stats_7d: providerStats7d,
         login_country_stats_7d: countryStats7d,
-      },
+      } satisfies AdminMetrics,
     });
   } catch {
     return c.json({ error: { code: "INTERNAL_ERROR", message: "Failed to fetch metrics" } }, 500);
