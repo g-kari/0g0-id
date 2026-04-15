@@ -34,8 +34,18 @@ import Admin from '../../layouts/Admin.astro';
         </table>
       </div>
       <div class="card" style="padding:20px;">
-        <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">許可スコープ</h3>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+          <h3 style="margin:0; font-size:0.9rem; color:var(--color-muted);">許可スコープ</h3>
+          <button id="btn-edit-scopes" class="btn btn-ghost" style="font-size:0.75rem; padding:2px 8px;">編集</button>
+        </div>
         <div id="scopes-list"></div>
+        <div id="scopes-edit" style="display:none; margin-top:8px;">
+          <div id="scope-checkboxes" style="display:flex; flex-direction:column; gap:6px;"></div>
+          <div style="display:flex; gap:8px; margin-top:10px;">
+            <button id="btn-save-scopes" class="btn btn-primary" style="font-size:0.8rem; padding:4px 10px;">保存</button>
+            <button id="btn-cancel-scopes" class="btn btn-ghost" style="font-size:0.8rem; padding:4px 10px;">キャンセル</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -156,18 +166,68 @@ import Admin from '../../layouts/Admin.astro';
       .join('');
 
     // スコープ
+    const ALL_SCOPES = ['profile', 'email', 'phone', 'address'] as const;
     const scopesEl = document.getElementById('scopes-list')!;
+    const scopesEditEl = document.getElementById('scopes-edit')!;
+    const scopeCheckboxes = document.getElementById('scope-checkboxes')!;
+    let currentScopes: string[] = [];
     try {
-      const scopes: string[] = JSON.parse(service.allowed_scopes);
-      scopesEl.innerHTML = scopes
-        .map(
-          (s) =>
-            `<span style="display:inline-block; background:var(--color-surface); padding:2px 8px; border-radius:4px; font-size:0.8rem; margin:2px 4px 2px 0;">${s}</span>`,
-        )
-        .join('');
+      currentScopes = JSON.parse(service.allowed_scopes);
     } catch {
-      scopesEl.innerHTML = `<code style="font-size:0.8rem;">${service.allowed_scopes}</code>`;
+      // fallback
     }
+
+    function renderScopes(): void {
+      if (currentScopes.length > 0) {
+        scopesEl.innerHTML = currentScopes
+          .map(
+            (s) =>
+              `<span style="display:inline-block; background:var(--color-surface); padding:2px 8px; border-radius:4px; font-size:0.8rem; margin:2px 4px 2px 0;">${s}</span>`,
+          )
+          .join('');
+      } else {
+        scopesEl.innerHTML = `<code style="font-size:0.8rem;">${service.allowed_scopes}</code>`;
+      }
+    }
+    renderScopes();
+
+    document.getElementById('btn-edit-scopes')!.addEventListener('click', () => {
+      scopesEl.style.display = 'none';
+      scopesEditEl.style.display = '';
+      scopeCheckboxes.innerHTML = ALL_SCOPES.map(
+        (s) =>
+          `<label style="display:flex; align-items:center; gap:6px; font-size:0.85rem;">
+            <input type="checkbox" value="${s}" ${currentScopes.includes(s) ? 'checked' : ''} />
+            ${s}
+          </label>`,
+      ).join('');
+    });
+    document.getElementById('btn-cancel-scopes')!.addEventListener('click', () => {
+      scopesEl.style.display = '';
+      scopesEditEl.style.display = 'none';
+    });
+    document.getElementById('btn-save-scopes')!.addEventListener('click', async () => {
+      const checked = Array.from(scopeCheckboxes.querySelectorAll<HTMLInputElement>('input:checked')).map(
+        (el) => el.value,
+      );
+      if (checked.length === 0) {
+        showToast('スコープを1つ以上選択してください', 'error');
+        return;
+      }
+      try {
+        await apiFetch(`/api/services/${serviceId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ allowed_scopes: checked }),
+        });
+        currentScopes = checked;
+        renderScopes();
+        scopesEl.style.display = '';
+        scopesEditEl.style.display = 'none';
+        showToast('許可スコープを更新しました');
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : 'スコープ更新に失敗しました', 'error');
+      }
+    });
 
     // リダイレクトURI
     let currentUris = uris;
