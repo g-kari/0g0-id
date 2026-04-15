@@ -5,9 +5,9 @@
 | Worker            | ドメイン      | 役割                                                         |
 | ----------------- | ------------- | ------------------------------------------------------------ |
 | `workers/id`      | id.0g0.xyz    | IdPコアAPI（認証・JWT・DB・トークン）                        |
-| `workers/user`    | user.0g0.xyz  | ユーザー向けBFF（ログインUI・プロフィール）                  |
-| `workers/admin`   | admin.0g0.xyz | 管理画面BFF（サービス管理・ユーザー管理）                    |
-| `workers/mcp`     | mcp.0g0.xyz   | MCP Worker                                                   |
+| `workers/user`    | user.0g0.xyz  | ユーザー向けBFF（ログインUI・プロフィール）+ SvelteKit SPA   |
+| `workers/admin`   | admin.0g0.xyz | 管理画面BFF（サービス管理・ユーザー管理）+ SvelteKit SPA     |
+| `workers/mcp`     | mcp.0g0.xyz   | MCP Worker（Claude Code連携）                                |
 | `packages/shared` | —             | 共通型定義・ライブラリ（直接ソース参照、ビルドステップなし） |
 
 ## 重要な設計
@@ -16,12 +16,38 @@
 - BFF → id: Service Bindings でサーバー間呼び出し、ワンタイム認可コード方式でトークン受け渡し
 - トークンローテーション時の競合: `TOKEN_ROTATED` は並行リクエスト競合（セッション有効）→ 503で返しCookie削除不可
 
+## BFF フロントエンド構成
+
+user/admin Worker は **Hono（API） + SvelteKit SPA（UI）** のハイブリッド構成。
+
+- フロントエンド: `workers/{user,admin}/frontend/` — SvelteKit + Svelte 5 (runes) + Tailwind CSS v4
+- ビルド: `@sveltejs/adapter-static` → `workers/{user,admin}/dist/` に出力
+- 静的アセット配信: **Cloudflare Workers Assets**（`[assets]` binding）
+- SPA ルーティング: `not_found_handling = "single-page-application"` + `run_worker_first` で API/auth は Worker、それ以外は Assets が処理
+- fallback ファイル: `index.html`（Cloudflare Workers Assets の SPA 規約に準拠）
+
 ## 開発コマンド
 
 ```bash
 npx vp check          # lint + format + typecheck（コミット前に必須）
 npx vp check --fix    # 自動修正
 npx vp test run       # 全テスト実行
+```
+
+### フロントエンドビルド
+
+```bash
+cd workers/user/frontend && npm run build    # user SPA ビルド → ../dist/
+cd workers/admin/frontend && npm run build   # admin SPA ビルド → ../dist/
+```
+
+### デプロイ
+
+```bash
+npm run deploy:user    # フロントエンドビルド + wrangler deploy
+npm run deploy:admin
+npm run deploy:id
+npm run deploy:mcp
 ```
 
 ## マイグレーション

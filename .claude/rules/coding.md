@@ -2,6 +2,7 @@
 paths:
   - "**/*.ts"
   - "**/*.tsx"
+  - "**/*.svelte"
 ---
 
 # コーディング規約
@@ -41,6 +42,13 @@ app.onError((err, c) => {
   return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
 });
 ```
+
+## Svelte 5 / SvelteKit
+
+- **runes モード必須**（`$state`, `$derived`, `$effect` を使用）
+- レガシーな `let` リアクティブ変数・`$:` リアクティブ宣言は使わない
+- SvelteKit のファイルベースルーティング（`+page.svelte`, `+layout.svelte`）
+- `adapter-static` で SPA ビルド、fallback は `index.html`
 
 ## ライブラリ利用方針
 

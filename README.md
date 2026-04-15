@@ -10,6 +10,7 @@
 id.0g0.xyz    — IdP コアAPI（認証・JWT・サービス管理）
 user.0g0.xyz  — ユーザー向け画面（ログイン・プロフィール）
 admin.0g0.xyz — 管理画面（サービス管理・ユーザー管理）
+mcp.0g0.xyz   — MCP Worker（Claude Code連携）
 ```
 
 ```
@@ -17,15 +18,21 @@ admin.0g0.xyz — 管理画面（サービス管理・ユーザー管理）
 ├── packages/shared/     # 共通ライブラリ（型定義・JWT・DB操作）
 ├── workers/
 │   ├── id/              # IdP コアAPI
-│   ├── user/            # ユーザー向け BFF
-│   └── admin/           # 管理画面 BFF
+│   ├── user/            # ユーザー向け BFF + SvelteKit SPA
+│   │   └── frontend/    #   SvelteKit フロントエンド
+│   ├── admin/           # 管理画面 BFF + SvelteKit SPA
+│   │   └── frontend/    #   SvelteKit フロントエンド
+│   └── mcp/             # MCP Worker
 └── migrations/          # D1 スキーマ
 ```
 
 ## 技術スタック
 
-- **Hono** — Webフレームワーク
+- **Hono** — Webフレームワーク（API・BFF）
+- **SvelteKit** + **Svelte 5** — フロントエンドSPA（user/admin）
+- **Tailwind CSS v4** — スタイリング
 - **Cloudflare Workers** — エッジランタイム
+- **Cloudflare Workers Assets** — 静的アセット配信（SPA fallback: `not_found_handling = "single-page-application"`）
 - **Cloudflare D1** — SQLiteベースDB
 - **jose** — ES256 JWT（WebCrypto）
 - **Service Bindings** — Worker間通信（ネットワーク経由なし）
@@ -81,12 +88,20 @@ npx wrangler secret put JWT_PUBLIC_KEY       # public.pem の内容
 npx wrangler secret put BOOTSTRAP_ADMIN_EMAIL
 ```
 
-### 6. デプロイ
+### 6. フロントエンドビルド
+
+```bash
+cd workers/user/frontend && npm install && npm run build
+cd workers/admin/frontend && npm install && npm run build
+```
+
+### 7. デプロイ
 
 ```bash
 npm run deploy:id
-npm run deploy:user
-npm run deploy:admin
+npm run deploy:user    # フロントエンドビルド込み
+npm run deploy:admin   # フロントエンドビルド込み
+npm run deploy:mcp
 ```
 
 ## 開発
@@ -98,6 +113,13 @@ npm run dev:admin  # :8789
 npm run typecheck  # 全ワークスペース型チェック
 ```
 
+### フロントエンド開発
+
+```bash
+cd workers/user/frontend && npm run dev    # SvelteKit dev server
+cd workers/admin/frontend && npm run dev   # SvelteKit dev server
+```
+
 ローカル開発時は `workers/id/.dev.vars` にシークレットを記載します（`.gitignore` 済み）:
 
 ```
@@ -107,6 +129,17 @@ JWT_PRIVATE_KEY=...
 JWT_PUBLIC_KEY=...
 BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 ```
+
+## BFF + SPA 構成
+
+user/admin Worker は **Hono（API）+ SvelteKit SPA（UI）** のハイブリッド構成です。
+
+- `workers/{user,admin}/src/` — Hono API（認証・プロキシ）
+- `workers/{user,admin}/frontend/` — SvelteKit SPA（`@sveltejs/adapter-static`）
+- ビルド成果物は `workers/{user,admin}/dist/` に出力
+- Cloudflare Workers Assets がSPA配信を担当
+- `run_worker_first` で API/auth パスは Worker に、静的アセットは Assets に振り分け
+- `not_found_handling = "single-page-application"` で未知のパスは `index.html` にフォールバック
 
 ## 認証フロー
 
