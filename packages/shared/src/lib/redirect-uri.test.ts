@@ -1,78 +1,70 @@
 import { describe, it, expect } from "vite-plus/test";
-import { matchRedirectUri } from "./redirect-uri";
+import { normalizeRedirectUri } from "./redirect-uri";
 
-describe("matchRedirectUri", () => {
-  it("localhost: ポートが異なっても一致する (RFC 8252 §7.3)", () => {
-    expect(matchRedirectUri("http://localhost/callback", "http://localhost:51234/callback")).toBe(
-      true,
-    );
+describe("normalizeRedirectUri", () => {
+  it("有効なHTTPS URLはそのまま返す", () => {
+    const result = normalizeRedirectUri("https://example.com/callback");
+    expect(result).toBe("https://example.com/callback");
   });
 
-  it("localhost: ポートなし同士で一致する", () => {
-    expect(matchRedirectUri("http://localhost/callback", "http://localhost/callback")).toBe(true);
+  it("ホスト名を小文字化する", () => {
+    const result = normalizeRedirectUri("https://EXAMPLE.COM/callback");
+    expect(result).toBe("https://example.com/callback");
   });
 
-  it("localhost: パスが異なる場合は不一致", () => {
-    expect(matchRedirectUri("http://localhost/callback", "http://localhost:51234/other")).toBe(
-      false,
-    );
+  it("デフォルトポート443（HTTPS）を除去する", () => {
+    const result = normalizeRedirectUri("https://example.com:443/callback");
+    expect(result).toBe("https://example.com/callback");
   });
 
-  it("localhost: クエリストリングが異なる場合は不一致", () => {
-    expect(
-      matchRedirectUri(
-        "http://localhost/callback?foo=bar",
-        "http://localhost:51234/callback?foo=baz",
-      ),
-    ).toBe(false);
+  it("デフォルトポート80（HTTP）を除去する", () => {
+    const result = normalizeRedirectUri("http://localhost:80/callback");
+    expect(result).toBe("http://localhost/callback");
   });
 
-  it("localhost: クエリストリングが一致する場合は一致", () => {
-    expect(
-      matchRedirectUri(
-        "http://localhost/callback?foo=bar",
-        "http://localhost:51234/callback?foo=bar",
-      ),
-    ).toBe(true);
+  it("非デフォルトポートは保持する", () => {
+    const result = normalizeRedirectUri("https://example.com:8443/callback");
+    expect(result).toBe("https://example.com:8443/callback");
   });
 
-  it("127.0.0.1: ポートが異なっても一致する", () => {
-    expect(matchRedirectUri("http://127.0.0.1/callback", "http://127.0.0.1:8080/callback")).toBe(
-      true,
-    );
+  it("HTTP localhostは許可", () => {
+    const result = normalizeRedirectUri("http://localhost:3000/callback");
+    expect(result).toBe("http://localhost:3000/callback");
   });
 
-  it("localhost と 127.0.0.1 は同一ホストとして扱う (RFC 8252 §8.3)", () => {
-    expect(matchRedirectUri("http://localhost/callback", "http://127.0.0.1:8080/callback")).toBe(
-      true,
-    );
+  it("HTTP 127.0.0.1は許可", () => {
+    const result = normalizeRedirectUri("http://127.0.0.1:3000/callback");
+    expect(result).toBe("http://127.0.0.1:3000/callback");
   });
 
-  it("127.0.0.1 と localhost は同一ホストとして扱う (RFC 8252 §8.3)", () => {
-    expect(matchRedirectUri("http://127.0.0.1/callback", "http://localhost:8080/callback")).toBe(
-      true,
-    );
+  it("HTTP非localhostはnullを返す", () => {
+    expect(normalizeRedirectUri("http://example.com/callback")).toBeNull();
+    expect(normalizeRedirectUri("http://sub.example.com/callback")).toBeNull();
   });
 
-  it("非localhost: 完全一致が必要", () => {
-    expect(matchRedirectUri("https://example.com/callback", "https://example.com/callback")).toBe(
-      true,
-    );
+  it("fragmentを含むURLはnullを返す", () => {
+    expect(normalizeRedirectUri("https://example.com/callback#fragment")).toBeNull();
+    expect(normalizeRedirectUri("https://example.com/#")).toBeNull();
   });
 
-  it("非localhost: ポートが異なる場合は不一致", () => {
-    expect(
-      matchRedirectUri("https://example.com/callback", "https://example.com:8080/callback"),
-    ).toBe(false);
+  it("無効なURLはnullを返す", () => {
+    expect(normalizeRedirectUri("not-a-url")).toBeNull();
+    expect(normalizeRedirectUri("")).toBeNull();
+    expect(normalizeRedirectUri("javascript:alert(1)")).toBeNull();
   });
 
-  it("不正なURLは不一致", () => {
-    expect(matchRedirectUri("not-a-url", "http://localhost/callback")).toBe(false);
+  it("クエリパラメータは保持する", () => {
+    const result = normalizeRedirectUri("https://example.com/callback?foo=bar");
+    expect(result).toBe("https://example.com/callback?foo=bar");
   });
 
-  it("プロトコルが異なる場合は不一致", () => {
-    expect(matchRedirectUri("https://localhost/callback", "http://localhost:8080/callback")).toBe(
-      false,
-    );
+  it("パスは保持する", () => {
+    const result = normalizeRedirectUri("https://example.com/app/oauth/callback");
+    expect(result).toBe("https://example.com/app/oauth/callback");
+  });
+
+  it("localhostポートなしも許可", () => {
+    const result = normalizeRedirectUri("http://localhost/callback");
+    expect(result).toBe("http://localhost/callback");
   });
 });
