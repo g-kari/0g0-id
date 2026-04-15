@@ -92,11 +92,11 @@ export function createMcpRoutes(server: McpServer): Hono<McpEnv> {
   app.get("/", async (c): Promise<Response> => {
     const sessionId = c.req.header("mcp-session-id");
     if (!sessionId) {
-      return c.json({ error: "Invalid session" }, 400);
+      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid session" } }, 400);
     }
     const valid = await validateAndRefreshMcpSession(c.env.DB, sessionId);
     if (!valid) {
-      return c.json({ error: "Invalid session" }, 400);
+      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid session" } }, 400);
     }
     // 現時点ではサーバーからの通知は不要なので、接続を維持するだけ
     return new Response(
