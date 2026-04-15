@@ -11,6 +11,7 @@ import {
   exchangeCodeAtIdp,
   revokeTokenAtIdp,
   proxyMutate,
+  validateBffEnv,
 } from "./bff";
 import type { BffSession } from "./bff";
 
@@ -601,5 +602,25 @@ describe("proxyMutate", () => {
     const result = await proxyMutate(ctx, "__session", "https://id.0g0.xyz/api/users/u1/ban");
     expect(result.status).toBe(401);
     expect(idpFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("validateBffEnv", () => {
+  it("32文字以上のSESSION_SECRETは検証を通過する", () => {
+    expect(() => validateBffEnv({ SESSION_SECRET: "a".repeat(32) })).not.toThrow();
+  });
+
+  it("64文字のSESSION_SECRETは検証を通過する", () => {
+    expect(() => validateBffEnv({ SESSION_SECRET: "a".repeat(64) })).not.toThrow();
+  });
+
+  it("31文字のSESSION_SECRETはエラーをスローする", () => {
+    expect(() => validateBffEnv({ SESSION_SECRET: "a".repeat(31) })).toThrow(
+      "SESSION_SECRET は32文字以上",
+    );
+  });
+
+  it("空文字のSESSION_SECRETはエラーをスローする", () => {
+    expect(() => validateBffEnv({ SESSION_SECRET: "" })).toThrow("SESSION_SECRET は32文字以上");
   });
 });

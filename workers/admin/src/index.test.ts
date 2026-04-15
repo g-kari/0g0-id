@@ -17,6 +17,7 @@ vi.mock("@0g0-id/shared", () => ({
   createLogger: vi
     .fn()
     .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+  validateBffEnv: vi.fn(),
 }));
 
 vi.mock("./middleware/csrf", () => ({
@@ -33,7 +34,7 @@ import app from "./index";
 const mockEnv = {
   IDP: { fetch: vi.fn() } as unknown as Fetcher,
   IDP_ORIGIN: "https://id.0g0.xyz",
-  SESSION_SECRET: "test-secret",
+  SESSION_SECRET: "test-session-secret-for-unit-tests-only-32b",
 };
 
 describe("GET /api/health", () => {

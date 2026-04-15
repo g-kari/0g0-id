@@ -437,3 +437,13 @@ export async function revokeTokenAtIdp(env: BffEnv, refreshToken: string): Promi
     }),
   );
 }
+
+/**
+ * BFF Worker の環境変数を検証する。
+ * SESSION_SECRET が32文字未満の場合はエラーをスローする（AES-256-GCM鍵導出に十分なエントロピーが必要）。
+ */
+export function validateBffEnv(env: { SESSION_SECRET: string }): void {
+  if (!env.SESSION_SECRET || env.SESSION_SECRET.length < 32) {
+    throw new Error("SESSION_SECRET は32文字以上の安全なランダム値が必要です");
+  }
+}

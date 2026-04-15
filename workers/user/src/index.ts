@@ -11,6 +11,7 @@ import {
   bffCorsMiddleware,
   bffCsrfMiddleware,
   createLogger,
+  validateBffEnv,
 } from "@0g0-id/shared";
 import authRoutes from "./routes/auth";
 import oauthRoutes from "./routes/oauth";
@@ -25,6 +26,12 @@ import deviceRoutes from "./routes/device";
 const appLogger = createLogger("user");
 
 const app = new Hono<{ Bindings: UserEnv }>();
+
+// SESSION_SECRET の最小長バリデーション（起動時チェック）
+app.use("*", async (c, next) => {
+  validateBffEnv(c.env);
+  await next();
+});
 
 app.use("*", logger());
 app.use("*", securityHeaders());

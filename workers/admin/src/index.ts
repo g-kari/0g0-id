@@ -13,6 +13,7 @@ import {
   bffCsrfMiddleware,
   createLogger,
   parseSession,
+  validateBffEnv,
 } from "@0g0-id/shared";
 import authRoutes from "./routes/auth";
 import { SESSION_COOKIE } from "./routes/auth";
@@ -24,6 +25,12 @@ import auditLogsRoutes from "./routes/audit-logs";
 const appLogger = createLogger("admin");
 
 const app = new Hono<{ Bindings: AdminEnv }>();
+
+// SESSION_SECRET の最小長バリデーション（起動時チェック）
+app.use("*", async (c, next) => {
+  validateBffEnv(c.env);
+  await next();
+});
 
 app.use("*", logger());
 app.use("*", securityHeaders());
