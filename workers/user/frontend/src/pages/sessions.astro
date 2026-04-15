@@ -61,7 +61,7 @@ import Base from '../layouts/Base.astro';
       errorEl.style.display = '';
       return;
     }
-    const sessions: Session[] = (res as any).data;
+    const sessions = res as Session[];
     if (sessions.length === 0) {
       emptyEl.style.display = '';
       return;

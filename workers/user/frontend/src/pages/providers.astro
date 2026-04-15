@@ -102,12 +102,12 @@ import Base from '../layouts/Base.astro';
     }
   });
 
-  const res = await apiFetch<{ data: ProviderStatus[] }>('/api/providers');
+  const res = await apiFetch<ProviderStatus[]>('/api/providers');
   loadingEl.style.display = 'none';
   if ('error' in res) {
     showToast(res.error.message, 'error');
   } else {
-    statuses = (res as any).data;
+    statuses = res as ProviderStatus[];
     render();
     contentEl.style.display = '';
   }

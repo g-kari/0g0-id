@@ -20,7 +20,12 @@ export async function apiFetch<T>(
     );
     return { error: { code: "HTTP_ERROR", message: body?.error?.message ?? `HTTP ${res.status}` } };
   }
-  return res.json() as Promise<T>;
+  const body = await res.json();
+  // IdP API は { data: ... } 形式でレスポンスを返すため data をアンラップ
+  if (body && typeof body === "object" && "data" in body) {
+    return body.data as T;
+  }
+  return body as T;
 }
 
 export function formatDate(iso: string): string {
