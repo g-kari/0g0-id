@@ -1,7 +1,7 @@
 import { createMiddleware } from "hono/factory";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { TokenPayload } from "@0g0-id/shared";
-import { findUserById } from "@0g0-id/shared";
+import { findUserById, isAccessTokenRevoked } from "@0g0-id/shared";
 
 type McpEnv = {
   Bindings: {
@@ -103,6 +103,20 @@ export const mcpAdminMiddleware = createMiddleware<McpEnv>(
     if (!user || user.role !== "admin") {
       return c.json({ error: { code: "FORBIDDEN", message: "Admin role required" } }, 403);
     }
+
+    // jtiが存在しないトークンは管理者エンドポイントでは拒否（リボークチェック必須）
+    if (!user.jti) {
+      return c.json(
+        { error: { code: "UNAUTHORIZED", message: "Invalid token: missing jti" } },
+        401,
+      );
+    }
+
+    // リボークされたトークンを拒否（JWT有効期限内でも即時無効化）
+    if (await isAccessTokenRevoked(c.env.DB, user.jti)) {
+      return c.json({ error: { code: "UNAUTHORIZED", message: "Token has been revoked" } }, 401);
+    }
+
     await next();
   },
 );

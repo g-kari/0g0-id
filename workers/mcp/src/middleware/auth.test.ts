@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
 import { jwtVerify } from "jose";
-import { findUserById } from "@0g0-id/shared";
+import { findUserById, isAccessTokenRevoked } from "@0g0-id/shared";
 import { mcpAuthMiddleware, mcpRejectBannedUserMiddleware, mcpAdminMiddleware } from "./auth";
 
 vi.mock("jose", () => ({
@@ -11,6 +11,7 @@ vi.mock("jose", () => ({
 
 vi.mock("@0g0-id/shared", () => ({
   findUserById: vi.fn(),
+  isAccessTokenRevoked: vi.fn(),
 }));
 
 const mockEnv = {
@@ -262,8 +263,39 @@ describe("mcpAdminMiddleware", () => {
     expect(body.error.message).toBe("Admin role required");
   });
 
-  it("adminロールのユーザーの場合は200を返す", async () => {
+  it("jtiがないadminトークンの場合は401を返す", async () => {
     const app = buildAdminApp({ ...mockPayload, role: "admin" });
+    const res = await app.request(
+      new Request(`${baseUrl}/test`),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("UNAUTHORIZED");
+    expect(body.error.message).toBe("Invalid token: missing jti");
+  });
+
+  it("リボークされたトークンの場合は401を返す", async () => {
+    vi.mocked(isAccessTokenRevoked).mockResolvedValue(true);
+
+    const app = buildAdminApp({ ...mockPayload, role: "admin", jti: "revoked-jti" });
+    const res = await app.request(
+      new Request(`${baseUrl}/test`),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("UNAUTHORIZED");
+    expect(body.error.message).toBe("Token has been revoked");
+    expect(vi.mocked(isAccessTokenRevoked)).toHaveBeenCalledWith(mockEnv.DB, "revoked-jti");
+  });
+
+  it("adminロールかつ有効なjtiのユーザーの場合は200を返す", async () => {
+    vi.mocked(isAccessTokenRevoked).mockResolvedValue(false);
+
+    const app = buildAdminApp({ ...mockPayload, role: "admin", jti: "valid-jti" });
     const res = await app.request(
       new Request(`${baseUrl}/test`),
       undefined,
