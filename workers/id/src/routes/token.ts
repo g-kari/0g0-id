@@ -115,7 +115,8 @@ async function resolveOAuthClient(
     let service: Awaited<ReturnType<typeof authenticateService>>;
     try {
       service = await authenticateService(db, authHeader);
-    } catch {
+    } catch (err) {
+      tokenLogger.error("[resolveOAuthClient] Failed to authenticate service", err);
       return { ok: false, error: "server_error", status: 500 };
     }
     if (!service) {
@@ -135,7 +136,8 @@ async function resolveOAuthClient(
   let service: Awaited<ReturnType<typeof findServiceByClientId>>;
   try {
     service = await findServiceByClientId(db, bodyClientId);
-  } catch {
+  } catch (err) {
+    tokenLogger.error("[resolveOAuthClient] Failed to find service by client_id", err);
     return { ok: false, error: "server_error", status: 500 };
   }
   if (!service) {

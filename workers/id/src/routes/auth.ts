@@ -645,7 +645,8 @@ app.get("/authorize", authRateLimitMiddleware, async (c) => {
   let service: Awaited<ReturnType<typeof findServiceByClientId>>;
   try {
     service = await findServiceByClientId(c.env.DB, clientId);
-  } catch {
+  } catch (err) {
+    authLogger.error("[authorize] Failed to find service by client_id", err);
     return c.json({ error: "server_error", error_description: "Internal server error" }, 500);
   }
   if (!service) {
@@ -662,7 +663,8 @@ app.get("/authorize", authRateLimitMiddleware, async (c) => {
   let registeredUris: Awaited<ReturnType<typeof listRedirectUris>>;
   try {
     registeredUris = await listRedirectUris(c.env.DB, service.id);
-  } catch {
+  } catch (err) {
+    authLogger.error("[authorize] Failed to list redirect URIs", err);
     return c.json({ error: "server_error", error_description: "Internal server error" }, 500);
   }
   const matched = registeredUris.some((ru) => matchRedirectUri(ru.uri, normalizedRequested));
@@ -1174,7 +1176,8 @@ app.post("/exchange", tokenApiRateLimitMiddleware, serviceBindingMiddleware, asy
     let service: Awaited<ReturnType<typeof authenticateService>>;
     try {
       service = await authenticateService(c.env.DB, c.req.header("Authorization"));
-    } catch {
+    } catch (err) {
+      authLogger.error("[exchange] Failed to authenticate service", err);
       return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
     }
     // service_id の一致確認（認可コードが別サービス向けであれば拒否）
