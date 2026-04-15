@@ -1,5 +1,5 @@
-import { Hono, type Context } from "hono";
-import { getCookie, setCookie, deleteCookie } from "hono/cookie";
+import { Hono } from "hono";
+import { getCookie, deleteCookie } from "hono/cookie";
 import { z } from "zod";
 import { parseJsonBody } from "@0g0-id/shared";
 import { authenticateService } from "../utils/service-auth";
@@ -7,21 +7,10 @@ import { getClientIp } from "../utils/ip";
 
 import {
   buildGoogleAuthUrl,
-  exchangeGoogleCode,
-  fetchGoogleUserInfo,
   buildLineAuthUrl,
-  exchangeLineCode,
-  fetchLineUserInfo,
   buildTwitchAuthUrl,
-  exchangeTwitchCode,
-  fetchTwitchUserInfo,
   buildGithubAuthUrl,
-  exchangeGithubCode,
-  fetchGithubUserInfo,
-  fetchGithubPrimaryEmail,
   buildXAuthUrl,
-  exchangeXCode,
-  fetchXUserInfo,
   generateCodeVerifier,
   generateCodeChallenge,
   generateToken,
@@ -30,11 +19,6 @@ import {
   findRefreshTokenByHash,
   findUserById,
   revokeRefreshToken,
-  upsertUser,
-  upsertLineUser,
-  upsertTwitchUser,
-  upsertGithubUser,
-  upsertXUser,
   tryBootstrapAdmin,
   createAuthCode,
   findAndConsumeAuthCode,
@@ -43,7 +27,6 @@ import {
   listRedirectUris,
   normalizeRedirectUri,
   timingSafeEqual,
-  linkProvider,
   insertLoginEvent,
   createLogger,
   matchRedirectUri,
@@ -52,7 +35,7 @@ import {
   verifyAccessToken,
   addRevokedAccessToken,
 } from "@0g0-id/shared";
-import type { IdpEnv, TokenPayload, User, OAuthStateCookieData } from "@0g0-id/shared";
+import type { IdpEnv, TokenPayload, OAuthStateCookieData } from "@0g0-id/shared";
 import {
   type OAuthProvider,
   PROVIDER_DISPLAY_NAMES,
@@ -72,7 +55,19 @@ import {
   validateAndRevokeRefreshToken,
   issueTokenPairWithRecovery,
 } from "../utils/refresh-token-rotation";
-import { parse as parseDomain } from "tldts";
+
+import {
+  CALLBACK_PATH,
+  OAUTH_ERROR_MAP,
+  STATE_COOKIE,
+  PKCE_COOKIE,
+  isAllowedRedirectTo,
+  isBffOrigin,
+  setSecureCookie,
+  parseStateFromCookie,
+  handleProviderLink,
+} from "../utils/auth-helpers";
+import { resolveProvider } from "../utils/provider-resolution";
 
 const ExchangeSchema = z.object({
   code: z.string().min(1, "code is required"),
@@ -98,477 +93,6 @@ type Variables = { user: TokenPayload };
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
 const authLogger = createLogger("auth");
-
-const CALLBACK_PATH = "/auth/callback";
-
-/**
- * OAuthプロバイダーから返されるエラーコードの安全なマッピング。
- * 未知のエラーコードはフォールバックメッセージに置き換え、
- * プロバイダーの内部情報をそのまま反射することを防ぐ。
- */
-const OAUTH_ERROR_MAP: Record<string, string> = {
-  access_denied: "Access was denied",
-  server_error: "Authorization server error",
-  temporarily_unavailable: "Authorization server temporarily unavailable",
-  invalid_request: "Invalid request",
-  unsupported_response_type: "Unsupported response type",
-  invalid_scope: "Invalid scope requested",
-  interaction_required: "User interaction required",
-  login_required: "Login required",
-  consent_required: "User consent required",
-  account_selection_required: "Account selection required",
-};
-
-// state/PKCE保存用Cookie名
-const STATE_COOKIE = "__Host-oauth-state";
-const PKCE_COOKIE = "__Host-oauth-pkce";
-
-/** プロバイダー認証の解決結果 */
-type ProviderResolution =
-  | { ok: true; sub: string; upsert: (db: D1Database, id: string) => Promise<User> }
-  | { ok: false; response: Response };
-
-/**
- * redirect_to が許可されたオリジンかどうかを検証する。
- *
- * 許可条件（いずれかを満たせばOK）:
- * 1. IDP_ORIGIN のホスト名から第1ラベルを除いた「親ドメイン」（例: id.0g0.xyz → 0g0.xyz）配下の
- *    サブドメイン、または親ドメイン自身（例: *.0g0.xyz, 0g0.xyz）
- * 2. EXTRA_BFF_ORIGINS（カンマ区切り）に一致するオリジン
- *
- * ❌ http:// は拒否（HTTPS必須）
- */
-/**
- * EXTRA_BFF_ORIGINS（カンマ区切り文字列）をパースし、
- * redirectUrl のオリジンがそのいずれかと一致するか確認する。
- */
-function matchesExtraBffOrigins(redirectUrl: URL, extraBffOrigins?: string): boolean {
-  if (!extraBffOrigins) return false;
-  return extraBffOrigins
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean)
-    .some((extra) => {
-      try {
-        return redirectUrl.origin === new URL(extra).origin;
-      } catch {
-        return false;
-      }
-    });
-}
-
-export function isAllowedRedirectTo(
-  redirectTo: string,
-  idpOrigin: string,
-  extraBffOrigins?: string,
-): boolean {
-  let redirectUrl: URL;
-  try {
-    redirectUrl = new URL(redirectTo);
-  } catch {
-    return false;
-  }
-
-  // HTTPS のみ許可
-  if (redirectUrl.protocol !== "https:") return false;
-
-  // IDP_ORIGIN から登録可能ドメインを導出して同一登録ドメインを許可
-  try {
-    const idpUrl = new URL(idpOrigin);
-    const idpHostname = idpUrl.hostname;
-
-    // IPアドレス（IPv4 / IPv6）の場合は親ドメイン導出をスキップ
-    // 例: 127.0.0.1 → '0.0.1' のような不正なドメインマッチを防ぐ
-    // 開発環境でIPを使う場合は EXTRA_BFF_ORIGINS を使用すること
-    const isIp =
-      /^\d+\.\d+\.\d+\.\d+$/.test(idpHostname) || // IPv4
-      (idpHostname.startsWith("[") && idpHostname.endsWith("]")); // IPv6 (URL仕様上 [] で囲まれる)
-
-    if (!isIp) {
-      // Public Suffix List を使って登録可能ドメイン (registrable domain) を比較
-      // allowPrivateDomains: true で github.io・amazonaws.com 等の private PSL エントリも考慮
-      // 例: id.0g0.xyz → 0g0.xyz、user.0g0.xyz → 0g0.xyz（同一なので許可）
-      // 例: evil.github.io → evil.github.io（github.io は PSL private suffix）
-      const pslOpts = { allowPrivateDomains: true };
-      const idpParsed = parseDomain(idpHostname, pslOpts);
-      const redirectParsed = parseDomain(redirectUrl.hostname, pslOpts);
-      const idpRegistrable = idpParsed.domain; // e.g., "0g0.xyz"
-      const redirectRegistrable = redirectParsed.domain; // e.g., "0g0.xyz" or "evil.com"
-
-      if (idpRegistrable && redirectRegistrable && idpRegistrable === redirectRegistrable) {
-        return true;
-      }
-    }
-  } catch {
-    // ignore — fallthrough to EXTRA_BFF_ORIGINS
-  }
-
-  // EXTRA_BFF_ORIGINS による追加オリジン（外部ドメイン向け）
-  return matchesExtraBffOrigins(redirectUrl, extraBffOrigins);
-}
-
-/**
- * redirect_to が既知のBFFオリジン（USER_ORIGIN / ADMIN_ORIGIN / EXTRA_BFF_ORIGINS）と
- * 完全一致するかを検証する。
- * isAllowedRedirectTo と異なり、*.0g0.xyz のようなワイルドカードマッチは行わない。
- */
-export function isBffOrigin(
-  redirectTo: string,
-  userOrigin: string,
-  adminOrigin: string,
-  extraBffOrigins?: string,
-): boolean {
-  let redirectUrl: URL;
-  try {
-    redirectUrl = new URL(redirectTo);
-  } catch {
-    return false;
-  }
-
-  // HTTPS のみ許可
-  if (redirectUrl.protocol !== "https:") return false;
-
-  // USER_ORIGIN / ADMIN_ORIGIN と origin 単位で完全一致比較
-  const bffOrigins = [userOrigin, adminOrigin];
-  if (
-    bffOrigins.some((o) => {
-      try {
-        return redirectUrl.origin === new URL(o).origin;
-      } catch {
-        return false;
-      }
-    })
-  ) {
-    return true;
-  }
-
-  // EXTRA_BFF_ORIGINS による追加オリジン（外部ドメイン向け）
-  return matchesExtraBffOrigins(redirectUrl, extraBffOrigins);
-}
-
-function setSecureCookie(
-  c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
-  name: string,
-  value: string,
-  maxAge: number,
-): void {
-  setCookie(c, name, value, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "Lax",
-    path: "/",
-    maxAge,
-  });
-}
-
-/**
- * state Cookie を安全に検証・パースする
- * 検証失敗または不正な JSON の場合は null を返す
- */
-async function parseStateFromCookie(
-  stateCookieRaw: string,
-  secret: string,
-): Promise<OAuthStateCookieData | null> {
-  const verifiedPayload = await verifyCookie(stateCookieRaw, secret);
-  if (!verifiedPayload) return null;
-
-  try {
-    const parsed: unknown = JSON.parse(verifiedPayload);
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      "idState" in parsed &&
-      "redirectTo" in parsed &&
-      "bffState" in parsed
-    ) {
-      return parsed as OAuthStateCookieData;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * SNSプロバイダー連携のラッパー。
- * PROVIDER_ALREADY_LINKEDエラーを捕捉し、判別可能な戻り値として返す。
- */
-async function handleProviderLink(
-  db: D1Database,
-  linkUserId: string,
-  provider: OAuthProvider,
-  providerSub: string,
-): Promise<{ ok: true; user: User } | { ok: false }> {
-  try {
-    const user = await linkProvider(db, linkUserId, provider, providerSub);
-    return { ok: true, user };
-  } catch (err) {
-    if (err instanceof Error && err.message === "PROVIDER_ALREADY_LINKED") {
-      return { ok: false };
-    }
-    throw err;
-  }
-}
-
-function oauthError(
-  c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
-  message: string,
-  code: string = "OAUTH_ERROR",
-): { ok: false; response: Response } {
-  return { ok: false, response: c.json({ error: { code, message } }, 400) };
-}
-
-// ─── プロバイダー共通ヘルパー ─────────────────────────────────────────────────
-
-/**
- * OAuthプロバイダー共通のコード交換・ユーザー情報取得処理。
- * 各 resolve*Provider 関数の try/catch ボイラープレートを集約する。
- */
-async function exchangeAndFetchUserInfo<TTokenResponse extends { access_token: string }, TUserInfo>(
-  c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
-  providerKey: string,
-  displayName: string,
-  exchangeFn: () => Promise<TTokenResponse>,
-  fetchFn: (accessToken: string) => Promise<TUserInfo>,
-): Promise<
-  | { ok: true; tokenResponse: TTokenResponse; userInfo: TUserInfo }
-  | { ok: false; response: Response }
-> {
-  let tokens: TTokenResponse;
-  try {
-    tokens = await exchangeFn();
-  } catch (err) {
-    authLogger.error(`[oauth-${providerKey}] Failed to exchange code`, err);
-    return oauthError(c, `Failed to exchange ${displayName} code`);
-  }
-
-  let userInfo: TUserInfo;
-  try {
-    userInfo = await fetchFn(tokens.access_token);
-  } catch (err) {
-    authLogger.error(`[oauth-${providerKey}] Failed to fetch user info`, err);
-    return oauthError(c, `Failed to fetch ${displayName} user info`);
-  }
-
-  return { ok: true, tokenResponse: tokens, userInfo };
-}
-
-// ─── プロバイダー固有の認証解決関数 ──────────────────────────────────────────
-
-function makePlaceholderEmail(
-  provider: string,
-  sub: string,
-  rawEmail?: string | null,
-): { email: string; isPlaceholderEmail: boolean } {
-  return {
-    email: rawEmail || `${provider}_${sub}@${provider}.placeholder`,
-    isPlaceholderEmail: !rawEmail,
-  };
-}
-
-/** OAuthプロバイダーのコード交換・ユーザー情報取得・upsert関数を一元化 */
-async function resolveProvider(
-  c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
-  provider: OAuthProvider,
-  code: string,
-  pkceVerifier: string,
-  callbackUri: string,
-): Promise<ProviderResolution> {
-  switch (provider) {
-    case "google": {
-      const result = await exchangeAndFetchUserInfo(
-        c,
-        "google",
-        "Google",
-        () =>
-          exchangeGoogleCode({
-            code,
-            clientId: c.env.GOOGLE_CLIENT_ID,
-            clientSecret: c.env.GOOGLE_CLIENT_SECRET,
-            redirectUri: callbackUri,
-            codeVerifier: pkceVerifier,
-          }),
-        fetchGoogleUserInfo,
-      );
-      if (!result.ok) return result;
-      const { userInfo } = result;
-      if (!userInfo.email_verified) {
-        return oauthError(c, "Email not verified", "UNVERIFIED_EMAIL");
-      }
-      return {
-        ok: true,
-        sub: userInfo.sub,
-        upsert: (db, id) =>
-          upsertUser(db, {
-            id,
-            googleSub: userInfo.sub,
-            email: userInfo.email,
-            emailVerified: userInfo.email_verified,
-            name: userInfo.name,
-            picture: userInfo.picture ?? null,
-          }),
-      };
-    }
-
-    case "line": {
-      const result = await exchangeAndFetchUserInfo(
-        c,
-        "line",
-        "LINE",
-        () =>
-          exchangeLineCode({
-            code,
-            clientId: c.env.LINE_CLIENT_ID!,
-            clientSecret: c.env.LINE_CLIENT_SECRET!,
-            redirectUri: callbackUri,
-            codeVerifier: pkceVerifier,
-          }),
-        fetchLineUserInfo,
-      );
-      if (!result.ok) return result;
-      const { userInfo } = result;
-      const { email, isPlaceholderEmail } = makePlaceholderEmail(
-        "line",
-        userInfo.sub,
-        userInfo.email,
-      );
-      return {
-        ok: true,
-        sub: userInfo.sub,
-        upsert: (db, id) =>
-          upsertLineUser(db, {
-            id,
-            lineSub: userInfo.sub,
-            email,
-            isPlaceholderEmail,
-            name: userInfo.name,
-            picture: userInfo.picture ?? null,
-          }),
-      };
-    }
-
-    case "twitch": {
-      const result = await exchangeAndFetchUserInfo(
-        c,
-        "twitch",
-        "Twitch",
-        () =>
-          exchangeTwitchCode({
-            code,
-            clientId: c.env.TWITCH_CLIENT_ID!,
-            clientSecret: c.env.TWITCH_CLIENT_SECRET!,
-            redirectUri: callbackUri,
-            codeVerifier: pkceVerifier,
-          }),
-        fetchTwitchUserInfo,
-      );
-      if (!result.ok) return result;
-      const { userInfo } = result;
-      const { email, isPlaceholderEmail } = makePlaceholderEmail(
-        "twitch",
-        userInfo.sub,
-        userInfo.email,
-      );
-      if (!isPlaceholderEmail && !(userInfo.email_verified ?? false)) {
-        return oauthError(c, "Email not verified", "UNVERIFIED_EMAIL");
-      }
-      return {
-        ok: true,
-        sub: userInfo.sub,
-        upsert: (db, id) =>
-          upsertTwitchUser(db, {
-            id,
-            twitchSub: userInfo.sub,
-            email,
-            isPlaceholderEmail,
-            emailVerified: userInfo.email_verified ?? false,
-            name: userInfo.preferred_username,
-            picture: userInfo.picture ?? null,
-          }),
-      };
-    }
-
-    case "github": {
-      const result = await exchangeAndFetchUserInfo(
-        c,
-        "github",
-        "GitHub",
-        () =>
-          exchangeGithubCode({
-            code,
-            clientId: c.env.GITHUB_CLIENT_ID!,
-            clientSecret: c.env.GITHUB_CLIENT_SECRET!,
-            redirectUri: callbackUri,
-            codeVerifier: pkceVerifier,
-          }),
-        fetchGithubUserInfo,
-      );
-      if (!result.ok) return result;
-      const { tokenResponse, userInfo: githubUser } = result;
-      const githubSub = String(githubUser.id);
-      // GitHub User APIのemailフィールドは検証済みとは限らないため、
-      // 常にEmails APIから検証済みプライマリメールを取得する
-      let email: string | null;
-      try {
-        email = await fetchGithubPrimaryEmail(tokenResponse.access_token);
-      } catch (err) {
-        authLogger.error("[oauth-github] Failed to fetch primary email", err);
-        return oauthError(c, "Failed to fetch GitHub email");
-      }
-      const { email: finalEmail, isPlaceholderEmail } = makePlaceholderEmail(
-        "github",
-        githubSub,
-        email,
-      );
-      return {
-        ok: true,
-        sub: githubSub,
-        upsert: (db, id) =>
-          upsertGithubUser(db, {
-            id,
-            githubSub,
-            email: finalEmail,
-            isPlaceholderEmail,
-            name: githubUser.name ?? githubUser.login,
-            picture: githubUser.avatar_url,
-          }),
-      };
-    }
-
-    case "x": {
-      const result = await exchangeAndFetchUserInfo(
-        c,
-        "x",
-        "X",
-        () =>
-          exchangeXCode({
-            code,
-            clientId: c.env.X_CLIENT_ID!,
-            clientSecret: c.env.X_CLIENT_SECRET!,
-            redirectUri: callbackUri,
-            codeVerifier: pkceVerifier,
-          }),
-        fetchXUserInfo,
-      );
-      if (!result.ok) return result;
-      const { userInfo: xUser } = result;
-      const { email: xEmail } = makePlaceholderEmail("x", xUser.id);
-      return {
-        ok: true,
-        sub: xUser.id,
-        upsert: (db, id) =>
-          upsertXUser(db, {
-            id,
-            xSub: xUser.id,
-            email: xEmail,
-            isPlaceholderEmail: true,
-            name: xUser.name ?? xUser.username,
-            picture: xUser.profile_image_url ?? null,
-          }),
-      };
-    }
-  }
-}
 
 // ─── ルートハンドラー ──────────────────────────────────────────────────────────
 
@@ -1011,7 +535,7 @@ app.get("/callback", authRateLimitMiddleware, async (c) => {
 
   // アカウント連携またはユーザー作成/更新
   const userId = crypto.randomUUID();
-  let user: User;
+  let user;
   if (stateData.linkUserId) {
     // BAN済みユーザーへのプロバイダー連携を防止（DBに書き込む前にチェック）
     const linkTargetUser = await findUserById(c.env.DB, stateData.linkUserId);

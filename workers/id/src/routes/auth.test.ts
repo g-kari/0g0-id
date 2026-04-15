@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { isAllowedRedirectTo } from "./auth";
+import { isAllowedRedirectTo } from "../utils/auth-helpers";
 import { Hono } from "hono";
 
 // @0g0-id/sharedの全関数をモック
