@@ -19,12 +19,12 @@ import Admin from '../../layouts/Admin.astro';
 
   interface Metrics {
     total_users: number;
-    admin_count: number;
-    service_count: number;
+    admin_users: number;
+    total_services: number;
     active_sessions: number;
     banned_users: number;
-    logins_24h: number;
-    logins_7d: number;
+    recent_logins_24h: number;
+    recent_logins_7d: number;
   }
 
   const loadingEl = document.getElementById('loading')!;
@@ -35,12 +35,12 @@ import Admin from '../../layouts/Admin.astro';
     const metrics = await apiFetch<Metrics>('/api/metrics');
     const cards = [
       { label: '総ユーザー数', value: metrics.total_users, icon: '👥' },
-      { label: '管理者数', value: metrics.admin_count, icon: '🛡️' },
-      { label: '登録サービス数', value: metrics.service_count, icon: '🔧' },
+      { label: '管理者数', value: metrics.admin_users, icon: '🛡️' },
+      { label: '登録サービス数', value: metrics.total_services, icon: '🔧' },
       { label: 'アクティブセッション', value: metrics.active_sessions, icon: '🟢' },
       { label: 'BANユーザー', value: metrics.banned_users, icon: '🚫' },
-      { label: '24時間ログイン', value: metrics.logins_24h, icon: '📈' },
-      { label: '7日間ログイン', value: metrics.logins_7d, icon: '📊' },
+      { label: '24時間ログイン', value: metrics.recent_logins_24h, icon: '📈' },
+      { label: '7日間ログイン', value: metrics.recent_logins_7d, icon: '📊' },
     ];
 
     cardsEl.style.display = '';
