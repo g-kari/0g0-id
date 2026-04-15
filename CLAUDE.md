@@ -5,8 +5,8 @@
 | Worker            | ドメイン      | 役割                                                         |
 | ----------------- | ------------- | ------------------------------------------------------------ |
 | `workers/id`      | id.0g0.xyz    | IdPコアAPI（認証・JWT・DB・トークン）                        |
-| `workers/user`    | user.0g0.xyz  | ユーザー向けBFF（ログインUI・プロフィール）+ SvelteKit SPA   |
-| `workers/admin`   | admin.0g0.xyz | 管理画面BFF（サービス管理・ユーザー管理）+ SvelteKit SPA     |
+| `workers/user`    | user.0g0.xyz  | ユーザー向けBFF（ログインUI・プロフィール）+ Astro SPA       |
+| `workers/admin`   | admin.0g0.xyz | 管理画面BFF（サービス管理・ユーザー管理）+ Astro SPA         |
 | `workers/mcp`     | mcp.0g0.xyz   | MCP Worker（Claude Code連携）                                |
 | `packages/shared` | —             | 共通型定義・ライブラリ（直接ソース参照、ビルドステップなし） |
 
@@ -18,13 +18,13 @@
 
 ## BFF フロントエンド構成
 
-user/admin Worker は **Hono（API） + SvelteKit SPA（UI）** のハイブリッド構成。
+user/admin Worker は **Hono（API） + Astro（UI）** のハイブリッド構成。
 
-- フロントエンド: `workers/{user,admin}/frontend/` — SvelteKit + Svelte 5 (runes) + Tailwind CSS v4
-- ビルド: `@sveltejs/adapter-static` → `workers/{user,admin}/dist/` に出力
+- フロントエンド: `workers/{user,admin}/frontend/` — Astro (pure static MPA) + Tailwind CSS v4
+- ビルド: `astro build` → `workers/{user,admin}/dist/` に出力（各ルートが個別HTMLファイル）
 - 静的アセット配信: **Cloudflare Workers Assets**（`[assets]` binding）
-- SPA ルーティング: `not_found_handling = "single-page-application"` + `run_worker_first` で API/auth は Worker、それ以外は Assets が処理
-- fallback ファイル: `index.html`（Cloudflare Workers Assets の SPA 規約に準拠）
+- SPA ルーティング: `not_found_handling = "single-page-application"` + `run_worker_first` で API/auth は Worker、`/_astro/*` 等の静的アセットは Assets が直接配信
+- ページスクリプト: Astro `<script>` タグ内の vanilla TypeScript で API 呼び出し・DOM 操作
 
 ## 開発コマンド
 

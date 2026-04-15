@@ -18,10 +18,10 @@ mcp.0g0.xyz   — MCP Worker（Claude Code連携）
 ├── packages/shared/     # 共通ライブラリ（型定義・JWT・DB操作）
 ├── workers/
 │   ├── id/              # IdP コアAPI
-│   ├── user/            # ユーザー向け BFF + SvelteKit SPA
-│   │   └── frontend/    #   SvelteKit フロントエンド
-│   ├── admin/           # 管理画面 BFF + SvelteKit SPA
-│   │   └── frontend/    #   SvelteKit フロントエンド
+│   ├── user/            # ユーザー向け BFF + Astro MPA
+│   │   └── frontend/    #   Astro フロントエンド
+│   ├── admin/           # 管理画面 BFF + Astro MPA
+│   │   └── frontend/    #   Astro フロントエンド
 │   └── mcp/             # MCP Worker
 └── migrations/          # D1 スキーマ
 ```
@@ -29,7 +29,7 @@ mcp.0g0.xyz   — MCP Worker（Claude Code連携）
 ## 技術スタック
 
 - **Hono** — Webフレームワーク（API・BFF）
-- **SvelteKit** + **Svelte 5** — フロントエンドSPA（user/admin）
+- **Astro** — フロントエンド静的MPA（user/admin）
 - **Tailwind CSS v4** — スタイリング
 - **Cloudflare Workers** — エッジランタイム
 - **Cloudflare Workers Assets** — 静的アセット配信（SPA fallback: `not_found_handling = "single-page-application"`）
@@ -116,8 +116,8 @@ npm run typecheck  # 全ワークスペース型チェック
 ### フロントエンド開発
 
 ```bash
-cd workers/user/frontend && npm run dev    # SvelteKit dev server
-cd workers/admin/frontend && npm run dev   # SvelteKit dev server
+cd workers/user/frontend && npm run dev    # Astro dev server
+cd workers/admin/frontend && npm run dev   # Astro dev server
 ```
 
 ローカル開発時は `workers/id/.dev.vars` にシークレットを記載します（`.gitignore` 済み）:
@@ -132,10 +132,10 @@ BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 
 ## BFF + SPA 構成
 
-user/admin Worker は **Hono（API）+ SvelteKit SPA（UI）** のハイブリッド構成です。
+user/admin Worker は **Hono（API）+ Astro MPA（UI）** のハイブリッド構成です。
 
 - `workers/{user,admin}/src/` — Hono API（認証・プロキシ）
-- `workers/{user,admin}/frontend/` — SvelteKit SPA（`@sveltejs/adapter-static`）
+- `workers/{user,admin}/frontend/` — Astro MPA（Astro static output）
 - ビルド成果物は `workers/{user,admin}/dist/` に出力
 - Cloudflare Workers Assets がSPA配信を担当
 - `run_worker_first` で API/auth パスは Worker に、静的アセットは Assets に振り分け

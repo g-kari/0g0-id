@@ -2,7 +2,7 @@
 paths:
   - "**/*.ts"
   - "**/*.tsx"
-  - "**/*.svelte"
+  - "**/*.astro"
 ---
 
 # コーディング規約
@@ -43,12 +43,12 @@ app.onError((err, c) => {
 });
 ```
 
-## Svelte 5 / SvelteKit
+## Astro ページ
 
-- **runes モード必須**（`$state`, `$derived`, `$effect` を使用）
-- レガシーな `let` リアクティブ変数・`$:` リアクティブ宣言は使わない
-- SvelteKit のファイルベースルーティング（`+page.svelte`, `+layout.svelte`）
-- `adapter-static` で SPA ビルド、fallback は `index.html`
+- `.astro` ファイルのフロントマター（`---`）はレイアウト import のみ
+- クライアントロジックは `<script>` タグ内の vanilla TypeScript
+- `<script>` 内で `import { apiFetch } from '../lib/api'` を使用（Vite がバンドル）
+- DOM 要素は `id` で取得、イベントは `addEventListener` で登録
 
 ## ライブラリ利用方針
 
