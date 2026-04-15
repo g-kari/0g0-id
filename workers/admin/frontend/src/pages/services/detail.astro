@@ -1,0 +1,331 @@
+---
+import Admin from '../../layouts/Admin.astro';
+---
+<Admin title="サービス詳細 — 0g0 Admin">
+  <div id="loading" style="text-align:center; padding:48px;">
+    <div class="spinner"></div>
+    <p style="color:var(--color-muted); margin-top:12px;">読み込み中...</p>
+  </div>
+  <div id="error" style="display:none; text-align:center; padding:48px;">
+    <p style="color:var(--color-danger);">サービス情報の取得に失敗しました</p>
+    <a href="/services" class="btn" style="margin-top:12px;">← サービス一覧に戻る</a>
+  </div>
+  <div id="content" style="display:none;">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px;">
+      <a href="/services" style="color:var(--color-muted); text-decoration:none; font-size:0.9rem;">← 一覧に戻る</a>
+    </div>
+
+    <!-- 基本情報 -->
+    <div class="card" style="margin-bottom:24px;">
+      <div style="display:flex; align-items:center; gap:16px; padding:20px;">
+        <div style="width:56px; height:56px; border-radius:12px; background:var(--color-surface); display:flex; align-items:center; justify-content:center; font-size:1.5rem;">🔧</div>
+        <div style="flex:1;">
+          <h1 class="page-title" id="service-name" style="margin:0;"></h1>
+          <p style="color:var(--color-muted); margin:4px 0 0; font-size:0.875rem;" id="service-client-id"></p>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; margin-bottom:24px;">
+      <div class="card" style="padding:20px;">
+        <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">基本情報</h3>
+        <table style="width:100%; font-size:0.875rem;">
+          <tbody id="info-tbody"></tbody>
+        </table>
+      </div>
+      <div class="card" style="padding:20px;">
+        <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">許可スコープ</h3>
+        <div id="scopes-list"></div>
+      </div>
+    </div>
+
+    <!-- リダイレクトURI -->
+    <div class="card" style="padding:20px; margin-bottom:24px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <h3 style="margin:0; font-size:0.9rem; color:var(--color-muted);">リダイレクトURI</h3>
+        <button id="btn-add-uri" class="btn" style="font-size:0.8rem; padding:4px 10px;">+ 追加</button>
+      </div>
+      <div id="add-uri-form" style="display:none; margin-bottom:12px;">
+        <div style="display:flex; gap:8px;">
+          <input id="new-uri-input" type="text" placeholder="https://example.com/callback" style="flex:1;" />
+          <button id="btn-submit-uri" class="btn btn-primary" style="font-size:0.8rem; padding:4px 10px;">追加</button>
+          <button id="btn-cancel-uri" class="btn btn-ghost" style="font-size:0.8rem; padding:4px 10px;">キャンセル</button>
+        </div>
+      </div>
+      <div id="uris-list">読み込み中...</div>
+    </div>
+
+    <!-- 認可済みユーザー -->
+    <div class="card" style="padding:20px; margin-bottom:24px;">
+      <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">認可済みユーザー</h3>
+      <div id="users-list">読み込み中...</div>
+    </div>
+
+    <!-- 操作 -->
+    <div class="card" style="padding:20px;">
+      <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">操作</h3>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button id="btn-edit" class="btn" style="font-size:0.85rem;">サービス名を編集</button>
+        <button id="btn-rotate-secret" class="btn" style="font-size:0.85rem;">シークレット再発行</button>
+        <button id="btn-delete" class="btn btn-danger" style="font-size:0.85rem;">サービス削除</button>
+      </div>
+    </div>
+
+    <!-- シークレット表示エリア -->
+    <div id="secret-display" class="card" style="padding:20px; margin-top:16px; display:none;">
+      <div class="alert alert-success" style="margin-bottom:12px;">新しいシークレットが発行されました。この値は一度しか表示されません。</div>
+      <div class="form-group">
+        <label for="new-secret-value">Client Secret</label>
+        <input id="new-secret-value" type="text" readonly />
+      </div>
+    </div>
+  </div>
+</Admin>
+
+<script>
+  import { apiFetch, formatDate } from '../../lib/api';
+  import type { ServiceSummary } from '@0g0-id/api-types';
+
+  type ServiceDetail = ServiceSummary & { updated_at?: string };
+  type RedirectUri = { id: string; service_id: string; uri: string; created_at: string };
+  type AuthorizedUser = {
+    id: string;
+    email: string;
+    name: string;
+    picture: string | null;
+    role: string;
+    created_at: string;
+  };
+
+  function showToast(msg: string, type: 'success' | 'error' = 'success') {
+    const el = document.createElement('div');
+    el.textContent = msg;
+    el.style.cssText = `position:fixed;bottom:20px;right:20px;padding:10px 16px;border-radius:8px;color:#fff;font-size:0.875rem;z-index:9999;background:${type === 'error' ? 'var(--color-danger,#e53e3e)' : 'var(--color-success,#38a169)'}`;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+  }
+
+  // URL からサービスIDを取得
+  const pathParts = window.location.pathname.split('/').filter(Boolean);
+  const serviceId =
+    new URLSearchParams(window.location.search).get('id') ||
+    (pathParts.length >= 2 && pathParts[0] === 'services' ? pathParts[1] : null);
+
+  const loadingEl = document.getElementById('loading')!;
+  const errorEl = document.getElementById('error')!;
+  const contentEl = document.getElementById('content')!;
+
+  if (!serviceId) {
+    loadingEl.style.display = 'none';
+    errorEl.style.display = '';
+    throw new Error('No service ID');
+  }
+
+  try {
+    const [service, uris, usersRes] = await Promise.all([
+      apiFetch<ServiceDetail>(`/api/services/${serviceId}`),
+      apiFetch<RedirectUri[]>(`/api/services/${serviceId}/redirect-uris`),
+      apiFetch<AuthorizedUser[]>(`/api/services/${serviceId}/users`),
+    ]);
+
+    loadingEl.style.display = 'none';
+    contentEl.style.display = '';
+
+    // ヘッダー
+    document.getElementById('service-name')!.textContent = service.name;
+    document.getElementById('service-client-id')!.textContent = `Client ID: ${service.client_id}`;
+
+    // 基本情報
+    const infoTbody = document.getElementById('info-tbody')!;
+    const infoRows = [
+      ['ID', service.id],
+      ['Client ID', service.client_id],
+      ['オーナー', service.owner_user_id],
+      ['作成日', formatDate(service.created_at)],
+      ...(service.updated_at ? [['更新日', formatDate(service.updated_at)]] : []),
+    ];
+    infoTbody.innerHTML = infoRows
+      .map(
+        ([label, value]) => `
+      <tr>
+        <td style="color:var(--color-muted); padding:4px 8px 4px 0; white-space:nowrap;">${label}</td>
+        <td style="padding:4px 0; word-break:break-all;">${value}</td>
+      </tr>
+    `,
+      )
+      .join('');
+
+    // スコープ
+    const scopesEl = document.getElementById('scopes-list')!;
+    try {
+      const scopes: string[] = JSON.parse(service.allowed_scopes);
+      scopesEl.innerHTML = scopes
+        .map(
+          (s) =>
+            `<span style="display:inline-block; background:var(--color-surface); padding:2px 8px; border-radius:4px; font-size:0.8rem; margin:2px 4px 2px 0;">${s}</span>`,
+        )
+        .join('');
+    } catch {
+      scopesEl.innerHTML = `<code style="font-size:0.8rem;">${service.allowed_scopes}</code>`;
+    }
+
+    // リダイレクトURI
+    let currentUris = uris;
+    const urisListEl = document.getElementById('uris-list')!;
+    const addUriForm = document.getElementById('add-uri-form')!;
+    const newUriInput = document.getElementById('new-uri-input') as HTMLInputElement;
+
+    function renderUris(): void {
+      if (currentUris.length === 0) {
+        urisListEl.innerHTML =
+          '<p style="color:var(--color-muted); font-size:0.875rem;">リダイレクトURIが登録されていません</p>';
+        return;
+      }
+      urisListEl.innerHTML = currentUris
+        .map(
+          (u) => `
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--color-border);">
+          <code style="font-size:0.8rem; word-break:break-all;">${u.uri}</code>
+          <button class="btn btn-ghost btn-delete-uri" data-id="${u.id}" style="font-size:0.75rem; padding:2px 8px; color:var(--color-danger);">削除</button>
+        </div>
+      `,
+        )
+        .join('');
+
+      document.querySelectorAll('.btn-delete-uri').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const uriId = (btn as HTMLElement).dataset.id!;
+          if (!confirm('このリダイレクトURIを削除しますか？')) return;
+          try {
+            await apiFetch(`/api/services/${serviceId}/redirect-uris/${uriId}`, { method: 'DELETE' });
+            currentUris = currentUris.filter((u) => u.id !== uriId);
+            renderUris();
+            showToast('リダイレクトURIを削除しました');
+          } catch (err) {
+            showToast(err instanceof Error ? err.message : '削除に失敗しました', 'error');
+          }
+        });
+      });
+    }
+    renderUris();
+
+    document.getElementById('btn-add-uri')!.addEventListener('click', () => {
+      addUriForm.style.display = '';
+      newUriInput.focus();
+    });
+    document.getElementById('btn-cancel-uri')!.addEventListener('click', () => {
+      addUriForm.style.display = 'none';
+      newUriInput.value = '';
+    });
+    document.getElementById('btn-submit-uri')!.addEventListener('click', async () => {
+      const uri = newUriInput.value.trim();
+      if (!uri) return;
+      try {
+        const created = await apiFetch<RedirectUri>(`/api/services/${serviceId}/redirect-uris`, {
+          method: 'POST',
+          body: JSON.stringify({ uri }),
+        });
+        currentUris = [...currentUris, created];
+        renderUris();
+        addUriForm.style.display = 'none';
+        newUriInput.value = '';
+        showToast('リダイレクトURIを追加しました');
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : '追加に失敗しました', 'error');
+      }
+    });
+
+    // 認可済みユーザー
+    const usersListEl = document.getElementById('users-list')!;
+    let currentUsers = usersRes;
+
+    function renderUsers(): void {
+      if (currentUsers.length === 0) {
+        usersListEl.innerHTML =
+          '<p style="color:var(--color-muted); font-size:0.875rem;">認可済みのユーザーはいません</p>';
+        return;
+      }
+      usersListEl.innerHTML = currentUsers
+        .map(
+          (u) => `
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--color-border);">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="width:32px; height:32px; border-radius:50%; background:var(--color-surface); display:flex; align-items:center; justify-content:center; font-size:0.875rem; overflow:hidden;">
+              ${u.picture ? `<img src="${u.picture}" style="width:100%;height:100%;object-fit:cover;" alt="">` : (u.name || u.email)[0]?.toUpperCase() || '?'}
+            </div>
+            <div>
+              <div style="font-size:0.875rem;">${u.name || '(名前未設定)'}</div>
+              <div style="font-size:0.75rem; color:var(--color-muted);">${u.email}</div>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-revoke-user" data-id="${u.id}" style="font-size:0.75rem; padding:2px 8px; color:var(--color-danger);">アクセス失効</button>
+        </div>
+      `,
+        )
+        .join('');
+
+      document.querySelectorAll('.btn-revoke-user').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const userId = (btn as HTMLElement).dataset.id!;
+          if (!confirm('このユーザーのアクセスを失効しますか？')) return;
+          try {
+            await apiFetch(`/api/services/${serviceId}/users/${userId}`, { method: 'DELETE' });
+            currentUsers = currentUsers.filter((u) => u.id !== userId);
+            renderUsers();
+            showToast('ユーザーのアクセスを失効しました');
+          } catch (err) {
+            showToast(err instanceof Error ? err.message : '失効に失敗しました', 'error');
+          }
+        });
+      });
+    }
+    renderUsers();
+
+    // サービス名編集
+    document.getElementById('btn-edit')!.addEventListener('click', async () => {
+      const newName = prompt('新しいサービス名を入力してください', service.name);
+      if (!newName || newName === service.name) return;
+      try {
+        await apiFetch(`/api/services/${serviceId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ name: newName }),
+        });
+        showToast('サービス名を更新しました');
+        window.location.reload();
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : '更新に失敗しました', 'error');
+      }
+    });
+
+    // シークレット再発行
+    document.getElementById('btn-rotate-secret')!.addEventListener('click', async () => {
+      if (!confirm('Client Secretを再発行しますか？\n既存のシークレットは無効になります。')) return;
+      try {
+        const result = await apiFetch<{ client_secret: string }>(`/api/services/${serviceId}/rotate-secret`, {
+          method: 'POST',
+        });
+        const secretDisplay = document.getElementById('secret-display')!;
+        (document.getElementById('new-secret-value') as HTMLInputElement).value = result.client_secret;
+        secretDisplay.style.display = '';
+        showToast('シークレットを再発行しました');
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : 'シークレット再発行に失敗しました', 'error');
+      }
+    });
+
+    // サービス削除
+    document.getElementById('btn-delete')!.addEventListener('click', async () => {
+      if (!confirm('このサービスを削除しますか？\nこの操作は取り消せません。関連する全トークンも失効します。')) return;
+      try {
+        await apiFetch(`/api/services/${serviceId}`, { method: 'DELETE' });
+        showToast('サービスを削除しました');
+        window.location.href = '/services';
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : '削除に失敗しました', 'error');
+      }
+    });
+  } catch {
+    loadingEl.style.display = 'none';
+    errorEl.style.display = '';
+  }
+</script>
