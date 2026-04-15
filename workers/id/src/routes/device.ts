@@ -16,7 +16,7 @@ import {
   deleteExpiredDeviceCodes,
   signIdToken,
 } from "@0g0-id/shared";
-import type { IdpEnv, TokenPayload } from "@0g0-id/shared";
+import type { IdpEnv, TokenPayload, Service, DeviceCode, User } from "@0g0-id/shared";
 import type { TokenHandlerContext } from "./token";
 import {
   tokenApiRateLimitMiddleware,
@@ -115,7 +115,7 @@ app.post("/code", tokenApiRateLimitMiddleware, async (c) => {
   }
 
   // サービス（クライアント）の存在確認
-  let service: Awaited<ReturnType<typeof findServiceByClientId>>;
+  let service: Service | null;
   try {
     service = await findServiceByClientId(c.env.DB, clientId);
   } catch (err) {
@@ -309,7 +309,7 @@ export async function handleDeviceCodeGrant(
   }
 
   // クライアント確認
-  let service: Awaited<ReturnType<typeof findServiceByClientId>>;
+  let service: Service | null;
   try {
     service = await findServiceByClientId(c.env.DB, clientId);
   } catch (err) {
@@ -325,7 +325,7 @@ export async function handleDeviceCodeGrant(
 
   const deviceCodeHash = await sha256(rawDeviceCode);
 
-  let deviceCode: Awaited<ReturnType<typeof findDeviceCodeByHash>>;
+  let deviceCode: DeviceCode | null;
   try {
     deviceCode = await findDeviceCodeByHash(c.env.DB, deviceCodeHash);
   } catch (err) {
@@ -396,7 +396,7 @@ export async function handleDeviceCodeGrant(
   }
 
   // 承認済みユーザー取得とBANチェック（不可逆な削除の前に実施）
-  let user: Awaited<ReturnType<typeof findUserById>>;
+  let user: User | null;
   try {
     user = await findUserById(c.env.DB, deviceCode.user_id);
   } catch (err) {

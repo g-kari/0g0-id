@@ -35,7 +35,14 @@ import {
   verifyAccessToken,
   addRevokedAccessToken,
 } from "@0g0-id/shared";
-import type { IdpEnv, TokenPayload, OAuthStateCookieData } from "@0g0-id/shared";
+import type {
+  IdpEnv,
+  TokenPayload,
+  OAuthStateCookieData,
+  Service,
+  ServiceRedirectUri,
+  RefreshToken,
+} from "@0g0-id/shared";
 import {
   type OAuthProvider,
   PROVIDER_DISPLAY_NAMES,
@@ -166,7 +173,7 @@ app.get("/authorize", authRateLimitMiddleware, async (c) => {
   }
 
   // サービス検証
-  let service: Awaited<ReturnType<typeof findServiceByClientId>>;
+  let service: Service | null;
   try {
     service = await findServiceByClientId(c.env.DB, clientId);
   } catch (err) {
@@ -184,7 +191,7 @@ app.get("/authorize", authRateLimitMiddleware, async (c) => {
   }
 
   // 登録済みredirect_uriを取得して、matchRedirectUriで比較
-  let registeredUris: Awaited<ReturnType<typeof listRedirectUris>>;
+  let registeredUris: ServiceRedirectUri[];
   try {
     registeredUris = await listRedirectUris(c.env.DB, service.id);
   } catch (err) {
@@ -697,7 +704,7 @@ app.post("/exchange", tokenApiRateLimitMiddleware, serviceBindingMiddleware, asy
 
   if (authCode.service_id !== null) {
     // Authorization: Basic <base64(client_id:client_secret)> を検証
-    let service: Awaited<ReturnType<typeof authenticateService>>;
+    let service: Service | null;
     try {
       service = await authenticateService(c.env.DB, c.req.header("Authorization"));
     } catch (err) {
@@ -825,7 +832,7 @@ app.post("/refresh", tokenApiRateLimitMiddleware, serviceBindingMiddleware, asyn
 
   // サービストークンの場合: 元のサービスのスコープを引き継ぐ
   let refreshScope: string | undefined = undefined;
-  let refreshService: Awaited<ReturnType<typeof findServiceById>> | undefined = undefined;
+  let refreshService: Service | null | undefined = undefined;
   if (storedToken.service_id !== null) {
     refreshService = await findServiceById(c.env.DB, storedToken.service_id);
     if (!refreshService) {
@@ -927,7 +934,7 @@ app.post("/logout", tokenApiRateLimitMiddleware, serviceBindingMiddleware, async
   const { refresh_token: refreshToken } = result.data;
   if (refreshToken) {
     const tokenHash = await sha256(refreshToken);
-    let storedToken: Awaited<ReturnType<typeof findRefreshTokenByHash>>;
+    let storedToken: RefreshToken | null;
     try {
       storedToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
     } catch (err) {

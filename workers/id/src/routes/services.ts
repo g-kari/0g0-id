@@ -27,7 +27,15 @@ import {
   UUID_RE,
   createLogger,
 } from "@0g0-id/shared";
-import type { IdpEnv, TokenPayload, ServiceSummary, NewServiceResult } from "@0g0-id/shared";
+import type {
+  IdpEnv,
+  TokenPayload,
+  ServiceSummary,
+  NewServiceResult,
+  Service,
+  ServiceRedirectUri,
+  User,
+} from "@0g0-id/shared";
 import { authMiddleware } from "../middleware/auth";
 import { adminMiddleware } from "../middleware/admin";
 import { csrfMiddleware } from "../middleware/csrf";
@@ -110,7 +118,7 @@ app.get("/", authMiddleware, adminMiddleware, async (c) => {
   }
   const { limit, offset } = pagination;
 
-  let services: Awaited<ReturnType<typeof listServices>>;
+  let services: Service[];
   let total: number;
   try {
     [services, total] = await Promise.all([
@@ -142,7 +150,7 @@ app.get("/", authMiddleware, adminMiddleware, async (c) => {
 // GET /api/services/:id
 app.get("/:id", authMiddleware, adminMiddleware, async (c) => {
   const serviceId = c.req.param("id");
-  let service: Awaited<ReturnType<typeof findServiceById>>;
+  let service: Service | null;
   try {
     service = await findServiceById(c.env.DB, serviceId);
   } catch (err) {
@@ -178,7 +186,7 @@ app.post("/", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const clientSecretHash = await sha256(clientSecret);
   const allowedScopes = JSON.stringify(body.allowed_scopes ?? ["profile", "email"]);
 
-  let service: Awaited<ReturnType<typeof createService>>;
+  let service: Service;
   try {
     service = await createService(c.env.DB, {
       id: crypto.randomUUID(),
@@ -231,7 +239,7 @@ app.patch("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => 
   if (!result.ok) return result.response;
   const { name, allowed_scopes } = result.data;
 
-  let updated: Awaited<ReturnType<typeof updateServiceFields>>;
+  let updated: Service | null;
   try {
     updated = await updateServiceFields(c.env.DB, serviceId, {
       ...(name !== undefined ? { name: name.trim() } : {}),
@@ -279,7 +287,7 @@ app.patch("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => 
 // DELETE /api/services/:id
 app.delete("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const serviceId = c.req.param("id");
-  let service: Awaited<ReturnType<typeof findServiceById>>;
+  let service: Service | null;
   try {
     service = await findServiceById(c.env.DB, serviceId);
   } catch (err) {
@@ -333,8 +341,8 @@ app.delete("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
 // GET /api/services/:id/redirect-uris
 app.get("/:id/redirect-uris", authMiddleware, adminMiddleware, async (c) => {
   const serviceId = c.req.param("id");
-  let service: Awaited<ReturnType<typeof findServiceById>>;
-  let uris: Awaited<ReturnType<typeof listRedirectUris>>;
+  let service: Service | null;
+  let uris: ServiceRedirectUri[];
   try {
     [service, uris] = await Promise.all([
       findServiceById(c.env.DB, serviceId),
@@ -354,7 +362,7 @@ app.get("/:id/redirect-uris", authMiddleware, adminMiddleware, async (c) => {
 // POST /api/services/:id/redirect-uris
 app.post("/:id/redirect-uris", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const serviceId = c.req.param("id");
-  let service: Awaited<ReturnType<typeof findServiceById>>;
+  let service: Service | null;
   try {
     service = await findServiceById(c.env.DB, serviceId);
   } catch (err) {
@@ -409,7 +417,7 @@ app.post("/:id/redirect-uris", authMiddleware, adminMiddleware, csrfMiddleware, 
 // POST /api/services/:id/rotate-secret — client_secretの再発行
 app.post("/:id/rotate-secret", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const serviceId = c.req.param("id");
-  let service: Awaited<ReturnType<typeof findServiceById>>;
+  let service: Service | null;
   try {
     service = await findServiceById(c.env.DB, serviceId);
   } catch (err) {
@@ -423,7 +431,7 @@ app.post("/:id/rotate-secret", authMiddleware, adminMiddleware, csrfMiddleware, 
   const newClientSecret = generateClientSecret();
   const newClientSecretHash = await sha256(newClientSecret);
 
-  let updated: Awaited<ReturnType<typeof rotateClientSecret>>;
+  let updated: Service | null;
   try {
     updated = await rotateClientSecret(c.env.DB, serviceId, newClientSecretHash);
   } catch (err) {
@@ -466,8 +474,8 @@ app.patch("/:id/owner", authMiddleware, adminMiddleware, csrfMiddleware, async (
   if (!result.ok) return result.response;
   const { new_owner_user_id } = result.data;
 
-  let service: Awaited<ReturnType<typeof findServiceById>>;
-  let newOwner: Awaited<ReturnType<typeof findUserById>>;
+  let service: Service | null;
+  let newOwner: User | null;
   try {
     [service, newOwner] = await Promise.all([
       findServiceById(c.env.DB, serviceId),
@@ -484,7 +492,7 @@ app.patch("/:id/owner", authMiddleware, adminMiddleware, csrfMiddleware, async (
     return c.json({ error: { code: "NOT_FOUND", message: "New owner user not found" } }, 404);
   }
 
-  let updated: Awaited<ReturnType<typeof transferServiceOwnership>>;
+  let updated: Service | null;
   try {
     updated = await transferServiceOwnership(c.env.DB, serviceId, new_owner_user_id);
   } catch (err) {
@@ -536,8 +544,8 @@ app.get("/:id/users", authMiddleware, adminMiddleware, async (c) => {
   }
   const { limit, offset } = pagination;
 
-  let service: Awaited<ReturnType<typeof findServiceById>>;
-  let users: Awaited<ReturnType<typeof listUsersAuthorizedForService>>;
+  let service: Service | null;
+  let users: User[];
   let total: number;
   try {
     [service, [users, total]] = await Promise.all([
@@ -576,8 +584,8 @@ app.delete("/:id/users/:userId", authMiddleware, adminMiddleware, csrfMiddleware
     return c.json({ error: { code: "BAD_REQUEST", message: "Invalid user ID format" } }, 400);
   }
 
-  let service: Awaited<ReturnType<typeof findServiceById>>;
-  let user: Awaited<ReturnType<typeof findUserById>>;
+  let service: Service | null;
+  let user: User | null;
   try {
     [service, user] = await Promise.all([
       findServiceById(c.env.DB, serviceId),
@@ -644,8 +652,8 @@ app.delete(
       return c.json({ error: { code: "BAD_REQUEST", message: "Invalid URI ID format" } }, 400);
     }
 
-    let service: Awaited<ReturnType<typeof findServiceById>>;
-    let redirectUri: Awaited<ReturnType<typeof findRedirectUriById>>;
+    let service: Service | null;
+    let redirectUri: ServiceRedirectUri | null;
     try {
       [service, redirectUri] = await Promise.all([
         findServiceById(c.env.DB, serviceId),

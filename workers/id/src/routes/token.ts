@@ -17,7 +17,7 @@ import {
   addRevokedAccessToken,
   isAccessTokenRevoked,
 } from "@0g0-id/shared";
-import type { IdpEnv, User } from "@0g0-id/shared";
+import type { IdpEnv, User, Service, RefreshToken, TokenPayload } from "@0g0-id/shared";
 import {
   externalApiRateLimitMiddleware,
   tokenApiClientRateLimitMiddleware,
@@ -105,14 +105,14 @@ async function resolveOAuthClient(
 ): Promise<
   | {
       ok: true;
-      service: NonNullable<Awaited<ReturnType<typeof findServiceByClientId>>>;
+      service: Service;
       isPublicClient: boolean;
     }
   | { ok: false; error: string; status: 400 | 401 | 500 }
 > {
   if (authHeader?.startsWith("Basic ")) {
     // Confidential client: client_secret_basic
-    let service: Awaited<ReturnType<typeof authenticateService>>;
+    let service: Service | null;
     try {
       service = await authenticateService(db, authHeader);
     } catch (err) {
@@ -133,7 +133,7 @@ async function resolveOAuthClient(
   if (!bodyClientId) {
     return { ok: false, error: "invalid_request", status: 400 };
   }
-  let service: Awaited<ReturnType<typeof findServiceByClientId>>;
+  let service: Service | null;
   try {
     service = await findServiceByClientId(db, bodyClientId);
   } catch (err) {
@@ -451,12 +451,12 @@ async function handleRefreshTokenGrant(
 // 見つかった場合はレスポンスオブジェクト（active:false含む）を返し、見つからない・失効済みの場合はnullを返す
 async function introspectRefreshToken(
   db: D1Database,
-  service: NonNullable<Awaited<ReturnType<typeof authenticateService>>>,
+  service: Service,
   tokenHash: string,
   issuer: string,
 ): Promise<Record<string, unknown> | null> {
-  let refreshToken: Awaited<ReturnType<typeof findRefreshTokenByHash>>;
-  let user: Awaited<ReturnType<typeof findUserById>> | undefined;
+  let refreshToken: RefreshToken | null;
+  let user: User | null | undefined;
   try {
     refreshToken = await findRefreshTokenByHash(db, tokenHash);
     if (!refreshToken) return null;
@@ -497,11 +497,11 @@ async function introspectRefreshToken(
 // 検証成功時はレスポンスオブジェクトを返し、JWT検証失敗時はnullを返す
 async function introspectJwtToken(
   db: D1Database,
-  service: NonNullable<Awaited<ReturnType<typeof authenticateService>>>,
+  service: Service,
   token: string,
   env: IdpEnv,
 ): Promise<Record<string, unknown> | null> {
-  let payload: Awaited<ReturnType<typeof verifyAccessToken>>;
+  let payload: TokenPayload;
   try {
     payload = await verifyAccessToken(token, env.JWT_PUBLIC_KEY, env.IDP_ORIGIN, env.IDP_ORIGIN);
   } catch (err) {
@@ -547,7 +547,7 @@ async function introspectJwtToken(
 // POST /api/token/introspect — RFC 7662 トークンイントロスペクション
 app.post("/introspect", externalApiRateLimitMiddleware, async (c) => {
   // Basic認証でサービス認証
-  let service: Awaited<ReturnType<typeof authenticateService>>;
+  let service: Service | null;
   try {
     service = await authenticateService(c.env.DB, c.req.header("Authorization"));
   } catch (err) {
@@ -609,7 +609,7 @@ app.post("/introspect", externalApiRateLimitMiddleware, async (c) => {
 // POST /api/token/revoke — RFC 7009 トークン失効
 app.post("/revoke", externalApiRateLimitMiddleware, async (c) => {
   // Basic認証でサービス認証
-  let service: Awaited<ReturnType<typeof authenticateService>>;
+  let service: Service | null;
   try {
     service = await authenticateService(c.env.DB, c.req.header("Authorization"));
   } catch (err) {
@@ -637,7 +637,7 @@ app.post("/revoke", externalApiRateLimitMiddleware, async (c) => {
   // JWTは header.payload.signature の3セクション形式（Base64url）で識別する
   const JWT_PATTERN = /^[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+$/;
   if (JWT_PATTERN.test(token)) {
-    let payload: Awaited<ReturnType<typeof verifyAccessToken>> | null = null;
+    let payload: TokenPayload | null = null;
     try {
       payload = await verifyAccessToken(
         token,

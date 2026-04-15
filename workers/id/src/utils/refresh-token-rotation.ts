@@ -3,13 +3,13 @@ import {
   findRefreshTokenByHash,
   revokeTokenFamily,
 } from "@0g0-id/shared";
-import type { IdpEnv, User } from "@0g0-id/shared";
+import type { IdpEnv, User, RefreshToken } from "@0g0-id/shared";
 import { attemptUnrevokeToken } from "./token-recovery";
 import { issueTokenPair } from "./token-pair";
 
 /** リフレッシュトークンのローテーション前バリデーション結果 */
 export type RefreshTokenValidationResult =
-  | { ok: true; storedToken: NonNullable<Awaited<ReturnType<typeof findAndRevokeRefreshToken>>> }
+  | { ok: true; storedToken: RefreshToken }
   | { ok: false; reason: "TOKEN_ROTATED" | "TOKEN_REUSE" | "INVALID_TOKEN" };
 
 /**
