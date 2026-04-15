@@ -67,9 +67,13 @@ app.get("/api/*", (c) => {
   return c.json({ error: { code: "NOT_FOUND", message: "Not found" } }, 404);
 });
 
-// SPA フォールバック: /api/* と /auth/* 以外はSPA (200.html) へ
+// MPA フォールバック: /api/* と /auth/* 以外は対応するHTMLを返す
+// Astro MPA は /profile → /profile/index.html のようにディレクトリ構造で出力する
 app.get("*", async (c) => {
-  const url = new URL("/index.html", c.req.url);
+  const path = new URL(c.req.url).pathname;
+  // /dashboard → /dashboard/index.html, / → /index.html
+  const htmlPath = path === "/" || path.endsWith(".html") ? path : `${path}/index.html`;
+  const url = new URL(htmlPath, c.req.url);
   return c.env.ASSETS.fetch(new Request(url.toString()));
 });
 
