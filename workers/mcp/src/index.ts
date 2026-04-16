@@ -128,6 +128,12 @@ app.get("/health", (c): Response => {
   return c.json({ status: "ok", worker: "mcp", timestamp: new Date().toISOString() });
 });
 
+// llms.txt
+import llmsTxt from "../llms.txt";
+app.get("/llms.txt", (c): Response => {
+  return c.text(llmsTxt);
+});
+
 // Protected Resource Metadata (RFC 9728)
 app.route("/.well-known", wellKnownRoutes);
 
