@@ -1,6 +1,6 @@
 import { createMiddleware } from "hono/factory";
 import type { Context, HonoRequest } from "hono";
-import type { IdpEnv, RateLimitBinding } from "@0g0-id/shared";
+import type { IdpEnv, RateLimitBinding, TokenPayload } from "@0g0-id/shared";
 import { createLogger } from "@0g0-id/shared";
 import { getClientIp } from "../utils/ip";
 import { parseBasicAuth } from "../utils/service-auth";
@@ -38,7 +38,7 @@ async function extractClientIdFromBody(req: HonoRequest): Promise<string | null>
   return null;
 }
 
-type IdpContext = Context<{ Bindings: IdpEnv }>;
+type IdpContext = Context<{ Bindings: IdpEnv; Variables: { user?: TokenPayload } }>;
 
 /**
  * レートリミットミドルウェアのファクトリ関数。
@@ -60,41 +60,43 @@ function createRateLimitMiddleware(
   errorMessage: string,
   retryAfterSeconds = 60,
 ) {
-  return createMiddleware<{ Bindings: IdpEnv }>(async (c, next) => {
-    const binding = getBinding(c.env);
-    if (!binding) {
-      if (!warnedBindings.has(bindingName)) {
-        warnedBindings.add(bindingName);
+  return createMiddleware<{ Bindings: IdpEnv; Variables: { user?: TokenPayload } }>(
+    async (c, next) => {
+      const binding = getBinding(c.env);
+      if (!binding) {
+        if (!warnedBindings.has(bindingName)) {
+          warnedBindings.add(bindingName);
+          rateLimitLogger.warn(
+            `[rate-limit] ${bindingName} binding is not configured — rate limiting is DISABLED. Configure this binding in wrangler.toml for production deployments.`,
+          );
+        }
+        return next();
+      }
+      const key = await getKey(c);
+      // cf-connecting-ip が未設定（ローカル直接アクセス・Cloudflare設定ミス）の場合、
+      // 全リクエストが 'unknown' キーに集約され、誤検知レートリミットが発生しうる。
+      // 本番Cloudflare経由では発生しないが、設定ミス時に即座に検知できるよう警告ログを出す。
+      if (key === "unknown") {
         rateLimitLogger.warn(
-          `[rate-limit] ${bindingName} binding is not configured — rate limiting is DISABLED. Configure this binding in wrangler.toml for production deployments.`,
+          `[rate-limit] ${bindingName}: rate limit key resolved to 'unknown' — cf-connecting-ip may not be set. All requests share the same bucket.`,
         );
       }
-      return next();
-    }
-    const key = await getKey(c);
-    // cf-connecting-ip が未設定（ローカル直接アクセス・Cloudflare設定ミス）の場合、
-    // 全リクエストが 'unknown' キーに集約され、誤検知レートリミットが発生しうる。
-    // 本番Cloudflare経由では発生しないが、設定ミス時に即座に検知できるよう警告ログを出す。
-    if (key === "unknown") {
-      rateLimitLogger.warn(
-        `[rate-limit] ${bindingName}: rate limit key resolved to 'unknown' — cf-connecting-ip may not be set. All requests share the same bucket.`,
-      );
-    }
-    const { success } = await binding.limit({ key });
-    if (!success) {
-      return c.json(
-        {
-          error: {
-            code: "TOO_MANY_REQUESTS",
-            message: errorMessage,
+      const { success } = await binding.limit({ key });
+      if (!success) {
+        return c.json(
+          {
+            error: {
+              code: "TOO_MANY_REQUESTS",
+              message: errorMessage,
+            },
           },
-        },
-        429,
-        { "Retry-After": String(retryAfterSeconds) },
-      );
-    }
-    await next();
-  });
+          429,
+          { "Retry-After": String(retryAfterSeconds) },
+        );
+      }
+      await next();
+    },
+  );
 }
 
 /**
@@ -178,7 +180,7 @@ export const deviceVerifyRateLimitMiddleware = createRateLimitMiddleware(
   "RATE_LIMITER_DEVICE_VERIFY",
   (env) => env.RATE_LIMITER_DEVICE_VERIFY,
   (c) => {
-    const user = c.get("user" as never) as { sub: string } | undefined;
+    const user = c.get("user");
     return user?.sub ?? getClientIp(c.req.raw) ?? "unknown";
   },
   "Too many verification attempts. Please try again later.",
