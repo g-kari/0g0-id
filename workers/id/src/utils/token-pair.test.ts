@@ -3,11 +3,18 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 vi.mock("@0g0-id/shared", () => ({
   generateToken: vi.fn(),
   sha256: vi.fn(),
+  generatePairwiseSub: vi.fn(),
   signAccessToken: vi.fn(),
   createRefreshToken: vi.fn(),
 }));
 
-import { generateToken, sha256, signAccessToken, createRefreshToken } from "@0g0-id/shared";
+import {
+  generateToken,
+  sha256,
+  generatePairwiseSub,
+  signAccessToken,
+  createRefreshToken,
+} from "@0g0-id/shared";
 import type { IdpEnv, User } from "@0g0-id/shared";
 import {
   issueTokenPair,
@@ -93,17 +100,16 @@ describe("issueTokenPair", () => {
     );
   });
 
-  it("clientId がある場合は pairwiseSub を sha256(clientId:userId) で生成する", async () => {
-    vi.mocked(sha256)
-      .mockResolvedValueOnce("refresh-token-hash")
-      .mockResolvedValueOnce("pairwise-sub-hash");
+  it("clientId がある場合は pairwiseSub を generatePairwiseSub(clientId, userId) で生成する", async () => {
+    vi.mocked(sha256).mockResolvedValueOnce("refresh-token-hash");
+    vi.mocked(generatePairwiseSub).mockResolvedValueOnce("pairwise-sub-hash");
 
     await issueTokenPair(mockDb, mockEnv, mockUser, {
       serviceId: "service-1",
       clientId: "client-abc",
     });
 
-    expect(sha256).toHaveBeenCalledWith("client-abc:user-123");
+    expect(generatePairwiseSub).toHaveBeenCalledWith("client-abc", "user-123");
     expect(createRefreshToken).toHaveBeenCalledWith(
       mockDb,
       expect.objectContaining({ pairwiseSub: "pairwise-sub-hash" }),

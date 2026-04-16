@@ -43,6 +43,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     generateCodeChallenge: vi.fn(),
     generateToken: vi.fn(),
     sha256: vi.fn(),
+    generatePairwiseSub: vi.fn(),
     signAccessToken: vi.fn(),
     signIdToken: vi.fn(),
     createRefreshToken: vi.fn(),
@@ -116,6 +117,7 @@ import {
   generateCodeChallenge,
   generateToken,
   sha256,
+  generatePairwiseSub,
   signAccessToken,
   signIdToken,
   createRefreshToken,
@@ -2040,9 +2042,9 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
     // sha256 は呼び出し引数に応じて返す値を変える
     vi.mocked(sha256).mockImplementation(async (input: string) => {
       if (input === "my-secret") return "secret-hash-abc";
-      if (input.includes(":")) return "pairwise-sub-hash";
       return "hashed-code";
     });
+    vi.mocked(generatePairwiseSub).mockResolvedValue("pairwise-sub-hash");
     vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
       id: "code-id",
       user_id: "user-1",

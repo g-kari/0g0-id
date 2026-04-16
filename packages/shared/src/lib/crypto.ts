@@ -29,6 +29,14 @@ export async function sha256(input: string): Promise<string> {
 }
 
 /**
+ * ペアワイズsub識別子を生成する（OIDC pairwise subject）
+ * sha256(clientId:userId) でサービスごとに一意なsub値を返す
+ */
+export async function generatePairwiseSub(clientId: string, userId: string): Promise<string> {
+  return sha256(`${clientId}:${userId}`);
+}
+
+/**
  * ランダムなトークンを生成する（URLセーフbase64）
  */
 export function generateToken(byteLength: number = 32): string {

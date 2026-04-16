@@ -10,6 +10,7 @@ vi.mock("@0g0-id/shared", async (importActual) => {
     findUserIdByPairwiseSub: vi.fn(),
     findServiceByClientId: vi.fn(),
     sha256: vi.fn(),
+    generatePairwiseSub: vi.fn(),
     timingSafeEqual: vi.fn(),
     listUsersAuthorizedForService: vi.fn(),
     countUsersAuthorizedForService: vi.fn(),
@@ -21,6 +22,7 @@ import {
   findUserIdByPairwiseSub,
   findServiceByClientId,
   sha256,
+  generatePairwiseSub,
   timingSafeEqual,
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
@@ -32,6 +34,7 @@ const mockFindUserById = vi.mocked(findUserById);
 const mockFindUserIdByPairwiseSub = vi.mocked(findUserIdByPairwiseSub);
 const mockFindServiceByClientId = vi.mocked(findServiceByClientId);
 const mockSha256 = vi.mocked(sha256);
+const mockGeneratePairwiseSub = vi.mocked(generatePairwiseSub);
 const mockTimingSafeEqual = vi.mocked(timingSafeEqual);
 const mockListUsersAuthorizedForService = vi.mocked(listUsersAuthorizedForService);
 const mockCountUsersAuthorizedForService = vi.mocked(countUsersAuthorizedForService);
@@ -140,10 +143,10 @@ describe("GET /api/external/users/:sub", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    // sha256はペアワイズsub（':'を含む）と認証用secretを区別する
-    mockSha256.mockImplementation(async (input: string) =>
-      input.includes(":") ? PAIRWISE_SUB : "hash-abc",
-    );
+    // sha256は認証用secret等のハッシュに使用
+    mockSha256.mockResolvedValue("hash-abc");
+    // ペアワイズsubは専用関数でモック
+    mockGeneratePairwiseSub.mockResolvedValue(PAIRWISE_SUB);
     mockTimingSafeEqual.mockReturnValue(true);
     mockFindServiceByClientId.mockResolvedValue(mockService);
     mockFindUserById.mockResolvedValue(mockUser);
@@ -333,10 +336,10 @@ describe("GET /api/external/users", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    // sha256はペアワイズsub（':'を含む）と認証用secretを区別する
-    mockSha256.mockImplementation(async (input: string) =>
-      input.includes(":") ? PAIRWISE_SUB : "hash-abc",
-    );
+    // sha256は認証用secret等のハッシュに使用
+    mockSha256.mockResolvedValue("hash-abc");
+    // ペアワイズsubは専用関数でモック
+    mockGeneratePairwiseSub.mockResolvedValue(PAIRWISE_SUB);
     mockTimingSafeEqual.mockReturnValue(true);
     mockFindServiceByClientId.mockResolvedValue(mockService);
     mockListUsersAuthorizedForService.mockResolvedValue([mockUser]);

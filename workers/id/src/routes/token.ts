@@ -5,6 +5,7 @@ import {
   findUserById,
   revokeRefreshToken,
   sha256,
+  generatePairwiseSub,
   verifyAccessToken,
   createLogger,
   findAndConsumeAuthCode,
@@ -461,7 +462,7 @@ async function introspectRefreshToken(
   }
   const scopeStr = refreshToken.scope ?? "";
   const scopeList = scopeStr.split(" ").filter((s: string) => s !== "openid" && s !== "");
-  const sub = await sha256(service.client_id + ":" + refreshToken.user_id);
+  const sub = await generatePairwiseSub(service.client_id, refreshToken.user_id);
   const response: Record<string, unknown> = {
     active: true,
     iss: issuer,
@@ -507,7 +508,7 @@ async function introspectJwtToken(
     // スコープ未設定の旧トークンは空文字列（RFC 7662 §2.2 - 実際に付与されたスコープのみ返す）
     const tokenScopeStr = payload.scope ?? "";
     const tokenScopes = tokenScopeStr.split(" ").filter((s: string) => s !== "openid" && s !== "");
-    const sub = await sha256(service.client_id + ":" + payload.sub);
+    const sub = await generatePairwiseSub(service.client_id, payload.sub);
     const jwtResponse: Record<string, unknown> = {
       active: true,
       iss: payload.iss,

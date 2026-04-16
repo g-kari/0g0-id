@@ -15,6 +15,7 @@ import {
   generateCodeChallenge,
   generateToken,
   sha256,
+  generatePairwiseSub,
   signIdToken,
   findRefreshTokenByHash,
   findUserById,
@@ -726,7 +727,7 @@ app.post("/exchange", tokenApiRateLimitMiddleware, serviceBindingMiddleware, asy
 
     serviceId = service.id;
     // ペアワイズ sub（OIDC Core 1.0 §8.1）: sha256(client_id:user_id)
-    idTokenSub = await sha256(`${service.client_id}:${user.id}`);
+    idTokenSub = await generatePairwiseSub(service.client_id, user.id);
     idTokenAud = service.client_id;
     // サービストークンのスコープ: 要求スコープとサービスの allowed_scopes を交差検証
     serviceScope = resolveEffectiveScope(authCode.scope, service.allowed_scopes);
