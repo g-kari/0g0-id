@@ -1,0 +1,63 @@
+# 0g0-id MCP Server
+
+> MCP server for managing the 0g0-id identity platform (IdP). Provides tools for user management, OAuth service management, audit logs, and system metrics.
+
+## Endpoint
+
+- MCP JSON-RPC: https://mcp.0g0.xyz/mcp
+- OAuth Protected Resource Metadata: https://mcp.0g0.xyz/.well-known/oauth-protected-resource
+
+## Authentication
+
+Bearer token (ES256 JWT from id.0g0.xyz). Admin role required.
+
+## Protocol
+
+MCP 2025-03-26 / JSON-RPC 2.0 over HTTP with session management via `Mcp-Session-Id` header.
+
+## Tools
+
+### User Management
+- list_users: List users with pagination and search (page, limit, search, role)
+- get_user: Get user details (user_id*)
+- ban_user: Ban a user (user_id*)
+- unban_user: Unban a user (user_id*)
+- delete_user: Delete a user permanently (user_id*)
+- update_user_role: Change user role between user and admin (user_id*, role*)
+- get_user_login_history: Get user login history (user_id*, limit)
+- get_user_login_stats: Get user login stats by provider (user_id*, days)
+- get_user_login_trends: Get user daily login trends (user_id*, days)
+- get_user_providers: Get user linked OAuth providers (user_id*)
+- list_user_sessions: List user active sessions (user_id*)
+- revoke_user_sessions: Revoke all user sessions / force logout (user_id*)
+- get_user_owned_services: List services owned by user (user_id*)
+- get_user_authorized_services: List services authorized by user (user_id*)
+
+### Service Management (OAuth Clients)
+- list_services: List services with pagination and search (page, limit, name)
+- get_service: Get service details (service_id*)
+- create_service: Create a new OAuth service (name*, allowed_scopes)
+- update_service: Update service name or scopes (service_id*, name, allowed_scopes)
+- delete_service: Delete a service permanently (service_id*)
+- rotate_service_secret: Rotate client secret (service_id*)
+- list_redirect_uris: List redirect URIs for a service (service_id*)
+- add_redirect_uri: Add redirect URI to a service (service_id*, uri*)
+- delete_redirect_uri: Delete a redirect URI (service_id*, uri_id*)
+- list_service_users: List users authorized for a service (service_id*, page, limit)
+- revoke_service_user_access: Revoke user access to a service (service_id*, user_id*)
+- transfer_service_ownership: Transfer service ownership (service_id*, new_owner_user_id*)
+
+### Audit Logs
+- get_audit_logs: Get admin audit logs with filters (page, limit, action, admin_user_id, target_id, status)
+- get_audit_stats: Get audit log statistics (days)
+
+### Metrics
+- get_system_metrics: Get system metrics including user counts and login stats (days)
+- get_suspicious_logins: Detect suspicious multi-country logins (hours, min_countries)
+- get_service_token_stats: Get active token stats per service
+- get_active_user_stats: Get DAU/WAU/MAU
+- get_daily_active_users: Get daily active user trends (days)
+- get_login_trends: Get daily login count trends (days)
+- get_user_registrations: Get daily user registration trends (days)
+
+Parameters marked with * are required.
