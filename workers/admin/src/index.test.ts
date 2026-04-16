@@ -18,6 +18,7 @@ vi.mock("@0g0-id/shared", () => ({
     .fn()
     .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
   validateBffEnv: vi.fn(),
+  uuidParamMiddleware: () => async (_c: unknown, next: () => Promise<void>) => next(),
 }));
 
 vi.mock("./middleware/csrf", () => ({

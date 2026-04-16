@@ -25,6 +25,7 @@ import {
   createAdminAuditLog,
   parsePagination,
   UUID_RE,
+  uuidParamMiddleware,
   createLogger,
 } from "@0g0-id/shared";
 import type {
@@ -93,18 +94,8 @@ const TransferOwnerSchema = z.object({
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
 // サービスID形式検証ミドルウェア（:id パラメータを持つすべてのルートに適用）
-app.use("/:id", async (c, next) => {
-  if (!UUID_RE.test(c.req.param("id"))) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid service ID format" } }, 400);
-  }
-  await next();
-});
-app.use("/:id/*", async (c, next) => {
-  if (!UUID_RE.test(c.req.param("id"))) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid service ID format" } }, 400);
-  }
-  await next();
-});
+app.use("/:id", uuidParamMiddleware("id", { label: "service ID" }));
+app.use("/:id/*", uuidParamMiddleware("id", { label: "service ID" }));
 
 // GET /api/services
 app.get("/", authMiddleware, adminMiddleware, async (c) => {

@@ -6,6 +6,7 @@ import {
   proxyMutate,
   proxyResponse,
   UUID_RE,
+  uuidParamMiddleware,
 } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
 import { SESSION_COOKIE } from "./auth";
@@ -13,18 +14,8 @@ import { SESSION_COOKIE } from "./auth";
 const app = new Hono<{ Bindings: BffEnv }>();
 
 // サービスID形式検証ミドルウェア（:id パラメータを持つすべてのルートに適用）
-app.use("/:id", async (c, next) => {
-  if (!UUID_RE.test(c.req.param("id"))) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid service ID format" } }, 400);
-  }
-  await next();
-});
-app.use("/:id/*", async (c, next) => {
-  if (!UUID_RE.test(c.req.param("id"))) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid service ID format" } }, 400);
-  }
-  await next();
-});
+app.use("/:id", uuidParamMiddleware("id", { label: "service ID" }));
+app.use("/:id/*", uuidParamMiddleware("id", { label: "service ID" }));
 
 // GET /api/services
 app.get("/", async (c) => {

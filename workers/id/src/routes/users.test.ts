@@ -33,6 +33,8 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     unbanUser: vi.fn(),
     createAdminAuditLog: vi.fn(),
     UUID_RE: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    uuidParamMiddleware: (await importOriginal<typeof import("@0g0-id/shared")>())
+      .uuidParamMiddleware,
     isValidProvider: (value: string) => ["google", "line", "twitch", "github", "x"].includes(value),
     parseDays: (
       daysParam: string | undefined,
