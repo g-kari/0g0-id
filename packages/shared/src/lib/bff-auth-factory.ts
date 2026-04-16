@@ -1,0 +1,124 @@
+import { Hono } from "hono";
+import { getCookie, deleteCookie } from "hono/cookie";
+import type { BffEnv } from "../types";
+import { generateToken } from "./crypto";
+import { parseSession, setSessionCookie, exchangeCodeAtIdp, revokeTokenAtIdp } from "./bff";
+import { setOAuthStateCookie, verifyAndConsumeOAuthState } from "./bff";
+import { createLogger } from "./logger";
+import type { ExchangeResult } from "./bff";
+
+/** ファクトリに渡す設定 */
+export interface BffAuthConfig {
+  /** セッションCookie名（例: "__Host-admin-session"） */
+  sessionCookieName: string;
+  /** OAuth state Cookie名（例: "__Host-admin-oauth-state"） */
+  stateCookieName: string;
+  /** ロガー名（例: "admin-auth"） */
+  loggerName: string;
+  /** ログイン成功後のリダイレクト先（例: "/dashboard"） */
+  successRedirect: string;
+  /** login URLに追加するパラメータを返す。Responseを返すとそこで中断（バリデーションエラー等） */
+  loginParams?: (c: {
+    req: { query: (key: string) => string | undefined };
+    redirect: (url: string) => Response;
+  }) => Record<string, string> | Response;
+  /** callback時の追加チェック。リダイレクトResponseを返すとそこで中断 */
+  onCallbackCheck?: (
+    c: { redirect: (url: string) => Response; env: BffEnv },
+    result: ExchangeResult,
+  ) => Promise<Response | null>;
+}
+
+/** BFF認証ルート（login / callback / logout）を生成するファクトリ */
+export function createBffAuthRoutes(config: BffAuthConfig) {
+  const app = new Hono<{ Bindings: BffEnv }>();
+  const logger = createLogger(config.loggerName);
+
+  // GET /auth/login
+  app.get("/login", async (c) => {
+    const state = generateToken(16);
+    const callbackUrl = `${c.env.SELF_ORIGIN}/auth/callback`;
+
+    setOAuthStateCookie(c, config.stateCookieName, state);
+
+    const loginUrl = new URL(`${c.env.IDP_ORIGIN}/auth/login`);
+    loginUrl.searchParams.set("redirect_to", callbackUrl);
+    loginUrl.searchParams.set("state", state);
+
+    // 追加パラメータ（provider等）
+    if (config.loginParams) {
+      const paramsOrResponse = config.loginParams(c);
+      if (paramsOrResponse instanceof Response) {
+        return paramsOrResponse;
+      }
+      for (const [key, value] of Object.entries(paramsOrResponse)) {
+        loginUrl.searchParams.set(key, value);
+      }
+    }
+
+    return c.redirect(loginUrl.toString());
+  });
+
+  // GET /auth/callback
+  app.get("/callback", async (c) => {
+    const code = c.req.query("code");
+    const state = c.req.query("state");
+
+    if (!code || !state) {
+      return c.redirect("/?error=missing_params");
+    }
+
+    const stateError = verifyAndConsumeOAuthState(c, config.stateCookieName, state);
+    if (stateError) {
+      return c.redirect(`/?error=${stateError}`);
+    }
+
+    const callbackUrl = `${c.env.SELF_ORIGIN}/auth/callback`;
+    const result = await exchangeCodeAtIdp(c.env, code, callbackUrl);
+
+    if (!result.ok) {
+      return c.redirect("/?error=exchange_failed");
+    }
+
+    // 追加チェック（admin role検証等）
+    if (config.onCallbackCheck) {
+      const checkResult = await config.onCallbackCheck(c, result.data);
+      if (checkResult) {
+        return checkResult;
+      }
+    }
+
+    await setSessionCookie(c, config.sessionCookieName, {
+      access_token: result.data.access_token,
+      refresh_token: result.data.refresh_token,
+      user: result.data.user,
+    });
+
+    return c.redirect(config.successRedirect);
+  });
+
+  // POST /auth/logout
+  app.post("/logout", async (c) => {
+    const sessionData = await parseSession(
+      getCookie(c, config.sessionCookieName),
+      c.env.SESSION_SECRET,
+    );
+    if (sessionData) {
+      try {
+        await revokeTokenAtIdp(c.env, sessionData.refresh_token);
+      } catch (err) {
+        logger.error("[logout] IdP revoke request failed", err);
+      }
+    }
+
+    deleteCookie(c, config.sessionCookieName, {
+      path: "/",
+      secure: true,
+      httpOnly: true,
+      sameSite: "Lax",
+    });
+    return c.redirect("/");
+  });
+
+  return app;
+}

@@ -1,93 +1,40 @@
 import { Hono } from "hono";
-import { getCookie, deleteCookie } from "hono/cookie";
+import { getCookie } from "hono/cookie";
 import {
   generateToken,
   isValidProvider,
   parseSession,
-  setSessionCookie,
   createLogger,
   internalServiceHeaders,
   setOAuthStateCookie,
-  verifyAndConsumeOAuthState,
-  exchangeCodeAtIdp,
-  revokeTokenAtIdp,
+  createBffAuthRoutes,
 } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
-
-const app = new Hono<{ Bindings: BffEnv }>();
 
 const userAuthLogger = createLogger("user-auth");
 
 const SESSION_COOKIE = "__Host-user-session";
 const STATE_COOKIE = "__Host-user-oauth-state";
 
-// GET /auth/login
-app.get("/login", async (c) => {
-  const provider = c.req.query("provider") ?? "google";
-  if (!isValidProvider(provider)) {
-    return c.redirect("/?error=invalid_provider");
-  }
-
-  const state = generateToken(16);
-  const callbackUrl = `${c.env.SELF_ORIGIN}/auth/callback`;
-
-  setOAuthStateCookie(c, STATE_COOKIE, state);
-
-  const loginUrl = new URL(`${c.env.IDP_ORIGIN}/auth/login`);
-  loginUrl.searchParams.set("redirect_to", callbackUrl);
-  loginUrl.searchParams.set("state", state);
-  loginUrl.searchParams.set("provider", provider);
-
-  return c.redirect(loginUrl.toString());
-});
-
-// GET /auth/callback
-app.get("/callback", async (c) => {
-  const code = c.req.query("code");
-  const state = c.req.query("state");
-
-  if (!code || !state) {
-    return c.redirect("/?error=missing_params");
-  }
-
-  const stateError = verifyAndConsumeOAuthState(c, STATE_COOKIE, state);
-  if (stateError) {
-    return c.redirect(`/?error=${stateError}`);
-  }
-
-  // id worker にコード交換リクエスト（Service Bindings使用）
-  const callbackUrl = `${c.env.SELF_ORIGIN}/auth/callback`;
-  const result = await exchangeCodeAtIdp(c.env, code, callbackUrl);
-
-  if (!result.ok) {
-    return c.redirect("/?error=exchange_failed");
-  }
-
-  // セッションCookieにトークンを保存
-  await setSessionCookie(c, SESSION_COOKIE, {
-    access_token: result.data.access_token,
-    refresh_token: result.data.refresh_token,
-    user: result.data.user,
-  });
-
-  return c.redirect("/profile");
-});
-
-// POST /auth/logout
-app.post("/logout", async (c) => {
-  const sessionData = await parseSession(getCookie(c, SESSION_COOKIE), c.env.SESSION_SECRET);
-  if (sessionData) {
-    try {
-      await revokeTokenAtIdp(c.env, sessionData.refresh_token);
-    } catch (err) {
-      // IdP側のトークン失効に失敗してもCookie削除は継続するが、ログに記録する
-      userAuthLogger.error("[logout] IdP revoke request failed", err);
+// 共通認証ルート（login / callback / logout）
+const authRoutes = createBffAuthRoutes({
+  sessionCookieName: SESSION_COOKIE,
+  stateCookieName: STATE_COOKIE,
+  loggerName: "user-auth",
+  successRedirect: "/profile",
+  loginParams: (c) => {
+    const provider = c.req.query("provider") ?? "google";
+    if (!isValidProvider(provider)) {
+      return c.redirect("/?error=invalid_provider");
     }
-  }
-
-  deleteCookie(c, SESSION_COOKIE, { path: "/", secure: true, httpOnly: true, sameSite: "Lax" });
-  return c.redirect("/");
+    return { provider };
+  },
 });
+
+const app = new Hono<{ Bindings: BffEnv }>();
+
+// 共通ルートをマウント
+app.route("/", authRoutes);
 
 // POST /auth/link — ログイン済みユーザーがSNSプロバイダー連携を開始
 // GETではなくPOSTにすることでbffCsrfMiddlewareによるOriginヘッダー検証を適用し、
