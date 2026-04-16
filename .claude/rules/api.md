@@ -83,12 +83,15 @@ return c.json(oauthErrorBody("invalid_request", "client_id is required"), 400);
 
 ## OpenAPI ドキュメント更新ルール
 
-**API を追加・編集・削除したら、必ず `workers/id/src/routes/docs.ts` の OpenAPI 仕様も同じコミットで更新すること。**
+**API を追加・編集・削除したら、必ず OpenAPI 仕様ファイルも同じコミットで更新すること。**
+
+- 内部向け仕様: `workers/id/src/routes/openapi/internal-spec.ts`（`INTERNAL_OPENAPI`）
+- 外部向け仕様: `workers/id/src/routes/openapi/external-spec.ts`（`EXTERNAL_OPENAPI`）
 
 | 変更の種類                                                                                                                               | 更新対象                                                                                  |
 | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| id worker の API 追加・変更                                                                                                              | `INTERNAL_OPENAPI.paths`                                                                  |
-| 外部サービス向け API（`/api/external/`, `/api/userinfo`, `/auth/`, `/api/token/introspect`, `/api/token/revoke`, `/.well-known/`）の変更 | `EXTERNAL_OPENAPI.paths`                                                                  |
+| id worker の API 追加・変更                                                                                                              | `INTERNAL_OPENAPI.paths`（internal-spec.ts）                                              |
+| 外部サービス向け API（`/api/external/`, `/api/userinfo`, `/auth/`, `/api/token/introspect`, `/api/token/revoke`, `/.well-known/`）の変更 | `EXTERNAL_OPENAPI.paths`（external-spec.ts）                                              |
 | 新しいスキーマ型の追加                                                                                                                   | `INTERNAL_OPENAPI.components.schemas` および/または `EXTERNAL_OPENAPI.components.schemas` |
 | API の削除                                                                                                                               | 対応する `paths` エントリも削除                                                           |
 
