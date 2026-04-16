@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
+import { createMockIdpEnv } from "../../../../packages/shared/src/db/test-helpers";
 
 // @0g0-id/sharedの全関数をモック
 vi.mock("@0g0-id/shared", () => ({
@@ -66,12 +67,7 @@ import tokenRoutes from "./token";
 
 const baseUrl = "https://id.0g0.xyz";
 
-const mockEnv = {
-  DB: {} as D1Database,
-  IDP_ORIGIN: "https://id.0g0.xyz",
-  JWT_PRIVATE_KEY: "mock-private-key",
-  JWT_PUBLIC_KEY: "mock-public-key",
-};
+const mockEnv = createMockIdpEnv();
 
 const mockService = {
   id: "service-1",
@@ -177,7 +173,7 @@ async function sendRequest(
       body: bodyToSend,
     }),
     undefined,
-    mockEnv as unknown as Record<string, string>,
+    mockEnv,
   );
 }
 
@@ -281,7 +277,7 @@ describe("POST /api/token/introspect", () => {
         body: "not-json",
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ active: boolean }>();
@@ -747,7 +743,7 @@ describe("POST /api/token/revoke", () => {
         body: "not-json",
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: string }>();
@@ -1055,7 +1051,7 @@ describe("POST /api/token/ — 未サポートのgrant_type", () => {
         body: JSON.stringify({ grant_type: ["authorization_code"], code: "x" }),
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: string }>();
@@ -1070,7 +1066,7 @@ describe("POST /api/token/ — 未サポートのgrant_type", () => {
         body: "grant_type=authorization_code",
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: string }>();

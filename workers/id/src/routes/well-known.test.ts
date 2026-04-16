@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
+import { createMockIdpEnv } from "../../../../packages/shared/src/db/test-helpers";
 
 vi.mock("@0g0-id/shared", () => ({
   getJWTKeys: vi.fn(),
@@ -11,10 +12,7 @@ import wellKnownRoutes from "./well-known";
 
 const baseUrl = "https://id.0g0.xyz";
 
-const mockEnv = {
-  JWT_PRIVATE_KEY: "mock-private-key",
-  JWT_PUBLIC_KEY: "mock-public-key",
-};
+const mockEnv = createMockIdpEnv();
 
 const mockJwks = {
   keys: [
@@ -53,7 +51,7 @@ describe("GET /.well-known/jwks.json", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/jwks.json`),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     const body = await res.json<typeof mockJwks>();
@@ -66,17 +64,13 @@ describe("GET /.well-known/jwks.json", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/jwks.json`),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.headers.get("Cache-Control")).toBe("public, max-age=3600");
   });
 
   it("getJWTKeysに正しいキーを渡す", async () => {
-    await app.request(
-      new Request(`${baseUrl}/.well-known/jwks.json`),
-      undefined,
-      mockEnv as unknown as Record<string, string>,
-    );
+    await app.request(new Request(`${baseUrl}/.well-known/jwks.json`), undefined, mockEnv);
     expect(vi.mocked(getJWTKeys)).toHaveBeenCalledWith(
       mockEnv.JWT_PRIVATE_KEY,
       mockEnv.JWT_PUBLIC_KEY,
@@ -86,13 +80,8 @@ describe("GET /.well-known/jwks.json", () => {
 });
 
 describe("GET /.well-known/openid-configuration", () => {
-  const mockEnvWithOrigin = {
-    ...mockEnv,
-    IDP_ORIGIN: "https://id.0g0.xyz",
-  };
-
   function buildAppWithOrigin() {
-    const app = new Hono<{ Bindings: typeof mockEnvWithOrigin }>();
+    const app = new Hono<{ Bindings: typeof mockEnv }>();
     app.route("/.well-known", wellKnownRoutes);
     return app;
   }
@@ -102,7 +91,7 @@ describe("GET /.well-known/openid-configuration", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/openid-configuration`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     const body = await res.json<Record<string, unknown>>();
@@ -120,7 +109,7 @@ describe("GET /.well-known/openid-configuration", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/openid-configuration`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     const body = await res.json<{ scopes_supported: string[] }>();
     expect(body.scopes_supported).toContain("openid");
@@ -135,7 +124,7 @@ describe("GET /.well-known/openid-configuration", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/openid-configuration`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     const body = await res.json<{ response_types_supported: string[] }>();
     expect(body.response_types_supported).toContain("code");
@@ -146,7 +135,7 @@ describe("GET /.well-known/openid-configuration", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/openid-configuration`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     const body = await res.json<{ id_token_signing_alg_values_supported: string[] }>();
     expect(body.id_token_signing_alg_values_supported).toContain("ES256");
@@ -157,7 +146,7 @@ describe("GET /.well-known/openid-configuration", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/openid-configuration`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     const body = await res.json<{ code_challenge_methods_supported: string[] }>();
     expect(body.code_challenge_methods_supported).toContain("S256");
@@ -168,7 +157,7 @@ describe("GET /.well-known/openid-configuration", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/openid-configuration`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.headers.get("Cache-Control")).toBe("public, max-age=86400");
   });
@@ -178,7 +167,7 @@ describe("GET /.well-known/openid-configuration", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/openid-configuration`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     const body = await res.json<{ subject_types_supported: string[] }>();
     expect(body.subject_types_supported).toContain("pairwise");
@@ -189,7 +178,7 @@ describe("GET /.well-known/openid-configuration", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/openid-configuration`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     const body = await res.json<{ response_modes_supported: string[] }>();
     expect(body.response_modes_supported).toContain("query");
@@ -200,7 +189,7 @@ describe("GET /.well-known/openid-configuration", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/openid-configuration`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     const body = await res.json<{ device_authorization_endpoint: string }>();
     expect(body.device_authorization_endpoint).toBe("https://id.0g0.xyz/api/device/code");
@@ -211,7 +200,7 @@ describe("GET /.well-known/openid-configuration", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/openid-configuration`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     const body = await res.json<{ end_session_endpoint: string }>();
     expect(body.end_session_endpoint).toBe("https://id.0g0.xyz/auth/logout");
@@ -222,7 +211,7 @@ describe("GET /.well-known/openid-configuration", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/openid-configuration`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     const body = await res.json<{ grant_types_supported: string[] }>();
     expect(body.grant_types_supported).toContain("urn:ietf:params:oauth:grant-type:device_code");
@@ -235,7 +224,7 @@ describe("GET /.well-known/openid-configuration", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/openid-configuration`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     const body = await res.json<{ claims_supported: string[] }>();
     const expected = [
@@ -261,13 +250,8 @@ describe("GET /.well-known/openid-configuration", () => {
 });
 
 describe("GET /.well-known/oauth-authorization-server", () => {
-  const mockEnvWithOrigin = {
-    ...mockEnv,
-    IDP_ORIGIN: "https://id.0g0.xyz",
-  };
-
   function buildAppWithOrigin() {
-    const app = new Hono<{ Bindings: typeof mockEnvWithOrigin }>();
+    const app = new Hono<{ Bindings: typeof mockEnv }>();
     app.route("/.well-known", wellKnownRoutes);
     return app;
   }
@@ -277,7 +261,7 @@ describe("GET /.well-known/oauth-authorization-server", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/oauth-authorization-server`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     const body = await res.json<Record<string, unknown>>();
@@ -294,7 +278,7 @@ describe("GET /.well-known/oauth-authorization-server", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/oauth-authorization-server`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     const body = await res.json<{ subject_types_supported: string[] }>();
     expect(body.subject_types_supported).toContain("pairwise");
@@ -305,7 +289,7 @@ describe("GET /.well-known/oauth-authorization-server", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/oauth-authorization-server`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     const body = await res.json<{ claims_supported: string[] }>();
     const expected = [
@@ -334,7 +318,7 @@ describe("GET /.well-known/oauth-authorization-server", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/oauth-authorization-server`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.headers.get("Cache-Control")).toBe("public, max-age=86400");
   });
@@ -344,7 +328,7 @@ describe("GET /.well-known/oauth-authorization-server", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/oauth-authorization-server`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     const body = await res.json<{ device_authorization_endpoint: string }>();
     expect(body.device_authorization_endpoint).toBe("https://id.0g0.xyz/api/device/code");
@@ -355,7 +339,7 @@ describe("GET /.well-known/oauth-authorization-server", () => {
     const res = await app.request(
       new Request(`${baseUrl}/.well-known/oauth-authorization-server`),
       undefined,
-      mockEnvWithOrigin as unknown as Record<string, string>,
+      mockEnv,
     );
     const body = await res.json<{ grant_types_supported: string[] }>();
     expect(body.grant_types_supported).toContain("urn:ietf:params:oauth:grant-type:device_code");

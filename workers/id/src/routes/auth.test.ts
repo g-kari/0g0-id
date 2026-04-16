@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { isAllowedRedirectTo } from "../utils/auth-helpers";
 import { Hono } from "hono";
+import { createMockIdpEnv } from "../../../../packages/shared/src/db/test-helpers";
 
 // @0g0-id/sharedの全関数をモック
 vi.mock("@0g0-id/shared", async (importOriginal) => {
@@ -147,13 +148,7 @@ import authRoutes from "./auth";
 
 const baseUrl = "https://id.0g0.xyz";
 
-const mockEnv = {
-  DB: {} as D1Database,
-  IDP_ORIGIN: "https://id.0g0.xyz",
-  USER_ORIGIN: "https://user.0g0.xyz",
-  ADMIN_ORIGIN: "https://admin.0g0.xyz",
-  GOOGLE_CLIENT_ID: "google-client-id",
-  GOOGLE_CLIENT_SECRET: "google-client-secret",
+const mockEnv = createMockIdpEnv({
   LINE_CLIENT_ID: "line-client-id",
   LINE_CLIENT_SECRET: "line-client-secret",
   TWITCH_CLIENT_ID: "twitch-client-id",
@@ -162,11 +157,8 @@ const mockEnv = {
   GITHUB_CLIENT_SECRET: "github-client-secret",
   X_CLIENT_ID: "x-client-id",
   X_CLIENT_SECRET: "x-client-secret",
-  JWT_PRIVATE_KEY: "mock-private-key",
-  JWT_PUBLIC_KEY: "mock-public-key",
-  COOKIE_SECRET: "mock-cookie-secret",
   INTERNAL_SERVICE_SECRET: "mock-internal-secret",
-};
+});
 
 const mockUser = {
   id: "user-1",
@@ -223,7 +215,7 @@ async function sendRequest(
       body: body ? JSON.stringify(body) : undefined,
     }),
     undefined,
-    mockEnv as unknown as Record<string, string>,
+    mockEnv,
   );
 }
 
@@ -341,7 +333,7 @@ describe("GET /auth/login", () => {
         `${baseUrl}/auth/login?redirect_to=https://user.0g0.xyz/callback&state=bff-state&provider=line`,
       ),
       undefined,
-      envWithoutLine as unknown as Record<string, string>,
+      envWithoutLine,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -542,7 +534,7 @@ describe("GET /auth/callback", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -563,7 +555,7 @@ describe("GET /auth/callback", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(302);
     const location = res.headers.get("location") ?? "";
@@ -592,7 +584,7 @@ describe("GET /auth/callback", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -607,7 +599,7 @@ describe("GET /auth/callback", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -651,7 +643,7 @@ describe("POST /auth/exchange", () => {
         body: "not-json",
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -776,7 +768,7 @@ describe("POST /auth/refresh", () => {
         body: "not-json",
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -1032,7 +1024,7 @@ describe("POST /auth/logout", () => {
         body: "not-json",
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -1129,7 +1121,7 @@ describe("POST /auth/logout", () => {
 
   it("INTERNAL_SERVICE_SECRET設定時にヘッダーなし → 403を返す", async () => {
     const envWithSecret = { ...mockEnv, INTERNAL_SERVICE_SECRET: "test-secret" };
-    const securedApp = new Hono<{ Bindings: typeof envWithSecret }>();
+    const securedApp = new Hono<{ Bindings: typeof mockEnv }>();
     securedApp.route("/auth", authRoutes);
     const res = await securedApp.request(
       new Request(`${baseUrl}/auth/logout`, {
@@ -1138,7 +1130,7 @@ describe("POST /auth/logout", () => {
         body: JSON.stringify({ refresh_token: "some-token" }),
       }),
       undefined,
-      envWithSecret as unknown as Record<string, string>,
+      envWithSecret,
     );
     expect(res.status).toBe(403);
     const body = await res.json<{ error: { code: string } }>();
@@ -1181,7 +1173,7 @@ describe("POST /auth/link-intent", () => {
         headers: { Authorization: "Bearer valid-access-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     const body = await res.json<{ data: { link_token: string } }>();
@@ -1239,7 +1231,7 @@ describe("GET /auth/callback - LINEプロバイダー", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(302);
     const location = res.headers.get("location") ?? "";
@@ -1262,7 +1254,7 @@ describe("GET /auth/callback - LINEプロバイダー", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -1289,7 +1281,7 @@ describe("GET /auth/callback - LINEプロバイダー", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(302);
     expect(vi.mocked(upsertLineUser)).toHaveBeenCalledWith(
@@ -1348,7 +1340,7 @@ describe("GET /auth/callback - GitHubプロバイダー", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(302);
     expect(vi.mocked(fetchGithubPrimaryEmail)).toHaveBeenCalledWith("github-at");
@@ -1384,7 +1376,7 @@ describe("GET /auth/callback - GitHubプロバイダー", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(302);
     expect(vi.mocked(fetchGithubPrimaryEmail)).toHaveBeenCalledWith("github-at");
@@ -1420,7 +1412,7 @@ describe("GET /auth/callback - GitHubプロバイダー", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(302);
     expect(vi.mocked(upsertGithubUser)).toHaveBeenCalledWith(
@@ -1477,7 +1469,7 @@ describe("GET /auth/callback - Twitchプロバイダー", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(302);
     expect(vi.mocked(upsertTwitchUser)).toHaveBeenCalledWith(
@@ -1511,7 +1503,7 @@ describe("GET /auth/callback - Twitchプロバイダー", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(302);
     expect(vi.mocked(upsertTwitchUser)).toHaveBeenCalledWith(
@@ -1544,7 +1536,7 @@ describe("GET /auth/callback - Twitchプロバイダー", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -1595,7 +1587,7 @@ describe("GET /auth/callback - Xプロバイダー", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(302);
     expect(vi.mocked(upsertXUser)).toHaveBeenCalledWith(
@@ -1628,7 +1620,7 @@ describe("GET /auth/callback - Xプロバイダー", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(302);
     expect(vi.mocked(upsertXUser)).toHaveBeenCalledWith(
@@ -1684,7 +1676,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(302);
     expect(vi.mocked(linkProvider)).toHaveBeenCalledWith(
@@ -1712,7 +1704,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(409);
     const body = await res.json<{ error: { code: string } }>();
@@ -1741,7 +1733,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(302);
     expect(vi.mocked(linkProvider)).toHaveBeenCalledWith(
@@ -1768,7 +1760,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(403);
     const body = await res.json<{ error: { code: string } }>();
@@ -1799,7 +1791,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(409);
     const body = await res.json<{ error: { code: string } }>();
@@ -1856,7 +1848,7 @@ describe("GET /auth/callback - ブートストラップ管理者", () => {
         },
       }),
       undefined,
-      envWithBootstrap as unknown as Record<string, string>,
+      envWithBootstrap,
     );
     expect(res.status).toBe(302);
     expect(vi.mocked(tryBootstrapAdmin)).toHaveBeenCalledWith(expect.anything(), "user-1");
@@ -1878,7 +1870,7 @@ describe("GET /auth/callback - ブートストラップ管理者", () => {
         },
       }),
       undefined,
-      envWithBootstrap as unknown as Record<string, string>,
+      envWithBootstrap,
     );
     expect(res.status).toBe(302);
   });
@@ -1898,7 +1890,7 @@ describe("GET /auth/callback - ブートストラップ管理者", () => {
         },
       }),
       undefined,
-      envWithBootstrap as unknown as Record<string, string>,
+      envWithBootstrap,
     );
     expect(res.status).toBe(302);
     expect(vi.mocked(tryBootstrapAdmin)).not.toHaveBeenCalled();
@@ -1920,7 +1912,7 @@ describe("GET /auth/callback - ブートストラップ管理者", () => {
         },
       }),
       undefined,
-      envWithBootstrap as unknown as Record<string, string>,
+      envWithBootstrap,
     );
     expect(res.status).toBe(500);
     const body = await res.json<{ error: { code: string } }>();
@@ -2089,7 +2081,7 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
         }),
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(401);
   });
@@ -2109,7 +2101,7 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
         }),
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(401);
   });
@@ -2131,7 +2123,7 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
         }),
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(401);
     const body = await res.json<{ error: { code: string } }>();
@@ -2158,7 +2150,7 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
         }),
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(401);
   });
@@ -2181,7 +2173,7 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
         }),
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(401);
     const body = await res.json<{ error: { code: string } }>();
@@ -2219,7 +2211,7 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
         }),
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -2242,7 +2234,7 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
         }),
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     const body = await res.json<{ data: { access_token: string; id_token: string } }>();
@@ -2549,7 +2541,7 @@ describe("Authorization Code Flow E2E (State Cookie Round-trip)", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(callbackRes.status).toBe(302);
     const callbackLocation = callbackRes.headers.get("location") ?? "";
@@ -2612,7 +2604,7 @@ describe("Authorization Code Flow E2E (State Cookie Round-trip)", () => {
         },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     // state不一致（idState='e2e-id-state' vs 'attacker-injected-state'）で400を返すこと
     expect(callbackRes.status).toBe(400);

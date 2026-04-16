@@ -75,20 +75,15 @@ import { parseAllowedScopes } from "../utils/scopes";
 
 import { issueTokenPair, buildTokenResponse, issueIdToken } from "../utils/token-pair";
 import { resolveEffectiveScope } from "../utils/scopes";
+import { createMockIdpEnv } from "../../../../packages/shared/src/db/test-helpers";
 
 import deviceRoutes, { handleDeviceCodeGrant } from "./device";
 
 // IdpEnv の必須フィールドをすべて含むモック環境
-const mockEnv = {
-  DB: {} as D1Database,
-  IDP_ORIGIN: "https://id.0g0.xyz",
-  USER_ORIGIN: "https://user.0g0.xyz",
-  ADMIN_ORIGIN: "https://admin.0g0.xyz",
-  JWT_PRIVATE_KEY: "mock-private-key",
-  JWT_PUBLIC_KEY: "mock-public-key",
+const mockEnv = createMockIdpEnv({
   GOOGLE_CLIENT_ID: "mock-google-client-id",
   GOOGLE_CLIENT_SECRET: "mock-google-client-secret",
-};
+});
 
 // テスト用 context ファクトリ
 function makeContext() {
@@ -446,7 +441,7 @@ describe("POST /api/device/code — デバイス認可リクエスト", () => {
         body: body.toString(),
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const json = await res.json<{ error: string }>();
@@ -464,7 +459,7 @@ describe("POST /api/device/code — デバイス認可リクエスト", () => {
         body: body.toString(),
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(401);
     const json = await res.json<{ error: string }>();
@@ -482,7 +477,7 @@ describe("POST /api/device/code — デバイス認可リクエスト", () => {
         body: body.toString(),
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(500);
     const json = await res.json<{ error: string }>();
@@ -498,7 +493,7 @@ describe("POST /api/device/code — デバイス認可リクエスト", () => {
         body: "client_id=test",
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const json = await res.json<{ error: string }>();
@@ -515,7 +510,7 @@ describe("POST /api/device/code — デバイス認可リクエスト", () => {
         body: JSON.stringify({ client_id: "test-client-id" }),
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
   });
@@ -535,7 +530,7 @@ describe("POST /api/device/code — デバイス認可リクエスト", () => {
         body: body.toString(),
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const json = await res.json<{ error: string; error_description: string }>();
@@ -556,7 +551,7 @@ describe("POST /api/device/code — デバイス認可リクエスト", () => {
         body: body.toString(),
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     const json = await res.json<{
@@ -584,7 +579,7 @@ describe("POST /api/device/code — デバイス認可リクエスト", () => {
         body: body.toString(),
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     const json = await res.json<{ user_code: string }>();
@@ -637,7 +632,7 @@ describe("POST /api/device/verify", () => {
         body: JSON.stringify(body),
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
   }
 
@@ -651,7 +646,7 @@ describe("POST /api/device/verify", () => {
         body: "not-json{{{",
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const json = await res.json<{ error: { code: string } }>();
