@@ -44,6 +44,7 @@ vi.mock("@0g0-id/shared", () => ({
   cleanupExpiredMcpSessions: vi.fn().mockResolvedValue(0),
   cleanupExpiredRevokedAccessTokens: vi.fn().mockResolvedValue(0),
   deleteExpiredRefreshTokens: vi.fn().mockResolvedValue(0),
+  uuidParamMiddleware: () => async (_c: unknown, next: () => Promise<void>) => next(),
 }));
 
 import type { IdpEnv } from "@0g0-id/shared";

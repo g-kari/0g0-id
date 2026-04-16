@@ -28,6 +28,7 @@ import {
   parsePagination,
   isValidProvider,
   UUID_RE,
+  uuidParamMiddleware,
   type OAuthProvider,
   type UserFilter,
   createLogger,
@@ -149,22 +150,8 @@ async function performUserDeletion(
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
 // ユーザーID形式検証ミドルウェア（:id パラメータを持つすべてのルートに適用、/me は除外）
-app.use("/:id", async (c, next) => {
-  const id = c.req.param("id");
-  if (id === "me") return next();
-  if (!UUID_RE.test(id)) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid user ID format" } }, 400);
-  }
-  await next();
-});
-app.use("/:id/*", async (c, next) => {
-  const id = c.req.param("id");
-  if (id === "me") return next();
-  if (!UUID_RE.test(id)) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid user ID format" } }, 400);
-  }
-  await next();
-});
+app.use("/:id", uuidParamMiddleware("id", { allowValues: ["me"], label: "user ID" }));
+app.use("/:id/*", uuidParamMiddleware("id", { allowValues: ["me"], label: "user ID" }));
 
 // GET /api/users/me
 app.get(
