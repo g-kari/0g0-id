@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
-vi.mock("@0g0-id/shared", () => ({
+vi.mock("@0g0-id/shared", async (importOriginal) => ({
+  ...(await importOriginal()),
   logger: () => async (_c: unknown, next: () => Promise<void>) => next(),
   securityHeaders: () => async (_c: unknown, next: () => Promise<void>) => next(),
   bodyLimitMiddleware: () => async (_c: unknown, next: () => Promise<void>) => next(),

@@ -1,12 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
 
-vi.mock("@0g0-id/shared", async () => ({
-  ...(await vi.importActual("@0g0-id/shared")),
-  generateToken: vi.fn(),
-}));
-
-import { generateToken, encodeSession } from "@0g0-id/shared";
+import { encodeSession } from "@0g0-id/shared";
 import authRoutes from "./auth";
 
 const baseUrl = "https://admin.0g0.xyz";
@@ -51,7 +46,6 @@ function makeExchangeResponse(role: "admin" | "user" = "admin") {
 describe("admin BFF — /auth", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(generateToken).mockReturnValue("mock-state-token");
   });
 
   // ===== GET /auth/login =====
@@ -63,7 +57,7 @@ describe("admin BFF — /auth", () => {
       expect(res.status).toBe(302);
       const location = res.headers.get("location") ?? "";
       expect(location).toContain("https://id.0g0.xyz/auth/login");
-      expect(location).toContain("state=mock-state-token");
+      expect(location).toMatch(/state=[A-Za-z0-9_-]+/);
       expect(location).toContain("redirect_to=");
 
       // state cookie が設定されていることを確認
