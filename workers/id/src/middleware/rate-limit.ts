@@ -41,6 +41,22 @@ async function extractClientIdFromBody(req: HonoRequest): Promise<string | null>
 type IdpContext = Context<{ Bindings: IdpEnv; Variables: { user?: TokenPayload } }>;
 
 /**
+ * 本番環境（IDP_ORIGIN が HTTPS）では error、それ以外では warn でログ出力する。
+ * 本番/開発で末尾に付与する注記を切り替えることで、運用時のアラート検知と
+ * 開発時のガイドメッセージを一つの呼び出しで両立する。
+ */
+function logConfigWarning(
+  env: IdpEnv,
+  message: string,
+  productionNote: string,
+  developmentNote = "",
+): void {
+  const isProduction = env.IDP_ORIGIN?.startsWith("https://") ?? false;
+  const logFn = isProduction ? rateLimitLogger.error : rateLimitLogger.warn;
+  logFn.call(rateLimitLogger, `${message}${isProduction ? productionNote : developmentNote}`);
+}
+
+/**
  * レートリミットミドルウェアのファクトリ関数。
  * バインディングの取得・キー抽出・エラーメッセージを差し込むことで
  * 各エンドポイント向けのミドルウェアを生成する。
@@ -66,12 +82,11 @@ function createRateLimitMiddleware(
       if (!binding) {
         if (!warnedBindings.has(bindingName)) {
           warnedBindings.add(bindingName);
-          // 本番環境（HTTPS）ではerrorレベルで即座にアラート検知可能にする
-          const isProduction = c.env.IDP_ORIGIN?.startsWith("https://");
-          const logFn = isProduction ? rateLimitLogger.error : rateLimitLogger.warn;
-          logFn.call(
-            rateLimitLogger,
-            `[rate-limit] ${bindingName} binding is not configured — rate limiting is DISABLED.${isProduction ? " ⚠️ PRODUCTION: Configure this binding in wrangler.toml immediately." : " Configure this binding in wrangler.toml for production deployments."}`,
+          logConfigWarning(
+            c.env,
+            `[rate-limit] ${bindingName} binding is not configured — rate limiting is DISABLED.`,
+            " ⚠️ PRODUCTION: Configure this binding in wrangler.toml immediately.",
+            " Configure this binding in wrangler.toml for production deployments.",
           );
         }
         return next();
@@ -79,13 +94,11 @@ function createRateLimitMiddleware(
       const key = await getKey(c);
       // cf-connecting-ip が未設定（ローカル直接アクセス・Cloudflare設定ミス）の場合、
       // 全リクエストが 'unknown' キーに集約され、誤検知レートリミットが発生しうる。
-      // 本番環境ではerrorレベルで即座にアラート検知可能にする。
       if (key === "unknown") {
-        const isProduction = c.env.IDP_ORIGIN?.startsWith("https://");
-        const logFn = isProduction ? rateLimitLogger.error : rateLimitLogger.warn;
-        logFn.call(
-          rateLimitLogger,
-          `[rate-limit] ${bindingName}: rate limit key resolved to 'unknown' — cf-connecting-ip may not be set. All requests share the same bucket.${isProduction ? " ⚠️ PRODUCTION: Check Cloudflare proxy configuration." : ""}`,
+        logConfigWarning(
+          c.env,
+          `[rate-limit] ${bindingName}: rate limit key resolved to 'unknown' — cf-connecting-ip may not be set. All requests share the same bucket.`,
+          " ⚠️ PRODUCTION: Check Cloudflare proxy configuration.",
         );
       }
       const { success } = await binding.limit({ key });
