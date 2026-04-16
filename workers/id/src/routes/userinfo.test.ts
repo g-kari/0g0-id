@@ -8,6 +8,7 @@ vi.mock("@0g0-id/shared", async (importActual) => {
     findUserById: vi.fn(),
     verifyAccessToken: vi.fn(),
     sha256: vi.fn(),
+    generatePairwiseSub: vi.fn(),
     isAccessTokenRevoked: vi.fn().mockResolvedValue(false),
   };
 });
@@ -16,7 +17,7 @@ vi.mock("../middleware/rate-limit", () => ({
   externalApiRateLimitMiddleware: vi.fn((c, next) => next()),
 }));
 
-import { findUserById, verifyAccessToken, sha256 } from "@0g0-id/shared";
+import { findUserById, verifyAccessToken, sha256, generatePairwiseSub } from "@0g0-id/shared";
 import type { TokenPayload } from "@0g0-id/shared";
 import { externalApiRateLimitMiddleware } from "../middleware/rate-limit";
 import userInfoRoutes from "./userinfo";
@@ -313,12 +314,12 @@ describe("GET /api/userinfo", () => {
         scope: "openid profile email",
         cid: "test-client-id",
       } as never);
-      vi.mocked(sha256).mockResolvedValue("pairwise-sub-hash");
+      vi.mocked(generatePairwiseSub).mockResolvedValue("pairwise-sub-hash");
       const res = await requestUserInfo(app);
       expect(res.status).toBe(200);
       const body = await res.json<Record<string, unknown>>();
       expect(body.sub).toBe("pairwise-sub-hash");
-      expect(vi.mocked(sha256)).toHaveBeenCalledWith("test-client-id:user-1");
+      expect(vi.mocked(generatePairwiseSub)).toHaveBeenCalledWith("test-client-id", "user-1");
     });
 
     it("cidなしトークン（BFFセッション）→ 内部IDをそのまま返す", async () => {

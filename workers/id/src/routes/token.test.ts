@@ -12,6 +12,7 @@ vi.mock("@0g0-id/shared", () => ({
   findUserById: vi.fn(),
   revokeRefreshToken: vi.fn(),
   sha256: vi.fn(),
+  generatePairwiseSub: vi.fn(),
   timingSafeEqual: vi.fn(),
   verifyAccessToken: vi.fn(),
   // POST /api/token/ grant types で使用
@@ -42,6 +43,7 @@ import {
   findUserById,
   revokeRefreshToken,
   sha256,
+  generatePairwiseSub,
   timingSafeEqual,
   verifyAccessToken,
   findAndConsumeAuthCode,
@@ -186,6 +188,7 @@ describe("POST /api/token/introspect", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(sha256).mockResolvedValue("hashed-token");
+    vi.mocked(generatePairwiseSub).mockResolvedValue("pairwise-sub-hash");
     vi.mocked(findServiceByClientId).mockResolvedValue(mockService as never);
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(findRefreshTokenByHash).mockResolvedValue(mockRefreshToken as never);
@@ -374,7 +377,7 @@ describe("POST /api/token/introspect", () => {
       email: string;
     }>();
     expect(body.active).toBe(true);
-    expect(body.sub).toBe("hashed-token"); // sha256(client_id:user_id) ペアワイズsub
+    expect(body.sub).toBe("pairwise-sub-hash"); // generatePairwiseSub(client_id, user_id) ペアワイズsub
     expect(body.scope).toBe("profile email");
     expect(body.name).toBe("Test User");
     expect(body.email).toBe("test@example.com");
@@ -1082,6 +1085,7 @@ describe("POST /api/token/ — authorization_code grant", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(sha256).mockResolvedValue("hashed-value");
+    vi.mocked(generatePairwiseSub).mockResolvedValue("pairwise-sub-hash");
     vi.mocked(findServiceByClientId).mockResolvedValue(mockPublicService as never);
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(findAndConsumeAuthCode).mockResolvedValue(mockAuthCode as never);
@@ -1481,6 +1485,7 @@ describe("POST /api/token/ — refresh_token grant", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(sha256).mockResolvedValue("hashed-token");
+    vi.mocked(generatePairwiseSub).mockResolvedValue("pairwise-sub-hash");
     vi.mocked(findServiceByClientId).mockResolvedValue(mockPublicService as never);
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(mockRefreshToken as never);

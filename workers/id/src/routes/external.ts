@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import {
   findUserById,
   findUserIdByPairwiseSub,
-  sha256,
+  generatePairwiseSub,
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
   parsePagination,
@@ -25,14 +25,6 @@ const SCOPE_FIELDS: Record<string, (u: User) => Record<string, unknown>> = {
 };
 
 /**
- * サービス固有の不透明なユーザー識別子（ペアワイズsub）を生成する。
- * 内部IDを直接公開しないために、sha256(client_id:user_id)を使用する。
- */
-async function generatePairwiseSub(service: Service, userId: string): Promise<string> {
-  return sha256(service.client_id + ":" + userId);
-}
-
-/**
  * スコープに基づいてユーザー情報をフィルタリングし、外部向けレスポンスを構築する。
  * 内部IDの代わりにペアワイズsubを返す。
  */
@@ -41,7 +33,7 @@ async function buildUserData(
   user: User,
   allowedScopes: string[],
 ): Promise<Record<string, unknown>> {
-  const sub = await generatePairwiseSub(service, user.id);
+  const sub = await generatePairwiseSub(service.client_id, user.id);
   const data: Record<string, unknown> = { sub };
   for (const scope of allowedScopes) {
     if (scope in SCOPE_FIELDS) {

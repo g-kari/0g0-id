@@ -1,6 +1,6 @@
 import { Hono, type Context } from "hono";
 import type { IdpEnv, TokenPayload } from "@0g0-id/shared";
-import { findUserById, sha256 } from "@0g0-id/shared";
+import { findUserById, generatePairwiseSub } from "@0g0-id/shared";
 import { authMiddleware } from "../middleware/auth";
 import { externalApiRateLimitMiddleware } from "../middleware/rate-limit";
 
@@ -38,7 +38,7 @@ async function handleUserInfo(c: AppContext): Promise<Response> {
   const scopes = tokenUser.scope ? new Set(tokenUser.scope.split(" ")) : null;
 
   // サービストークン（cid設定済み）はペアワイズsub、BFFセッションは内部IDを返す
-  const sub = tokenUser.cid ? await sha256(tokenUser.cid + ":" + user.id) : user.id;
+  const sub = tokenUser.cid ? await generatePairwiseSub(tokenUser.cid, user.id) : user.id;
 
   const claims: Record<string, unknown> = {
     sub,
