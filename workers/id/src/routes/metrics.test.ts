@@ -1,28 +1,32 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
 
-vi.mock("@0g0-id/shared", () => ({
-  createLogger: vi
-    .fn()
-    .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
-  countUsers: vi.fn(),
-  countAdminUsers: vi.fn(),
-  countServices: vi.fn(),
-  countActiveRefreshTokens: vi.fn(),
-  countRecentLoginEvents: vi.fn(),
-  getLoginEventProviderStats: vi.fn(),
-  getLoginEventCountryStats: vi.fn(),
-  getDailyLoginTrends: vi.fn(),
-  verifyAccessToken: vi.fn(),
-  isAccessTokenRevoked: vi.fn().mockResolvedValue(false),
-  findUserById: vi.fn(),
-  getServiceTokenStats: vi.fn(),
-  getSuspiciousMultiCountryLogins: vi.fn(),
-  getDailyUserRegistrations: vi.fn(),
-  getActiveUserStats: vi.fn(),
-  getDailyActiveUsers: vi.fn(),
-  parseDays: vi.fn(),
-}));
+vi.mock("@0g0-id/shared", async (importOriginal) => {
+  const { restErrorBody } = await importOriginal<typeof import("@0g0-id/shared")>();
+  return {
+    restErrorBody,
+    createLogger: vi
+      .fn()
+      .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+    countUsers: vi.fn(),
+    countAdminUsers: vi.fn(),
+    countServices: vi.fn(),
+    countActiveRefreshTokens: vi.fn(),
+    countRecentLoginEvents: vi.fn(),
+    getLoginEventProviderStats: vi.fn(),
+    getLoginEventCountryStats: vi.fn(),
+    getDailyLoginTrends: vi.fn(),
+    verifyAccessToken: vi.fn(),
+    isAccessTokenRevoked: vi.fn().mockResolvedValue(false),
+    findUserById: vi.fn(),
+    getServiceTokenStats: vi.fn(),
+    getSuspiciousMultiCountryLogins: vi.fn(),
+    getDailyUserRegistrations: vi.fn(),
+    getActiveUserStats: vi.fn(),
+    getDailyActiveUsers: vi.fn(),
+    parseDays: vi.fn(),
+  };
+});
 
 import {
   countUsers,

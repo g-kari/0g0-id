@@ -6,6 +6,7 @@ import {
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
   parsePagination,
+  restErrorBody,
 } from "@0g0-id/shared";
 import type { IdpEnv, User, Service, AuthorizedUserFilter } from "@0g0-id/shared";
 import { serviceAuthMiddleware } from "../utils/service-auth";
@@ -62,16 +63,10 @@ app.get("/users", externalApiRateLimitMiddleware, serviceAuthMiddleware, async (
   const allowedScopes = parseAllowedScopes(service.allowed_scopes);
 
   if (nameQuery && !allowedScopes.includes("profile")) {
-    return c.json(
-      { error: { code: "FORBIDDEN", message: "name filter requires profile scope" } },
-      403,
-    );
+    return c.json(restErrorBody("FORBIDDEN", "name filter requires profile scope"), 403);
   }
   if (emailQuery && !allowedScopes.includes("email")) {
-    return c.json(
-      { error: { code: "FORBIDDEN", message: "email filter requires email scope" } },
-      403,
-    );
+    return c.json(restErrorBody("FORBIDDEN", "email filter requires email scope"), 403);
   }
 
   const filter: AuthorizedUserFilter = {
@@ -87,7 +82,7 @@ app.get("/users", externalApiRateLimitMiddleware, serviceAuthMiddleware, async (
       countUsersAuthorizedForService(c.env.DB, service.id, filter),
     ]);
   } catch {
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
 
   // listUsersAuthorizedForService のSQLで banned_at IS NULL フィルタ済み
@@ -101,7 +96,7 @@ app.get("/users/:sub", externalApiRateLimitMiddleware, serviceAuthMiddleware, as
   const service = c.get("service");
   const requestedSub = c.req.param("sub");
   if (!/^[0-9a-f]{64}$/i.test(requestedSub)) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid sub format" } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", "Invalid sub format"), 400);
   }
 
   try {
@@ -109,16 +104,16 @@ app.get("/users/:sub", externalApiRateLimitMiddleware, serviceAuthMiddleware, as
     const matchedUserId = await findUserIdByPairwiseSub(c.env.DB, service.id, requestedSub);
 
     if (!matchedUserId) {
-      return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);
+      return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
     }
 
     const user = await findUserById(c.env.DB, matchedUserId);
     if (!user) {
-      return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);
+      return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
     }
     // BAN済みユーザーは外部サービスに公開しない
     if (user.banned_at !== null) {
-      return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);
+      return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
     }
 
     const allowedScopes = parseAllowedScopes(service.allowed_scopes);
@@ -126,7 +121,7 @@ app.get("/users/:sub", externalApiRateLimitMiddleware, serviceAuthMiddleware, as
 
     return c.json({ data });
   } catch {
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
 });
 

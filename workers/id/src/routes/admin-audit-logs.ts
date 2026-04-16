@@ -4,6 +4,7 @@ import {
   getAuditLogStats,
   parsePagination,
   parseDays,
+  restErrorBody,
   UUID_RE,
 } from "@0g0-id/shared";
 import type { IdpEnv, TokenPayload } from "@0g0-id/shared";
@@ -18,7 +19,7 @@ const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 app.get("/stats", authMiddleware, adminMiddleware, async (c) => {
   const daysResult = parseDays(c.req.query("days"));
   if (daysResult !== undefined && "error" in daysResult) {
-    return c.json({ error: { code: "BAD_REQUEST", message: daysResult.error } }, 400);
+    return c.json({ error: daysResult.error }, 400);
   }
   const days = daysResult?.days ?? 30;
 
@@ -26,7 +27,7 @@ app.get("/stats", authMiddleware, adminMiddleware, async (c) => {
     const stats = await getAuditLogStats(c.env.DB, days);
     return c.json({ data: stats, days });
   } catch {
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
 });
 
@@ -46,13 +47,13 @@ app.get("/", authMiddleware, adminMiddleware, async (c) => {
   const action = c.req.query("action");
 
   if (adminUserId !== undefined && !UUID_RE.test(adminUserId)) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid admin_user_id format" } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", "Invalid admin_user_id format"), 400);
   }
   if (targetId !== undefined && !UUID_RE.test(targetId)) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid target_id format" } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", "Invalid target_id format"), 400);
   }
   if (action !== undefined && !/^[a-z]+\.[a-z_]+$/.test(action)) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid action format" } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", "Invalid action format"), 400);
   }
 
   try {
@@ -66,7 +67,7 @@ app.get("/", authMiddleware, adminMiddleware, async (c) => {
       pagination: { total, limit, offset },
     });
   } catch {
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
 });
 

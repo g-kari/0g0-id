@@ -9,6 +9,7 @@ import {
   verifyAccessToken,
   addRevokedAccessToken,
   createLogger,
+  restErrorBody,
 } from "@0g0-id/shared";
 
 const authLogger = createLogger("auth");
@@ -53,20 +54,14 @@ export async function handleLogout(c: Context<{ Bindings: IdpEnv; Variables: Var
       storedToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
     } catch (err) {
       authLogger.error("[logout] Failed to find refresh token", err);
-      return c.json(
-        { error: { code: "INTERNAL_ERROR", message: "Failed to process logout" } },
-        500,
-      );
+      return c.json(restErrorBody("INTERNAL_ERROR", "Failed to process logout"), 500);
     }
     if (storedToken && storedToken.revoked_at === null) {
       try {
         await revokeRefreshToken(c.env.DB, storedToken.id, "user_logout");
       } catch (err) {
         authLogger.error("[logout] Failed to revoke refresh token", err);
-        return c.json(
-          { error: { code: "INTERNAL_ERROR", message: "Failed to revoke token" } },
-          500,
-        );
+        return c.json(restErrorBody("INTERNAL_ERROR", "Failed to revoke token"), 500);
       }
     }
   }

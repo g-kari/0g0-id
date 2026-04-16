@@ -14,6 +14,7 @@ import {
   getActiveUserStats,
   getDailyActiveUsers,
   parseDays,
+  restErrorBody,
 } from "@0g0-id/shared";
 import type { IdpEnv, TokenPayload, AdminMetrics } from "@0g0-id/shared";
 import { authMiddleware } from "../middleware/auth";
@@ -66,7 +67,7 @@ app.get("/", authMiddleware, adminMiddleware, async (c) => {
       } satisfies AdminMetrics,
     });
   } catch {
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Failed to fetch metrics" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Failed to fetch metrics"), 500);
   }
 });
 
@@ -82,7 +83,7 @@ app.get("/login-trends", authMiddleware, adminMiddleware, async (c) => {
     const trends = await getDailyLoginTrends(c.env.DB, days);
     return c.json({ data: trends, days });
   } catch {
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
 });
 
@@ -92,7 +93,7 @@ app.get("/services", authMiddleware, adminMiddleware, async (c) => {
     const stats = await getServiceTokenStats(c.env.DB);
     return c.json({ data: stats });
   } catch {
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
 });
 
@@ -111,7 +112,7 @@ app.get("/suspicious-logins", authMiddleware, adminMiddleware, async (c) => {
     const logins = await getSuspiciousMultiCountryLogins(c.env.DB, sinceIso, minCountries);
     return c.json({ data: logins, meta: { hours, min_countries: minCountries } });
   } catch {
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
 });
 
@@ -127,7 +128,7 @@ app.get("/user-registrations", authMiddleware, adminMiddleware, async (c) => {
     const registrations = await getDailyUserRegistrations(c.env.DB, days);
     return c.json({ data: registrations, days });
   } catch {
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
 });
 
@@ -137,7 +138,7 @@ app.get("/active-users", authMiddleware, adminMiddleware, async (c) => {
     const stats = await getActiveUserStats(c.env.DB);
     return c.json({ data: stats });
   } catch {
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
 });
 
@@ -152,7 +153,7 @@ app.get("/active-users/daily", authMiddleware, adminMiddleware, async (c) => {
     const data = await getDailyActiveUsers(c.env.DB, days);
     return c.json({ data, days });
   } catch {
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
 });
 

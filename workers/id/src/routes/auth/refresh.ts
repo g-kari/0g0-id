@@ -1,7 +1,14 @@
 import type { Context } from "hono";
 import { z } from "zod";
 import type { IdpEnv, Service, TokenPayload } from "@0g0-id/shared";
-import { parseJsonBody, sha256, findUserById, findServiceById, createLogger } from "@0g0-id/shared";
+import {
+  parseJsonBody,
+  sha256,
+  findUserById,
+  findServiceById,
+  createLogger,
+  restErrorBody,
+} from "@0g0-id/shared";
 import { resolveEffectiveScope } from "../../utils/scopes";
 import { ACCESS_TOKEN_TTL_SECONDS } from "../../utils/token-pair";
 import {
@@ -30,36 +37,31 @@ export async function handleRefresh(c: Context<{ Bindings: IdpEnv; Variables: Va
   if (!validationResult.ok) {
     if (validationResult.reason === "TOKEN_ROTATED") {
       return c.json(
-        {
-          error: { code: "TOKEN_ROTATED", message: "Token already rotated, retry with new token" },
-        },
+        restErrorBody("TOKEN_ROTATED", "Token already rotated, retry with new token"),
         401,
       );
     }
     if (validationResult.reason === "TOKEN_REUSE") {
-      return c.json({ error: { code: "TOKEN_REUSE", message: "Token reuse detected" } }, 401);
+      return c.json(restErrorBody("TOKEN_REUSE", "Token reuse detected"), 401);
     }
-    return c.json({ error: { code: "INVALID_TOKEN", message: "Token not found" } }, 401);
+    return c.json(restErrorBody("INVALID_TOKEN", "Token not found"), 401);
   }
   const storedToken = validationResult.storedToken;
 
   // 有効期限チェック
   if (new Date(storedToken.expires_at) < new Date()) {
-    return c.json({ error: { code: "TOKEN_EXPIRED", message: "Refresh token expired" } }, 401);
+    return c.json(restErrorBody("TOKEN_EXPIRED", "Refresh token expired"), 401);
   }
 
   // ユーザー情報取得
   const user = await findUserById(c.env.DB, storedToken.user_id);
   if (!user) {
-    return c.json({ error: { code: "INVALID_GRANT", message: "User not found" } }, 401);
+    return c.json(restErrorBody("INVALID_GRANT", "User not found"), 401);
   }
 
   // BANされたユーザーのトークン更新を拒否
   if (user.banned_at !== null) {
-    return c.json(
-      { error: { code: "ACCOUNT_BANNED", message: "Your account has been suspended" } },
-      403,
-    );
+    return c.json(restErrorBody("ACCOUNT_BANNED", "Your account has been suspended"), 403);
   }
 
   // サービストークンの場合: 元のサービスのスコープを引き継ぐ
@@ -69,7 +71,7 @@ export async function handleRefresh(c: Context<{ Bindings: IdpEnv; Variables: Va
     refreshService = await findServiceById(c.env.DB, storedToken.service_id);
     if (!refreshService) {
       // サービス削除済み → トークンリフレッシュを拒否
-      return c.json({ error: { code: "INVALID_TOKEN", message: "Service no longer exists" } }, 401);
+      return c.json(restErrorBody("INVALID_TOKEN", "Service no longer exists"), 401);
     }
     // 保存済みスコープがあればそれを引き継ぐ（スコープ昇格防止）
     // 保存済みスコープがない（マイグレーション前のトークン）場合はallowed_scopesにフォールバック
@@ -93,9 +95,9 @@ export async function handleRefresh(c: Context<{ Bindings: IdpEnv; Variables: Va
   );
   if (!issueResult.ok) {
     if (issueResult.reason === "TOKEN_REUSE") {
-      return c.json({ error: { code: "TOKEN_REUSE", message: "Token reuse detected" } }, 401);
+      return c.json(restErrorBody("TOKEN_REUSE", "Token reuse detected"), 401);
     }
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Token operation failed" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Token operation failed"), 500);
   }
   const accessToken = issueResult.accessToken;
   const newRefreshTokenRaw = issueResult.refreshToken;
