@@ -20,6 +20,9 @@ export async function apiFetch<T>(
     );
     return { error: { code: "HTTP_ERROR", message: body?.error?.message ?? `HTTP ${res.status}` } };
   }
+  if (res.status === 204) {
+    return {} as T;
+  }
   const body = await res.json();
   // IdP API は { data: ... } 形式でレスポンスを返すため data をアンラップ
   if (body && typeof body === "object" && "data" in body) {
