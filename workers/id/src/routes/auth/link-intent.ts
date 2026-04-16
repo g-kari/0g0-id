@@ -1,0 +1,24 @@
+import type { Context } from "hono";
+import type { IdpEnv, TokenPayload } from "@0g0-id/shared";
+import { signCookie } from "@0g0-id/shared";
+
+type Variables = { user: TokenPayload };
+
+/**
+ * POST /auth/link-intent — SNSプロバイダー連携用ワンタイムトークン発行（認証済みユーザー専用）
+ * link_user_id をURLパラメータとして直接受け付けると第三者が任意ユーザーのIDを指定し
+ * アカウント乗っ取りが可能なため、アクセストークンで認証したうえでワンタイムトークンを発行する
+ */
+export async function handleLinkIntent(c: Context<{ Bindings: IdpEnv; Variables: Variables }>) {
+  const tokenUser = c.get("user");
+
+  // HMAC-SHA256署名付きトークンを生成（DBアクセス不要、自己完結型）
+  const tokenPayload = JSON.stringify({
+    purpose: "link",
+    sub: tokenUser.sub,
+    exp: Date.now() + 5 * 60 * 1000, // 5分
+  });
+  const linkToken = await signCookie(tokenPayload, c.env.COOKIE_SECRET);
+
+  return c.json({ data: { link_token: linkToken } });
+}
