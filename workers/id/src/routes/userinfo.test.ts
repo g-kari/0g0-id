@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
+import { createMockIdpEnv } from "../../../../packages/shared/src/db/test-helpers";
 
 vi.mock("@0g0-id/shared", async (importActual) => {
   const actual = await importActual<typeof import("@0g0-id/shared")>();
@@ -24,14 +25,7 @@ import userInfoRoutes from "./userinfo";
 
 const baseUrl = "https://id.0g0.xyz";
 
-const mockEnv = {
-  DB: {} as D1Database,
-  IDP_ORIGIN: "https://id.0g0.xyz",
-  USER_ORIGIN: "https://user.0g0.xyz",
-  ADMIN_ORIGIN: "https://admin.0g0.xyz",
-  JWT_PRIVATE_KEY: "mock-private-key",
-  JWT_PUBLIC_KEY: "mock-public-key",
-};
+const mockEnv = createMockIdpEnv();
 
 const mockTokenPayload: TokenPayload = {
   sub: "user-1",
@@ -82,11 +76,7 @@ async function requestUserInfo(
   method: "GET" | "POST" = "GET",
   token = "valid-token",
 ): Promise<Response> {
-  return app.request(
-    makeRequest(method, token),
-    undefined,
-    mockEnv as unknown as Record<string, string>,
-  );
+  return app.request(makeRequest(method, token), undefined, mockEnv);
 }
 
 describe("GET /api/userinfo", () => {
@@ -100,11 +90,7 @@ describe("GET /api/userinfo", () => {
 
   describe("認証", () => {
     it("Authorizationヘッダーなし → 401を返す", async () => {
-      const res = await app.request(
-        makeRequest("GET", undefined),
-        undefined,
-        mockEnv as unknown as Record<string, string>,
-      );
+      const res = await app.request(makeRequest("GET", undefined), undefined, mockEnv);
       expect(res.status).toBe(401);
       const body = await res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe("UNAUTHORIZED");
@@ -367,11 +353,7 @@ describe("POST /api/userinfo", () => {
   });
 
   it("POSTでもAuthorizationヘッダーなし → 401を返す", async () => {
-    const res = await app.request(
-      makeRequest("POST", undefined),
-      undefined,
-      mockEnv as unknown as Record<string, string>,
-    );
+    const res = await app.request(makeRequest("POST", undefined), undefined, mockEnv);
     expect(res.status).toBe(401);
   });
 });

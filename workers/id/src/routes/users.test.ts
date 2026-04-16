@@ -100,16 +100,11 @@ import {
 import type { ProviderStatus } from "@0g0-id/shared";
 
 import usersRoutes from "./users";
+import { createMockIdpEnv } from "../../../../packages/shared/src/db/test-helpers";
 
 const baseUrl = "https://id.0g0.xyz";
 
-const mockEnv = {
-  DB: {} as D1Database,
-  JWT_PUBLIC_KEY: "mock-public-key",
-  IDP_ORIGIN: "https://id.0g0.xyz",
-  USER_ORIGIN: "https://user.0g0.xyz",
-  ADMIN_ORIGIN: "https://admin.0g0.xyz",
-};
+const mockEnv = createMockIdpEnv();
 
 // 管理者トークンペイロード
 const mockAdminPayload = {
@@ -193,11 +188,7 @@ async function sendRequest(
   path: string,
   options: Parameters<typeof makeRequest>[1] = {},
 ) {
-  return app.request(
-    makeRequest(path, options),
-    undefined,
-    mockEnv as unknown as Record<string, string>,
-  );
+  return app.request(makeRequest(path, options), undefined, mockEnv);
 }
 
 // ===== GET /api/users/me =====
@@ -523,7 +514,7 @@ describe("PATCH /api/users/me", () => {
         body: "invalid-json",
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -1127,7 +1118,7 @@ describe("GET /api/users", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(listUsers)).toHaveBeenCalledWith(
@@ -1144,7 +1135,7 @@ describe("GET /api/users", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(listUsers)).toHaveBeenCalledWith(
@@ -1170,7 +1161,7 @@ describe("GET /api/users", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(listUsers)).toHaveBeenCalledWith(
@@ -1191,7 +1182,7 @@ describe("GET /api/users", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(listUsers)).toHaveBeenCalledWith(
@@ -1208,7 +1199,7 @@ describe("GET /api/users", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(listUsers)).toHaveBeenCalledWith(
@@ -1225,7 +1216,7 @@ describe("GET /api/users", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     const call = vi.mocked(listUsers).mock.calls[0];
@@ -1239,7 +1230,7 @@ describe("GET /api/users", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(listUsers)).toHaveBeenCalledWith(
@@ -1256,7 +1247,7 @@ describe("GET /api/users", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(listUsers)).toHaveBeenCalledWith(
@@ -1277,7 +1268,7 @@ describe("GET /api/users", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(listUsers)).toHaveBeenCalledWith(
@@ -1298,7 +1289,7 @@ describe("GET /api/users", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     const call = vi.mocked(listUsers).mock.calls[0];
@@ -1368,7 +1359,7 @@ describe("GET /api/users/me/login-history", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
@@ -1386,7 +1377,7 @@ describe("GET /api/users/me/login-history", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
@@ -1404,7 +1395,7 @@ describe("GET /api/users/me/login-history", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
@@ -1603,7 +1594,7 @@ describe("GET /api/users/:id/login-history", () => {
         },
       ),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
@@ -1624,7 +1615,7 @@ describe("GET /api/users/:id/login-history", () => {
         },
       ),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
@@ -1645,7 +1636,7 @@ describe("GET /api/users/:id/login-history", () => {
         },
       ),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(getLoginEventsByUserId)).toHaveBeenCalledWith(
@@ -2801,7 +2792,7 @@ describe("GET /api/users/me/login-stats", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     const body = await res.json<{ days: number }>();
@@ -2814,7 +2805,7 @@ describe("GET /api/users/me/login-stats", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
@@ -2867,7 +2858,7 @@ describe("GET /api/users/me/login-trends", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     const body = await res.json<{ days: number }>();
@@ -2885,7 +2876,7 @@ describe("GET /api/users/me/login-trends", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();

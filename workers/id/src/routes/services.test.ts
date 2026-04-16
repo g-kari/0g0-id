@@ -81,16 +81,11 @@ import {
 } from "@0g0-id/shared";
 
 import servicesRoutes from "./services";
+import { createMockIdpEnv } from "../../../../packages/shared/src/db/test-helpers";
 
 const baseUrl = "https://id.0g0.xyz";
 
-const mockEnv = {
-  DB: {} as D1Database,
-  JWT_PUBLIC_KEY: "mock-public-key",
-  IDP_ORIGIN: "https://id.0g0.xyz",
-  USER_ORIGIN: "https://user.0g0.xyz",
-  ADMIN_ORIGIN: "https://admin.0g0.xyz",
-};
+const mockEnv = createMockIdpEnv();
 
 // 管理者トークンペイロード
 const mockAdminPayload = {
@@ -173,11 +168,7 @@ async function sendRequest(
   path: string,
   options: Parameters<typeof makeRequest>[1] = {},
 ) {
-  return app.request(
-    makeRequest(path, options),
-    undefined,
-    mockEnv as unknown as Record<string, string>,
-  );
+  return app.request(makeRequest(path, options), undefined, mockEnv);
 }
 
 // ===== GET /api/services（管理者のみ）=====
@@ -248,7 +239,7 @@ describe("GET /api/services", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(listServices)).toHaveBeenCalledWith(
@@ -263,7 +254,7 @@ describe("GET /api/services", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(listServices)).toHaveBeenCalledWith(
@@ -278,7 +269,7 @@ describe("GET /api/services", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(listServices)).toHaveBeenCalledWith(
@@ -295,7 +286,7 @@ describe("GET /api/services", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     const body = await res.json<{
@@ -455,7 +446,7 @@ describe("POST /api/services", () => {
         body: "invalid-json",
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
   });
@@ -1324,7 +1315,7 @@ describe("PATCH /api/services/:id/owner", () => {
         body: "invalid-json",
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(400);
   });
@@ -1453,7 +1444,7 @@ describe("GET /api/services/:id/users", () => {
         },
       ),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(listUsersAuthorizedForService)).toHaveBeenCalledWith(
@@ -1470,7 +1461,7 @@ describe("GET /api/services/:id/users", () => {
         headers: { Authorization: "Bearer mock-token" },
       }),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(200);
     expect(vi.mocked(listUsersAuthorizedForService)).toHaveBeenCalledWith(

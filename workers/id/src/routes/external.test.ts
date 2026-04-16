@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
+import { createMockIdpEnv, makeD1Mock } from "../../../../packages/shared/src/db/test-helpers";
 
 // モジュールモック（sha256はAtob/Btoa依存のため直接モック）
 vi.mock("@0g0-id/shared", async (importActual) => {
@@ -41,27 +42,14 @@ const mockCountUsersAuthorizedForService = vi.mocked(countUsersAuthorizedForServ
 
 // テスト用アプリケーション
 function buildApp() {
-  const app = new Hono<{ Bindings: { DB: D1Database } }>();
+  const app = new Hono<{ Bindings: typeof mockEnv }>();
   app.route("/api/external", externalRoutes);
   return app;
 }
 
 const baseUrl = "https://id.0g0.xyz";
 
-// D1 DB モック（prepare().bind().all() チェーンをサポート）
-function createMockDb(authorizedUserIds: string[] = []) {
-  return {
-    prepare: vi.fn().mockReturnValue({
-      bind: vi.fn().mockReturnValue({
-        all: vi.fn().mockResolvedValue({
-          results: authorizedUserIds.map((id) => ({ user_id: id })),
-        }),
-      }),
-    }),
-  } as unknown as D1Database;
-}
-
-const mockEnv = { DB: createMockDb() };
+const mockEnv = createMockIdpEnv({ DB: makeD1Mock() });
 
 // Basic認証ヘッダーを生成
 function basicAuth(clientId: string, clientSecret: string): string {
@@ -82,11 +70,7 @@ async function requestExternalUser(
   clientId = "client-abc",
   clientSecret = "secret",
 ) {
-  return app.request(
-    makeRequest(userId, basicAuth(clientId, clientSecret)),
-    undefined,
-    mockEnv as unknown as Record<string, string>,
-  );
+  return app.request(makeRequest(userId, basicAuth(clientId, clientSecret)), undefined, mockEnv);
 }
 
 // テストヘルパー: /api/external/users 一覧へのリクエストを送信
@@ -102,7 +86,7 @@ async function requestExternalUserList(
       headers: { Authorization: basicAuth(clientId, clientSecret) },
     }),
     undefined,
-    mockEnv as unknown as Record<string, string>,
+    mockEnv,
   );
 }
 
@@ -157,7 +141,7 @@ describe("GET /api/external/users/:sub", () => {
   describe("認証", () => {
     it("Authorizationヘッダーなし → 401を返す", async () => {
       const req = makeRequest("user-1");
-      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      const res = await app.request(req, undefined, mockEnv);
       expect(res.status).toBe(401);
       const body = await res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe("UNAUTHORIZED");
@@ -166,7 +150,7 @@ describe("GET /api/external/users/:sub", () => {
     it("不正なBase64 → 401を返す", async () => {
       mockFindServiceByClientId.mockResolvedValue(null);
       const req = makeRequest("user-1", "Basic !!invalid!!");
-      const res = await app.request(req, undefined, mockEnv as unknown as Record<string, string>);
+      const res = await app.request(req, undefined, mockEnv);
       expect(res.status).toBe(401);
     });
 
@@ -344,7 +328,7 @@ describe("GET /api/external/users", () => {
     mockFindServiceByClientId.mockResolvedValue(mockService);
     mockListUsersAuthorizedForService.mockResolvedValue([mockUser]);
     mockCountUsersAuthorizedForService.mockResolvedValue(1);
-    mockEnv.DB = createMockDb();
+    mockEnv.DB = makeD1Mock();
   });
 
   describe("認証", () => {
@@ -352,7 +336,7 @@ describe("GET /api/external/users", () => {
       const res = await app.request(
         new Request(`${baseUrl}/api/external/users`),
         undefined,
-        mockEnv as unknown as Record<string, string>,
+        mockEnv,
       );
       expect(res.status).toBe(401);
       const body = await res.json<{ error: { code: string } }>();

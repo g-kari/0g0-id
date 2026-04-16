@@ -44,16 +44,11 @@ import {
 } from "@0g0-id/shared";
 
 import metricsRoutes from "./metrics";
+import { createMockIdpEnv } from "../../../../packages/shared/src/db/test-helpers";
 
 const baseUrl = "https://id.0g0.xyz";
 
-const mockEnv = {
-  DB: {} as D1Database,
-  JWT_PUBLIC_KEY: "mock-public-key",
-  IDP_ORIGIN: "https://id.0g0.xyz",
-  USER_ORIGIN: "https://user.0g0.xyz",
-  ADMIN_ORIGIN: "https://admin.0g0.xyz",
-};
+const mockEnv = createMockIdpEnv();
 
 const mockAdminPayload = {
   iss: "https://id.0g0.xyz",
@@ -102,22 +97,14 @@ describe("GET /api/metrics", () => {
   });
 
   it("Authorizationヘッダーなしで401を返す", async () => {
-    const res = await app.request(
-      makeRequest("/api/metrics"),
-      undefined,
-      mockEnv as unknown as Record<string, string>,
-    );
+    const res = await app.request(makeRequest("/api/metrics"), undefined, mockEnv);
     expect(res.status).toBe(401);
   });
 
   it("一般ユーザーのトークンで403を返す", async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
 
-    const res = await app.request(
-      makeRequest("/api/metrics", "user-token"),
-      undefined,
-      mockEnv as unknown as Record<string, string>,
-    );
+    const res = await app.request(makeRequest("/api/metrics", "user-token"), undefined, mockEnv);
     expect(res.status).toBe(403);
   });
 
@@ -139,11 +126,7 @@ describe("GET /api/metrics", () => {
       { country: "US", count: 30 },
     ]);
 
-    const res = await app.request(
-      makeRequest("/api/metrics", "admin-token"),
-      undefined,
-      mockEnv as unknown as Record<string, string>,
-    );
+    const res = await app.request(makeRequest("/api/metrics", "admin-token"), undefined, mockEnv);
 
     expect(res.status).toBe(200);
     const body = await res.json<{
@@ -187,11 +170,7 @@ describe("GET /api/metrics", () => {
     vi.mocked(getLoginEventProviderStats).mockResolvedValue([]);
     vi.mocked(getLoginEventCountryStats).mockResolvedValue([]);
 
-    await app.request(
-      makeRequest("/api/metrics", "admin-token"),
-      undefined,
-      mockEnv as unknown as Record<string, string>,
-    );
+    await app.request(makeRequest("/api/metrics", "admin-token"), undefined, mockEnv);
 
     expect(vi.mocked(countUsers)).toHaveBeenCalledWith(mockEnv.DB);
     expect(vi.mocked(countUsers)).toHaveBeenCalledWith(mockEnv.DB, { banned: true });
@@ -220,11 +199,7 @@ describe("GET /api/metrics", () => {
     vi.mocked(getLoginEventCountryStats).mockResolvedValue([]);
 
     const before = Date.now();
-    await app.request(
-      makeRequest("/api/metrics", "admin-token"),
-      undefined,
-      mockEnv as unknown as Record<string, string>,
-    );
+    await app.request(makeRequest("/api/metrics", "admin-token"), undefined, mockEnv);
     const after = Date.now();
 
     const calls = vi.mocked(countRecentLoginEvents).mock.calls;
@@ -252,11 +227,7 @@ describe("GET /api/metrics", () => {
     vi.mocked(getLoginEventCountryStats).mockResolvedValue([]);
 
     const before = Date.now();
-    await app.request(
-      makeRequest("/api/metrics", "admin-token"),
-      undefined,
-      mockEnv as unknown as Record<string, string>,
-    );
+    await app.request(makeRequest("/api/metrics", "admin-token"), undefined, mockEnv);
     const after = Date.now();
 
     const calledSince = vi.mocked(getLoginEventProviderStats).mock.calls[0][1];
@@ -275,11 +246,7 @@ describe("GET /api/metrics", () => {
     vi.mocked(getLoginEventProviderStats).mockResolvedValue([]);
     vi.mocked(getLoginEventCountryStats).mockResolvedValue([]);
 
-    const res = await app.request(
-      makeRequest("/api/metrics", "admin-token"),
-      undefined,
-      mockEnv as unknown as Record<string, string>,
-    );
+    const res = await app.request(makeRequest("/api/metrics", "admin-token"), undefined, mockEnv);
 
     expect(res.status).toBe(200);
     const body = await res.json<{ data: { login_provider_stats_7d: unknown[] } }>();
@@ -289,11 +256,7 @@ describe("GET /api/metrics", () => {
   it("無効なトークンで401を返す", async () => {
     vi.mocked(verifyAccessToken).mockRejectedValue(new Error("invalid token"));
 
-    const res = await app.request(
-      makeRequest("/api/metrics", "invalid-token"),
-      undefined,
-      mockEnv as unknown as Record<string, string>,
-    );
+    const res = await app.request(makeRequest("/api/metrics", "invalid-token"), undefined, mockEnv);
     expect(res.status).toBe(401);
   });
 
@@ -301,11 +264,7 @@ describe("GET /api/metrics", () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
     vi.mocked(countUsers).mockRejectedValue(new Error("DB connection error"));
 
-    const res = await app.request(
-      makeRequest("/api/metrics", "admin-token"),
-      undefined,
-      mockEnv as unknown as Record<string, string>,
-    );
+    const res = await app.request(makeRequest("/api/metrics", "admin-token"), undefined, mockEnv);
     expect(res.status).toBe(500);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("INTERNAL_ERROR");
@@ -326,11 +285,7 @@ describe("GET /api/metrics/login-trends", () => {
   });
 
   it("Authorizationヘッダーなしで401を返す", async () => {
-    const res = await app.request(
-      makeRequest("/api/metrics/login-trends"),
-      undefined,
-      mockEnv as unknown as Record<string, string>,
-    );
+    const res = await app.request(makeRequest("/api/metrics/login-trends"), undefined, mockEnv);
     expect(res.status).toBe(401);
   });
 
@@ -340,7 +295,7 @@ describe("GET /api/metrics/login-trends", () => {
     const res = await app.request(
       makeRequest("/api/metrics/login-trends", "user-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(403);
   });
@@ -356,7 +311,7 @@ describe("GET /api/metrics/login-trends", () => {
     const res = await app.request(
       makeRequest("/api/metrics/login-trends", "admin-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
 
     expect(res.status).toBe(200);
@@ -374,7 +329,7 @@ describe("GET /api/metrics/login-trends", () => {
     await app.request(
       makeRequest("/api/metrics/login-trends?days=7", "admin-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
 
     expect(vi.mocked(getDailyLoginTrends)).toHaveBeenCalledWith(mockEnv.DB, 7);
@@ -388,7 +343,7 @@ describe("GET /api/metrics/login-trends", () => {
     await app.request(
       makeRequest("/api/metrics/login-trends?days=200", "admin-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
 
     expect(vi.mocked(getDailyLoginTrends)).toHaveBeenCalledWith(mockEnv.DB, 90);
@@ -402,7 +357,7 @@ describe("GET /api/metrics/login-trends", () => {
     await app.request(
       makeRequest("/api/metrics/login-trends?days=0", "admin-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
 
     expect(vi.mocked(getDailyLoginTrends)).toHaveBeenCalledWith(mockEnv.DB, 1);
@@ -415,7 +370,7 @@ describe("GET /api/metrics/login-trends", () => {
     const res = await app.request(
       makeRequest("/api/metrics/login-trends", "admin-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
 
     expect(vi.mocked(getDailyLoginTrends)).toHaveBeenCalledWith(mockEnv.DB, 30);
@@ -430,7 +385,7 @@ describe("GET /api/metrics/login-trends", () => {
     const res = await app.request(
       makeRequest("/api/metrics/login-trends", "admin-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
 
     expect(res.status).toBe(200);
@@ -446,7 +401,7 @@ describe("GET /api/metrics/login-trends", () => {
     const res = await app.request(
       makeRequest("/api/metrics/login-trends", "admin-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
 
     expect(res.status).toBe(500);
@@ -483,11 +438,7 @@ describe("GET /api/metrics - 国別ログイン統計", () => {
       { country: "unknown", count: 5 },
     ]);
 
-    const res = await app.request(
-      makeRequest("/api/metrics", "admin-token"),
-      undefined,
-      mockEnv as unknown as Record<string, string>,
-    );
+    const res = await app.request(makeRequest("/api/metrics", "admin-token"), undefined, mockEnv);
 
     expect(res.status).toBe(200);
     const body = await res.json<{
@@ -505,11 +456,7 @@ describe("GET /api/metrics - 国別ログイン統計", () => {
     vi.mocked(getLoginEventCountryStats).mockResolvedValue([]);
 
     const before = Date.now();
-    await app.request(
-      makeRequest("/api/metrics", "admin-token"),
-      undefined,
-      mockEnv as unknown as Record<string, string>,
-    );
+    await app.request(makeRequest("/api/metrics", "admin-token"), undefined, mockEnv);
     const after = Date.now();
 
     const calledSince = vi.mocked(getLoginEventCountryStats).mock.calls[0][1];
@@ -522,11 +469,7 @@ describe("GET /api/metrics - 国別ログイン統計", () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
     vi.mocked(getLoginEventCountryStats).mockResolvedValue([]);
 
-    const res = await app.request(
-      makeRequest("/api/metrics", "admin-token"),
-      undefined,
-      mockEnv as unknown as Record<string, string>,
-    );
+    const res = await app.request(makeRequest("/api/metrics", "admin-token"), undefined, mockEnv);
 
     expect(res.status).toBe(200);
     const body = await res.json<{ data: { login_country_stats_7d: unknown[] } }>();
@@ -926,11 +869,7 @@ describe("GET /api/metrics/active-users", () => {
   });
 
   it("Authorizationヘッダーなしで401を返す", async () => {
-    const res = await app.request(
-      makeRequest("/api/metrics/active-users"),
-      undefined,
-      mockEnv as unknown as Record<string, string>,
-    );
+    const res = await app.request(makeRequest("/api/metrics/active-users"), undefined, mockEnv);
     expect(res.status).toBe(401);
   });
 
@@ -940,7 +879,7 @@ describe("GET /api/metrics/active-users", () => {
     const res = await app.request(
       makeRequest("/api/metrics/active-users", "user-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(403);
   });
@@ -952,7 +891,7 @@ describe("GET /api/metrics/active-users", () => {
     const res = await app.request(
       makeRequest("/api/metrics/active-users", "admin-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
 
     expect(res.status).toBe(200);
@@ -964,11 +903,7 @@ describe("GET /api/metrics/active-users", () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
     vi.mocked(getActiveUserStats).mockResolvedValue({ dau: 0, wau: 0, mau: 0 } as any);
 
-    await app.request(
-      makeRequest("/api/metrics/active-users", "admin-token"),
-      undefined,
-      mockEnv as unknown as Record<string, string>,
-    );
+    await app.request(makeRequest("/api/metrics/active-users", "admin-token"), undefined, mockEnv);
 
     expect(getActiveUserStats).toHaveBeenCalledWith(mockEnv.DB);
   });
@@ -980,7 +915,7 @@ describe("GET /api/metrics/active-users", () => {
     const res = await app.request(
       makeRequest("/api/metrics/active-users", "admin-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
 
     expect(res.status).toBe(500);
@@ -1006,7 +941,7 @@ describe("GET /api/metrics/active-users/daily", () => {
     const res = await app.request(
       makeRequest("/api/metrics/active-users/daily"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(401);
   });
@@ -1017,7 +952,7 @@ describe("GET /api/metrics/active-users/daily", () => {
     const res = await app.request(
       makeRequest("/api/metrics/active-users/daily", "user-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
     expect(res.status).toBe(403);
   });
@@ -1032,7 +967,7 @@ describe("GET /api/metrics/active-users/daily", () => {
     const res = await app.request(
       makeRequest("/api/metrics/active-users/daily", "admin-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
 
     expect(res.status).toBe(200);
@@ -1049,7 +984,7 @@ describe("GET /api/metrics/active-users/daily", () => {
     const res = await app.request(
       makeRequest("/api/metrics/active-users/daily?days=7", "admin-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
 
     expect(res.status).toBe(200);
@@ -1067,7 +1002,7 @@ describe("GET /api/metrics/active-users/daily", () => {
     const res = await app.request(
       makeRequest("/api/metrics/active-users/daily?days=abc", "admin-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
 
     expect(res.status).toBe(400);
@@ -1084,7 +1019,7 @@ describe("GET /api/metrics/active-users/daily", () => {
     const res = await app.request(
       makeRequest("/api/metrics/active-users/daily?days=0", "admin-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
 
     expect(res.status).toBe(400);
@@ -1101,7 +1036,7 @@ describe("GET /api/metrics/active-users/daily", () => {
     const res = await app.request(
       makeRequest("/api/metrics/active-users/daily?days=91", "admin-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
 
     expect(res.status).toBe(400);
@@ -1118,7 +1053,7 @@ describe("GET /api/metrics/active-users/daily", () => {
     await app.request(
       makeRequest("/api/metrics/active-users/daily?days=abc", "admin-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
 
     expect(getDailyActiveUsers).not.toHaveBeenCalled();
@@ -1132,7 +1067,7 @@ describe("GET /api/metrics/active-users/daily", () => {
     const res = await app.request(
       makeRequest("/api/metrics/active-users/daily", "admin-token"),
       undefined,
-      mockEnv as unknown as Record<string, string>,
+      mockEnv,
     );
 
     expect(res.status).toBe(500);
