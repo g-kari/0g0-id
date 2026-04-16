@@ -54,7 +54,18 @@ export const mcpAuthMiddleware = createMiddleware<McpEnv>(
         audience: c.env.IDP_ORIGIN,
         algorithms: ["ES256"],
       });
-      c.set("user", payload as unknown as TokenPayload);
+      const user = payload as unknown as TokenPayload;
+
+      // リボークされたトークンを拒否（JWT有効期限内でも即時無効化）
+      if (user.jti && (await isAccessTokenRevoked(c.env.DB, user.jti))) {
+        c.header(
+          "WWW-Authenticate",
+          `Bearer error="invalid_token", resource_metadata="${c.env.MCP_ORIGIN}/.well-known/oauth-protected-resource"`,
+        );
+        return c.json({ error: { code: "UNAUTHORIZED", message: "Token has been revoked" } }, 401);
+      }
+
+      c.set("user", user);
       await next();
     } catch {
       c.header(
