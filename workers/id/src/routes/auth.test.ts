@@ -5,9 +5,12 @@ import { createMockIdpEnv } from "../../../../packages/shared/src/db/test-helper
 
 // @0g0-id/sharedの全関数をモック
 vi.mock("@0g0-id/shared", async (importOriginal) => {
-  const { parseJsonBody } = await importOriginal<typeof import("@0g0-id/shared")>();
+  const { parseJsonBody, restErrorBody, oauthErrorBody } =
+    await importOriginal<typeof import("@0g0-id/shared")>();
   return {
     parseJsonBody,
+    restErrorBody,
+    oauthErrorBody,
     createLogger: vi
       .fn()
       .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),

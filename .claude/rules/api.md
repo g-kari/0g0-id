@@ -16,9 +16,58 @@ paths:
 
 ### エラーレスポンス
 
+本プロジェクトでは 2 種類のエラーレスポンス形式を使い分ける。
+
+#### 1. REST API 形式（既定）
+
+`/api/*`、`/auth/exchange`、`/auth/refresh`、`/auth/logout`、`/auth/callback` など、
+OAuth 2.0 規格外のREST系エンドポイントで使用する。
+
 ```json
 { "error": { "code": "ERROR_CODE", "message": "説明" } }
 ```
+
+共通ヘルパー: `restErrorBody(code, message)`（`packages/shared/src/lib/errors.ts`）
+
+```typescript
+import { restErrorBody } from "@0g0-id/shared";
+
+return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
+```
+
+標準エラーコード（追加は自由、固有コードは用途を明確に命名する）:
+
+| code                | HTTP status | 用途                 |
+| ------------------- | ----------- | -------------------- |
+| `BAD_REQUEST`       | 400         | バリデーションエラー |
+| `UNAUTHORIZED`      | 401         | 認証失敗             |
+| `FORBIDDEN`         | 403         | 権限不足             |
+| `NOT_FOUND`         | 404         | リソース未検出       |
+| `CONFLICT`          | 409         | 競合（重複登録等）   |
+| `TOO_MANY_REQUESTS` | 429         | レートリミット       |
+| `INTERNAL_ERROR`    | 500         | サーバーエラー       |
+
+#### 2. OAuth 2.0 (RFC 6749) 形式
+
+`/api/token/*`、`/auth/authorize`、`/api/userinfo`（OIDC）等、OAuth/OIDC 仕様準拠が必要なエンドポイントで使用する。
+コードは RFC 6749 準拠の小文字スネーク（`invalid_request` / `invalid_grant` / `server_error` 等）。
+
+```json
+{ "error": "invalid_request", "error_description": "client_id is required" }
+```
+
+共通ヘルパー: `oauthErrorBody(error, description?)`（`packages/shared/src/lib/errors.ts`）
+
+```typescript
+import { oauthErrorBody } from "@0g0-id/shared";
+
+return c.json(oauthErrorBody("invalid_request", "client_id is required"), 400);
+```
+
+#### 選択基準
+
+- OAuth 2.0 / OIDC 仕様が規定するエンドポイント → OAuth 形式（仕様準拠が必須）
+- それ以外のBFF・管理API・外部API → REST 形式
 
 ## HTTPステータスコード
 

@@ -1,6 +1,6 @@
 import { Hono, type Context } from "hono";
 import type { IdpEnv, TokenPayload } from "@0g0-id/shared";
-import { findUserById, generatePairwiseSub } from "@0g0-id/shared";
+import { findUserById, generatePairwiseSub, oauthErrorBody } from "@0g0-id/shared";
 import { authMiddleware } from "../middleware/auth";
 import { externalApiRateLimitMiddleware } from "../middleware/rate-limit";
 
@@ -21,15 +21,15 @@ async function handleUserInfo(c: AppContext): Promise<Response> {
   try {
     user = await findUserById(c.env.DB, tokenUser.sub);
   } catch {
-    return c.json({ error: "server_error", error_description: "Internal server error" }, 500);
+    return c.json(oauthErrorBody("server_error", "Internal server error"), 500);
   }
   if (!user) {
-    return c.json({ error: "invalid_token", error_description: "User not found" }, 401);
+    return c.json(oauthErrorBody("invalid_token", "User not found"), 401);
   }
 
   // BAN済みユーザーのクレーム返却を防止
   if (user.banned_at !== null) {
-    return c.json({ error: "invalid_token", error_description: "Account suspended" }, 401);
+    return c.json(oauthErrorBody("invalid_token", "Account suspended"), 401);
   }
 
   // スコープベースのクレームフィルタリング（OIDC Core 1.0 Section 5.3）
