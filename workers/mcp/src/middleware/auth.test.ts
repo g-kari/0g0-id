@@ -134,6 +134,48 @@ describe("mcpAuthMiddleware", () => {
     );
   });
 
+  it("リボークされたトークンの場合は401を返す", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(jwtVerify).mockResolvedValue({
+      payload: { ...mockPayload, jti: "revoked-jti" },
+      protectedHeader: { alg: "ES256" },
+    } as any);
+    vi.mocked(isAccessTokenRevoked).mockResolvedValue(true);
+
+    const app = buildAuthApp();
+    const res = await app.request(
+      new Request(`${baseUrl}/test`, {
+        headers: { Authorization: "Bearer valid.jwt.token" },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+    expect(res.status).toBe(401);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("UNAUTHORIZED");
+    expect(body.error.message).toBe("Token has been revoked");
+    expect(vi.mocked(isAccessTokenRevoked)).toHaveBeenCalledWith(mockEnv.DB, "revoked-jti");
+  });
+
+  it("jtiがないトークンの場合はリボークチェックをスキップして200を返す", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(jwtVerify).mockResolvedValue({
+      payload: mockPayload, // jtiなし
+      protectedHeader: { alg: "ES256" },
+    } as any);
+
+    const app = buildAuthApp();
+    const res = await app.request(
+      new Request(`${baseUrl}/test`, {
+        headers: { Authorization: "Bearer valid.jwt.token" },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(isAccessTokenRevoked)).not.toHaveBeenCalled();
+  });
+
   it("JWT検証失敗時は401を返す", async () => {
     vi.mocked(jwtVerify).mockRejectedValue(new Error("JWTExpired"));
 
