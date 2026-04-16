@@ -20,7 +20,7 @@
     "@cloudflare/workers-types": "^4.20260329.1",
     "typescript": "^6.0.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",
-    "vite-plus": "latest",
+    "vite-plus": "^0.1.18",
     "vitest": "npm:@voidzero-dev/vite-plus-test@latest",
     "wrangler": "^4.78.0"
   }
