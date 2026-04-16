@@ -66,8 +66,12 @@ function createRateLimitMiddleware(
       if (!binding) {
         if (!warnedBindings.has(bindingName)) {
           warnedBindings.add(bindingName);
-          rateLimitLogger.warn(
-            `[rate-limit] ${bindingName} binding is not configured — rate limiting is DISABLED. Configure this binding in wrangler.toml for production deployments.`,
+          // 本番環境（HTTPS）ではerrorレベルで即座にアラート検知可能にする
+          const isProduction = c.env.IDP_ORIGIN?.startsWith("https://");
+          const logFn = isProduction ? rateLimitLogger.error : rateLimitLogger.warn;
+          logFn.call(
+            rateLimitLogger,
+            `[rate-limit] ${bindingName} binding is not configured — rate limiting is DISABLED.${isProduction ? " ⚠️ PRODUCTION: Configure this binding in wrangler.toml immediately." : " Configure this binding in wrangler.toml for production deployments."}`,
           );
         }
         return next();
@@ -75,10 +79,13 @@ function createRateLimitMiddleware(
       const key = await getKey(c);
       // cf-connecting-ip が未設定（ローカル直接アクセス・Cloudflare設定ミス）の場合、
       // 全リクエストが 'unknown' キーに集約され、誤検知レートリミットが発生しうる。
-      // 本番Cloudflare経由では発生しないが、設定ミス時に即座に検知できるよう警告ログを出す。
+      // 本番環境ではerrorレベルで即座にアラート検知可能にする。
       if (key === "unknown") {
-        rateLimitLogger.warn(
-          `[rate-limit] ${bindingName}: rate limit key resolved to 'unknown' — cf-connecting-ip may not be set. All requests share the same bucket.`,
+        const isProduction = c.env.IDP_ORIGIN?.startsWith("https://");
+        const logFn = isProduction ? rateLimitLogger.error : rateLimitLogger.warn;
+        logFn.call(
+          rateLimitLogger,
+          `[rate-limit] ${bindingName}: rate limit key resolved to 'unknown' — cf-connecting-ip may not be set. All requests share the same bucket.${isProduction ? " ⚠️ PRODUCTION: Check Cloudflare proxy configuration." : ""}`,
         );
       }
       const { success } = await binding.limit({ key });

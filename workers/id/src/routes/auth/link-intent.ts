@@ -13,10 +13,12 @@ export async function handleLinkIntent(c: Context<{ Bindings: IdpEnv; Variables:
   const tokenUser = c.get("user");
 
   // HMAC-SHA256署名付きトークンを生成（DBアクセス不要、自己完結型）
+  // JTI（一意識別子）を付与してワンタイム性を向上。有効期限は2分に短縮して再利用ウィンドウを縮小。
   const tokenPayload = JSON.stringify({
     purpose: "link",
     sub: tokenUser.sub,
-    exp: Date.now() + 5 * 60 * 1000, // 5分
+    jti: crypto.randomUUID(),
+    exp: Date.now() + 2 * 60 * 1000, // 2分
   });
   const linkToken = await signCookie(tokenPayload, c.env.COOKIE_SECRET);
 

@@ -1695,7 +1695,7 @@ const INTERNAL_OPENAPI = {
         description:
           "認証済みユーザーに対してSNSプロバイダー連携用のワンタイムトークンを発行する。\n\n" +
           "発行されたトークンは `/auth/login?link_token=<token>` の `link_token` パラメータに使用する。\n\n" +
-          "トークンの有効期限は5分。URLパラメータで `link_user_id` を直接受け付けるとアカウント乗っ取りが可能なため、このエンドポイントでアクセストークンで認証したうえでワンタイムトークンを発行する設計。",
+          "トークンの有効期限は2分。URLパラメータで `link_user_id` を直接受け付けるとアカウント乗っ取りが可能なため、このエンドポイントでアクセストークンで認証したうえでワンタイムトークンを発行する設計。",
         security: [{ BearerAuth: [] }],
         responses: {
           "200": {
@@ -1710,7 +1710,7 @@ const INTERNAL_OPENAPI = {
                       properties: {
                         link_token: {
                           type: "string",
-                          description: "5分間有効なワンタイムトークン",
+                          description: "2分間有効なワンタイムトークン（JTI付き）",
                         },
                       },
                       required: ["link_token"],
