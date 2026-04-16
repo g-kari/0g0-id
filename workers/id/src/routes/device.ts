@@ -37,6 +37,9 @@ const DEVICE_CODE_LIFETIME_SEC = 600;
 /** ポーリング間隔（秒） */
 const POLLING_INTERVAL_SEC = 5;
 
+/** user_code 衝突時の最大リトライ回数 */
+const USER_CODE_RETRY_LIMIT = 3;
+
 /**
  * user_code 生成用の文字セット。
  * 紛らわしい文字（O/0/I/1/L）を除外した英数字大文字。
@@ -60,6 +63,11 @@ function generateUserCode(): string {
     }
   }
   return result.join("");
+}
+
+/** D1 の UNIQUE 制約違反エラーかどうか判定する */
+function isUniqueConstraintError(err: unknown): boolean {
+  return err instanceof Error && err.message.includes("UNIQUE");
 }
 
 /** user_codeをハイフン区切りで表示用に整形する */
@@ -142,10 +150,10 @@ app.post("/code", tokenApiRateLimitMiddleware, async (c) => {
   const userCode = generateUserCode();
   const expiresAt = new Date(Date.now() + DEVICE_CODE_LIFETIME_SEC * 1000).toISOString();
 
-  // user_codeの衝突リトライ（最大3回）
+  // user_codeの衝突リトライ
   let saved = false;
   let currentUserCode = userCode;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < USER_CODE_RETRY_LIMIT; attempt++) {
     if (attempt > 0) currentUserCode = generateUserCode();
     try {
       await createDeviceCode(c.env.DB, {
@@ -159,8 +167,7 @@ app.post("/code", tokenApiRateLimitMiddleware, async (c) => {
       saved = true;
       break;
     } catch (err) {
-      // UNIQUE制約違反の場合はリトライ
-      if (attempt < 2 && err instanceof Error && err.message.includes("UNIQUE")) {
+      if (attempt < USER_CODE_RETRY_LIMIT - 1 && isUniqueConstraintError(err)) {
         continue;
       }
       deviceLogger.error("デバイスコードの保存に失敗", err);
