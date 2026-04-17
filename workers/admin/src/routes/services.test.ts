@@ -10,6 +10,7 @@ const baseUrl = "https://admin.0g0.xyz";
 // 管理者セッションCookieを生成するヘルパー
 async function makeSessionCookie(role: "admin" | "user" = "admin"): Promise<string> {
   const session = {
+    session_id: "00000000-0000-0000-0000-000000000000",
     access_token: "mock-access-token",
     refresh_token: "mock-refresh-token",
     user: { id: "admin-user-id", email: "admin@example.com", name: "Admin", role },

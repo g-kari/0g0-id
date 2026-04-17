@@ -27,6 +27,7 @@ function buildApp(idpFetch: (req: Request) => Promise<Response>) {
 
 async function makeSessionCookie(userId = "user-123"): Promise<string> {
   const session = {
+    session_id: "00000000-0000-0000-0000-000000000000",
     access_token: "mock-access-token",
     refresh_token: "mock-refresh-token",
     user: { id: userId, email: "user@example.com", name: "Test User", role: "user" as const },
@@ -144,6 +145,7 @@ describe("user BFF — /auth", () => {
         data: {
           access_token: "new-access-token",
           refresh_token: "new-refresh-token",
+          session_id: "00000000-0000-0000-0000-000000000000",
           user: { id: "user-123", email: "user@example.com", name: "Test User", role: "user" },
         },
       };
@@ -171,6 +173,7 @@ describe("user BFF — /auth", () => {
         data: {
           access_token: "token",
           refresh_token: "refresh",
+          session_id: "00000000-0000-0000-0000-000000000000",
           user: { id: "u1", email: "e@e.com", name: "N", role: "user" },
         },
       };

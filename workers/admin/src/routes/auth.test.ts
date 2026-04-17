@@ -38,6 +38,7 @@ function makeExchangeResponse(role: "admin" | "user" = "admin") {
     data: {
       access_token: "mock-access-token",
       refresh_token: "mock-refresh-token",
+      session_id: "00000000-0000-0000-0000-000000000000",
       user: { id: "user-1", email: "admin@example.com", name: "Admin", role },
     },
   };
@@ -195,6 +196,7 @@ describe("admin BFF — /auth", () => {
 
       const sessionData = await encodeSession(
         {
+          session_id: "00000000-0000-0000-0000-000000000000",
           access_token: "mock-at",
           refresh_token: "mock-rt",
           user: { id: "user-1", email: "admin@example.com", name: "Admin", role: "admin" },

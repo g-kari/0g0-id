@@ -4,6 +4,7 @@ import {
   findUserById,
   isAccessTokenRevoked,
   createLogger,
+  findActiveBffSession,
 } from "@0g0-id/shared";
 import type { IdpEnv, TokenPayload, User } from "@0g0-id/shared";
 
@@ -60,6 +61,24 @@ export const authMiddleware = createMiddleware<{
     if (payload.jti && (await isAccessTokenRevoked(c.env.DB, payload.jti))) {
       return c.json({ error: { code: "UNAUTHORIZED", message: "Token has been revoked" } }, 401);
     }
+
+    // BFF セッション失効チェック（issue #139）。
+    // BFF Worker が X-BFF-Session-Id ヘッダーを付与していれば、bff_sessions の有効性を確認する。
+    // 失効済みまたは未登録なら 401 を返し、BFF 側で Cookie 削除 + 再ログインを促す。
+    // 外部サービストークン（cid 付き）は BFF 由来ではないのでチェックしない。
+    if (!payload.cid) {
+      const bffSessionId = c.req.header("X-BFF-Session-Id");
+      if (bffSessionId) {
+        const session = await findActiveBffSession(c.env.DB, bffSessionId);
+        if (!session || session.user_id !== payload.sub) {
+          return c.json(
+            { error: { code: "UNAUTHORIZED", message: "Session has been revoked" } },
+            401,
+          );
+        }
+      }
+    }
+
     c.set("user", payload);
     await next();
   } catch {

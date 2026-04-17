@@ -9,6 +9,7 @@ const baseUrl = "https://user.0g0.xyz";
 
 async function makeSessionCookie(userId = "user-123"): Promise<string> {
   const session = {
+    session_id: "00000000-0000-0000-0000-000000000000",
     access_token: "mock-access-token",
     refresh_token: "mock-refresh-token",
     user: { id: userId, email: "user@example.com", name: "Test User", role: "user" as const },

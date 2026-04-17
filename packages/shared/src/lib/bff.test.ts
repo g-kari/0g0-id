@@ -27,6 +27,7 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 const TEST_SECRET = "test-session-secret-for-unit-tests-only-32b";
 
 const mockSession: BffSession = {
+  session_id: "00000000-0000-0000-0000-000000000000",
   access_token: "access-token-123",
   refresh_token: "refresh-token-456",
   user: { id: "user-1", email: "test@example.com", name: "Test User", role: "user" },
@@ -357,7 +358,7 @@ describe("setSessionCookie", () => {
       secure: true,
       sameSite: "Lax",
       path: "/",
-      maxAge: 30 * 24 * 60 * 60,
+      maxAge: 7 * 24 * 60 * 60,
     });
   });
 

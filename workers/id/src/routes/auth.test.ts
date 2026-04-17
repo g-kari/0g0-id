@@ -93,6 +93,12 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     findRefreshTokenById: vi.fn(),
     // JTIブロックリスト
     addRevokedAccessToken: vi.fn(),
+    // BFFセッション（issue #139）
+    createBffSession: vi.fn(),
+    findActiveBffSession: vi.fn(),
+    revokeBffSession: vi.fn(),
+    revokeAllBffSessionsByUserId: vi.fn(),
+    BFF_SESSION_MAX_AGE_SECONDS: 7 * 24 * 60 * 60,
   };
 });
 

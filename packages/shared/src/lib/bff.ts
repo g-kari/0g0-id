@@ -4,7 +4,18 @@ import type { BffEnv } from "../types";
 import { decodeBase64Url } from "./base64url";
 import { timingSafeEqual } from "./crypto";
 
+/**
+ * BFF セッション Cookie の最大有効期間（秒）。
+ * issue #139 対応で 30日 → 7日に短縮。Cookie 漏洩時の悪用ウィンドウを制限する。
+ */
+export const BFF_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+
 export interface BffSession {
+  /**
+   * bff_sessions テーブルの行 ID。Cookie 値に含めて送信し、BFF→IdP リクエスト毎に
+   * ID Worker 側で失効状態を検証する。Cookie 漏洩時のリモート失効を実現する。
+   */
+  session_id: string;
   access_token: string;
   refresh_token: string;
   user: { id: string; email: string; name: string; role: "user" | "admin" };
@@ -18,6 +29,7 @@ export interface BffSession {
 function isBffSession(obj: unknown): obj is BffSession {
   if (typeof obj !== "object" || obj === null || Array.isArray(obj)) return false;
   const s = obj as Record<string, unknown>;
+  if (typeof s["session_id"] !== "string" || !s["session_id"]) return false;
   if (typeof s["access_token"] !== "string" || !s["access_token"]) return false;
   if (typeof s["refresh_token"] !== "string" || !s["refresh_token"]) return false;
   if (typeof s["user"] !== "object" || s["user"] === null || Array.isArray(s["user"])) return false;
@@ -80,6 +92,7 @@ export async function parseSession(
     if (!isBffSession(raw)) return null;
     // 既知フィールドのみを抽出してプロトタイプ汚染を防止
     return {
+      session_id: raw.session_id,
       access_token: raw.access_token,
       refresh_token: raw.refresh_token,
       user: {
@@ -128,7 +141,10 @@ export async function setSessionCookie(
     secure: true,
     sameSite: "Lax",
     path: "/",
-    maxAge: 30 * 24 * 60 * 60,
+    // BFF セッション最大有効期間: 7日（従来30日から短縮）。
+    // Cookie が漏洩した場合の悪用ウィンドウを限定しつつ、日常利用での再ログインを避けるバランス。
+    // なお bff_sessions テーブルの expires_at もこの値に合わせて設定する。
+    maxAge: BFF_SESSION_MAX_AGE_SECONDS,
   });
 }
 
@@ -169,6 +185,9 @@ export async function fetchWithAuth(
 
   const serviceHeaders = internalServiceHeaders(c.env);
 
+  // BFF セッション ID を ID Worker に渡して bff_sessions の失効チェックを行わせる（issue #139）。
+  const bffSessionHeader = { "X-BFF-Session-Id": session.session_id };
+
   const makeRequest = (token: string): Promise<Response> =>
     c.env.IDP.fetch(
       new Request(url, {
@@ -176,6 +195,7 @@ export async function fetchWithAuth(
         headers: {
           ...(init?.headers as Record<string, string> | undefined),
           ...serviceHeaders,
+          ...bffSessionHeader,
           Authorization: `Bearer ${token}`,
         },
       }),
@@ -195,7 +215,11 @@ export async function fetchWithAuth(
       refreshRes = await c.env.IDP.fetch(
         new Request(`${c.env.IDP_ORIGIN}/auth/refresh`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...serviceHeaders },
+          headers: {
+            "Content-Type": "application/json",
+            ...serviceHeaders,
+            ...bffSessionHeader,
+          },
           body: JSON.stringify({ refresh_token: session.refresh_token }),
         }),
       );
@@ -400,6 +424,8 @@ export function verifyAndConsumeOAuthState(
 export interface ExchangeResult {
   access_token: string;
   refresh_token: string;
+  /** BFF セッション ID（bff_sessions テーブルの行 ID）。BFF フロー時のみ設定される。 */
+  session_id?: string;
   user: { id: string; email: string; name: string; role: "user" | "admin" };
 }
 
@@ -428,12 +454,19 @@ export async function exchangeCodeAtIdp(
  * BFFからIdPへリフレッシュトークンの失効を要求する。
  * 通信エラーは呼び出し側で処理する。
  */
-export async function revokeTokenAtIdp(env: BffEnv, refreshToken: string): Promise<void> {
+export async function revokeTokenAtIdp(
+  env: BffEnv,
+  refreshToken: string,
+  sessionId?: string,
+): Promise<void> {
   await env.IDP.fetch(
     new Request(`${env.IDP_ORIGIN}/auth/logout`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...internalServiceHeaders(env) },
-      body: JSON.stringify({ refresh_token: refreshToken }),
+      body: JSON.stringify({
+        refresh_token: refreshToken,
+        ...(sessionId ? { session_id: sessionId } : {}),
+      }),
     }),
   );
 }

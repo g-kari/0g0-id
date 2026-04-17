@@ -744,6 +744,7 @@ function makeBatchD1Mock(updatedUser: User | null): BatchD1Mock {
     { results: updatedUser ? [updatedUser] : [] },
     { results: [] },
     { results: [] },
+    { results: [] },
   ];
   const db = {
     prepare: vi.fn().mockReturnValue(stmt),
@@ -760,12 +761,13 @@ describe("banUserWithRevocation", () => {
     const user = await banUserWithRevocation(db, "user-1");
     expect(user.banned_at).toBe("2026-03-24T00:00:00Z");
     expect(db.batch).toHaveBeenCalledTimes(1);
-    // 3つのprepared statementが束ねられている（users更新, refresh_tokens失効, mcp_sessions削除）
-    expect(db.prepare).toHaveBeenCalledTimes(3);
+    // 4つのprepared statementが束ねられている（users更新, refresh_tokens失効, mcp_sessions削除, bff_sessions失効）
+    expect(db.prepare).toHaveBeenCalledTimes(4);
     const sqls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as string);
     expect(sqls[0]).toContain("UPDATE users SET banned_at");
     expect(sqls[1]).toContain("UPDATE refresh_tokens SET revoked_at");
     expect(sqls[2]).toContain("DELETE FROM mcp_sessions");
+    expect(sqls[3]).toContain("UPDATE bff_sessions SET revoked_at");
   });
 
   it("ユーザーが見つからない場合はエラーを投げる", async () => {
@@ -789,11 +791,12 @@ describe("updateUserRoleWithRevocation", () => {
     const user = await updateUserRoleWithRevocation(db, "user-1", "admin");
     expect(user.role).toBe("admin");
     expect(db.batch).toHaveBeenCalledTimes(1);
-    expect(db.prepare).toHaveBeenCalledTimes(3);
+    expect(db.prepare).toHaveBeenCalledTimes(4);
     const sqls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as string);
     expect(sqls[0]).toContain("UPDATE users SET role");
     expect(sqls[1]).toContain("UPDATE refresh_tokens SET revoked_at");
     expect(sqls[2]).toContain("DELETE FROM mcp_sessions");
+    expect(sqls[3]).toContain("UPDATE bff_sessions SET revoked_at");
   });
 
   it("ユーザーが見つからない場合はエラーを投げる", async () => {

@@ -79,6 +79,11 @@ export const INTERNAL_OPENAPI = {
         properties: {
           access_token: { type: "string" },
           refresh_token: { type: "string" },
+          session_id: {
+            type: "string",
+            format: "uuid",
+            description: "BFFセッションID（BFFフロー時のみ返却。リモート失効用）",
+          },
           token_type: { type: "string", example: "Bearer" },
           expires_in: { type: "integer", example: 900 },
           user: { $ref: "#/components/schemas/User" },
@@ -129,7 +134,7 @@ export const INTERNAL_OPENAPI = {
         tags: ["認証フロー"],
         summary: "コードをトークンに交換",
         description:
-          "ワンタイムコードをアクセストークン（15分）＋リフレッシュトークン（30日）に交換する。Service Bindingsによるサーバー間通信専用。",
+          "ワンタイムコードをアクセストークン（15分）＋リフレッシュトークン（30日）に交換する。Service Bindingsによるサーバー間通信専用。BFFフロー時は session_id（bff_sessions 行ID）を同梱し、Cookie に埋め込むことでリモート失効可能にする。",
         requestBody: {
           required: true,
           content: {
@@ -201,7 +206,8 @@ export const INTERNAL_OPENAPI = {
       post: {
         tags: ["認証フロー"],
         summary: "ログアウト",
-        description: "リフレッシュトークンファミリー全体を失効させる。",
+        description:
+          "リフレッシュトークンファミリー全体を失効させる。session_id が指定された場合は bff_sessions の該当行も失効させる。",
         requestBody: {
           content: {
             "application/json": {
@@ -211,6 +217,12 @@ export const INTERNAL_OPENAPI = {
                   refresh_token: {
                     type: "string",
                     description: "失効させるトークン（省略時は何もしない）",
+                  },
+                  session_id: {
+                    type: "string",
+                    format: "uuid",
+                    description:
+                      "BFFセッションID。Cookie に埋め込まれている session_id を渡すことで bff_sessions 側も失効させる。",
                   },
                 },
               },
