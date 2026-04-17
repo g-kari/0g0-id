@@ -11,6 +11,21 @@ import { validateNonce, validateCodeChallenge } from "../../utils/scopes";
 
 const authLogger = createLogger("auth");
 
+type OAuthErrorCode = "invalid_request" | "unsupported_response_type" | "server_error";
+
+/**
+ * RFC 6749 形式の OAuth エラーレスポンスを返すヘルパー。
+ * `{ error, error_description }` に固定化し、ステータスコードを指定する。
+ */
+function oauthError(
+  c: Context<{ Bindings: IdpEnv }>,
+  error: OAuthErrorCode,
+  description: string,
+  status: 400 | 500,
+) {
+  return c.json({ error, error_description: description }, status);
+}
+
 /**
  * GET /auth/authorize — 標準 OAuth 2.0 Authorization エンドポイント (RFC 6749 / RFC 7636 / RFC 8252)
  * MCPクライアント等のネイティブアプリが直接HTTPリクエストで利用する
@@ -26,60 +41,52 @@ export async function handleAuthorize(c: Context<{ Bindings: IdpEnv }>) {
   // OIDC: nonce は任意パラメータ（ID Token にリプレイ攻撃対策として埋め込む）
   const nonce = c.req.query("nonce");
 
-  // 必須パラメータ検証
+  // response_type は unsupported_response_type なので個別処理
   if (responseType !== "code") {
-    return c.json(
-      {
-        error: "unsupported_response_type",
-        error_description: "Only response_type=code is supported",
-      },
-      400,
-    );
+    return oauthError(c, "unsupported_response_type", "Only response_type=code is supported", 400);
   }
-  if (!clientId) {
-    return c.json({ error: "invalid_request", error_description: "client_id is required" }, 400);
+
+  // 必須パラメータ検証（table 駆動）
+  const requiredChecks: { value: string | undefined; msg: string }[] = [
+    { value: clientId, msg: "client_id is required" },
+    { value: redirectUri, msg: "redirect_uri is required" },
+    { value: state, msg: "state is required" },
+    { value: codeChallenge, msg: "code_challenge is required (PKCE S256)" },
+  ];
+  for (const check of requiredChecks) {
+    if (!check.value) {
+      return oauthError(c, "invalid_request", check.msg, 400);
+    }
   }
-  if (!redirectUri) {
-    return c.json({ error: "invalid_request", error_description: "redirect_uri is required" }, 400);
+  // 型ナローイング: 上記 for ループで undefined を排除
+  if (!clientId || !redirectUri || !state || !codeChallenge) {
+    return oauthError(c, "invalid_request", "missing required parameter", 400);
   }
-  if (!state) {
-    return c.json({ error: "invalid_request", error_description: "state is required" }, 400);
-  }
-  if (!codeChallenge) {
-    return c.json(
-      { error: "invalid_request", error_description: "code_challenge is required (PKCE S256)" },
-      400,
-    );
-  }
+
   if (codeChallengeMethod !== "S256") {
-    return c.json(
-      {
-        error: "invalid_request",
-        error_description: "Only code_challenge_method=S256 is supported",
-      },
-      400,
-    );
+    return oauthError(c, "invalid_request", "Only code_challenge_method=S256 is supported", 400);
   }
   // RFC 7636 §4.2: S256のcode_challengeはBASE64URL(SHA256(code_verifier)) = 43文字
   const codeChallengeError = validateCodeChallenge(codeChallenge);
   if (codeChallengeError) {
-    return c.json({ error: "invalid_request", error_description: codeChallengeError }, 400);
+    return oauthError(c, "invalid_request", codeChallengeError, 400);
   }
 
-  // パラメータ長制限
-  if (redirectUri.length > 2048) {
-    return c.json({ error: "invalid_request", error_description: "redirect_uri too long" }, 400);
-  }
-  if (state.length > 1024) {
-    return c.json({ error: "invalid_request", error_description: "state too long" }, 400);
-  }
-  if (scope && scope.length > 2048) {
-    return c.json({ error: "invalid_request", error_description: "scope too long" }, 400);
+  // パラメータ長制限（table 駆動）
+  const lengthChecks: { value: string | undefined; max: number; msg: string }[] = [
+    { value: redirectUri, max: 2048, msg: "redirect_uri too long" },
+    { value: state, max: 1024, msg: "state too long" },
+    { value: scope, max: 2048, msg: "scope too long" },
+  ];
+  for (const check of lengthChecks) {
+    if (check.value && check.value.length > check.max) {
+      return oauthError(c, "invalid_request", check.msg, 400);
+    }
   }
   // nonce はOIDCオプション。長さ + 制御文字を検証（OIDC Core 1.0 §3.1.2.1）
   const nonceError = validateNonce(nonce);
   if (nonceError) {
-    return c.json({ error: "invalid_request", error_description: nonceError }, 400);
+    return oauthError(c, "invalid_request", nonceError, 400);
   }
 
   // サービス検証
@@ -88,16 +95,16 @@ export async function handleAuthorize(c: Context<{ Bindings: IdpEnv }>) {
     service = await findServiceByClientId(c.env.DB, clientId);
   } catch (err) {
     authLogger.error("[authorize] Failed to find service by client_id", err);
-    return c.json({ error: "server_error", error_description: "Internal server error" }, 500);
+    return oauthError(c, "server_error", "Internal server error", 500);
   }
   if (!service) {
-    return c.json({ error: "invalid_request", error_description: "Unknown client_id" }, 400);
+    return oauthError(c, "invalid_request", "Unknown client_id", 400);
   }
 
   // redirect_uri 検証（localhost/127.0.0.1 の場合はポートを無視: RFC 8252 §7.3）
   const normalizedRequested = normalizeRedirectUri(redirectUri);
   if (!normalizedRequested) {
-    return c.json({ error: "invalid_request", error_description: "Invalid redirect_uri" }, 400);
+    return oauthError(c, "invalid_request", "Invalid redirect_uri", 400);
   }
 
   // 登録済みredirect_uriを取得して、matchRedirectUriで比較
@@ -106,17 +113,11 @@ export async function handleAuthorize(c: Context<{ Bindings: IdpEnv }>) {
     registeredUris = await listRedirectUris(c.env.DB, service.id);
   } catch (err) {
     authLogger.error("[authorize] Failed to list redirect URIs", err);
-    return c.json({ error: "server_error", error_description: "Internal server error" }, 500);
+    return oauthError(c, "server_error", "Internal server error", 500);
   }
   const matched = registeredUris.some((ru) => matchRedirectUri(ru.uri, normalizedRequested));
   if (!matched) {
-    return c.json(
-      {
-        error: "invalid_request",
-        error_description: "redirect_uri not registered for this client",
-      },
-      400,
-    );
+    return oauthError(c, "invalid_request", "redirect_uri not registered for this client", 400);
   }
 
   // ユーザーをプロバイダー選択画面（USER_ORIGIN/login）にリダイレクト
