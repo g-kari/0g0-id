@@ -3,10 +3,10 @@ import {
   findUserById,
   listUsers,
   countUsers,
-  banUser,
+  banUserWithRevocation,
   unbanUser,
   deleteUser,
-  updateUserRole,
+  updateUserRoleWithRevocation,
   getUserProviders,
   getLoginEventsByUserId,
   getUserLoginProviderStats,
@@ -122,9 +122,8 @@ export const banUserTool: McpTool = {
       return { content: [{ type: "text", text: "ユーザーが見つかりません" }], isError: true };
     }
 
-    const user = await banUser(context.db, userId);
-    await revokeUserTokens(context.db, userId, "security_event");
-    await deleteMcpSessionsByUser(context.db, userId);
+    // BAN + 全トークン失効 + MCPセッション削除 を D1 batch() でアトミックに実行
+    const user = await banUserWithRevocation(context.db, userId);
     await createAdminAuditLog(context.db, {
       adminUserId: context.userId,
       action: "user.ban",
@@ -539,7 +538,9 @@ export const updateUserRoleTool: McpTool = {
       };
     }
 
-    const updated = await updateUserRole(context.db, userId, role);
+    // ロール変更 + 全トークン失効 + MCPセッション削除 を D1 batch() でアトミックに実行
+    // （権限変更を即座に反映するための既存セッション失効 — REST route と整合）
+    const updated = await updateUserRoleWithRevocation(context.db, userId, role);
 
     await createAdminAuditLog(context.db, {
       adminUserId: context.userId,

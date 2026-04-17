@@ -20,7 +20,9 @@ import {
   countAdminUsers,
   tryBootstrapAdmin,
   banUser,
+  banUserWithRevocation,
   unbanUser,
+  updateUserRoleWithRevocation,
 } from "./users";
 import type { User } from "../types";
 import { makeD1Mock } from "./test-helpers";
@@ -721,6 +723,84 @@ describe("unbanUser", () => {
     const db = makeD1Mock(baseUser);
     await unbanUser(db, "user-1");
     expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("banned_at = NULL"));
+  });
+});
+
+type BatchD1Mock = D1Database & {
+  batch: ReturnType<typeof vi.fn>;
+  prepare: ReturnType<typeof vi.fn>;
+  _stmt: { bind: ReturnType<typeof vi.fn> };
+};
+
+/** D1 batch() を返せるように makeD1Mock を拡張した軽量ヘルパー */
+function makeBatchD1Mock(updatedUser: User | null): BatchD1Mock {
+  const stmt = {
+    bind: vi.fn().mockReturnThis(),
+    first: vi.fn().mockResolvedValue(null),
+    run: vi.fn().mockResolvedValue({ meta: { changes: 0 } }),
+    all: vi.fn().mockResolvedValue({ results: [] }),
+  };
+  const batchResults = [
+    { results: updatedUser ? [updatedUser] : [] },
+    { results: [] },
+    { results: [] },
+  ];
+  const db = {
+    prepare: vi.fn().mockReturnValue(stmt),
+    batch: vi.fn().mockResolvedValue(batchResults),
+    _stmt: stmt,
+  };
+  return db as unknown as BatchD1Mock;
+}
+
+describe("banUserWithRevocation", () => {
+  it("batch() で ban/トークン失効/MCPセッション削除を1トランザクションで実行する", async () => {
+    const banned = { ...baseUser, banned_at: "2026-03-24T00:00:00Z" };
+    const db = makeBatchD1Mock(banned);
+    const user = await banUserWithRevocation(db, "user-1");
+    expect(user.banned_at).toBe("2026-03-24T00:00:00Z");
+    expect(db.batch).toHaveBeenCalledTimes(1);
+    // 3つのprepared statementが束ねられている（users更新, refresh_tokens失効, mcp_sessions削除）
+    expect(db.prepare).toHaveBeenCalledTimes(3);
+    const sqls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as string);
+    expect(sqls[0]).toContain("UPDATE users SET banned_at");
+    expect(sqls[1]).toContain("UPDATE refresh_tokens SET revoked_at");
+    expect(sqls[2]).toContain("DELETE FROM mcp_sessions");
+  });
+
+  it("ユーザーが見つからない場合はエラーを投げる", async () => {
+    const db = makeBatchD1Mock(null);
+    await expect(banUserWithRevocation(db, "not-exist")).rejects.toThrow("User not found");
+  });
+
+  it("revoked_reason = 'security_event' で失効する", async () => {
+    const banned = { ...baseUser, banned_at: "2026-03-24T00:00:00Z" };
+    const db = makeBatchD1Mock(banned);
+    await banUserWithRevocation(db, "user-1");
+    // 2番目（refresh_tokens）のbindに "security_event" が渡される
+    expect(db._stmt.bind).toHaveBeenCalledWith("security_event", "user-1");
+  });
+});
+
+describe("updateUserRoleWithRevocation", () => {
+  it("batch() でロール変更/トークン失効/MCPセッション削除を1トランザクションで実行する", async () => {
+    const promoted = { ...baseUser, role: "admin" as const };
+    const db = makeBatchD1Mock(promoted);
+    const user = await updateUserRoleWithRevocation(db, "user-1", "admin");
+    expect(user.role).toBe("admin");
+    expect(db.batch).toHaveBeenCalledTimes(1);
+    expect(db.prepare).toHaveBeenCalledTimes(3);
+    const sqls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as string);
+    expect(sqls[0]).toContain("UPDATE users SET role");
+    expect(sqls[1]).toContain("UPDATE refresh_tokens SET revoked_at");
+    expect(sqls[2]).toContain("DELETE FROM mcp_sessions");
+  });
+
+  it("ユーザーが見つからない場合はエラーを投げる", async () => {
+    const db = makeBatchD1Mock(null);
+    await expect(updateUserRoleWithRevocation(db, "not-exist", "admin")).rejects.toThrow(
+      "User not found",
+    );
   });
 });
 

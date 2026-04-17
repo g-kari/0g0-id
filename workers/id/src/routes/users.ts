@@ -5,7 +5,7 @@ import {
   listUsers,
   countUsers,
   updateUserProfile,
-  updateUserRole,
+  updateUserRoleWithRevocation,
   deleteUser,
   listUserConnections,
   revokeUserServiceTokens,
@@ -21,7 +21,7 @@ import {
   getLoginEventsByUserId,
   getUserLoginProviderStats,
   getUserDailyLoginTrends,
-  banUser,
+  banUserWithRevocation,
   unbanUser,
   parseDays,
   parsePagination,
@@ -693,18 +693,15 @@ app.patch("/:id/role", authMiddleware, adminMiddleware, csrfMiddleware, async (c
     return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);
   }
 
+  // 同値ロールへの変更は noop（誤って全セッション・MCPを失効させない）
+  if (targetUser.role === role) {
+    return c.json({ data: formatAdminUserSummary(targetUser) });
+  }
+
   let user;
   try {
-    user = await updateUserRole(c.env.DB, targetId, role);
-    // ロール変更後、既存トークン・MCPセッションを即時失効（権限変更を即反映）
-    await revokeUserTokens(c.env.DB, targetId, "security_event");
-    await deleteMcpSessionsByUser(c.env.DB, targetId);
-    await logAdminAudit(c, {
-      action: "user.role_change",
-      targetType: "user",
-      targetId,
-      details: { from: targetUser.role, to: role },
-    });
+    // ロール変更 + トークン失効 + MCPセッション削除 を D1 batch() でアトミックに実行
+    user = await updateUserRoleWithRevocation(c.env.DB, targetId, role);
   } catch (err) {
     await logAdminAudit(c, {
       action: "user.role_change",
@@ -717,8 +714,18 @@ app.patch("/:id/role", authMiddleware, adminMiddleware, csrfMiddleware, async (c
       },
       status: "failure",
     });
-    throw err;
+    return c.json(
+      { error: { code: "INTERNAL_ERROR", message: "Failed to change user role" } },
+      500,
+    );
   }
+
+  await logAdminAudit(c, {
+    action: "user.role_change",
+    targetType: "user",
+    targetId,
+    details: { from: targetUser.role, to: role },
+  });
 
   return c.json({ data: formatAdminUserSummary(user) });
 });
@@ -749,10 +756,8 @@ app.patch("/:id/ban", authMiddleware, adminMiddleware, csrfMiddleware, async (c)
 
   let updated;
   try {
-    updated = await banUser(c.env.DB, targetId);
-    // 停止と同時に全セッション・MCPセッション失効
-    await revokeUserTokens(c.env.DB, targetId, "security_event");
-    await deleteMcpSessionsByUser(c.env.DB, targetId);
+    // 停止 + トークン失効 + MCPセッション削除 を D1 batch() でアトミックに実行
+    updated = await banUserWithRevocation(c.env.DB, targetId);
   } catch (err) {
     await logAdminAudit(c, {
       action: "user.ban",

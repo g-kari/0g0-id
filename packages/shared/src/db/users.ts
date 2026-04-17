@@ -250,6 +250,13 @@ export async function upsertXUser(
   });
 }
 
+/**
+ * ユーザーの role だけを更新するロウレベル関数。
+ *
+ * ⚠️ 本番コードでは {@link updateUserRoleWithRevocation} を使うこと。
+ * ロール変更時は旧権限で発行された既存トークン・MCPセッションも同時に失効させる
+ * 必要があるが、この関数はその副作用を伴わないため単独利用は危険。
+ */
 export async function updateUserRole(
   db: D1Database,
   userId: string,
@@ -261,6 +268,37 @@ export async function updateUserRole(
     )
     .bind(role, userId)
     .first<User>();
+  if (!user) throw new Error("User not found");
+  return user;
+}
+
+/**
+ * ロール変更 + 全リフレッシュトークン失効 + 全MCPセッション削除 を
+ * D1 batch() で単一トランザクションとして実行する。
+ *
+ * ⚠️ 呼び出し前に対象ユーザーの存在チェックと、同値ロールでないことの
+ * チェックを必ず行うこと。同値ロールで呼ぶと対象ユーザーの全セッションが
+ * 無駄に失効する。
+ */
+export async function updateUserRoleWithRevocation(
+  db: D1Database,
+  userId: string,
+  role: "user" | "admin",
+): Promise<User> {
+  const results = await db.batch([
+    db
+      .prepare(
+        `UPDATE users SET role = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ? RETURNING *`,
+      )
+      .bind(role, userId),
+    db
+      .prepare(
+        `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ? WHERE user_id = ? AND revoked_at IS NULL`,
+      )
+      .bind("security_event", userId),
+    db.prepare(`DELETE FROM mcp_sessions WHERE user_id = ?`).bind(userId),
+  ]);
+  const user = results[0]?.results?.[0] as User | undefined;
   if (!user) throw new Error("User not found");
   return user;
 }
@@ -439,6 +477,13 @@ export async function unlinkProvider(
   if ((result.meta.changes ?? 0) === 0) throw new Error("User not found");
 }
 
+/**
+ * ユーザーの banned_at だけを更新するロウレベル関数。
+ *
+ * ⚠️ 本番コードでは {@link banUserWithRevocation} を使うこと。
+ * この関数はトークン失効・MCPセッション削除を行わないため、単独で使うと
+ * 「ban状態だが旧トークンは有効」という不整合を生む。
+ */
 export async function banUser(db: D1Database, userId: string): Promise<User> {
   const user = await db
     .prepare(
@@ -446,6 +491,36 @@ export async function banUser(db: D1Database, userId: string): Promise<User> {
     )
     .bind(userId)
     .first<User>();
+  if (!user) throw new Error("User not found");
+  return user;
+}
+
+/**
+ * ユーザー停止 + 全リフレッシュトークン失効 + 全MCPセッション削除 を
+ * D1 batch() で単一トランザクションとして実行する。
+ *
+ * いずれかが失敗した場合は全体がロールバックされ、ban状態だけ設定されてトークンが残る
+ * といった中途半端な状態を防ぐ。
+ *
+ * ⚠️ 呼び出し前に対象ユーザーの存在チェックを行うこと。batch() 内の refresh_tokens /
+ * mcp_sessions 操作は userId が存在しなくても（行が0件なだけで）成功してしまうため、
+ * 「ユーザー不在だがトークン/セッションはクリア済み」という状態になり得る。
+ */
+export async function banUserWithRevocation(db: D1Database, userId: string): Promise<User> {
+  const results = await db.batch([
+    db
+      .prepare(
+        `UPDATE users SET banned_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ? RETURNING *`,
+      )
+      .bind(userId),
+    db
+      .prepare(
+        `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ? WHERE user_id = ? AND revoked_at IS NULL`,
+      )
+      .bind("security_event", userId),
+    db.prepare(`DELETE FROM mcp_sessions WHERE user_id = ?`).bind(userId),
+  ]);
+  const user = results[0]?.results?.[0] as User | undefined;
   if (!user) throw new Error("User not found");
   return user;
 }
