@@ -22,7 +22,6 @@ import {
   countUsersAuthorizedForService,
   revokeUserServiceTokens,
   revokeAllServiceTokens,
-  createAdminAuditLog,
   parsePagination,
   UUID_RE,
   uuidParamMiddleware,
@@ -41,7 +40,7 @@ import { authMiddleware } from "../middleware/auth";
 import { adminMiddleware } from "../middleware/admin";
 import { csrfMiddleware } from "../middleware/csrf";
 import { parseJsonBody } from "@0g0-id/shared";
-import { getClientIp } from "../utils/ip";
+import { logAdminAudit } from "../lib/audit";
 
 type Variables = { user: TokenPayload };
 
@@ -192,19 +191,12 @@ app.post("/", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
     return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
 
-  try {
-    await createAdminAuditLog(c.env.DB, {
-      adminUserId: tokenUser.sub,
-      action: "service.create",
-      targetType: "service",
-      targetId: service.id,
-      details: { name: service.name, allowed_scopes: body.allowed_scopes ?? ["profile", "email"] },
-      ipAddress: getClientIp(c.req.raw),
-      status: "success",
-    });
-  } catch (err) {
-    servicesLogger.error("[services] Failed to create audit log for service.create", err);
-  }
+  await logAdminAudit(c, {
+    action: "service.create",
+    targetType: "service",
+    targetId: service.id,
+    details: { name: service.name, allowed_scopes: body.allowed_scopes ?? ["profile", "email"] },
+  });
 
   // client_secretは作成時のみ返却
   return c.json(
@@ -245,23 +237,15 @@ app.patch("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => 
     return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
   }
 
-  const tokenUser = c.get("user");
-  try {
-    await createAdminAuditLog(c.env.DB, {
-      adminUserId: tokenUser.sub,
-      action: "service.update",
-      targetType: "service",
-      targetId: serviceId,
-      details: {
-        ...(name !== undefined ? { name } : {}),
-        ...(allowed_scopes !== undefined ? { allowed_scopes } : {}),
-      },
-      ipAddress: getClientIp(c.req.raw),
-      status: "success",
-    });
-  } catch (err) {
-    servicesLogger.error("[services] Failed to create audit log for service.update", err);
-  }
+  await logAdminAudit(c, {
+    action: "service.update",
+    targetType: "service",
+    targetId: serviceId,
+    details: {
+      ...(name !== undefined ? { name } : {}),
+      ...(allowed_scopes !== undefined ? { allowed_scopes } : {}),
+    },
+  });
 
   return c.json({
     data: {
@@ -289,8 +273,6 @@ app.delete("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
     return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
   }
 
-  const tokenUser = c.get("user");
-
   // サービス削除前に全ユーザーのアクティブトークンを失効させる
   let revokedCount: number;
   try {
@@ -312,19 +294,12 @@ app.delete("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
     return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
   }
 
-  try {
-    await createAdminAuditLog(c.env.DB, {
-      adminUserId: tokenUser.sub,
-      action: "service.delete",
-      targetType: "service",
-      targetId: serviceId,
-      details: { name: service.name, revoked_token_count: revokedCount },
-      ipAddress: getClientIp(c.req.raw),
-      status: "success",
-    });
-  } catch (err) {
-    servicesLogger.error("[services] Failed to create audit log for service.delete", err);
-  }
+  await logAdminAudit(c, {
+    action: "service.delete",
+    targetType: "service",
+    targetId: serviceId,
+    details: { name: service.name, revoked_token_count: revokedCount },
+  });
 
   return c.body(null, 204);
 });
@@ -384,23 +359,12 @@ app.post("/:id/redirect-uris", authMiddleware, adminMiddleware, csrfMiddleware, 
     return c.json({ error: { code: "CONFLICT", message: "Redirect URI already exists" } }, 409);
   }
 
-  const tokenUser = c.get("user");
-  try {
-    await createAdminAuditLog(c.env.DB, {
-      adminUserId: tokenUser.sub,
-      action: "service.redirect_uri_added",
-      targetType: "service",
-      targetId: serviceId,
-      details: { uri: normalized },
-      ipAddress: getClientIp(c.req.raw),
-      status: "success",
-    });
-  } catch (err) {
-    servicesLogger.error(
-      "[services] Failed to create audit log for service.redirect_uri_added",
-      err,
-    );
-  }
+  await logAdminAudit(c, {
+    action: "service.redirect_uri_added",
+    targetType: "service",
+    targetId: serviceId,
+    details: { uri: normalized },
+  });
 
   return c.json({ data: uri }, 201);
 });
@@ -433,19 +397,11 @@ app.post("/:id/rotate-secret", authMiddleware, adminMiddleware, csrfMiddleware, 
     return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
   }
 
-  const tokenUser = c.get("user");
-  try {
-    await createAdminAuditLog(c.env.DB, {
-      adminUserId: tokenUser.sub,
-      action: "service.secret_rotated",
-      targetType: "service",
-      targetId: serviceId,
-      ipAddress: getClientIp(c.req.raw),
-      status: "success",
-    });
-  } catch (err) {
-    servicesLogger.error("[services] Failed to create audit log for service.secret_rotated", err);
-  }
+  await logAdminAudit(c, {
+    action: "service.secret_rotated",
+    targetType: "service",
+    targetId: serviceId,
+  });
 
   return c.json({
     data: {
@@ -494,23 +450,12 @@ app.patch("/:id/owner", authMiddleware, adminMiddleware, csrfMiddleware, async (
     return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
   }
 
-  const tokenUser = c.get("user");
-  try {
-    await createAdminAuditLog(c.env.DB, {
-      adminUserId: tokenUser.sub,
-      action: "service.owner_transferred",
-      targetType: "service",
-      targetId: serviceId,
-      details: { from: service.owner_user_id, to: new_owner_user_id },
-      ipAddress: getClientIp(c.req.raw),
-      status: "success",
-    });
-  } catch (err) {
-    servicesLogger.error(
-      "[services] Failed to create audit log for service.owner_transferred",
-      err,
-    );
-  }
+  await logAdminAudit(c, {
+    action: "service.owner_transferred",
+    targetType: "service",
+    targetId: serviceId,
+    details: { from: service.owner_user_id, to: new_owner_user_id },
+  });
 
   return c.json({
     data: {
@@ -609,23 +554,12 @@ app.delete("/:id/users/:userId", authMiddleware, adminMiddleware, csrfMiddleware
     );
   }
 
-  const tokenUser = c.get("user");
-  try {
-    await createAdminAuditLog(c.env.DB, {
-      adminUserId: tokenUser.sub,
-      action: "service.user_access_revoked",
-      targetType: "service",
-      targetId: serviceId,
-      details: { user_id: userId },
-      ipAddress: getClientIp(c.req.raw),
-      status: "success",
-    });
-  } catch (err) {
-    servicesLogger.error(
-      "[services] Failed to create audit log for service.user_access_revoked",
-      err,
-    );
-  }
+  await logAdminAudit(c, {
+    action: "service.user_access_revoked",
+    targetType: "service",
+    targetId: serviceId,
+    details: { user_id: userId },
+  });
 
   return c.body(null, 204);
 });
@@ -661,7 +595,6 @@ app.delete(
       return c.json({ error: { code: "NOT_FOUND", message: "Redirect URI not found" } }, 404);
     }
 
-    const tokenUser = c.get("user");
     try {
       await deleteRedirectUri(c.env.DB, uriId, serviceId);
     } catch (err) {
@@ -669,22 +602,12 @@ app.delete(
       return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
     }
 
-    try {
-      await createAdminAuditLog(c.env.DB, {
-        adminUserId: tokenUser.sub,
-        action: "service.redirect_uri_deleted",
-        targetType: "service",
-        targetId: serviceId,
-        details: { uri_id: uriId, uri: redirectUri.uri },
-        ipAddress: getClientIp(c.req.raw),
-        status: "success",
-      });
-    } catch (err) {
-      servicesLogger.error(
-        "[services] Failed to create audit log for service.redirect_uri_deleted",
-        err,
-      );
-    }
+    await logAdminAudit(c, {
+      action: "service.redirect_uri_deleted",
+      targetType: "service",
+      targetId: serviceId,
+      details: { uri_id: uriId, uri: redirectUri.uri },
+    });
 
     return c.body(null, 204);
   },
