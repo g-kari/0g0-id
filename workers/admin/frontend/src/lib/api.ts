@@ -1,5 +1,17 @@
-export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+type ApiError = { error: { code: string; message: string } };
+
+function isTokenRotatedBody(body: unknown): body is ApiError {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    "error" in body &&
+    typeof (body as { error?: unknown }).error === "object" &&
+    (body as ApiError).error?.code === "TOKEN_ROTATED"
+  );
+}
+
+async function doFetch(path: string, options?: RequestInit): Promise<Response> {
+  return fetch(path, {
     credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
@@ -7,6 +19,24 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
     },
     ...options,
   });
+}
+
+export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  let res = await doFetch(path, options);
+
+  // 503 TOKEN_ROTATED: 並行リクエスト競合で BFF がローテーション中。
+  // セッションは有効なので短い遅延後に 1 度だけ自動リトライする。
+  if (res.status === 503) {
+    const peek = await res
+      .clone()
+      .json()
+      .catch(() => null);
+    if (isTokenRotatedBody(peek)) {
+      await new Promise((r) => setTimeout(r, 400));
+      res = await doFetch(path, options);
+    }
+  }
+
   if (res.status === 401) {
     window.location.href = "/";
     throw new Error("Unauthorized");
