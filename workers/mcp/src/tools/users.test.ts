@@ -4,10 +4,10 @@ vi.mock("@0g0-id/shared", () => ({
   listUsers: vi.fn(),
   countUsers: vi.fn(),
   findUserById: vi.fn(),
-  banUser: vi.fn(),
+  banUserWithRevocation: vi.fn(),
   unbanUser: vi.fn(),
   deleteUser: vi.fn(),
-  updateUserRole: vi.fn(),
+  updateUserRoleWithRevocation: vi.fn(),
   getUserProviders: vi.fn(),
   getLoginEventsByUserId: vi.fn(),
   getUserLoginProviderStats: vi.fn(),
@@ -24,10 +24,10 @@ import {
   listUsers,
   countUsers,
   findUserById,
-  banUser,
+  banUserWithRevocation,
   unbanUser,
   deleteUser,
-  updateUserRole,
+  updateUserRoleWithRevocation,
   getUserProviders,
   getLoginEventsByUserId,
   getUserLoginProviderStats,
@@ -198,7 +198,7 @@ describe("banUserTool", () => {
   it("ユーザーをBANし監査ログを記録する", async () => {
     const bannedUser = { ...mockUser, banned_at: "2024-06-01T00:00:00Z" };
     vi.mocked(findUserById).mockResolvedValue(mockUser);
-    vi.mocked(banUser).mockResolvedValue(bannedUser as never);
+    vi.mocked(banUserWithRevocation).mockResolvedValue(bannedUser as never);
 
     const result = await banUserTool.handler({ user_id: "user-1" }, mockContext);
 
@@ -224,7 +224,7 @@ describe("banUserTool", () => {
 
     const result = await banUserTool.handler({ user_id: "nonexistent" }, mockContext);
     expect(result.isError).toBe(true);
-    expect(vi.mocked(banUser)).not.toHaveBeenCalled();
+    expect(vi.mocked(banUserWithRevocation)).not.toHaveBeenCalled();
   });
 });
 
@@ -702,7 +702,10 @@ describe("getUserAuthorizedServicesTool", () => {
 describe("updateUserRoleTool", () => {
   it("ユーザーのロールを user → admin に変更し監査ログを記録する", async () => {
     vi.mocked(findUserById).mockResolvedValue({ ...mockUser, role: "user" });
-    vi.mocked(updateUserRole).mockResolvedValue({ ...mockUser, role: "admin" } as never);
+    vi.mocked(updateUserRoleWithRevocation).mockResolvedValue({
+      ...mockUser,
+      role: "admin",
+    } as never);
 
     const result = await updateUserRoleTool.handler(
       { user_id: "user-1", role: "admin" },
@@ -712,7 +715,11 @@ describe("updateUserRoleTool", () => {
     expect(result.isError).toBeUndefined();
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.role).toBe("admin");
-    expect(vi.mocked(updateUserRole)).toHaveBeenCalledWith(mockContext.db, "user-1", "admin");
+    expect(vi.mocked(updateUserRoleWithRevocation)).toHaveBeenCalledWith(
+      mockContext.db,
+      "user-1",
+      "admin",
+    );
     expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
       mockContext.db,
       expect.objectContaining({
@@ -733,7 +740,7 @@ describe("updateUserRoleTool", () => {
 
     expect(result.isError).toBeUndefined();
     expect(result.content[0].text).toContain("既に");
-    expect(vi.mocked(updateUserRole)).not.toHaveBeenCalled();
+    expect(vi.mocked(updateUserRoleWithRevocation)).not.toHaveBeenCalled();
   });
 
   it("user_id未指定はエラー", async () => {
@@ -761,6 +768,6 @@ describe("updateUserRoleTool", () => {
       mockContext,
     );
     expect(result.isError).toBe(true);
-    expect(vi.mocked(updateUserRole)).not.toHaveBeenCalled();
+    expect(vi.mocked(updateUserRoleWithRevocation)).not.toHaveBeenCalled();
   });
 });

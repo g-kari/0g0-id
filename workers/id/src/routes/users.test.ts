@@ -14,6 +14,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     countUsers: vi.fn(),
     updateUserProfile: vi.fn(),
     updateUserRole: vi.fn(),
+    updateUserRoleWithRevocation: vi.fn(),
     deleteUser: vi.fn(),
     listUserConnections: vi.fn(),
     revokeUserServiceTokens: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     getUserLoginProviderStats: vi.fn(),
     getUserDailyLoginTrends: vi.fn(),
     banUser: vi.fn(),
+    banUserWithRevocation: vi.fn(),
     unbanUser: vi.fn(),
     createAdminAuditLog: vi.fn(),
     UUID_RE: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
@@ -77,7 +79,7 @@ import {
   listUsers,
   countUsers,
   updateUserProfile,
-  updateUserRole,
+  updateUserRoleWithRevocation,
   deleteUser,
   listUserConnections,
   revokeUserServiceTokens,
@@ -92,7 +94,7 @@ import {
   getLoginEventsByUserId,
   getUserLoginProviderStats,
   getUserDailyLoginTrends,
-  banUser,
+  banUserWithRevocation,
   unbanUser,
   verifyAccessToken,
   type UserFilter,
@@ -906,7 +908,7 @@ describe("PATCH /api/users/:id/role", () => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
     vi.mocked(findUserById).mockResolvedValue(mockUser);
-    vi.mocked(updateUserRole).mockResolvedValue({ ...mockUser, role: "admin" });
+    vi.mocked(updateUserRoleWithRevocation).mockResolvedValue({ ...mockUser, role: "admin" });
     vi.mocked(revokeUserTokens).mockResolvedValue();
   });
 
@@ -976,16 +978,18 @@ describe("PATCH /api/users/:id/role", () => {
     expect(body.error.code).toBe("BAD_REQUEST");
   });
 
-  it("ロール変更後に既存トークンを失効させる", async () => {
+  it("ロール変更時にbatchで既存トークン失効・MCPセッション削除が同時に実行される", async () => {
     await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/role", {
       method: "PATCH",
       body: { role: "admin" },
       origin: "https://admin.0g0.xyz",
     });
-    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(
+    // updateUserRoleWithRevocation は内部で D1 batch() により
+    // users.role 更新 + refresh_tokens 失効 + mcp_sessions 削除 を 1トランザクションで実行する
+    expect(vi.mocked(updateUserRoleWithRevocation)).toHaveBeenCalledWith(
       expect.anything(),
       "00000000-0000-0000-0000-000000000004",
-      "security_event",
+      "admin",
     );
   });
 });
@@ -2418,12 +2422,11 @@ describe("PATCH /api/users/:id/ban — ユーザー停止", () => {
       ...mockUser,
       id: "00000000-0000-0000-0000-000000000003",
     });
-    vi.mocked(banUser).mockResolvedValue({
+    vi.mocked(banUserWithRevocation).mockResolvedValue({
       ...mockUser,
       id: "00000000-0000-0000-0000-000000000003",
       banned_at: "2026-03-24T00:00:00Z",
     });
-    vi.mocked(revokeUserTokens).mockResolvedValue(undefined);
   });
 
   it("対象ユーザーを停止し200を返す", async () => {
@@ -2434,11 +2437,22 @@ describe("PATCH /api/users/:id/ban — ユーザー停止", () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ data: { banned_at: string } }>();
     expect(body.data.banned_at).toBe("2026-03-24T00:00:00Z");
-    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(
+    // batch() 内でトークン失効・MCPセッション削除も同時にアトミック実行される
+    expect(vi.mocked(banUserWithRevocation)).toHaveBeenCalledWith(
       expect.anything(),
       "00000000-0000-0000-0000-000000000003",
-      "security_event",
     );
+  });
+
+  it("banUserWithRevocation() が失敗した場合 → 500とfailure監査ログを返す", async () => {
+    vi.mocked(banUserWithRevocation).mockRejectedValue(new Error("D1 batch failed"));
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000003/ban", {
+      method: "PATCH",
+      origin: "https://id.0g0.xyz",
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("INTERNAL_ERROR");
   });
 
   it("自分自身を停止しようとした場合 → 403を返す", async () => {
