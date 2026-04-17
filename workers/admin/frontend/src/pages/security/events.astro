@@ -1,0 +1,175 @@
+---
+import Admin from '../../layouts/Admin.astro';
+---
+<Admin title="ログインイベント — 0g0 Admin">
+  <div class="page-header" style="display:flex; align-items:center; justify-content:space-between;">
+    <div>
+      <h1 class="page-title">ログインイベント</h1>
+      <p class="page-subtitle" id="events-summary">読み込み中...</p>
+    </div>
+    <a href="/security/dashboard" class="btn btn-ghost" style="padding:4px 10px; font-size:0.8rem;">← セキュリティ概況に戻る</a>
+  </div>
+
+  <div id="loading" style="display:flex; justify-content:center; padding:3rem;">
+    <div class="spinner"></div>
+  </div>
+  <div id="error" class="alert alert-error" style="display:none;" aria-live="polite"></div>
+
+  <div id="table-wrap" class="card" style="padding:0; overflow:hidden; display:none;">
+    <table class="data-table">
+      <caption class="visually-hidden">直近のログインイベント一覧</caption>
+      <thead>
+        <tr>
+          <th>日時</th>
+          <th>ユーザーID</th>
+          <th>プロバイダー</th>
+          <th>IPアドレス</th>
+          <th>国</th>
+          <th>User-Agent</th>
+        </tr>
+      </thead>
+      <tbody id="events-tbody"></tbody>
+    </table>
+    <div id="empty-message" style="padding:2rem; text-align:center; color:var(--color-muted); display:none;">ログインイベントがありません</div>
+  </div>
+
+  <!-- ページング -->
+  <div id="pagination" style="display:none; gap:8px; align-items:center; justify-content:space-between; margin-top:16px;">
+    <button id="prev-btn" class="btn" style="font-size:0.85rem; padding:6px 14px;" disabled>← 前へ</button>
+    <div id="page-info" style="color:var(--color-muted); font-size:0.875rem;"></div>
+    <button id="next-btn" class="btn" style="font-size:0.85rem; padding:6px 14px;" disabled>次へ →</button>
+  </div>
+</Admin>
+
+<style>
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    border: 0;
+  }
+</style>
+
+<script>
+  import { formatDatetime } from '../../lib/api';
+
+  interface LoginEvent {
+    id: string;
+    user_id: string;
+    provider: string;
+    ip_address: string | null;
+    user_agent: string | null;
+    country: string | null;
+    created_at: string;
+  }
+
+  interface RecentEventsResponse {
+    data: LoginEvent[];
+    meta: { limit: number; offset: number; total: number };
+  }
+
+  const LIMIT = 50;
+  let offset = 0;
+
+  const loadingEl = document.getElementById('loading')!;
+  const errorEl = document.getElementById('error')!;
+  const tableWrap = document.getElementById('table-wrap')!;
+  const tbody = document.getElementById('events-tbody')!;
+  const emptyMsg = document.getElementById('empty-message')!;
+  const summaryEl = document.getElementById('events-summary')!;
+  const paginationEl = document.getElementById('pagination') as HTMLDivElement;
+  const prevBtn = document.getElementById('prev-btn') as HTMLButtonElement;
+  const nextBtn = document.getElementById('next-btn') as HTMLButtonElement;
+  const pageInfoEl = document.getElementById('page-info')!;
+
+  function escapeHtml(s: string): string {
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function truncate(s: string, n: number): string {
+    if (s.length <= n) return s;
+    return s.slice(0, n) + '…';
+  }
+
+  async function loadEvents(): Promise<void> {
+    loadingEl.style.display = 'flex';
+    errorEl.style.display = 'none';
+    tableWrap.style.display = 'none';
+    paginationEl.style.display = 'none';
+
+    try {
+      const res = await fetch(
+        `/api/security-trends/recent-events?limit=${LIMIT}&offset=${offset}`,
+        { credentials: 'same-origin', headers: { 'Content-Type': 'application/json' } },
+      );
+      if (res.status === 401) {
+        window.location.href = '/';
+        return;
+      }
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+        throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
+      }
+      const body = (await res.json()) as RecentEventsResponse;
+      const events = body.data ?? [];
+      const total = body.meta?.total ?? events.length;
+
+      const startN = total === 0 ? 0 : offset + 1;
+      const endN = Math.min(offset + events.length, total);
+      summaryEl.textContent = `${total.toLocaleString()} 件中 ${startN.toLocaleString()} - ${endN.toLocaleString()} 件を表示`;
+
+      tbody.innerHTML = events
+        .map((ev) => {
+          const ua = ev.user_agent ?? '';
+          const uaShort = truncate(ua, 60);
+          return `
+          <tr>
+            <td style="color:var(--color-muted); font-size:0.875rem; white-space:nowrap;">${formatDatetime(ev.created_at)}</td>
+            <td style="font-family:monospace; font-size:0.8rem;"><a href="/users/${encodeURIComponent(ev.user_id)}">${escapeHtml(ev.user_id)}</a></td>
+            <td>${escapeHtml(ev.provider)}</td>
+            <td style="font-family:monospace; font-size:0.875rem;">${escapeHtml(ev.ip_address ?? '—')}</td>
+            <td>${escapeHtml(ev.country ?? '—')}</td>
+            <td style="font-family:monospace; font-size:0.75rem; max-width:360px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(ua)}">${escapeHtml(uaShort) || '—'}</td>
+          </tr>
+        `;
+        })
+        .join('');
+
+      emptyMsg.style.display = events.length === 0 ? '' : 'none';
+      tableWrap.style.display = '';
+
+      // ページング
+      const currentPage = Math.floor(offset / LIMIT) + 1;
+      const totalPages = Math.max(1, Math.ceil(total / LIMIT));
+      pageInfoEl.textContent = `${currentPage} / ${totalPages} ページ`;
+      prevBtn.disabled = offset <= 0;
+      nextBtn.disabled = offset + LIMIT >= total;
+      paginationEl.style.display = 'flex';
+    } catch (e) {
+      errorEl.textContent = e instanceof Error ? e.message : 'データ取得に失敗しました';
+      errorEl.style.display = '';
+    } finally {
+      loadingEl.style.display = 'none';
+    }
+  }
+
+  prevBtn.addEventListener('click', () => {
+    offset = Math.max(0, offset - LIMIT);
+    void loadEvents();
+  });
+  nextBtn.addEventListener('click', () => {
+    offset = offset + LIMIT;
+    void loadEvents();
+  });
+
+  void loadEvents();
+</script>

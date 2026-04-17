@@ -1,0 +1,347 @@
+---
+import Admin from '../../layouts/Admin.astro';
+---
+<Admin title="セキュリティ — 0g0 Admin">
+  <div class="page-header">
+    <h1 class="page-title">セキュリティ監視</h1>
+    <p class="page-subtitle">ログイン傾向・不審アクセスの集計</p>
+  </div>
+
+  <div id="error" class="alert alert-error" style="display:none;" aria-live="polite"></div>
+
+  <!-- 日別ログイン推移 -->
+  <section class="card" style="padding:20px; margin-bottom:16px;" aria-labelledby="trends-heading">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <h2 id="trends-heading" style="margin:0; font-size:1rem;">日別ログイン推移（直近30日）</h2>
+      <a href="/security/events" class="btn btn-ghost" style="padding:4px 10px; font-size:0.8rem;">直近のログインイベントを見る →</a>
+    </div>
+    <div id="trends-loading" style="display:flex; justify-content:center; padding:1.5rem;">
+      <div class="spinner"></div>
+    </div>
+    <div id="trends-empty" style="display:none; color:var(--color-muted); padding:1rem; text-align:center;">データがありません</div>
+    <div id="trends-chart" style="display:none;"></div>
+  </section>
+
+  <!-- 疑わしい多国間ログイン -->
+  <section class="card" style="padding:20px; margin-bottom:16px;" aria-labelledby="suspicious-heading">
+    <h2 id="suspicious-heading" style="margin:0 0 12px; font-size:1rem;">疑わしい多国間ログイン（直近24時間 / 2カ国以上）</h2>
+    <div id="suspicious-loading" style="display:flex; justify-content:center; padding:1.5rem;">
+      <div class="spinner"></div>
+    </div>
+    <div id="suspicious-empty" style="display:none; color:var(--color-muted); padding:1rem; text-align:center;">該当なし</div>
+    <div id="suspicious-wrap" style="display:none; overflow:hidden;">
+      <table class="data-table">
+        <caption class="visually-hidden">疑わしい多国間ログイン一覧</caption>
+        <thead>
+          <tr>
+            <th>ユーザーID</th>
+            <th>国数</th>
+            <th>国コード</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="suspicious-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- IP別ログイン集計 -->
+  <section class="card" style="padding:20px; margin-bottom:16px;" aria-labelledby="ip-heading">
+    <h2 id="ip-heading" style="margin:0 0 12px; font-size:1rem;">IP別ログイン集計（直近7日 / 上位20件）</h2>
+    <div id="ip-loading" style="display:flex; justify-content:center; padding:1.5rem;">
+      <div class="spinner"></div>
+    </div>
+    <div id="ip-empty" style="display:none; color:var(--color-muted); padding:1rem; text-align:center;">データがありません</div>
+    <div id="ip-wrap" style="display:none; overflow:hidden;">
+      <table class="data-table">
+        <caption class="visually-hidden">IP別ログイン集計</caption>
+        <thead>
+          <tr>
+            <th>IPアドレス</th>
+            <th style="text-align:right;">回数</th>
+            <th>最終ログイン</th>
+          </tr>
+        </thead>
+        <tbody id="ip-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- UA別ログイン集計 -->
+  <section class="card" style="padding:20px; margin-bottom:16px;" aria-labelledby="ua-heading">
+    <h2 id="ua-heading" style="margin:0 0 12px; font-size:1rem;">User-Agent別ログイン集計（直近7日 / 上位20件）</h2>
+    <div id="ua-loading" style="display:flex; justify-content:center; padding:1.5rem;">
+      <div class="spinner"></div>
+    </div>
+    <div id="ua-empty" style="display:none; color:var(--color-muted); padding:1rem; text-align:center;">データがありません</div>
+    <div id="ua-wrap" style="display:none; overflow:hidden;">
+      <table class="data-table">
+        <caption class="visually-hidden">User-Agent別ログイン集計</caption>
+        <thead>
+          <tr>
+            <th>User-Agent</th>
+            <th style="text-align:right;">回数</th>
+          </tr>
+        </thead>
+        <tbody id="ua-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+</Admin>
+
+<style>
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    border: 0;
+  }
+  .trend-chart-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  .trend-axis-label {
+    font-size: 10px;
+    fill: var(--color-muted);
+  }
+  .trend-line {
+    fill: none;
+    stroke: var(--color-primary, #3b82f6);
+    stroke-width: 2;
+  }
+  .trend-area {
+    fill: var(--color-primary, #3b82f6);
+    fill-opacity: 0.12;
+    stroke: none;
+  }
+  .trend-dot {
+    fill: var(--color-primary, #3b82f6);
+  }
+  .trend-grid {
+    stroke: var(--color-border, #e5e7eb);
+    stroke-width: 1;
+    stroke-dasharray: 2 2;
+  }
+</style>
+
+<script>
+  import { apiFetch, formatDatetime } from '../../lib/api';
+
+  interface DailyLoginStat { date: string; count: number; }
+  interface SuspiciousLogin { user_id: string; country_count: number; countries: string; }
+  interface IpStat { ip_address: string; count: number; last_seen: string; }
+  interface UaStat { user_agent: string; count: number; }
+
+  const errorEl = document.getElementById('error')!;
+
+  function showError(msg: string): void {
+    errorEl.textContent = msg;
+    errorEl.style.display = '';
+  }
+
+  function escapeHtml(s: string): string {
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // 日別ログイン推移 — 簡易SVGラインチャート
+  async function renderTrends(): Promise<void> {
+    const loadingEl = document.getElementById('trends-loading')!;
+    const emptyEl = document.getElementById('trends-empty')!;
+    const chartEl = document.getElementById('trends-chart')!;
+    try {
+      const data = await apiFetch<DailyLoginStat[]>('/api/metrics/login-trends?days=30');
+      if (!data || data.length === 0) {
+        emptyEl.style.display = '';
+        return;
+      }
+      const max = Math.max(...data.map((d) => d.count), 1);
+      const w = 800;
+      const h = 220;
+      const padLeft = 40;
+      const padRight = 12;
+      const padTop = 12;
+      const padBottom = 28;
+      const plotW = w - padLeft - padRight;
+      const plotH = h - padTop - padBottom;
+      const stepX = data.length > 1 ? plotW / (data.length - 1) : 0;
+
+      const points = data.map((d, i) => {
+        const x = padLeft + stepX * i;
+        const y = padTop + plotH - (d.count / max) * plotH;
+        return { x, y, d };
+      });
+
+      const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+      const areaPath = [
+        `M${points[0].x.toFixed(1)},${(padTop + plotH).toFixed(1)}`,
+        ...points.map((p) => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`),
+        `L${points[points.length - 1].x.toFixed(1)},${(padTop + plotH).toFixed(1)}`,
+        'Z',
+      ].join(' ');
+
+      // Y軸目盛り（0, max/2, max）
+      const yTicks = [0, Math.round(max / 2), max];
+      const gridLines = yTicks
+        .map((v) => {
+          const y = padTop + plotH - (v / max) * plotH;
+          return `<line class="trend-grid" x1="${padLeft}" y1="${y.toFixed(1)}" x2="${(w - padRight).toFixed(1)}" y2="${y.toFixed(1)}"></line>
+                  <text class="trend-axis-label" x="${padLeft - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end">${v}</text>`;
+        })
+        .join('');
+
+      // X軸ラベル（最初・中間・最後の3つのみ）
+      const xLabelIdxs =
+        data.length <= 3
+          ? data.map((_, i) => i)
+          : [0, Math.floor((data.length - 1) / 2), data.length - 1];
+      const xLabels = xLabelIdxs
+        .map((i) => {
+          const p = points[i];
+          const label = p.d.date.slice(5); // MM-DD
+          return `<text class="trend-axis-label" x="${p.x.toFixed(1)}" y="${(padTop + plotH + 16).toFixed(1)}" text-anchor="middle">${label}</text>`;
+        })
+        .join('');
+
+      const dots = points
+        .map(
+          (p) => `<circle class="trend-dot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5"><title>${p.d.date}: ${p.d.count}</title></circle>`,
+        )
+        .join('');
+
+      chartEl.innerHTML = `
+        <svg class="trend-chart-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="日別ログイン推移グラフ">
+          ${gridLines}
+          <path class="trend-area" d="${areaPath}"></path>
+          <path class="trend-line" d="${linePath}"></path>
+          ${dots}
+          ${xLabels}
+        </svg>
+      `;
+      chartEl.style.display = '';
+    } catch (e) {
+      emptyEl.textContent = 'データ取得に失敗しました';
+      emptyEl.style.color = 'var(--color-danger)';
+      emptyEl.style.display = '';
+      showError(e instanceof Error ? e.message : 'ログイン推移の取得に失敗しました');
+    } finally {
+      loadingEl.style.display = 'none';
+    }
+  }
+
+  // 疑わしい多国間ログイン
+  async function renderSuspicious(): Promise<void> {
+    const loadingEl = document.getElementById('suspicious-loading')!;
+    const emptyEl = document.getElementById('suspicious-empty')!;
+    const wrapEl = document.getElementById('suspicious-wrap')!;
+    const tbody = document.getElementById('suspicious-tbody')!;
+    try {
+      const data = await apiFetch<SuspiciousLogin[]>(
+        '/api/metrics/suspicious-logins?hours=24&min_countries=2',
+      );
+      if (!data || data.length === 0) {
+        emptyEl.style.display = '';
+        return;
+      }
+      tbody.innerHTML = data
+        .map(
+          (row) => `
+        <tr>
+          <td style="font-family:monospace; font-size:0.8rem;">${escapeHtml(row.user_id)}</td>
+          <td>${row.country_count}</td>
+          <td>${escapeHtml(row.countries)}</td>
+          <td><a href="/users/${encodeURIComponent(row.user_id)}" class="btn btn-ghost" style="padding:4px 10px; font-size:0.8rem;">詳細</a></td>
+        </tr>
+      `,
+        )
+        .join('');
+      wrapEl.style.display = '';
+    } catch (e) {
+      emptyEl.textContent = 'データ取得に失敗しました';
+      emptyEl.style.color = 'var(--color-danger)';
+      emptyEl.style.display = '';
+      showError(e instanceof Error ? e.message : '疑わしいログインの取得に失敗しました');
+    } finally {
+      loadingEl.style.display = 'none';
+    }
+  }
+
+  // IP別ログイン集計
+  async function renderIpStats(): Promise<void> {
+    const loadingEl = document.getElementById('ip-loading')!;
+    const emptyEl = document.getElementById('ip-empty')!;
+    const wrapEl = document.getElementById('ip-wrap')!;
+    const tbody = document.getElementById('ip-tbody')!;
+    try {
+      const data = await apiFetch<IpStat[]>('/api/security-trends/ip-stats?days=7&limit=20');
+      if (!data || data.length === 0) {
+        emptyEl.style.display = '';
+        return;
+      }
+      tbody.innerHTML = data
+        .map(
+          (row) => `
+        <tr>
+          <td style="font-family:monospace; font-size:0.875rem;">${escapeHtml(row.ip_address)}</td>
+          <td style="text-align:right;">${row.count.toLocaleString()}</td>
+          <td style="color:var(--color-muted); font-size:0.875rem;">${formatDatetime(row.last_seen)}</td>
+        </tr>
+      `,
+        )
+        .join('');
+      wrapEl.style.display = '';
+    } catch (e) {
+      emptyEl.textContent = 'データ取得に失敗しました';
+      emptyEl.style.color = 'var(--color-danger)';
+      emptyEl.style.display = '';
+      showError(e instanceof Error ? e.message : 'IP集計の取得に失敗しました');
+    } finally {
+      loadingEl.style.display = 'none';
+    }
+  }
+
+  // UA別ログイン集計
+  async function renderUaStats(): Promise<void> {
+    const loadingEl = document.getElementById('ua-loading')!;
+    const emptyEl = document.getElementById('ua-empty')!;
+    const wrapEl = document.getElementById('ua-wrap')!;
+    const tbody = document.getElementById('ua-tbody')!;
+    try {
+      const data = await apiFetch<UaStat[]>('/api/security-trends/user-agent-stats?days=7&limit=20');
+      if (!data || data.length === 0) {
+        emptyEl.style.display = '';
+        return;
+      }
+      tbody.innerHTML = data
+        .map(
+          (row) => `
+        <tr>
+          <td style="font-family:monospace; font-size:0.8rem; word-break:break-all; max-width:600px;" title="${escapeHtml(row.user_agent)}">${escapeHtml(row.user_agent)}</td>
+          <td style="text-align:right;">${row.count.toLocaleString()}</td>
+        </tr>
+      `,
+        )
+        .join('');
+      wrapEl.style.display = '';
+    } catch (e) {
+      emptyEl.textContent = 'データ取得に失敗しました';
+      emptyEl.style.color = 'var(--color-danger)';
+      emptyEl.style.display = '';
+      showError(e instanceof Error ? e.message : 'UA集計の取得に失敗しました');
+    } finally {
+      loadingEl.style.display = 'none';
+    }
+  }
+
+  // 並列ロード
+  void Promise.all([renderTrends(), renderSuspicious(), renderIpStats(), renderUaStats()]);
+</script>

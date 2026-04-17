@@ -24,6 +24,9 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     getDailyUserRegistrations: vi.fn(),
     getActiveUserStats: vi.fn(),
     getDailyActiveUsers: vi.fn(),
+    getLoginEventIpStats: vi.fn(),
+    getLoginEventUserAgentStats: vi.fn(),
+    getRecentLoginEvents: vi.fn(),
     parseDays: vi.fn(),
   };
 });
@@ -44,6 +47,9 @@ import {
   getDailyUserRegistrations,
   getActiveUserStats,
   getDailyActiveUsers,
+  getLoginEventIpStats,
+  getLoginEventUserAgentStats,
+  getRecentLoginEvents,
   parseDays,
 } from "@0g0-id/shared";
 
@@ -1077,5 +1083,178 @@ describe("GET /api/metrics/active-users/daily", () => {
     expect(res.status).toBe(500);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("INTERNAL_ERROR");
+  });
+});
+
+describe("GET /api/metrics/ip-stats", () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(findUserById).mockResolvedValue({
+      id: "admin-user-id",
+      email: "admin@example.com",
+      role: "admin",
+      banned_at: null,
+    } as any);
+  });
+
+  it("管理者トークンで IPアドレス別統計を返す", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getLoginEventIpStats).mockResolvedValue([
+      { ip_address: "203.0.113.1", count: 12, last_seen: "2026-04-17T00:00:00Z" },
+      { ip_address: "198.51.100.2", count: 5, last_seen: "2026-04-16T12:00:00Z" },
+    ]);
+
+    const res = await app.request(
+      makeRequest("/api/metrics/ip-stats?days=7&limit=20", "admin-token"),
+      undefined,
+      mockEnv,
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json<{
+      data: { ip_address: string; count: number; last_seen: string }[];
+      meta: { days: number; limit: number };
+    }>();
+    expect(body.data).toHaveLength(2);
+    expect(body.meta).toEqual({ days: 7, limit: 20 });
+    expect(vi.mocked(getLoginEventIpStats)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      expect.any(String),
+      20,
+    );
+  });
+
+  it("days が非数値の場合 400 INVALID_PARAMETER を返す", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+
+    const res = await app.request(
+      makeRequest("/api/metrics/ip-stats?days=abc", "admin-token"),
+      undefined,
+      mockEnv,
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("INVALID_PARAMETER");
+    expect(getLoginEventIpStats).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/metrics/user-agent-stats", () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(findUserById).mockResolvedValue({
+      id: "admin-user-id",
+      email: "admin@example.com",
+      role: "admin",
+      banned_at: null,
+    } as any);
+  });
+
+  it("管理者トークンで User-Agent別統計を返す（デフォルトは days=7, limit=20）", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getLoginEventUserAgentStats).mockResolvedValue([
+      { user_agent: "Mozilla/5.0 Chrome/120", count: 42 },
+    ]);
+
+    const res = await app.request(
+      makeRequest("/api/metrics/user-agent-stats", "admin-token"),
+      undefined,
+      mockEnv,
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json<{
+      data: { user_agent: string; count: number }[];
+      meta: { days: number; limit: number };
+    }>();
+    expect(body.data).toHaveLength(1);
+    expect(body.meta).toEqual({ days: 7, limit: 20 });
+    expect(vi.mocked(getLoginEventUserAgentStats)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      expect.any(String),
+      20,
+    );
+  });
+
+  it("limit が範囲外の場合 400 INVALID_PARAMETER を返す", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+
+    const res = await app.request(
+      makeRequest("/api/metrics/user-agent-stats?limit=101", "admin-token"),
+      undefined,
+      mockEnv,
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("INVALID_PARAMETER");
+    expect(getLoginEventUserAgentStats).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/metrics/recent-events", () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(findUserById).mockResolvedValue({
+      id: "admin-user-id",
+      email: "admin@example.com",
+      role: "admin",
+      banned_at: null,
+    } as any);
+  });
+
+  it("管理者トークンで直近ログインイベント一覧を返す", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getRecentLoginEvents).mockResolvedValue({
+      events: [
+        {
+          id: "e1",
+          user_id: "u1",
+          provider: "google",
+          ip_address: "1.2.3.4",
+          user_agent: "Mozilla/5.0",
+          country: "JP",
+          created_at: "2026-04-17T00:00:00Z",
+        },
+      ],
+      total: 1,
+    });
+
+    const res = await app.request(
+      makeRequest("/api/metrics/recent-events?limit=50&offset=0", "admin-token"),
+      undefined,
+      mockEnv,
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json<{
+      data: unknown[];
+      meta: { limit: number; offset: number; total: number };
+    }>();
+    expect(body.data).toHaveLength(1);
+    expect(body.meta).toEqual({ limit: 50, offset: 0, total: 1 });
+    expect(vi.mocked(getRecentLoginEvents)).toHaveBeenCalledWith(mockEnv.DB, 50, 0);
+  });
+
+  it("offset が負数（非数値扱い）の場合 400 INVALID_PARAMETER を返す", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+
+    const res = await app.request(
+      makeRequest("/api/metrics/recent-events?offset=-1", "admin-token"),
+      undefined,
+      mockEnv,
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("INVALID_PARAMETER");
+    expect(getRecentLoginEvents).not.toHaveBeenCalled();
   });
 });
