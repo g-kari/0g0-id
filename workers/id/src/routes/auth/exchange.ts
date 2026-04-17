@@ -11,6 +11,8 @@ import {
   generatePairwiseSub,
   signIdToken,
   createLogger,
+  createBffSession,
+  BFF_SESSION_MAX_AGE_SECONDS,
 } from "@0g0-id/shared";
 import { authenticateService } from "../../utils/service-auth";
 import { resolveEffectiveScope } from "../../utils/scopes";
@@ -147,11 +149,34 @@ export async function handleExchange(c: Context<{ Bindings: IdpEnv; Variables: V
     );
   }
 
+  // BFF フロー（service_id なし）の場合は bff_sessions に行を作成して session_id を返す。
+  // Cookie 漏洩時のリモート失効（issue #139）用。
+  let bffSessionId: string | undefined;
+  if (serviceId === null) {
+    try {
+      bffSessionId = crypto.randomUUID();
+      const now = Math.floor(Date.now() / 1000);
+      const bffOrigin = new URL(body.redirect_to).origin;
+      await createBffSession(c.env.DB, {
+        id: bffSessionId,
+        userId: user.id,
+        expiresAt: now + BFF_SESSION_MAX_AGE_SECONDS,
+        bffOrigin,
+        userAgent: c.req.header("User-Agent") ?? null,
+        ip: c.req.header("CF-Connecting-IP") ?? null,
+      });
+    } catch (err) {
+      authLogger.error("[exchange] Failed to create bff_session", err);
+      return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    }
+  }
+
   return c.json({
     data: {
       access_token: accessToken,
       ...(idToken ? { id_token: idToken } : {}),
       refresh_token: refreshTokenRaw,
+      ...(bffSessionId ? { session_id: bffSessionId } : {}),
       token_type: "Bearer",
       expires_in: ACCESS_TOKEN_TTL_SECONDS,
       user: {

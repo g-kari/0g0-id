@@ -10,12 +10,14 @@ import {
   addRevokedAccessToken,
   createLogger,
   restErrorBody,
+  revokeBffSession,
 } from "@0g0-id/shared";
 
 const authLogger = createLogger("auth");
 
 const LogoutSchema = z.object({
   refresh_token: z.string().optional(),
+  session_id: z.string().uuid().optional(),
 });
 
 type Variables = { user: TokenPayload };
@@ -46,7 +48,20 @@ export async function handleLogout(c: Context<{ Bindings: IdpEnv; Variables: Var
     }
   }
 
-  const { refresh_token: refreshToken } = result.data;
+  const { refresh_token: refreshToken, session_id: bffSessionId } = result.data;
+
+  // BFF セッションの失効（issue #139 対応）。
+  // refresh_token 失効と独立して行うことで、Cookie 側 session_id だけでも確実に失効させる。
+  if (bffSessionId) {
+    try {
+      await revokeBffSession(c.env.DB, bffSessionId, "user_logout");
+    } catch (err) {
+      authLogger.error("[logout] Failed to revoke bff_session", err);
+      // bff_session 失効失敗はログアウト全体を失敗扱いにする（Cookie が活きたままになるのを避ける）
+      return c.json(restErrorBody("INTERNAL_ERROR", "Failed to revoke session"), 500);
+    }
+  }
+
   if (refreshToken) {
     const tokenHash = await sha256(refreshToken);
     let storedToken: RefreshToken | null;

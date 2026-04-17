@@ -10,6 +10,7 @@ const baseUrl = "https://user.0g0.xyz";
 async function makeSessionCookie(opts: { refreshToken?: string } = {}): Promise<string> {
   const { refreshToken = "mock-refresh-token" } = opts;
   const session = {
+    session_id: "00000000-0000-0000-0000-000000000000",
     access_token: "mock-access-token",
     refresh_token: refreshToken,
     user: { id: "user-123", email: "user@example.com", name: "Test User", role: "user" as const },

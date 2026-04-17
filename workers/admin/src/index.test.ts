@@ -10,6 +10,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => ({
   fetchWithAuth: vi.fn(),
   proxyResponse: vi.fn(),
   parseSession: vi.fn().mockResolvedValue({
+    session_id: "00000000-0000-0000-0000-000000000000",
     access_token: "mock-access-token",
     refresh_token: "mock-refresh-token",
     user: { id: "admin-123", email: "admin@example.com", name: "Admin", role: "admin" },
@@ -62,6 +63,7 @@ describe("onError ハンドラ", () => {
   it("未処理の例外で500とINTERNAL_ERRORを返す", async () => {
     // fetchWithAuth をスローさせて /api/metrics 経由で app.onError を通過させる
     vi.mocked(parseSession).mockResolvedValue({
+      session_id: "00000000-0000-0000-0000-000000000000",
       access_token: "mock-access-token",
       refresh_token: "mock-refresh-token",
       user: { id: "admin-123", email: "admin@example.com", name: "Admin", role: "admin" },

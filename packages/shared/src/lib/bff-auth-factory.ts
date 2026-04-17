@@ -88,7 +88,15 @@ export function createBffAuthRoutes(config: BffAuthConfig) {
       }
     }
 
+    // IdP /auth/exchange は BFF フロー時に必ず session_id を返す仕様。
+    // 未返却は IdP 側の不整合（例: バージョン不一致）なのでセッション確立を拒否する。
+    if (!result.data.session_id) {
+      logger.error("[callback] IdP did not return session_id for BFF flow");
+      return c.redirect("/?error=exchange_failed");
+    }
+
     await setSessionCookie(c, config.sessionCookieName, {
+      session_id: result.data.session_id,
       access_token: result.data.access_token,
       refresh_token: result.data.refresh_token,
       user: result.data.user,
@@ -105,7 +113,7 @@ export function createBffAuthRoutes(config: BffAuthConfig) {
     );
     if (sessionData) {
       try {
-        await revokeTokenAtIdp(c.env, sessionData.refresh_token);
+        await revokeTokenAtIdp(c.env, sessionData.refresh_token, sessionData.session_id);
       } catch (err) {
         logger.error("[logout] IdP revoke request failed", err);
       }

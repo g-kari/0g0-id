@@ -11,6 +11,7 @@ import {
   revokeUserServiceTokens,
   revokeUserTokens,
   deleteMcpSessionsByUser,
+  revokeAllBffSessionsByUserId,
   revokeTokenByIdForUser,
   revokeOtherUserTokens,
   listActiveSessionsByUserId,
@@ -526,6 +527,10 @@ app.delete(
     const tokenUser = c.get("user");
     await revokeUserTokens(c.env.DB, tokenUser.sub, "user_logout_all");
     await deleteMcpSessionsByUser(c.env.DB, tokenUser.sub);
+    // BFF セッション Cookie もリモート失効（issue #139）。
+    // refresh_token 失効だけでは Cookie 内 access_token（15分）が残るため、
+    // bff_sessions 側でも確実に無効化する。
+    await revokeAllBffSessionsByUserId(c.env.DB, tokenUser.sub, "user_logout_all");
     return c.body(null, 204);
   },
 );

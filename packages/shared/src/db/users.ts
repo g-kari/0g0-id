@@ -297,6 +297,12 @@ export async function updateUserRoleWithRevocation(
       )
       .bind("security_event", userId),
     db.prepare(`DELETE FROM mcp_sessions WHERE user_id = ?`).bind(userId),
+    // BFF セッション Cookie も失効（issue #139）。role 変更時に旧セッションの role が Cookie に残るのを防ぐ。
+    db
+      .prepare(
+        `UPDATE bff_sessions SET revoked_at = ?, revoked_reason = ? WHERE user_id = ? AND revoked_at IS NULL`,
+      )
+      .bind(Math.floor(Date.now() / 1000), "security_event", userId),
   ]);
   const user = results[0]?.results?.[0] as User | undefined;
   if (!user) throw new Error("User not found");
@@ -519,6 +525,12 @@ export async function banUserWithRevocation(db: D1Database, userId: string): Pro
       )
       .bind("security_event", userId),
     db.prepare(`DELETE FROM mcp_sessions WHERE user_id = ?`).bind(userId),
+    // BFF セッション Cookie も失効（issue #139）。BAN時に Cookie が残ると access_token 有効期間中はアクセス可能になる。
+    db
+      .prepare(
+        `UPDATE bff_sessions SET revoked_at = ?, revoked_reason = ? WHERE user_id = ? AND revoked_at IS NULL`,
+      )
+      .bind(Math.floor(Date.now() / 1000), "security_event", userId),
   ]);
   const user = results[0]?.results?.[0] as User | undefined;
   if (!user) throw new Error("User not found");
