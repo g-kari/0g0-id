@@ -13,6 +13,9 @@ import {
   getDailyUserRegistrations,
   getActiveUserStats,
   getDailyActiveUsers,
+  getLoginEventIpStats,
+  getLoginEventUserAgentStats,
+  getRecentLoginEvents,
   parseDays,
   restErrorBody,
 } from "@0g0-id/shared";
@@ -152,6 +155,122 @@ app.get("/active-users/daily", authMiddleware, adminMiddleware, async (c) => {
   try {
     const data = await getDailyActiveUsers(c.env.DB, days);
     return c.json({ data, days });
+  } catch {
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
+  }
+});
+
+// GET /api/metrics/ip-stats?days=7&limit=20 — IPアドレス別ログイン統計（セキュリティ監視用）
+app.get("/ip-stats", authMiddleware, adminMiddleware, async (c) => {
+  const daysStr = c.req.query("days");
+  if (daysStr !== undefined && !/^\d+$/.test(daysStr)) {
+    return c.json(
+      restErrorBody("INVALID_PARAMETER", "days must be an integer between 1 and 365"),
+      400,
+    );
+  }
+  const daysNum = daysStr !== undefined ? parseInt(daysStr, 10) : 7;
+  if (daysNum < 1 || daysNum > 365) {
+    return c.json(
+      restErrorBody("INVALID_PARAMETER", "days must be an integer between 1 and 365"),
+      400,
+    );
+  }
+
+  const limitStr = c.req.query("limit");
+  if (limitStr !== undefined && !/^\d+$/.test(limitStr)) {
+    return c.json(
+      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
+      400,
+    );
+  }
+  const limitNum = limitStr !== undefined ? parseInt(limitStr, 10) : 20;
+  if (limitNum < 1 || limitNum > 100) {
+    return c.json(
+      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
+      400,
+    );
+  }
+
+  const sinceIso = new Date(Date.now() - daysNum * 24 * 60 * 60 * 1000).toISOString();
+  try {
+    const stats = await getLoginEventIpStats(c.env.DB, sinceIso, limitNum);
+    return c.json({ data: stats, meta: { days: daysNum, limit: limitNum } });
+  } catch {
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
+  }
+});
+
+// GET /api/metrics/user-agent-stats?days=7&limit=20 — User-Agent別ログイン統計
+app.get("/user-agent-stats", authMiddleware, adminMiddleware, async (c) => {
+  const daysStr = c.req.query("days");
+  if (daysStr !== undefined && !/^\d+$/.test(daysStr)) {
+    return c.json(
+      restErrorBody("INVALID_PARAMETER", "days must be an integer between 1 and 365"),
+      400,
+    );
+  }
+  const daysNum = daysStr !== undefined ? parseInt(daysStr, 10) : 7;
+  if (daysNum < 1 || daysNum > 365) {
+    return c.json(
+      restErrorBody("INVALID_PARAMETER", "days must be an integer between 1 and 365"),
+      400,
+    );
+  }
+
+  const limitStr = c.req.query("limit");
+  if (limitStr !== undefined && !/^\d+$/.test(limitStr)) {
+    return c.json(
+      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
+      400,
+    );
+  }
+  const limitNum = limitStr !== undefined ? parseInt(limitStr, 10) : 20;
+  if (limitNum < 1 || limitNum > 100) {
+    return c.json(
+      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
+      400,
+    );
+  }
+
+  const sinceIso = new Date(Date.now() - daysNum * 24 * 60 * 60 * 1000).toISOString();
+  try {
+    const stats = await getLoginEventUserAgentStats(c.env.DB, sinceIso, limitNum);
+    return c.json({ data: stats, meta: { days: daysNum, limit: limitNum } });
+  } catch {
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
+  }
+});
+
+// GET /api/metrics/recent-events?limit=50&offset=0 — 全ユーザーの直近ログインイベント一覧
+app.get("/recent-events", authMiddleware, adminMiddleware, async (c) => {
+  const limitStr = c.req.query("limit");
+  if (limitStr !== undefined && !/^\d+$/.test(limitStr)) {
+    return c.json(
+      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
+      400,
+    );
+  }
+  const limitNum = limitStr !== undefined ? parseInt(limitStr, 10) : 50;
+  if (limitNum < 1 || limitNum > 100) {
+    return c.json(
+      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
+      400,
+    );
+  }
+
+  const offsetStr = c.req.query("offset");
+  if (offsetStr !== undefined && !/^\d+$/.test(offsetStr)) {
+    return c.json(restErrorBody("INVALID_PARAMETER", "offset must be a non-negative integer"), 400);
+  }
+  const offsetNum = offsetStr !== undefined ? parseInt(offsetStr, 10) : 0;
+  if (offsetNum < 0) {
+    return c.json(restErrorBody("INVALID_PARAMETER", "offset must be a non-negative integer"), 400);
+  }
+
+  try {
+    const { events, total } = await getRecentLoginEvents(c.env.DB, limitNum, offsetNum);
+    return c.json({ data: events, meta: { limit: limitNum, offset: offsetNum, total } });
   } catch {
     return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }

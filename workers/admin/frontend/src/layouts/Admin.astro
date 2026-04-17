@@ -8,9 +8,10 @@ const { title } = Astro.props;
 const pathname = Astro.url.pathname;
 
 const links = [
-  { href: '/dashboard', label: 'ダッシュボード', icon: '📊' },
-  { href: '/users', label: 'ユーザー管理', icon: '👥' },
-  { href: '/services', label: 'サービス管理', icon: '🔧' },
+  { href: '/dashboard', matcher: '/dashboard', label: 'ダッシュボード', icon: '📊' },
+  { href: '/security/dashboard', matcher: '/security', label: 'セキュリティ', icon: '🛡️' },
+  { href: '/users', matcher: '/users', label: 'ユーザー管理', icon: '👥' },
+  { href: '/services', matcher: '/services', label: 'サービス管理', icon: '🔧' },
 ];
 ---
 <Base title={title}>
@@ -23,7 +24,7 @@ const links = [
         {links.map(link => (
           <a
             href={link.href}
-            class:list={['sidebar-link', { active: pathname.startsWith(link.href) }]}
+            class:list={['sidebar-link', { active: pathname.startsWith(link.matcher) }]}
           >
             <span>{link.icon}</span>
             <span>{link.label}</span>

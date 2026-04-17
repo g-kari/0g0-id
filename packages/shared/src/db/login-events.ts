@@ -287,3 +287,84 @@ export async function getDailyActiveUsers(
     .all<DailyActiveUserStat>();
   return result.results;
 }
+
+/** IPアドレス別ログイン統計エントリ */
+export interface LoginEventIpStat {
+  ip_address: string;
+  count: number;
+  last_seen: string; // ISO8601
+}
+
+/**
+ * 指定期間内の IPアドレス別ログイン統計を count 降順で返す。
+ * ip_address が NULL のイベントは集計に含めない。
+ */
+export async function getLoginEventIpStats(
+  db: D1Database,
+  sinceIso: string,
+  limit: number = 20,
+): Promise<LoginEventIpStat[]> {
+  const result = await db
+    .prepare(
+      `SELECT ip_address, COUNT(*) as count, MAX(created_at) as last_seen
+       FROM login_events
+       WHERE created_at >= ? AND ip_address IS NOT NULL
+       GROUP BY ip_address
+       ORDER BY count DESC
+       LIMIT ?`,
+    )
+    .bind(sinceIso, limit)
+    .all<LoginEventIpStat>();
+  return result.results;
+}
+
+/** User-Agent別ログイン統計エントリ */
+export interface LoginEventUserAgentStat {
+  user_agent: string;
+  count: number;
+}
+
+/**
+ * 指定期間内の User-Agent別ログイン統計を count 降順で返す。
+ * user_agent が NULL のイベントは集計に含めない。
+ */
+export async function getLoginEventUserAgentStats(
+  db: D1Database,
+  sinceIso: string,
+  limit: number = 20,
+): Promise<LoginEventUserAgentStat[]> {
+  const result = await db
+    .prepare(
+      `SELECT user_agent, COUNT(*) as count
+       FROM login_events
+       WHERE created_at >= ? AND user_agent IS NOT NULL
+       GROUP BY user_agent
+       ORDER BY count DESC
+       LIMIT ?`,
+    )
+    .bind(sinceIso, limit)
+    .all<LoginEventUserAgentStat>();
+  return result.results;
+}
+
+/**
+ * 全ユーザーの直近ログインイベントを新しい順で返す（ページング対応）。
+ * 監査ダッシュボードでのイベント一覧表示用。
+ */
+export async function getRecentLoginEvents(
+  db: D1Database,
+  limit: number = 50,
+  offset: number = 0,
+): Promise<{ events: LoginEvent[]; total: number }> {
+  const [eventsResult, countResult] = await Promise.all([
+    db
+      .prepare("SELECT * FROM login_events ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?")
+      .bind(limit, offset)
+      .all<LoginEvent>(),
+    db.prepare("SELECT COUNT(*) as count FROM login_events").first<{ count: number }>(),
+  ]);
+  return {
+    events: eventsResult.results,
+    total: countResult?.count ?? 0,
+  };
+}

@@ -20,6 +20,7 @@ import { SESSION_COOKIE } from "./routes/auth";
 import servicesRoutes from "./routes/services";
 import usersRoutes from "./routes/users";
 import metricsRoutes from "./routes/metrics";
+import securityTrendsRoutes from "./routes/security-trends";
 import auditLogsRoutes from "./routes/audit-logs";
 
 const appLogger = createLogger("admin");
@@ -63,6 +64,7 @@ app.route("/auth", authRoutes);
 app.route("/api/services", servicesRoutes);
 app.route("/api/users", usersRoutes);
 app.route("/api/metrics", metricsRoutes);
+app.route("/api/security-trends", securityTrendsRoutes);
 app.route("/api/audit-logs", auditLogsRoutes);
 
 app.get("/api/health", (c) => {
