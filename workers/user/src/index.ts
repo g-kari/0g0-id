@@ -14,6 +14,7 @@ import {
   validateBffEnv,
 } from "@0g0-id/shared";
 import authRoutes from "./routes/auth";
+import dbscRoutes from "./routes/dbsc";
 import oauthRoutes from "./routes/oauth";
 import profileRoutes from "./routes/profile";
 import connectionsRoutes from "./routes/connections";
@@ -45,8 +46,16 @@ app.use("/api/*", bffCorsMiddleware);
 app.use("/api/*", bffCsrfMiddleware);
 app.use("/auth/logout", bffCsrfMiddleware);
 app.use("/auth/link", bffCsrfMiddleware);
+// /auth/dbsc/* はブラウザ主導（Chrome 内部）の DBSC フローで、リクエストの
+// Origin ヘッダが付かない／"null" になり得るため bffCsrfMiddleware を適用しない。
+// 代わりに以下の多層で攻撃者からの誤バインドを防ぐ:
+//   1. __Host-user-session Cookie 必須（SameSite=Lax のため、攻撃者サイト発の
+//      cross-site fetch には添付されず、ログイン済みユーザーのブラウザ以外からは無効）
+//   2. 登録 JWT が ES256 自署 (proof of possession) かつ audience=SELF_ORIGIN を要求
+//   3. IdP /auth/dbsc/bind 側で session.bff_origin と X-BFF-Origin が一致する場合のみ受理
 
 app.route("/auth", authRoutes);
+app.route("/auth/dbsc", dbscRoutes);
 // OAuth 2.0 / OIDC フロー: IdP の /auth/authorize からリダイレクトされるプロバイダー選択ページ
 app.route("/", oauthRoutes);
 app.route("/api/me", profileRoutes);
