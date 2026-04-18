@@ -79,6 +79,7 @@ export async function handleDbscBind(c: Context<{ Bindings: IdpEnv }>) {
   }
 
   const originErr = checkCallerOrigin(c, session.bff_origin);
+
   if (originErr) return originErr;
 
   // 二重バインド・期限切れ・失効は bindDeviceKeyToBffSession 内の WHERE 句で
@@ -215,6 +216,44 @@ export async function handleDbscVerify(c: Context<{ Bindings: IdpEnv }>) {
     data: {
       session_id: body.session_id,
       verified_at: Math.floor(Date.now() / 1000),
+    },
+  });
+}
+
+const StatusSchema = z.object({
+  session_id: z.string().min(1).max(128),
+});
+
+/**
+ * POST /auth/dbsc/status — 指定 BFF セッションの端末バインド状態を返す（BFF Worker 専用 internal API）。
+ *
+ * Phase 3 の機密操作必須化用途。BFF ミドルウェアが破壊的操作を処理する前に
+ * このエンドポイントを叩き、device_bound=false なら 403 + Secure-Session-Registration を返す。
+ *
+ * - serviceBindingMiddleware で保護される（X-Internal-Secret 必須）。
+ * - 呼び出し元 BFF と session.bff_origin の不一致は 403 で拒否する。
+ * - 失効・期限切れ・存在しないセッションは device_bound=false で応答する（列挙攻撃対策の最小応答）。
+ */
+export async function handleDbscStatus(c: Context<{ Bindings: IdpEnv }>) {
+  const result = await parseJsonBody(c, StatusSchema);
+  if (!result.ok) return result.response;
+  const body = result.data;
+
+  const session = await findActiveBffSession(c.env.DB, body.session_id);
+  // 非有効セッション・他 BFF 発行セッション（X-BFF-Origin 不一致）の両方を
+  // device_bound=false で一本化する（列挙攻撃対策）。
+  // bind/challenge/verify は副作用のある内部 API なので origin 不一致を 403 で明示的に拒否するが、
+  // status は読み取り専用かつリクエスト毎に呼ばれるため、403 と 200 の分岐自体が
+  // session_id 存在の観測点になり得る。応答を一本化してサイドチャネルを塞ぐ。
+  const callerOrigin = c.req.header("X-BFF-Origin");
+  if (!session || !callerOrigin || callerOrigin !== session.bff_origin) {
+    return c.json({ data: { device_bound: false, device_bound_at: null } });
+  }
+
+  return c.json({
+    data: {
+      device_bound: session.device_public_key_jwk !== null,
+      device_bound_at: session.device_bound_at,
     },
   });
 }

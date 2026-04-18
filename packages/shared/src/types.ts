@@ -173,6 +173,12 @@ export interface BffEnv {
    * 設定されていれば INTERNAL_SERVICE_SECRET より優先される。BFF 毎の独立ローテーションを可能にする（issue #156）。
    */
   INTERNAL_SERVICE_SECRET_SELF?: string;
+  /**
+   * DBSC 機密操作必須化モード（Phase 3・issue #155）。
+   * `"true"` を設定すると、破壊的操作（POST/PATCH/PUT/DELETE）は DBSC で端末バインド済み
+   * セッションのみに許可される。未設定・その他の値では warn-only（観測のみ通過）。
+   */
+  DBSC_ENFORCE_SENSITIVE?: string;
 }
 
 /**
