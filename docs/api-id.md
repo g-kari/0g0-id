@@ -19,6 +19,12 @@
 
 > 注: 表中で「InternalSecret」または「BasicAuth」の一方のみを示すエンドポイントでも、`serviceBindingMiddleware` で保護されるパス（`/auth/exchange`・`/auth/refresh`・`/auth/logout`・`/auth/dbsc/*`）は実際には **`X-Internal-Secret` OR `Authorization: Basic`** のいずれかで通過する。`InternalSecret` は BFF 内部通信の一次手段、`BasicAuth` は外部 OAuth クライアント用のフォールバック。
 
+> 運用メモ（observability・issue #156）: `serviceBindingMiddleware` は認証結果を構造化ログ（ctx=`service-binding`）で出力する:
+>
+> - 成功: `internal secret authenticated` / `service client authenticated`（`kind` = `user` / `admin` / `shared`、および `serviceId`）
+> - 旧来の共有 `INTERNAL_SERVICE_SECRET` で通過した場合のみ `warn` で deprecation 警告を出力。ログを監視して残存呼び出し元を特定したうえで BFF 毎の `INTERNAL_SERVICE_SECRET_USER` / `_ADMIN` に移行し、最終的に共有シークレットを撤去する。
+> - 拒否: `internal secret mismatch`（ヘッダーあり＆不一致）・`service binding access denied`（最終 403）・`service client authentication error`（DB 例外）。不正アクセス試行の観測に使える。
+
 - JWT 署名鍵: ES256（P-256 EC）／`jose` + WebCrypto
 - アクセストークン: 15 分、リフレッシュトークン: 30 日（ローテーション＋再使用検出）
 
