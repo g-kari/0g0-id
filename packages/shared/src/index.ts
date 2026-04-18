@@ -14,6 +14,7 @@ export * from "./lib/github";
 export * from "./lib/x";
 export * from "./lib/bff";
 export * from "./lib/bff-auth-factory";
+export * from "./lib/bff-dbsc-factory";
 export * from "./lib/pagination";
 export * from "./lib/logger";
 export * from "./lib/providers";
