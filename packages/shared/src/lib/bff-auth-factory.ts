@@ -6,6 +6,7 @@ import { parseSession, setSessionCookie, exchangeCodeAtIdp, revokeTokenAtIdp } f
 import { setOAuthStateCookie, verifyAndConsumeOAuthState } from "./bff";
 import { createLogger } from "./logger";
 import type { ExchangeResult } from "./bff";
+import { buildSecureSessionRegistrationHeader } from "./dbsc";
 
 /** ファクトリに渡す設定 */
 export interface BffAuthConfig {
@@ -27,6 +28,12 @@ export interface BffAuthConfig {
     c: { redirect: (url: string) => Response; env: BffEnv },
     result: ExchangeResult,
   ) => Promise<Response | null>;
+  /**
+   * DBSC (Device Bound Session Credentials) 登録エンドポイントのパス。
+   * 設定すると callback 成功応答に Secure-Session-Registration ヘッダを付与し、
+   * 対応ブラウザ（Chrome）に DBSC 登録フローを開始させる。
+   */
+  dbscRegistrationPath?: string;
 }
 
 /** BFF認証ルート（login / callback / logout）を生成するファクトリ */
@@ -101,6 +108,15 @@ export function createBffAuthRoutes(config: BffAuthConfig) {
       refresh_token: result.data.refresh_token,
       user: result.data.user,
     });
+
+    if (config.dbscRegistrationPath) {
+      // Chrome 等の対応ブラウザに DBSC 登録フローを開始させる。
+      // 値の文法は draft 仕様に従い `(<algs>);path="<path>"` 形式とする。
+      c.header(
+        "Secure-Session-Registration",
+        buildSecureSessionRegistrationHeader({ path: config.dbscRegistrationPath }),
+      );
+    }
 
     return c.redirect(config.successRedirect);
   });

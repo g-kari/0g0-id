@@ -15,6 +15,7 @@ import { handleExchange } from "./exchange";
 import { handleRefresh } from "./refresh";
 import { handleLinkIntent } from "./link-intent";
 import { handleLogout } from "./logout";
+import { handleDbscBind } from "./dbsc";
 
 type Variables = { user: TokenPayload };
 
@@ -47,5 +48,8 @@ app.post(
 
 // POST /auth/logout — ログアウト（BFFサーバー間専用）
 app.post("/logout", tokenApiRateLimitMiddleware, serviceBindingMiddleware, handleLogout);
+
+// POST /auth/dbsc/bind — DBSC 端末公開鍵バインド（BFFサーバー間専用）
+app.post("/dbsc/bind", tokenApiRateLimitMiddleware, serviceBindingMiddleware, handleDbscBind);
 
 export default app;

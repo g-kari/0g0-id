@@ -18,6 +18,10 @@ export interface BffSessionRecord {
   user_agent: string | null;
   ip: string | null;
   bff_origin: string;
+  /** DBSC 端末バインド公開鍵（ES256 JWK の JSON 文字列）。未バインドなら null。 */
+  device_public_key_jwk: string | null;
+  /** DBSC 端末バインド日時（unix 秒）。未バインドなら null。 */
+  device_bound_at: number | null;
 }
 
 export interface CreateBffSessionInput {
@@ -66,7 +70,7 @@ export async function findActiveBffSession(
   const row = await db
     .prepare(
       `SELECT id, user_id, created_at, expires_at, revoked_at, revoked_reason,
-              user_agent, ip, bff_origin
+              user_agent, ip, bff_origin, device_public_key_jwk, device_bound_at
          FROM bff_sessions
         WHERE id = ? AND revoked_at IS NULL AND expires_at > ?`,
     )
@@ -149,4 +153,31 @@ export async function countActiveBffSessionsByUserId(
     .bind(userId, now)
     .first<{ cnt: number }>();
   return row?.cnt ?? 0;
+}
+
+/**
+ * BFF セッションに DBSC 端末公開鍵をバインドする。
+ *
+ * - 既にバインド済み・失効済み・期限切れ・存在しないセッションには no-op で false を返す。
+ * - 二重バインドを禁止する（端末追加は新規ログイン経由のみ）。
+ * - 公開鍵 JWK は呼び出し側が事前に jose 等で検証してから渡す前提。
+ */
+export async function bindDeviceKeyToBffSession(
+  db: D1Database,
+  sessionId: string,
+  publicKeyJwk: string,
+): Promise<boolean> {
+  const now = Math.floor(Date.now() / 1000);
+  const result = await db
+    .prepare(
+      `UPDATE bff_sessions
+          SET device_public_key_jwk = ?, device_bound_at = ?
+        WHERE id = ?
+          AND revoked_at IS NULL
+          AND expires_at > ?
+          AND device_public_key_jwk IS NULL`,
+    )
+    .bind(publicKeyJwk, now, sessionId, now)
+    .run();
+  return (result.meta?.changes ?? 0) > 0;
 }

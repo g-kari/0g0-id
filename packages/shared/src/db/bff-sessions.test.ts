@@ -6,6 +6,7 @@ import {
   revokeAllBffSessionsByUserId,
   cleanupStaleBffSessions,
   countActiveBffSessionsByUserId,
+  bindDeviceKeyToBffSession,
 } from "./bff-sessions";
 import { makeD1Mock } from "./test-helpers";
 
@@ -108,5 +109,28 @@ describe("countActiveBffSessionsByUserId", () => {
     const db = makeD1Mock(null);
     const count = await countActiveBffSessionsByUserId(db, "user-1");
     expect(count).toBe(0);
+  });
+});
+
+describe("bindDeviceKeyToBffSession", () => {
+  it("UPDATE で device_public_key_jwk と device_bound_at を設定する", async () => {
+    const db = makeD1Mock(null, [], 1);
+    const ok = await bindDeviceKeyToBffSession(db, "s-1", '{"kty":"EC"}');
+    expect(ok).toBe(true);
+    const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain("UPDATE bff_sessions");
+    expect(sql).toContain("device_public_key_jwk = ?");
+    expect(sql).toContain("device_bound_at = ?");
+    // 二重バインド防止: device_public_key_jwk IS NULL 条件が含まれる
+    expect(sql).toContain("device_public_key_jwk IS NULL");
+    // 失効・期限切れセッションは更新対象外
+    expect(sql).toContain("revoked_at IS NULL");
+    expect(sql).toContain("expires_at >");
+  });
+
+  it("changes が 0 なら false を返す（既にバインド済み等）", async () => {
+    const db = makeD1Mock(null, [], 0);
+    const ok = await bindDeviceKeyToBffSession(db, "s-1", '{"kty":"EC"}');
+    expect(ok).toBe(false);
   });
 });

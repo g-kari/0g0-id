@@ -16,6 +16,7 @@ import {
   validateBffEnv,
 } from "@0g0-id/shared";
 import authRoutes from "./routes/auth";
+import dbscRoutes from "./routes/dbsc";
 import { SESSION_COOKIE } from "./routes/auth";
 import servicesRoutes from "./routes/services";
 import usersRoutes from "./routes/users";
@@ -44,6 +45,13 @@ app.use("/api/*", bffCorsMiddleware);
 // /api/* および /auth/logout に適用（強制ログアウトCSRF対策）
 app.use("/api/*", bffCsrfMiddleware);
 app.use("/auth/logout", bffCsrfMiddleware);
+// /auth/dbsc/* はブラウザ主導（Chrome 内部）の DBSC フローで、リクエストの
+// Origin ヘッダが付かない／"null" になり得るため bffCsrfMiddleware を適用しない。
+// 代わりに以下の多層で攻撃者からの誤バインドを防ぐ:
+//   1. __Host-admin-session Cookie 必須（SameSite=Lax のため、攻撃者サイト発の
+//      cross-site fetch には添付されず、ログイン済みユーザーのブラウザ以外からは無効）
+//   2. 登録 JWT が ES256 自署 (proof of possession) かつ audience=SELF_ORIGIN を要求
+//   3. IdP /auth/dbsc/bind 側で session.bff_origin と X-BFF-Origin が一致する場合のみ受理
 
 // 管理者ロール検証ミドルウェア（多層防御）
 // IdP側でroleがadminから降格されたセッションを早期拒否する
@@ -61,6 +69,7 @@ app.use("/api/*", async (c, next) => {
 });
 
 app.route("/auth", authRoutes);
+app.route("/auth/dbsc", dbscRoutes);
 app.route("/api/services", servicesRoutes);
 app.route("/api/users", usersRoutes);
 app.route("/api/metrics", metricsRoutes);
