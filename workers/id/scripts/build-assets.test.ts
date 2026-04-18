@@ -3,9 +3,9 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { generateKeyPair, exportSPKI } from "jose";
+import { generateKeyPair, exportSPKI, exportJWK } from "jose";
 
-import { buildAssets, buildJwks } from "./build-assets";
+import { buildAssets, buildJwks, buildJwksFromJwk } from "./build-assets";
 
 describe("build-assets", () => {
   let tmpDir: string;
@@ -82,5 +82,40 @@ describe("build-assets", () => {
     const kid1 = (jwks1.keys[0] as { kid: string }).kid;
     const kid2 = (jwks2.keys[0] as { kid: string }).kid;
     expect(kid1).toBe(kid2);
+  });
+
+  it("buildJwksFromJwk は PEM 経由と同一の kid/鍵パラメータを返す", async () => {
+    const { publicKey } = await generateKeyPair("ES256", { extractable: true });
+    const pem = await exportSPKI(publicKey);
+    const jwk = (await exportJWK(publicKey)) as {
+      kty: string;
+      crv: string;
+      x: string;
+      y: string;
+    };
+
+    const viaPem = await buildJwks(pem);
+    const viaJwk = await buildJwksFromJwk(jwk);
+
+    const a = viaPem.keys[0] as { kid: string; x: string; y: string; crv: string; kty: string };
+    const b = viaJwk.keys[0] as { kid: string; x: string; y: string; crv: string; kty: string };
+    expect(b.kid).toBe(a.kid);
+    expect(b.x).toBe(a.x);
+    expect(b.y).toBe(a.y);
+    expect(b.crv).toBe(a.crv);
+    expect(b.kty).toBe(a.kty);
+  });
+
+  it("リポジトリの public-key.jwk.json が EC P-256 JWK としてパース可能", async () => {
+    const jwk = JSON.parse(
+      await readFile(new URL("../public-key.jwk.json", import.meta.url), "utf-8"),
+    ) as { kty: string; crv: string; x: string; y: string };
+    expect(jwk.kty).toBe("EC");
+    expect(jwk.crv).toBe("P-256");
+    expect(typeof jwk.x).toBe("string");
+    expect(typeof jwk.y).toBe("string");
+    const jwks = await buildJwksFromJwk(jwk);
+    expect(jwks.keys).toHaveLength(1);
+    expect((jwks.keys[0] as { alg: string }).alg).toBe("ES256");
   });
 });
