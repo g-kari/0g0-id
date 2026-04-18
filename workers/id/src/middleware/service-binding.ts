@@ -7,24 +7,35 @@ const INTERNAL_SECRET_HEADER = "X-Internal-Secret";
 const sbLogger = createLogger("service-binding");
 
 /**
- * BFF→IdP間のService Bindings呼び出しを検証するミドルウェア。
+ * BFF→IdP 間および外部OAuthクライアント呼び出しを検証するミドルウェア。
  *
  * 許可条件（いずれか1つを満たせば通過）:
- * 1. X-Internal-Secret ヘッダーが INTERNAL_SERVICE_SECRET と一致（BFFからのService Bindings呼び出し）
+ * 1. X-Internal-Secret ヘッダーが以下のいずれかと一致（BFF 呼び出し）:
+ *    - INTERNAL_SERVICE_SECRET_USER（user BFF 専用）
+ *    - INTERNAL_SERVICE_SECRET_ADMIN（admin BFF 専用）
+ *    - INTERNAL_SERVICE_SECRET（共有シークレット・後方互換）
  * 2. Authorization: Basic ヘッダーのクライアント認証情報がDBと一致（外部OAuthクライアント）
  *
- * INTERNAL_SERVICE_SECRET が未設定の場合はミドルウェアをスキップ（開発環境向け）。
- * 本番環境（HTTPS）で未設定の場合は警告ログを出力する。
+ * シークレットが1つも設定されていない場合:
+ * - 本番環境（HTTPS）: 403 を返却
+ * - 開発環境: スキップ（グレースフルデグラデーション）
+ *
+ * BFF 毎に専用シークレットを分離することで、漏洩時の影響範囲を限定できる（issue #156）。
  */
 export const serviceBindingMiddleware = createMiddleware<{ Bindings: IdpEnv }>(async (c, next) => {
-  const secret = c.env.INTERNAL_SERVICE_SECRET;
+  // BFF 毎の個別シークレット + 共有シークレット（後方互換）を列挙（issue #156）
+  const configuredSecrets = [
+    c.env.INTERNAL_SERVICE_SECRET_USER,
+    c.env.INTERNAL_SERVICE_SECRET_ADMIN,
+    c.env.INTERNAL_SERVICE_SECRET,
+  ].filter((s): s is string => typeof s === "string" && s.length > 0);
 
   // シークレット未設定時の処理
-  if (!secret) {
+  if (configuredSecrets.length === 0) {
     // 本番環境（https://）ではシークレット必須 — 設定漏れによるセキュリティホールを防止
     if (c.env.IDP_ORIGIN?.startsWith("https://")) {
       sbLogger.error(
-        "INTERNAL_SERVICE_SECRET が未設定です。本番環境ではService Bindings保護が必須のため、リクエストを拒否します。",
+        "内部シークレットが1つも設定されていません。本番環境ではService Bindings保護が必須のため、リクエストを拒否します。",
       );
       return c.json(
         { error: { code: "FORBIDDEN", message: "Service binding misconfigured" } },
@@ -36,11 +47,16 @@ export const serviceBindingMiddleware = createMiddleware<{ Bindings: IdpEnv }>(a
     return;
   }
 
-  // 条件1: X-Internal-Secret ヘッダーによるBFF検証
+  // 条件1: X-Internal-Secret ヘッダーによる BFF 検証
+  // 設定済みシークレットのいずれかと timingSafeEqual で一致すれば通過
   const headerSecret = c.req.header(INTERNAL_SECRET_HEADER);
-  if (headerSecret && timingSafeEqual(headerSecret, secret)) {
-    await next();
-    return;
+  if (headerSecret) {
+    for (const secret of configuredSecrets) {
+      if (timingSafeEqual(headerSecret, secret)) {
+        await next();
+        return;
+      }
+    }
   }
 
   // 条件2: Authorization: Basic ヘッダーによるサービスOAuthクライアント認証

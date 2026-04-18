@@ -157,11 +157,18 @@ function errorResponse(status: number, code: string, message: string): Response 
 
 /**
  * BFF→IdP間のService Bindings呼び出しに付与する内部認証ヘッダーを返す。
- * INTERNAL_SERVICE_SECRET が未設定の場合は空オブジェクトを返す。
+ *
+ * 優先順位（issue #156）:
+ * 1. INTERNAL_SERVICE_SECRET_SELF（この BFF 専用シークレット）
+ * 2. INTERNAL_SERVICE_SECRET（共有シークレット・後方互換フォールバック）
+ * 3. 両方未設定なら空オブジェクト
+ *
+ * BFF 毎に専用シークレットを持たせることで、漏洩時の影響範囲を当該 BFF に限定できる。
  */
 export function internalServiceHeaders(env: BffEnv): Record<string, string> {
-  if (env.INTERNAL_SERVICE_SECRET) {
-    return { "X-Internal-Secret": env.INTERNAL_SERVICE_SECRET };
+  const secret = env.INTERNAL_SERVICE_SECRET_SELF ?? env.INTERNAL_SERVICE_SECRET;
+  if (secret) {
+    return { "X-Internal-Secret": secret };
   }
   return {};
 }

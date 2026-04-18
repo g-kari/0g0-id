@@ -174,4 +174,93 @@ describe("serviceBindingMiddleware", () => {
       expect(resAllowed.status).toBe(200);
     });
   });
+
+  describe("BFF 毎の個別シークレット（issue #156）", () => {
+    const USER_SECRET = "user-bff-secret-abc";
+    const ADMIN_SECRET = "admin-bff-secret-xyz";
+
+    it("INTERNAL_SERVICE_SECRET_USER と一致すれば通過する", async () => {
+      const { app, env } = buildApp({ INTERNAL_SERVICE_SECRET_USER: USER_SECRET });
+      const res = await app.request(
+        new Request(`${baseUrl}/auth/exchange`, {
+          method: "POST",
+          headers: { "X-Internal-Secret": USER_SECRET },
+        }),
+        undefined,
+        env,
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("INTERNAL_SERVICE_SECRET_ADMIN と一致すれば通過する", async () => {
+      const { app, env } = buildApp({ INTERNAL_SERVICE_SECRET_ADMIN: ADMIN_SECRET });
+      const res = await app.request(
+        new Request(`${baseUrl}/auth/exchange`, {
+          method: "POST",
+          headers: { "X-Internal-Secret": ADMIN_SECRET },
+        }),
+        undefined,
+        env,
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("どの設定シークレットとも一致しないと 403", async () => {
+      const { app, env } = buildApp({
+        INTERNAL_SERVICE_SECRET_USER: USER_SECRET,
+        INTERNAL_SERVICE_SECRET_ADMIN: ADMIN_SECRET,
+      });
+      const res = await app.request(
+        new Request(`${baseUrl}/auth/exchange`, {
+          method: "POST",
+          headers: { "X-Internal-Secret": "completely-wrong-secret" },
+        }),
+        undefined,
+        env,
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("共有 INTERNAL_SERVICE_SECRET と BFF 個別シークレットの併用時、どちらでも通過する（後方互換）", async () => {
+      const { app, env } = buildApp({
+        INTERNAL_SERVICE_SECRET: SECRET,
+        INTERNAL_SERVICE_SECRET_USER: USER_SECRET,
+      });
+      const resShared = await app.request(
+        new Request(`${baseUrl}/auth/exchange`, {
+          method: "POST",
+          headers: { "X-Internal-Secret": SECRET },
+        }),
+        undefined,
+        env,
+      );
+      expect(resShared.status).toBe(200);
+
+      const resUser = await app.request(
+        new Request(`${baseUrl}/auth/exchange`, {
+          method: "POST",
+          headers: { "X-Internal-Secret": USER_SECRET },
+        }),
+        undefined,
+        env,
+      );
+      expect(resUser.status).toBe(200);
+    });
+
+    it("個別シークレットのみ設定で本番環境（IDP_ORIGIN=https://）でも 403 にならない", async () => {
+      const { app, env } = buildApp({
+        IDP_ORIGIN: "https://id.0g0.xyz",
+        INTERNAL_SERVICE_SECRET_USER: USER_SECRET,
+      });
+      const res = await app.request(
+        new Request(`${baseUrl}/auth/exchange`, {
+          method: "POST",
+          headers: { "X-Internal-Secret": USER_SECRET },
+        }),
+        undefined,
+        env,
+      );
+      expect(res.status).toBe(200);
+    });
+  });
 });
