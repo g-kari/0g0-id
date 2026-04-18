@@ -44,6 +44,7 @@ vi.mock("@0g0-id/shared", () => ({
   cleanupExpiredMcpSessions: vi.fn().mockResolvedValue(0),
   cleanupExpiredRevokedAccessTokens: vi.fn().mockResolvedValue(0),
   deleteExpiredRefreshTokens: vi.fn().mockResolvedValue(0),
+  cleanupStaleDbscChallenges: vi.fn().mockResolvedValue(undefined),
   uuidParamMiddleware: () => async (_c: unknown, next: () => Promise<void>) => next(),
 }));
 
@@ -55,6 +56,7 @@ import {
   cleanupExpiredMcpSessions,
   cleanupExpiredRevokedAccessTokens,
   deleteExpiredRefreshTokens,
+  cleanupStaleDbscChallenges,
 } from "@0g0-id/shared";
 import { app } from "./index";
 import worker from "./index";
@@ -234,6 +236,7 @@ describe("scheduled handler", () => {
     vi.mocked(cleanupExpiredMcpSessions).mockClear();
     vi.mocked(cleanupExpiredRevokedAccessTokens).mockClear();
     vi.mocked(deleteExpiredRefreshTokens).mockClear();
+    vi.mocked(cleanupStaleDbscChallenges).mockClear();
   });
 
   it("全クリーンアップ処理を実行する", async () => {
@@ -256,5 +259,6 @@ describe("scheduled handler", () => {
     expect(cleanupExpiredMcpSessions).toHaveBeenCalledWith(mockEnv.DB);
     expect(cleanupExpiredRevokedAccessTokens).toHaveBeenCalledWith(mockEnv.DB);
     expect(deleteExpiredRefreshTokens).toHaveBeenCalledWith(mockEnv.DB);
+    expect(cleanupStaleDbscChallenges).toHaveBeenCalledWith(mockEnv.DB);
   });
 });
