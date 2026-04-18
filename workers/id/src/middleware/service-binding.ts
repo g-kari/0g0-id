@@ -1,9 +1,9 @@
 import { createMiddleware } from "hono/factory";
 import type { IdpEnv } from "@0g0-id/shared";
-import { timingSafeEqual, createLogger } from "@0g0-id/shared";
+import { createLogger } from "@0g0-id/shared";
 import { authenticateService } from "../utils/service-auth";
+import { getConfiguredInternalSecrets, hasValidInternalSecret } from "../utils/internal-secret";
 
-const INTERNAL_SECRET_HEADER = "X-Internal-Secret";
 const sbLogger = createLogger("service-binding");
 
 /**
@@ -24,11 +24,7 @@ const sbLogger = createLogger("service-binding");
  */
 export const serviceBindingMiddleware = createMiddleware<{ Bindings: IdpEnv }>(async (c, next) => {
   // BFF 毎の個別シークレット + 共有シークレット（後方互換）を列挙（issue #156）
-  const configuredSecrets = [
-    c.env.INTERNAL_SERVICE_SECRET_USER,
-    c.env.INTERNAL_SERVICE_SECRET_ADMIN,
-    c.env.INTERNAL_SERVICE_SECRET,
-  ].filter((s): s is string => typeof s === "string" && s.length > 0);
+  const configuredSecrets = getConfiguredInternalSecrets(c.env);
 
   // シークレット未設定時の処理
   if (configuredSecrets.length === 0) {
@@ -49,14 +45,9 @@ export const serviceBindingMiddleware = createMiddleware<{ Bindings: IdpEnv }>(a
 
   // 条件1: X-Internal-Secret ヘッダーによる BFF 検証
   // 設定済みシークレットのいずれかと timingSafeEqual で一致すれば通過
-  const headerSecret = c.req.header(INTERNAL_SECRET_HEADER);
-  if (headerSecret) {
-    for (const secret of configuredSecrets) {
-      if (timingSafeEqual(headerSecret, secret)) {
-        await next();
-        return;
-      }
-    }
+  if (hasValidInternalSecret(c.env, c.req.raw)) {
+    await next();
+    return;
   }
 
   // 条件2: Authorization: Basic ヘッダーによるサービスOAuthクライアント認証
