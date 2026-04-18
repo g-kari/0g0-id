@@ -14,6 +14,7 @@ import {
   createLogger,
   parseSession,
   validateBffEnv,
+  requireDbscBoundSession,
 } from "@0g0-id/shared";
 import authRoutes from "./routes/auth";
 import dbscRoutes from "./routes/dbsc";
@@ -67,6 +68,20 @@ app.use("/api/*", async (c, next) => {
   }
   await next();
 });
+
+// DBSC 必須化ミドルウェア（Phase 3 — 機密操作への段階的導入）。
+// 破壊的メソッド（POST/PATCH/PUT/DELETE）のみ DBSC バインド状態を IdP に問い合わせる。
+// デフォルトは warn-only（未バインドでも通過・ログのみ）で、
+// `DBSC_ENFORCE_SENSITIVE="true"` を設定した環境のみ 403 で拒否する。
+// services/users の全破壊的操作に適用することで、管理画面側の機密度を底上げする。
+const dbscRequire = requireDbscBoundSession({
+  sessionCookieName: SESSION_COOKIE,
+  loggerName: "admin-dbsc-enforce",
+  enforce: "env",
+  registrationPath: "/auth/dbsc/start",
+});
+app.use("/api/services/*", dbscRequire);
+app.use("/api/users/*", dbscRequire);
 
 app.route("/auth", authRoutes);
 app.route("/auth/dbsc", dbscRoutes);

@@ -23,15 +23,16 @@ import {
   issueDbscChallenge,
   consumeDbscChallenge,
 } from "@0g0-id/shared";
-import { handleDbscBind, handleDbscChallenge, handleDbscVerify } from "./dbsc";
+import { handleDbscBind, handleDbscChallenge, handleDbscVerify, handleDbscStatus } from "./dbsc";
 
 const ADMIN_ORIGIN = "https://admin.0g0.xyz";
 
-function buildApp(path: "bind" | "challenge" | "verify" = "bind") {
+function buildApp(path: "bind" | "challenge" | "verify" | "status" = "bind") {
   const app = new Hono<{ Bindings: ReturnType<typeof createMockIdpEnv> }>();
   app.post("/auth/dbsc/bind", handleDbscBind);
   app.post("/auth/dbsc/challenge", handleDbscChallenge);
   app.post("/auth/dbsc/verify", handleDbscVerify);
+  app.post("/auth/dbsc/status", handleDbscStatus);
   return {
     request: (init: RequestInit) => {
       const headers = new Headers({
@@ -352,5 +353,67 @@ describe("POST /auth/dbsc/verify (IdP internal)", () => {
     });
     expect(res.status).toBe(403);
     expect(consumeDbscChallenge).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /auth/dbsc/status (IdP internal)", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("端末バインド済みセッションは device_bound=true を返す", async () => {
+    vi.mocked(findActiveBffSession).mockResolvedValue(activeBoundSession());
+    const app = buildApp("status");
+    const res = await app.request({ body: JSON.stringify({ session_id: "sid-1" }) });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { device_bound: boolean; device_bound_at: number | null };
+    };
+    expect(body.data.device_bound).toBe(true);
+    expect(body.data.device_bound_at).toBe(1234);
+  });
+
+  it("端末未バインドセッションは device_bound=false を返す", async () => {
+    vi.mocked(findActiveBffSession).mockResolvedValue(
+      activeBoundSession({ device_public_key_jwk: null, device_bound_at: null }),
+    );
+    const app = buildApp("status");
+    const res = await app.request({ body: JSON.stringify({ session_id: "sid-1" }) });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { device_bound: boolean; device_bound_at: number | null };
+    };
+    expect(body.data.device_bound).toBe(false);
+    expect(body.data.device_bound_at).toBeNull();
+  });
+
+  it("存在しない/失効セッションは 200 + device_bound=false（列挙攻撃対策）", async () => {
+    vi.mocked(findActiveBffSession).mockResolvedValue(null);
+    const app = buildApp("status");
+    const res = await app.request({ body: JSON.stringify({ session_id: "sid-missing" }) });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { device_bound: boolean; device_bound_at: number | null };
+    };
+    expect(body.data.device_bound).toBe(false);
+    expect(body.data.device_bound_at).toBeNull();
+  });
+
+  it("X-BFF-Origin 不一致は 200 + device_bound=false（列挙攻撃対策で存在しないセッションと区別しない）", async () => {
+    vi.mocked(findActiveBffSession).mockResolvedValue(
+      activeBoundSession({ bff_origin: "https://user.0g0.xyz" }),
+    );
+    const app = buildApp("status");
+    const res = await app.request({ body: JSON.stringify({ session_id: "sid-1" }) });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { device_bound: boolean; device_bound_at: number | null };
+    };
+    expect(body.data.device_bound).toBe(false);
+    expect(body.data.device_bound_at).toBeNull();
+  });
+
+  it("session_id 欠落は 400", async () => {
+    const app = buildApp("status");
+    const res = await app.request({ body: JSON.stringify({}) });
+    expect(res.status).toBe(400);
   });
 });

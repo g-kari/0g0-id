@@ -21,6 +21,7 @@ export * from "./lib/providers";
 export * from "./lib/parse-body";
 export * from "./middleware/body-limit";
 export * from "./middleware/uuid-param";
+export * from "./middleware/require-dbsc-bound";
 export * from "./lib/sql";
 export * from "./lib/redirect-uri";
 export * from "./lib/oidc-metadata";
