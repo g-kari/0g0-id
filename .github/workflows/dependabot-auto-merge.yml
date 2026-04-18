@@ -1,0 +1,45 @@
+name: Dependabot auto-merge
+
+# Dependabot が作成した PR のうち、patch / minor バージョンアップを
+# CI 通過後に自動的に approve & auto-merge する。
+# major バージョンは破壊的変更の可能性があるため人手レビューを必須とする。
+#
+# 前提:
+#   - リポジトリ設定で Allow auto-merge を有効化
+#   - CI (`.github/workflows/ci.yml`) が branch protection で必須化されていること
+#   - `dependencies` ラベルは dependabot.yml 側で付与される
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dependabot メタデータ取得
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: patch / minor は自動マージ有効化
+        if: steps.metadata.outputs.update-type == 'version-update:semver-patch' || steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        run: |
+          gh pr review --approve "$PR_URL"
+          gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: major はコメントのみ（手動レビュー必須）
+        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
+        run: |
+          gh pr comment "$PR_URL" --body "⚠️ メジャーバージョンアップのため自動マージは行いません。CHANGELOG を確認のうえ手動で対応してください。"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

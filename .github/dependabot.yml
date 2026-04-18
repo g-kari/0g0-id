@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # ルートワークスペース
+  # npm — monorepo ルート（workspaces 経由で packages/* と workers/* を含む）
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
@@ -11,26 +11,60 @@ updates:
     cooldown:
       default-days: 3
     open-pull-requests-limit: 10
+    commit-message:
+      prefix: "依存関係更新"
+      include: "scope"
     groups:
+      # 型システム・TypeScript 周辺
       typescript:
         patterns:
           - "typescript"
           - "@typescript-eslint/*"
+          - "@types/*"
+      # Cloudflare Workers エコシステム
       cloudflare:
         patterns:
           - "@cloudflare/*"
           - "wrangler"
+          - "miniflare"
+      # Hono（API フレームワーク）
       hono:
         patterns:
           - "hono"
+          - "@hono/*"
+      # テストツール
       testing:
         patterns:
           - "vitest"
           - "@vitest/*"
+          - "@vite-plus/*"
+          - "vite-plus"
+      # Astro / Tailwind（user・admin frontend）
+      astro:
+        patterns:
+          - "astro"
+          - "@astrojs/*"
+          - "tailwindcss"
+          - "@tailwindcss/*"
+      # Lint / Format
+      lint:
+        patterns:
+          - "eslint"
+          - "eslint-*"
+          - "@eslint/*"
+          - "prettier"
+          - "prettier-*"
+          - "@biomejs/*"
+      # セキュリティ関連（JWT・スキーマ検証）
+      security-libs:
+        patterns:
+          - "jose"
+          - "zod"
+          - "@types/jsonwebtoken"
     labels:
       - "dependencies"
 
-  # GitHub Actionsの依存関係
+  # GitHub Actions の依存関係
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -40,6 +74,13 @@ updates:
       timezone: "Asia/Tokyo"
     cooldown:
       default-days: 3
+    commit-message:
+      prefix: "依存関係更新"
+      include: "scope"
+    groups:
+      actions:
+        patterns:
+          - "*"
     labels:
       - "dependencies"
       - "github-actions"
