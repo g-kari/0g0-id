@@ -37,15 +37,17 @@
 
 ## 2. 独自認証フロー（BFF / 外部サービス両対応）
 
-| Method | Path                | 認証            | 説明                                                                                                                                |
-| ------ | ------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/auth/login`       | —               | ログイン開始。`redirect_to` / `state` 必須、`client_id` 指定で外部サービスフロー、PKCE 任意。                                       |
-| GET    | `/auth/callback`    | —               | 各 SNS プロバイダーからのコールバック。ワンタイム認可コード発行。                                                                   |
-| POST   | `/auth/exchange`    | BasicAuth       | ワンタイムコード → アクセストークン + リフレッシュトークン。PKCE 使用時は `code_verifier` 必須。                                    |
-| POST   | `/auth/refresh`     | BasicAuth       | リフレッシュトークンローテーション。再使用検出でファミリー全体失効。                                                                |
-| POST   | `/auth/logout`      | BasicAuth       | リフレッシュトークンファミリー失効。                                                                                                |
-| POST   | `/auth/link-intent` | BearerAuth      | ログイン済みユーザーのプロバイダー連携用ワンタイム `link_token` 発行。                                                              |
-| POST   | `/auth/dbsc/bind`   | Service Binding | DBSC 端末公開鍵を `bff_sessions` にバインド（BFF 専用 internal API）。`X-BFF-Origin` ヘッダ必須で `session.bff_origin` と一致確認。 |
+| Method | Path                   | 認証            | 説明                                                                                                                                        |
+| ------ | ---------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/auth/login`          | —               | ログイン開始。`redirect_to` / `state` 必須、`client_id` 指定で外部サービスフロー、PKCE 任意。                                               |
+| GET    | `/auth/callback`       | —               | 各 SNS プロバイダーからのコールバック。ワンタイム認可コード発行。                                                                           |
+| POST   | `/auth/exchange`       | BasicAuth       | ワンタイムコード → アクセストークン + リフレッシュトークン。PKCE 使用時は `code_verifier` 必須。                                            |
+| POST   | `/auth/refresh`        | BasicAuth       | リフレッシュトークンローテーション。再使用検出でファミリー全体失効。                                                                        |
+| POST   | `/auth/logout`         | BasicAuth       | リフレッシュトークンファミリー失効。                                                                                                        |
+| POST   | `/auth/link-intent`    | BearerAuth      | ログイン済みユーザーのプロバイダー連携用ワンタイム `link_token` 発行。                                                                      |
+| POST   | `/auth/dbsc/bind`      | Service Binding | DBSC 端末公開鍵を `bff_sessions` にバインド（BFF 専用 internal API）。`X-BFF-Origin` ヘッダ必須で `session.bff_origin` と一致確認。         |
+| POST   | `/auth/dbsc/challenge` | Service Binding | DBSC リフレッシュ用 nonce 発行（BFF 専用 internal API）。端末バインド済みセッションのみ対象。TTL 60 秒。`X-BFF-Origin` 必須。               |
+| POST   | `/auth/dbsc/verify`    | Service Binding | DBSC proof JWT 検証（BFF 専用 internal API）。登録公開鍵で ES256 署名検証・`aud` 一致・nonce ワンタイム消費（`jti`）。`X-BFF-Origin` 必須。 |
 
 ## 3. ユーザー API（`/api/users/*`）
 

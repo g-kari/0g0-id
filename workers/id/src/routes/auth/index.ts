@@ -15,7 +15,7 @@ import { handleExchange } from "./exchange";
 import { handleRefresh } from "./refresh";
 import { handleLinkIntent } from "./link-intent";
 import { handleLogout } from "./logout";
-import { handleDbscBind } from "./dbsc";
+import { handleDbscBind, handleDbscChallenge, handleDbscVerify } from "./dbsc";
 
 type Variables = { user: TokenPayload };
 
@@ -51,5 +51,16 @@ app.post("/logout", tokenApiRateLimitMiddleware, serviceBindingMiddleware, handl
 
 // POST /auth/dbsc/bind — DBSC 端末公開鍵バインド（BFFサーバー間専用）
 app.post("/dbsc/bind", tokenApiRateLimitMiddleware, serviceBindingMiddleware, handleDbscBind);
+
+// POST /auth/dbsc/challenge — DBSC リフレッシュ用 nonce 発行（BFFサーバー間専用）
+app.post(
+  "/dbsc/challenge",
+  tokenApiRateLimitMiddleware,
+  serviceBindingMiddleware,
+  handleDbscChallenge,
+);
+
+// POST /auth/dbsc/verify — DBSC proof JWT 検証（BFFサーバー間専用）
+app.post("/dbsc/verify", tokenApiRateLimitMiddleware, serviceBindingMiddleware, handleDbscVerify);
 
 export default app;

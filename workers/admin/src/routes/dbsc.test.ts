@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
-import { SignJWT, exportJWK, generateKeyPair } from "jose";
+import { SignJWT, exportJWK, generateKeyPair, type JWK } from "jose";
 import { encodeSession } from "@0g0-id/shared";
 import dbscRoutes from "./dbsc";
 
@@ -149,5 +149,153 @@ describe("admin /auth/dbsc/start", () => {
       body: jwt,
     });
     expect(res.status).toBe(500);
+  });
+});
+
+describe("admin /auth/dbsc/refresh", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  async function makeBoundKeys(): Promise<{ privateKey: CryptoKey; publicJwk: JWK }> {
+    const { privateKey, publicKey } = await generateKeyPair("ES256", { extractable: true });
+    const publicJwk = await exportJWK(publicKey);
+    return { privateKey, publicJwk };
+  }
+
+  async function signProofJwt(
+    privateKey: CryptoKey,
+    audience: string,
+    jti: string,
+  ): Promise<string> {
+    return await new SignJWT({ aud: audience })
+      .setProtectedHeader({ alg: "ES256", typ: "jwt" })
+      .setIssuedAt()
+      .setJti(jti)
+      .sign(privateKey);
+  }
+
+  it("セッション無し → 401", async () => {
+    const app = buildApp();
+    const res = await app.request("/auth/dbsc/refresh", { method: "POST" });
+    expect(res.status).toBe(401);
+  });
+
+  it("proof 未提示の初回 → IdP に challenge を要求し 403 + Secure-Session-Challenge を返す", async () => {
+    const idpFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: { nonce: "abc123", expires_at: 9999 } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const app = buildApp(idpFetch, { INTERNAL_SERVICE_SECRET: "shared-secret" });
+    const cookie = await makeSessionCookie();
+
+    const res = await app.request("/auth/dbsc/refresh", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+
+    expect(res.status).toBe(403);
+    expect(res.headers.get("Secure-Session-Challenge")).toBe('"abc123"');
+
+    expect(idpFetch).toHaveBeenCalledOnce();
+    const [req] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+    expect(req.url).toBe("https://id.0g0.xyz/auth/dbsc/challenge");
+    expect(req.headers.get("X-Internal-Secret")).toBe("shared-secret");
+    expect(req.headers.get("X-BFF-Origin")).toBe(baseUrl);
+  });
+
+  it("IdP challenge が 500 を返したら 500 にラップする", async () => {
+    const idpFetch = vi.fn().mockResolvedValue(new Response("oops", { status: 500 }));
+    const app = buildApp(idpFetch);
+    const cookie = await makeSessionCookie();
+    const res = await app.request("/auth/dbsc/refresh", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+    expect(res.status).toBe(500);
+  });
+
+  it("IdP challenge が 4xx を返したら 400 INVALID_REQUEST に畳む", async () => {
+    const idpFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "INVALID_SESSION" } }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const app = buildApp(idpFetch);
+    const cookie = await makeSessionCookie();
+    const res = await app.request("/auth/dbsc/refresh", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("INVALID_REQUEST");
+  });
+
+  it("proof 提示時 → IdP /auth/dbsc/verify に委譲し成功応答を返す", async () => {
+    const idpFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: { session_id: "x", verified_at: 123 } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const app = buildApp(idpFetch, { INTERNAL_SERVICE_SECRET: "shared-secret" });
+    const cookie = await makeSessionCookie();
+    const { privateKey } = await makeBoundKeys();
+    const proofJwt = await signProofJwt(privateKey, baseUrl, "nonce-xyz");
+
+    const res = await app.request("/auth/dbsc/refresh", {
+      method: "POST",
+      headers: { Cookie: cookie, "Sec-Session-Response": proofJwt },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { refresh_url: string; credentials: unknown[] };
+    expect(body.refresh_url).toBe("/auth/dbsc/refresh");
+
+    expect(idpFetch).toHaveBeenCalledOnce();
+    const [req] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+    expect(req.url).toBe("https://id.0g0.xyz/auth/dbsc/verify");
+    expect(req.headers.get("X-BFF-Origin")).toBe(baseUrl);
+    expect(req.headers.get("X-Internal-Secret")).toBe("shared-secret");
+    const sent = (await req.json()) as { session_id: string; jwt: string; audience?: unknown };
+    expect(sent.jwt).toBe(proofJwt);
+    // audience は IdP 側で session.bff_origin を強制するため body に含めない
+    expect(sent.audience).toBeUndefined();
+  });
+
+  it("IdP verify が 4xx → 400 INVALID_PROOF に畳む（列挙攻撃対策）", async () => {
+    const idpFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "INVALID_PROOF" } }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const app = buildApp(idpFetch);
+    const cookie = await makeSessionCookie();
+    const { privateKey } = await makeBoundKeys();
+    const proofJwt = await signProofJwt(privateKey, baseUrl, "nonce-1");
+
+    const res = await app.request("/auth/dbsc/refresh", {
+      method: "POST",
+      headers: { Cookie: cookie, "Sec-Session-Response": proofJwt },
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("INVALID_PROOF");
+  });
+
+  it("proof が JWT 形式で無い場合は 400 INVALID_REQUEST", async () => {
+    const app = buildApp();
+    const cookie = await makeSessionCookie();
+    const res = await app.request("/auth/dbsc/refresh", {
+      method: "POST",
+      headers: { Cookie: cookie, "Sec-Session-Response": "not-a-jwt" },
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("INVALID_REQUEST");
   });
 });

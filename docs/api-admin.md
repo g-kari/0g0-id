@@ -10,7 +10,7 @@
 - **OAuth state Cookie**: `__Host-admin-oauth-state`
 - **ロール検証**: `/api/*` すべてに管理者ロールミドルウェアを適用。`role !== "admin"` ならセッション Cookie を削除して 403。多層防御（IdP 側での降格も早期拒否）。
 - **CSRF**: `/api/*` / `/auth/logout` に `bffCsrfMiddleware`。`/auth/dbsc/*` は Chrome 内部発のフローで Origin ヘッダが付かないため除外し、Cookie セッション + 自署 JWT (audience=SELF_ORIGIN) + bff_origin 一致確認の多層で防御。
-- **DBSC（Phase 1）**: ログイン callback 応答に `Secure-Session-Registration: (ES256);path="/auth/dbsc/start"` を付与。Chrome は端末公開鍵で自署した登録 JWT を `/auth/dbsc/start` に送り、bff_sessions に紐付ける。Phase 1 はバインド記録のみ（短寿命 Cookie・チャレンジは Phase 2）。
+- **DBSC（Phase 1-2）**: ログイン callback 応答に `Secure-Session-Registration: (ES256);path="/auth/dbsc/start"` を付与。Chrome は端末公開鍵で自署した登録 JWT を `/auth/dbsc/start` に送り、bff_sessions に紐付ける。Phase 2 は `/auth/dbsc/refresh` で challenge-response を実装（初回 403 + `Secure-Session-Challenge: "<nonce>"`、再送は `Sec-Session-Response` に proof JWT）。短寿命 Cookie 切替は Phase 3 で対応予定。
 - **CORS**: `/api/*` は自身のオリジンのみ許可
 - **UUID 検証**: `:id` / `:userId` / `:tokenId` / `:uriId` などすべてのパスパラメータを UUID 形式で検証（不正なら 400）
 
@@ -18,12 +18,13 @@
 
 `createBffAuthRoutes()` 共通ルート。詳細は `packages/shared/src/routes/auth-routes.ts` を参照。
 
-| Method | Path               | 認証              | 説明                                                                                                                   |
-| ------ | ------------------ | ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/auth/login`      | —                 | id Worker `/auth/login` へリダイレクト                                                                                 |
-| GET    | `/auth/callback`   | —                 | ワンタイムコード交換・セッション Cookie 発行。`Secure-Session-Registration` ヘッダで DBSC 登録を Chrome に開始させる   |
-| POST   | `/auth/logout`     | セッション Cookie | リフレッシュトークン失効・Cookie 削除                                                                                  |
-| POST   | `/auth/dbsc/start` | セッション Cookie | DBSC 端末公開鍵バインド。Body は `application/jwt` または `{ "jwt": "..." }`。検証成功で `bff_sessions` に公開鍵保存。 |
+| Method | Path                 | 認証              | 説明                                                                                                                                                                                                                                     |
+| ------ | -------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/auth/login`        | —                 | id Worker `/auth/login` へリダイレクト                                                                                                                                                                                                   |
+| GET    | `/auth/callback`     | —                 | ワンタイムコード交換・セッション Cookie 発行。`Secure-Session-Registration` ヘッダで DBSC 登録を Chrome に開始させる                                                                                                                     |
+| POST   | `/auth/logout`       | セッション Cookie | リフレッシュトークン失効・Cookie 削除                                                                                                                                                                                                    |
+| POST   | `/auth/dbsc/start`   | セッション Cookie | DBSC 端末公開鍵バインド。Body は `application/jwt` または `{ "jwt": "..." }`。検証成功で `bff_sessions` に公開鍵保存。                                                                                                                   |
+| POST   | `/auth/dbsc/refresh` | セッション Cookie | DBSC challenge-response リフレッシュ。初回 POST は `403` + `Secure-Session-Challenge: "<nonce>"`。Chrome は `Sec-Session-Response` ヘッダに端末秘密鍵で署名した proof JWT（`aud=SELF_ORIGIN` / `jti=<nonce>`）を付けて再送。成功時 200。 |
 
 管理者画面はログイン後にロール検証が走るため、非 admin ユーザーは即 403 で弾かれる。
 
@@ -41,6 +42,23 @@
 ```
 
 エラー: 401 `UNAUTHORIZED`（Cookie なし）、400 `INVALID_REQUEST` / `INVALID_JWT`（JWT 検証失敗・既バインド・列挙対策で 4xx は一律畳み込み）、500 `INTERNAL_ERROR`（IdP 障害）。
+
+### `POST /auth/dbsc/refresh` の応答
+
+**Phase 1（初回 POST, `Sec-Session-Response` 無し）**:
+
+- Status: `403 Forbidden`
+- Header: `Secure-Session-Challenge: "<nonce>"`（RFC 8941 Structured Field String）
+- Body: `{ "error": { "code": "SESSION_CHALLENGE_REQUIRED", ... } }`
+
+Chrome は発行された nonce を `jti` クレームに含めた proof JWT を端末秘密鍵（ES256）で署名し、`Sec-Session-Response` ヘッダに詰めて再送する。
+
+**Phase 2（proof 提示, `Sec-Session-Response: <jwt>`）**:
+
+- Status: `200 OK`（proof 検証成功・nonce ワンタイム消費）
+- Body: `/auth/dbsc/start` と同形式（Phase 2 時点では既存 Cookie は据え置き）
+
+エラー: 401 `UNAUTHORIZED`（Cookie なし）、400 `INVALID_REQUEST`（nonce 発行失敗・proof 形式不正）／ `INVALID_PROOF`（署名不一致・aud 不一致・nonce 期限切れ／消費済み、すべて列挙対策で一本化）、500 `INTERNAL_ERROR`（IdP 障害）。
 
 ## サービス管理（`/api/services/*`）
 

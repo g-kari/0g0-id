@@ -2,7 +2,10 @@ import { describe, it, expect } from "vite-plus/test";
 import { SignJWT, exportJWK, generateKeyPair } from "jose";
 import {
   verifyDbscRegistrationJwt,
+  verifyDbscProofJwt,
   buildSecureSessionRegistrationHeader,
+  buildSecureSessionChallengeHeader,
+  parseSecureSessionChallengeHeader,
   parseStoredDbscPublicJwk,
 } from "./dbsc";
 
@@ -119,6 +122,106 @@ describe("buildSecureSessionRegistrationHeader", () => {
     expect(() =>
       buildSecureSessionRegistrationHeader({ path: "/x", algs: ["ES256;evil"] }),
     ).toThrow();
+  });
+});
+
+describe("buildSecureSessionChallengeHeader / parseSecureSessionChallengeHeader", () => {
+  it("nonce を引用符で括った Structured Field を返す", () => {
+    expect(buildSecureSessionChallengeHeader("abc_123-xyz")).toBe('"abc_123-xyz"');
+  });
+  it("CR/LF / 引用符を含む nonce を拒否する", () => {
+    expect(() => buildSecureSessionChallengeHeader('evil"')).toThrow();
+    expect(() => buildSecureSessionChallengeHeader("a\r\nb")).toThrow();
+  });
+  it("空文字の nonce を拒否する", () => {
+    expect(() => buildSecureSessionChallengeHeader("")).toThrow();
+  });
+  it("ヘッダ値をパースして nonce を取り出す", () => {
+    expect(parseSecureSessionChallengeHeader('"abc_123"')).toBe("abc_123");
+  });
+  it("不正形式は null", () => {
+    expect(parseSecureSessionChallengeHeader(null)).toBeNull();
+    expect(parseSecureSessionChallengeHeader(undefined)).toBeNull();
+    expect(parseSecureSessionChallengeHeader("no-quotes")).toBeNull();
+    expect(parseSecureSessionChallengeHeader('"bad chars!"')).toBeNull();
+  });
+});
+
+describe("verifyDbscProofJwt", () => {
+  async function makeProofJwt(options: {
+    aud?: string;
+    jti?: string;
+    signer?: "same" | "other";
+  }): Promise<{ jwt: string; publicJwk: Awaited<ReturnType<typeof exportJWK>> }> {
+    const { privateKey, publicKey } = await generateKeyPair("ES256", { extractable: true });
+    const publicJwk = await exportJWK(publicKey);
+    const signingKey =
+      options.signer === "other"
+        ? (await generateKeyPair("ES256", { extractable: true })).privateKey
+        : privateKey;
+    const signer = new SignJWT(options.aud ? { aud: options.aud } : {})
+      .setProtectedHeader({ alg: "ES256", typ: "jwt" })
+      .setIssuedAt();
+    if (options.jti) signer.setJti(options.jti);
+    const jwt = await signer.sign(signingKey);
+    return { jwt, publicJwk };
+  }
+
+  it("端末公開鍵で署名された proof JWT を検証して jti を返す", async () => {
+    const { jwt, publicJwk } = await makeProofJwt({
+      aud: "https://admin.0g0.xyz",
+      jti: "nonce-abc",
+    });
+    const { claims } = await verifyDbscProofJwt(jwt, {
+      publicJwk,
+      audience: "https://admin.0g0.xyz",
+    });
+    expect(claims.jti).toBe("nonce-abc");
+    expect(claims.aud).toBe("https://admin.0g0.xyz");
+  });
+
+  it("aud 不一致を拒否する", async () => {
+    const { jwt, publicJwk } = await makeProofJwt({
+      aud: "https://other.example",
+      jti: "n1",
+    });
+    await expect(
+      verifyDbscProofJwt(jwt, { publicJwk, audience: "https://admin.0g0.xyz" }),
+    ).rejects.toThrow();
+  });
+
+  it("aud / jti が無い proof を拒否する", async () => {
+    const { jwt, publicJwk } = await makeProofJwt({ jti: "n1" }); // aud なし
+    await expect(
+      verifyDbscProofJwt(jwt, { publicJwk, audience: "https://admin.0g0.xyz" }),
+    ).rejects.toThrow();
+  });
+
+  it("別の鍵で署名された proof は署名検証で拒否される", async () => {
+    const { jwt, publicJwk } = await makeProofJwt({
+      aud: "https://admin.0g0.xyz",
+      jti: "n1",
+      signer: "other",
+    });
+    await expect(
+      verifyDbscProofJwt(jwt, { publicJwk, audience: "https://admin.0g0.xyz" }),
+    ).rejects.toThrow();
+  });
+
+  it("alg が ES256 でない header を拒否する", async () => {
+    const { publicJwk } = await makeProofJwt({ aud: "x", jti: "n1" });
+    const enc = (s: string) => btoa(s).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+    const jwt = `${enc(JSON.stringify({ alg: "HS256", typ: "jwt" }))}.${enc("{}")}.${enc("sig")}`;
+    await expect(verifyDbscProofJwt(jwt, { publicJwk, audience: "x" })).rejects.toThrow(
+      /unsupported alg/,
+    );
+  });
+
+  it("形式が壊れた JWT を拒否する", async () => {
+    const { publicJwk } = await makeProofJwt({ aud: "x", jti: "n1" });
+    await expect(
+      verifyDbscProofJwt("not.a.jwt.really", { publicJwk, audience: "x" }),
+    ).rejects.toThrow(/malformed/);
   });
 });
 

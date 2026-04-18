@@ -37,4 +37,5 @@ export * from "./db/admin-audit-logs";
 export * from "./db/device-codes";
 export * from "./db/mcp-sessions";
 export * from "./db/bff-sessions";
+export * from "./db/dbsc-challenges";
 export * from "./db/revoked-access-tokens";
