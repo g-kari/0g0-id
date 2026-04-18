@@ -1,0 +1,180 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="0g0 ID - ログイン統計">
+  <div class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full" style="max-width: 480px">
+      <div class="card">
+        <div class="flex items-center justify-between mb-4">
+          <h1 class="text-2xl font-bold">ログイン統計</h1>
+          <a href="/profile" class="btn btn-ghost btn-sm">← プロフィール</a>
+        </div>
+        <p class="text-sm mb-4" style="color: var(--color-muted)">
+          プロバイダー別のログイン回数と、日別のトレンドを確認できます。
+        </p>
+
+        <div class="flex items-center gap-2 mb-2">
+          <label for="days-select" class="text-sm" style="color: var(--color-muted)">期間</label>
+          <select id="days-select" class="px-3 py-2 rounded text-sm" style="max-width: 160px; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text)">
+            <option value="7">直近 7日</option>
+            <option value="30" selected>直近 30日</option>
+            <option value="90">直近 90日</option>
+            <option value="365">直近 365日</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="loading" class="card flex items-center justify-center gap-2 py-8" style="color: var(--color-muted)">
+        <span class="spinner"></span>
+        <span>読み込み中...</span>
+      </div>
+      <div id="error" class="card alert alert-error" style="display:none"></div>
+      <div id="empty" class="card text-center py-8" style="color: var(--color-muted); display:none">
+        ログイン履歴がありません
+      </div>
+
+      <div id="providers-card" class="card" style="display:none">
+        <h2 class="text-lg font-semibold mb-3">プロバイダー別ログイン回数</h2>
+        <div class="flex items-center justify-between mb-4 text-sm" style="color: var(--color-muted)">
+          <div>
+            総ログイン数:
+            <span id="total-count" class="font-semibold" style="color: var(--color-text)">-</span>
+          </div>
+          <div>
+            最も多いプロバイダー:
+            <span id="top-provider" class="font-semibold" style="color: var(--color-text)">-</span>
+          </div>
+        </div>
+        <div id="providers-list"></div>
+      </div>
+
+      <div id="trends-card" class="card" style="display:none">
+        <h2 id="trends-title" class="text-lg font-semibold mb-3">直近のトレンド</h2>
+        <div id="trends-empty" class="text-sm py-4 text-center" style="color: var(--color-muted); display:none">
+          この期間のログインはありません
+        </div>
+        <div id="trends-list"></div>
+      </div>
+    </div>
+  </div>
+</Base>
+
+<script>
+  import { apiFetch, formatDate } from '../lib/api';
+  import type { LoginProviderStat, DailyLoginStat } from '@0g0-id/api-types';
+
+  const daysSelect = document.getElementById('days-select') as HTMLSelectElement;
+  const loadingEl = document.getElementById('loading')!;
+  const errorEl = document.getElementById('error')!;
+  const emptyEl = document.getElementById('empty')!;
+  const providersCardEl = document.getElementById('providers-card')!;
+  const providersListEl = document.getElementById('providers-list')!;
+  const totalCountEl = document.getElementById('total-count')!;
+  const topProviderEl = document.getElementById('top-provider')!;
+  const trendsCardEl = document.getElementById('trends-card')!;
+  const trendsTitleEl = document.getElementById('trends-title')!;
+  const trendsListEl = document.getElementById('trends-list')!;
+  const trendsEmptyEl = document.getElementById('trends-empty')!;
+
+  function escapeHtml(s: string): string {
+    return s.replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    })[ch] as string);
+  }
+
+  async function load(days: number) {
+    loadingEl.style.display = '';
+    errorEl.style.display = 'none';
+    emptyEl.style.display = 'none';
+    providersCardEl.style.display = 'none';
+    trendsCardEl.style.display = 'none';
+
+    const [providersRes, trendsRes] = await Promise.all([
+      apiFetch<LoginProviderStat[]>(`/api/me/login-stats?days=${days}`),
+      apiFetch<DailyLoginStat[]>(`/api/me/security/login-trends?days=${days}`),
+    ]);
+
+    loadingEl.style.display = 'none';
+
+    if ('error' in providersRes || 'error' in trendsRes) {
+      errorEl.textContent = 'ログイン統計の取得に失敗しました';
+      errorEl.style.display = '';
+      return;
+    }
+
+    const providers = (providersRes as LoginProviderStat[]).slice().sort((a, b) => b.count - a.count);
+    const trends = trendsRes as DailyLoginStat[];
+
+    if (providers.length === 0 && trends.length === 0) {
+      emptyEl.style.display = '';
+      return;
+    }
+
+    // プロバイダー別セクション
+    if (providers.length === 0) {
+      providersListEl.innerHTML = `
+        <div class="text-sm py-4 text-center" style="color: var(--color-muted)">
+          この期間のログインはありません
+        </div>`;
+      totalCountEl.textContent = '0';
+      topProviderEl.textContent = '-';
+    } else {
+      const total = providers.reduce((sum, p) => sum + p.count, 0);
+      const top = providers[0];
+      const max = top.count || 1;
+      totalCountEl.textContent = String(total);
+      topProviderEl.textContent = `${top.provider} (${top.count})`;
+      providersListEl.innerHTML = providers.map((p) => {
+        const pct = Math.max(2, Math.round((p.count / max) * 100));
+        const provider = escapeHtml(p.provider);
+        return `
+          <div class="py-2.5 border-b last:border-b-0" style="border-color: var(--color-border)">
+            <div class="flex items-center justify-between mb-1 text-sm">
+              <span class="font-semibold">${provider}</span>
+              <span style="color: var(--color-muted)">${p.count} 回</span>
+            </div>
+            <div role="progressbar" aria-label="${provider} のログイン回数" aria-valuenow="${p.count}" aria-valuemin="0" aria-valuemax="${max}"
+                 style="height:6px; background:var(--color-border); border-radius:3px; overflow:hidden;">
+              <div style="height:100%; width:${pct}%; background:var(--color-accent); border-radius:3px;"></div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+    providersCardEl.style.display = '';
+
+    // 日別トレンドセクション
+    trendsTitleEl.textContent = `直近 ${days}日のトレンド`;
+    if (trends.length === 0) {
+      trendsListEl.innerHTML = '';
+      trendsEmptyEl.style.display = '';
+    } else {
+      trendsEmptyEl.style.display = 'none';
+      const maxCount = trends.reduce((m, t) => Math.max(m, t.count), 0) || 1;
+      // 新しい順に表示
+      const sorted = trends.slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+      trendsListEl.innerHTML = sorted.map((t) => {
+        const pct = Math.max(2, Math.round((t.count / maxCount) * 100));
+        const label = escapeHtml(formatDate(`${t.date}T00:00:00Z`));
+        return `
+          <div class="py-2 border-b last:border-b-0" style="border-color: var(--color-border)">
+            <div class="flex items-center justify-between mb-1 text-xs">
+              <span style="color: var(--color-muted)">${label}</span>
+              <span class="font-semibold">${t.count}</span>
+            </div>
+            <div role="progressbar" aria-label="${label} のログイン回数" aria-valuenow="${t.count}" aria-valuemin="0" aria-valuemax="${maxCount}"
+                 style="height:4px; background:var(--color-border); border-radius:2px; overflow:hidden;">
+              <div style="height:100%; width:${pct}%; background:var(--color-accent); border-radius:2px;"></div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+    trendsCardEl.style.display = '';
+  }
+
+  daysSelect.addEventListener('change', () => {
+    const days = Number(daysSelect.value) || 30;
+    void load(days);
+  });
+
+  await load(Number(daysSelect.value) || 30);
+</script>
