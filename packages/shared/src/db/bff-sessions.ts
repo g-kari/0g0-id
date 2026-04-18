@@ -181,3 +181,70 @@ export async function bindDeviceKeyToBffSession(
     .run();
   return (result.meta?.changes ?? 0) > 0;
 }
+
+/**
+ * 管理画面向け BFF セッション一覧表示用サマリ。
+ *
+ * - `has_device_key`: DBSC 端末公開鍵がバインドされているか（内容自体は返さない）
+ * - `device_bound_at`: バインド日時（unix 秒）。未バインドなら null。
+ *
+ * 公開鍵 JWK 生データは管理画面には返さない（UI では不要・漏洩面を増やさないため）。
+ */
+export interface ActiveBffSessionSummary {
+  id: string;
+  user_id: string;
+  created_at: number;
+  expires_at: number;
+  user_agent: string | null;
+  ip: string | null;
+  bff_origin: string;
+  has_device_key: boolean;
+  device_bound_at: number | null;
+}
+
+/**
+ * ユーザーのアクティブ（未失効・未期限切れ）BFF セッション一覧を返す。
+ * 作成日時の降順でソートする。管理者向けの閲覧専用サマリで、公開鍵そのものは返さない。
+ */
+export async function listActiveBffSessionsByUserId(
+  db: D1Database,
+  userId: string,
+): Promise<ActiveBffSessionSummary[]> {
+  const now = Math.floor(Date.now() / 1000);
+  const result = await db
+    .prepare(
+      `SELECT id, user_id, created_at, expires_at, user_agent, ip, bff_origin,
+              device_public_key_jwk, device_bound_at
+         FROM bff_sessions
+        WHERE user_id = ?
+          AND revoked_at IS NULL
+          AND expires_at > ?
+        ORDER BY created_at DESC`,
+    )
+    .bind(userId, now)
+    .all<
+      Pick<
+        BffSessionRecord,
+        | "id"
+        | "user_id"
+        | "created_at"
+        | "expires_at"
+        | "user_agent"
+        | "ip"
+        | "bff_origin"
+        | "device_public_key_jwk"
+        | "device_bound_at"
+      >
+    >();
+  return result.results.map((row) => ({
+    id: row.id,
+    user_id: row.user_id,
+    created_at: row.created_at,
+    expires_at: row.expires_at,
+    user_agent: row.user_agent,
+    ip: row.ip,
+    bff_origin: row.bff_origin,
+    has_device_key: row.device_public_key_jwk !== null,
+    device_bound_at: row.device_bound_at,
+  }));
+}

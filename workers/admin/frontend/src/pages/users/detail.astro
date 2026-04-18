@@ -46,6 +46,13 @@ import Admin from '../../layouts/Admin.astro';
       <div id="sessions-list">読み込み中...</div>
     </div>
 
+    <div class="card" style="padding:20px; margin-bottom:24px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <h3 style="margin:0; font-size:0.9rem; color:var(--color-muted);">BFF セッション（ブラウザ Cookie）</h3>
+      </div>
+      <div id="bff-sessions-list">読み込み中...</div>
+    </div>
+
     <div class="card" style="padding:20px;">
       <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">操作</h3>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -59,7 +66,7 @@ import Admin from '../../layouts/Admin.astro';
 
 <script>
   import { apiFetch, formatDate, formatDatetime } from '../../lib/api';
-  import type { AdminUserSummary, ProviderStatus, ActiveSession } from '@0g0-id/api-types';
+  import type { AdminUserSummary, ProviderStatus, ActiveSession, ActiveBffSessionSummary } from '@0g0-id/api-types';
 
   function showToast(msg: string, type: 'success' | 'error' = 'success') {
     const el = document.createElement('div');
@@ -103,6 +110,13 @@ import Admin from '../../layouts/Admin.astro';
       apiFetch<ProviderStatus[]>(`/api/users/${userId}/providers`),
       apiFetch<ActiveSession[]>(`/api/users/${userId}/tokens`),
     ]);
+    // bff-sessions は新規エンドポイントのため、失敗しても既存UIを描画し続けられるよう分離
+    let bffSessions: ActiveBffSessionSummary[] | null = null;
+    try {
+      bffSessions = await apiFetch<ActiveBffSessionSummary[]>(`/api/users/${userId}/bff-sessions`);
+    } catch {
+      bffSessions = null;
+    }
 
     loadingEl.style.display = 'none';
     contentEl.style.display = '';
@@ -188,6 +202,40 @@ import Admin from '../../layouts/Admin.astro';
       });
     } else {
       sessionsEl.innerHTML = '<p style="color:var(--color-muted); font-size:0.875rem;">アクティブなセッションはありません</p>';
+    }
+
+    // BFF セッション（DBSC バインド状態付き）
+    const bffSessionsEl = document.getElementById('bff-sessions-list')!;
+    const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[ch] as string));
+    const formatUnix = (t: number) => formatDatetime(new Date(t * 1000).toISOString());
+    if (bffSessions === null) {
+      bffSessionsEl.innerHTML = '<p style="color:var(--color-muted); font-size:0.875rem;">BFF セッションの取得に失敗しました</p>';
+    } else if (Array.isArray(bffSessions) && bffSessions.length > 0) {
+      const list = bffSessions as ActiveBffSessionSummary[];
+      bffSessionsEl.innerHTML = list.map((s) => {
+        const bound = s.has_device_key
+          ? `<span class="badge" style="background:var(--color-success,#38a169); color:#fff; font-size:0.7rem; padding:2px 6px; border-radius:4px;">🔒 端末バインド済み</span>`
+          : `<span class="badge" style="background:var(--color-surface); color:var(--color-muted); font-size:0.7rem; padding:2px 6px; border-radius:4px;">未バインド</span>`;
+        const boundAt = s.device_bound_at
+          ? `<div style="font-size:0.7rem; color:var(--color-muted);">バインド日時: ${formatUnix(s.device_bound_at)}</div>`
+          : '';
+        const origin = escapeHtml(s.bff_origin);
+        const ua = s.user_agent ? escapeHtml(s.user_agent) : '(User-Agent 不明)';
+        return `
+        <div style="padding:8px 0; border-bottom:1px solid var(--color-border);">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+            <span style="font-size:0.875rem;">${origin}</span>
+            ${bound}
+          </div>
+          <div style="font-size:0.7rem; color:var(--color-muted); word-break:break-all;">UA: ${ua}</div>
+          <div style="font-size:0.75rem; color:var(--color-muted);">作成: ${formatUnix(s.created_at)} / 有効期限: ${formatUnix(s.expires_at)}</div>
+          ${boundAt}
+        </div>`;
+      }).join('');
+    } else {
+      bffSessionsEl.innerHTML = '<p style="color:var(--color-muted); font-size:0.875rem;">アクティブな BFF セッションはありません</p>';
     }
 
     // 全セッション無効化

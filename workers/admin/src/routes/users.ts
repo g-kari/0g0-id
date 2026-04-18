@@ -145,6 +145,16 @@ app.get("/:id/tokens", async (c) => {
   return proxyResponse(res);
 });
 
+// GET /api/users/:id/bff-sessions — ユーザーの BFF セッション一覧（DBSC バインド状態含む）
+app.get("/:id/bff-sessions", async (c) => {
+  const res = await fetchWithAuth(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/bff-sessions`,
+  );
+  return proxyResponse(res);
+});
+
 // DELETE /api/users/:id/tokens/:tokenId — ユーザーの特定セッションを失効
 app.delete("/:id/tokens/:tokenId", async (c) => {
   const tokenId = c.req.param("tokenId");

@@ -92,5 +92,6 @@ export interface NewServiceResult {
 //    index.ts 経由ではなくローカル re-export が必要。
 export type { ProviderStatus } from "./db/users";
 export type { UserConnection, ActiveSession } from "./db/refresh-tokens";
+export type { ActiveBffSessionSummary } from "./db/bff-sessions";
 export type { LoginProviderStat, DailyLoginStat } from "./db/login-events";
 export type { LoginEvent } from "./types";

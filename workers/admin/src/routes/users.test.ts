@@ -1037,6 +1037,56 @@ describe("admin BFF — /api/users", () => {
     });
   });
 
+  describe("GET /:id/bff-sessions — DBSC バインド状態付き BFF セッション一覧", () => {
+    it("非UUID形式のIDで400を返す", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/users/not-a-uuid/bff-sessions");
+      expect(res.status).toBe(400);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("セッションなしで401を返す", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request(`/api/users/${USER_ID}/bff-sessions`);
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("管理者セッションでIdPへプロキシし has_device_key を含む一覧を返す", async () => {
+      const mockBffSessions = [
+        {
+          id: "00000000-0000-0000-0000-0000000000aa",
+          user_id: USER_ID,
+          created_at: 1700000000,
+          expires_at: 1800000000,
+          user_agent: "Mozilla/5.0",
+          ip: "203.0.113.1",
+          bff_origin: "https://admin.0g0.xyz",
+          has_device_key: true,
+          device_bound_at: 1700000100,
+        },
+      ];
+      const idpFetch = mockIdp(200, { data: mockBffSessions });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request(`/api/users/${USER_ID}/bff-sessions`, {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof mockBffSessions }>();
+      expect(body.data[0].has_device_key).toBe(true);
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.url).toBe(`https://id.0g0.xyz/api/users/${USER_ID}/bff-sessions`);
+      expect(calledReq.headers.get("Authorization")).toBe("Bearer mock-access-token");
+    });
+  });
+
   describe("DELETE /:id/tokens — ユーザー全セッション無効化", () => {
     it("非UUID形式のIDで400を返す", async () => {
       const idpFetch = vi.fn();

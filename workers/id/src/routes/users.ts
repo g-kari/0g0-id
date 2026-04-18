@@ -15,6 +15,7 @@ import {
   revokeTokenByIdForUser,
   revokeOtherUserTokens,
   listActiveSessionsByUserId,
+  listActiveBffSessionsByUserId,
   countServicesByOwner,
   listServicesByOwner,
   getUserProviders,
@@ -828,6 +829,20 @@ app.get("/:id/tokens", authMiddleware, adminMiddleware, async (c) => {
   }
 
   const sessions = await listActiveSessionsByUserId(c.env.DB, targetId);
+  return c.json({ data: sessions });
+});
+
+// GET /api/users/:id/bff-sessions — ユーザーの BFF セッション一覧（管理者のみ）
+// DBSC 端末バインド状態を含むが、公開鍵 JWK そのものは返さない（has_device_key で畳む）
+app.get("/:id/bff-sessions", authMiddleware, adminMiddleware, async (c) => {
+  const targetId = c.req.param("id");
+
+  const targetUser = await findUserById(c.env.DB, targetId);
+  if (!targetUser) {
+    return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);
+  }
+
+  const sessions = await listActiveBffSessionsByUserId(c.env.DB, targetId);
   return c.json({ data: sessions });
 });
 

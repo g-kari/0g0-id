@@ -88,6 +88,7 @@
 | GET    | `/api/users/:id/tokens`          | リフレッシュトークン一覧                                                |
 | DELETE | `/api/users/:id/tokens`          | 全トークン失効                                                          |
 | DELETE | `/api/users/:id/tokens/:tokenId` | 個別トークン失効                                                        |
+| GET    | `/api/users/:id/bff-sessions`    | BFF セッション一覧（`has_device_key` / `device_bound_at` 含む）         |
 
 ## 4. サービス API（`/api/services/*`・管理者）
 

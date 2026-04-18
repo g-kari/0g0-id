@@ -7,6 +7,7 @@ import {
   cleanupStaleBffSessions,
   countActiveBffSessionsByUserId,
   bindDeviceKeyToBffSession,
+  listActiveBffSessionsByUserId,
 } from "./bff-sessions";
 import { makeD1Mock } from "./test-helpers";
 
@@ -132,5 +133,83 @@ describe("bindDeviceKeyToBffSession", () => {
     const db = makeD1Mock(null, [], 0);
     const ok = await bindDeviceKeyToBffSession(db, "s-1", '{"kty":"EC"}');
     expect(ok).toBe(false);
+  });
+});
+
+describe("listActiveBffSessionsByUserId", () => {
+  it("アクティブセッションを created_at DESC で返す", async () => {
+    const rows = [
+      {
+        id: "s-2",
+        user_id: "user-1",
+        created_at: 2000,
+        expires_at: 9999999999,
+        user_agent: "Chrome",
+        ip: "203.0.113.2",
+        bff_origin: "https://admin.0g0.xyz",
+        device_public_key_jwk: '{"kty":"EC"}',
+        device_bound_at: 2100,
+      },
+      {
+        id: "s-1",
+        user_id: "user-1",
+        created_at: 1000,
+        expires_at: 9999999999,
+        user_agent: null,
+        ip: null,
+        bff_origin: "https://user.0g0.xyz",
+        device_public_key_jwk: null,
+        device_bound_at: null,
+      },
+    ];
+    const db = makeD1Mock(null, rows);
+    const sessions = await listActiveBffSessionsByUserId(db, "user-1");
+    expect(sessions).toHaveLength(2);
+    const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain("FROM bff_sessions");
+    expect(sql).toContain("revoked_at IS NULL");
+    expect(sql).toContain("expires_at >");
+    expect(sql).toContain("ORDER BY created_at DESC");
+  });
+
+  it("device_public_key_jwk は返さず has_device_key に畳む", async () => {
+    const rows = [
+      {
+        id: "s-bound",
+        user_id: "user-1",
+        created_at: 1000,
+        expires_at: 9999999999,
+        user_agent: null,
+        ip: null,
+        bff_origin: "https://admin.0g0.xyz",
+        device_public_key_jwk: '{"kty":"EC","crv":"P-256","x":"X","y":"Y"}',
+        device_bound_at: 1500,
+      },
+      {
+        id: "s-unbound",
+        user_id: "user-1",
+        created_at: 900,
+        expires_at: 9999999999,
+        user_agent: null,
+        ip: null,
+        bff_origin: "https://user.0g0.xyz",
+        device_public_key_jwk: null,
+        device_bound_at: null,
+      },
+    ];
+    const db = makeD1Mock(null, rows);
+    const sessions = await listActiveBffSessionsByUserId(db, "user-1");
+    expect(sessions[0].has_device_key).toBe(true);
+    expect(sessions[0].device_bound_at).toBe(1500);
+    expect(sessions[1].has_device_key).toBe(false);
+    expect(sessions[1].device_bound_at).toBeNull();
+    // 公開鍵 JWK 生データをレスポンスに含めない
+    expect(sessions[0]).not.toHaveProperty("device_public_key_jwk");
+  });
+
+  it("0件なら空配列", async () => {
+    const db = makeD1Mock(null, []);
+    const sessions = await listActiveBffSessionsByUserId(db, "user-1");
+    expect(sessions).toEqual([]);
   });
 });
