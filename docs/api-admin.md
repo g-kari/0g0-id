@@ -78,6 +78,7 @@
 | GET    | `/api/users/:id/tokens`          | `/api/users/:id/tokens`         | アクティブセッション一覧                                          |
 | DELETE | `/api/users/:id/tokens`          | 同左                            | 全セッション失効                                                  |
 | DELETE | `/api/users/:id/tokens/:tokenId` | 同左                            | 個別セッション失効                                                |
+| GET    | `/api/users/:id/bff-sessions`    | `/api/users/:id/bff-sessions`   | BFF セッション一覧（DBSC バインド状態 `has_device_key` 含む）     |
 
 ## メトリクス（`/api/metrics/*`）
 

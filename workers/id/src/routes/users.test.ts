@@ -25,6 +25,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     revokeTokenByIdForUser: vi.fn(),
     revokeOtherUserTokens: vi.fn(),
     listActiveSessionsByUserId: vi.fn(),
+    listActiveBffSessionsByUserId: vi.fn(),
     countServicesByOwner: vi.fn(),
     listServicesByOwner: vi.fn(),
     getUserProviders: vi.fn(),
@@ -89,6 +90,7 @@ import {
   revokeTokenByIdForUser,
   revokeOtherUserTokens,
   listActiveSessionsByUserId,
+  listActiveBffSessionsByUserId,
   countServicesByOwner,
   listServicesByOwner,
   getUserProviders,
@@ -2156,6 +2158,86 @@ describe("GET /api/users/:id/tokens", () => {
     const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004/tokens", {
       withAuth: false,
     });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("GET /api/users/:id/bff-sessions", () => {
+  const app = buildApp();
+
+  const mockBffSessions = [
+    {
+      id: "00000000-0000-0000-0000-0000000000aa",
+      user_id: "00000000-0000-0000-0000-000000000004",
+      created_at: 1700000000,
+      expires_at: 1800000000,
+      user_agent: "Mozilla/5.0",
+      ip: "203.0.113.1",
+      bff_origin: "https://admin.0g0.xyz",
+      has_device_key: true,
+      device_bound_at: 1700000100,
+    },
+    {
+      id: "00000000-0000-0000-0000-0000000000bb",
+      user_id: "00000000-0000-0000-0000-000000000004",
+      created_at: 1699000000,
+      expires_at: 1799000000,
+      user_agent: null,
+      ip: null,
+      bff_origin: "https://user.0g0.xyz",
+      has_device_key: false,
+      device_bound_at: null,
+    },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(listActiveBffSessionsByUserId).mockResolvedValue(mockBffSessions);
+  });
+
+  it("管理者: has_device_key / device_bound_at を含む BFF セッション一覧を返す", async () => {
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/bff-sessions",
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: typeof mockBffSessions }>();
+    expect(body.data).toHaveLength(2);
+    expect(body.data[0].has_device_key).toBe(true);
+    expect(body.data[0].device_bound_at).toBe(1700000100);
+    expect(body.data[1].has_device_key).toBe(false);
+    expect(vi.mocked(listActiveBffSessionsByUserId)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      "00000000-0000-0000-0000-000000000004",
+    );
+  });
+
+  it("管理者: 存在しないユーザー → 404", async () => {
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000099/bff-sessions",
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("一般ユーザー → 403", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/bff-sessions",
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("未認証 → 401", async () => {
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/bff-sessions",
+      { withAuth: false },
+    );
     expect(res.status).toBe(401);
   });
 });
