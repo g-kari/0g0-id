@@ -2,10 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
 import { createMockIdpEnv } from "../../../../packages/shared/src/db/test-helpers";
 
-vi.mock("@0g0-id/shared", () => ({
-  getJWTKeys: vi.fn(),
-  getJWKS: vi.fn(),
-}));
+vi.mock(import("@0g0-id/shared"), async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    getJWTKeys: vi.fn(),
+    getJWKS: vi.fn(),
+  };
+});
 
 import { getJWTKeys, getJWKS } from "@0g0-id/shared";
 import wellKnownRoutes from "./well-known";
