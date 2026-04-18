@@ -1893,6 +1893,75 @@ describe("GET /api/users/me/tokens", () => {
   });
 });
 
+// ===== GET /api/users/me/bff-sessions =====
+describe("GET /api/users/me/bff-sessions", () => {
+  const app = buildApp();
+
+  const mockBffSessions = [
+    {
+      id: "bff-1",
+      user_id: mockUserPayload.sub,
+      created_at: 1700000000,
+      expires_at: 1800000000,
+      user_agent: "Mozilla/5.0",
+      ip: "192.0.2.1",
+      bff_origin: "https://user.0g0.xyz",
+      has_device_key: true,
+      device_bound_at: 1700000001,
+    },
+    {
+      id: "bff-2",
+      user_id: mockUserPayload.sub,
+      created_at: 1700000010,
+      expires_at: 1800000000,
+      user_agent: "Mozilla/5.0",
+      ip: "192.0.2.2",
+      bff_origin: "https://user.0g0.xyz",
+      has_device_key: false,
+      device_bound_at: null,
+    },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(listActiveBffSessionsByUserId).mockResolvedValue(mockBffSessions);
+  });
+
+  it("Authorizationヘッダーなし → 401を返す", async () => {
+    const res = await sendRequest(app, "/api/users/me/bff-sessions", { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it("BFFセッション一覧を返す（DBSC バインド情報を含む）", async () => {
+    const res = await sendRequest(app, "/api/users/me/bff-sessions");
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: typeof mockBffSessions }>();
+    expect(body.data).toHaveLength(2);
+    expect(body.data[0].has_device_key).toBe(true);
+    expect(body.data[0].device_bound_at).toBe(1700000001);
+    expect(body.data[1].has_device_key).toBe(false);
+    expect(body.data[1].device_bound_at).toBeNull();
+  });
+
+  it("自分のuser_idでlistActiveBffSessionsByUserIdを呼ぶ", async () => {
+    await sendRequest(app, "/api/users/me/bff-sessions");
+    expect(vi.mocked(listActiveBffSessionsByUserId)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      mockUserPayload.sub,
+    );
+  });
+
+  it("セッションが0件の場合は空配列を返す", async () => {
+    vi.mocked(listActiveBffSessionsByUserId).mockResolvedValue([]);
+    const res = await sendRequest(app, "/api/users/me/bff-sessions");
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[] }>();
+    expect(body.data).toHaveLength(0);
+  });
+});
+
 // ===== DELETE /api/users/me/tokens =====
 describe("DELETE /api/users/me/tokens", () => {
   const app = buildApp();

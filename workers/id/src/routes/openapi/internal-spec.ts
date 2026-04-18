@@ -1268,6 +1268,65 @@ export const INTERNAL_OPENAPI = {
         },
       },
     },
+    "/api/users/me/bff-sessions": {
+      get: {
+        tags: ["ユーザー API"],
+        summary: "自分のBFFセッション一覧取得",
+        description:
+          "認証済みユーザー自身のアクティブなBFFセッション一覧を返す。DBSC（Device Bound Session Credentials）バインド状態を `has_device_key` / `device_bound_at` で含む。公開鍵 JWK そのものは返さない。",
+        security: [{ BearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "BFFセッション一覧",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    data: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          id: { type: "string", description: "BFFセッションID" },
+                          user_id: { type: "string" },
+                          created_at: { type: "integer", description: "作成日時（unix秒）" },
+                          expires_at: { type: "integer", description: "有効期限（unix秒）" },
+                          user_agent: { type: "string", nullable: true },
+                          ip: { type: "string", nullable: true },
+                          bff_origin: { type: "string", description: "BFFオリジン（user/admin）" },
+                          has_device_key: {
+                            type: "boolean",
+                            description: "DBSC端末鍵がバインド済みかどうか",
+                          },
+                          device_bound_at: {
+                            type: "integer",
+                            nullable: true,
+                            description: "DBSCバインド日時（unix秒）",
+                          },
+                        },
+                        required: [
+                          "id",
+                          "user_id",
+                          "created_at",
+                          "expires_at",
+                          "user_agent",
+                          "ip",
+                          "bff_origin",
+                          "has_device_key",
+                          "device_bound_at",
+                        ],
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": { description: "UNAUTHORIZED" },
+        },
+      },
+    },
     "/api/external/users": {
       get: {
         tags: ["外部サービス向け API"],

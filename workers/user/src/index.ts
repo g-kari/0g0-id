@@ -21,6 +21,7 @@ import connectionsRoutes from "./routes/connections";
 import providersRoutes from "./routes/providers";
 import loginHistoryRoutes from "./routes/login-history";
 import sessionsRoutes from "./routes/sessions";
+import bffSessionsRoutes from "./routes/bff-sessions";
 import securityRoutes from "./routes/security";
 import deviceRoutes from "./routes/device";
 
@@ -63,6 +64,7 @@ app.route("/api/connections", connectionsRoutes);
 app.route("/api/providers", providersRoutes);
 app.route("/api/login-history", loginHistoryRoutes);
 app.route("/api/me/sessions", sessionsRoutes);
+app.route("/api/me/bff-sessions", bffSessionsRoutes);
 app.route("/api/me/security", securityRoutes);
 app.route("/api/device", deviceRoutes);
 
