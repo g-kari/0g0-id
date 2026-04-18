@@ -1,0 +1,176 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="0g0 ID - ログイン履歴">
+  <div class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full" style="max-width: 480px">
+      <div class="card">
+        <div class="flex items-center justify-between mb-4">
+          <h1 class="text-2xl font-bold">ログイン履歴</h1>
+          <a href="/profile" class="btn btn-ghost btn-sm">← プロフィール</a>
+        </div>
+        <p class="text-sm mb-6" style="color: var(--color-muted)">
+          これまでのログイン履歴です。身に覚えのないログインがある場合は、パスワードの変更やセッションの無効化をご検討ください。
+        </p>
+
+        <div class="mb-4">
+          <label for="provider-filter" class="block text-sm font-semibold mb-1.5">プロバイダー</label>
+          <select
+            id="provider-filter"
+            class="w-full px-3 py-2 rounded text-sm"
+            style="border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text)"
+          >
+            <option value="">すべて</option>
+            <option value="google">google</option>
+            <option value="line">line</option>
+            <option value="twitch">twitch</option>
+            <option value="github">github</option>
+            <option value="x">x</option>
+          </select>
+        </div>
+
+        <div id="loading" class="flex items-center justify-center gap-2 py-8" style="color: var(--color-muted)">
+          <span class="spinner"></span>
+          <span>読み込み中...</span>
+        </div>
+        <div id="error" class="alert alert-error" style="display:none"></div>
+        <div id="empty" class="text-center py-8" style="color: var(--color-muted); display:none">ログイン履歴はありません</div>
+        <div id="list" style="display:none"></div>
+        <div id="load-more-wrap" class="mt-4" style="display:none">
+          <button id="load-more-btn" class="btn btn-ghost btn-full">もっと読み込む</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</Base>
+
+<script>
+  import { apiFetch, formatDatetime } from '../lib/api';
+  import type { LoginEvent } from '@0g0-id/api-types';
+
+  const loadingEl = document.getElementById('loading')!;
+  const errorEl = document.getElementById('error')!;
+  const emptyEl = document.getElementById('empty')!;
+  const listEl = document.getElementById('list')!;
+  const loadMoreWrap = document.getElementById('load-more-wrap')!;
+  const loadMoreBtn = document.getElementById('load-more-btn') as HTMLButtonElement;
+  const providerFilter = document.getElementById('provider-filter') as HTMLSelectElement;
+
+  const PAGE_SIZE = 50;
+  let currentOffset = 0;
+  let accumulated: LoginEvent[] = [];
+
+  function escapeHtml(s: string): string {
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function truncate(s: string, max: number): string {
+    if (s.length <= max) return s;
+    return s.slice(0, max) + '…';
+  }
+
+  function renderList() {
+    listEl.innerHTML = accumulated
+      .map((e) => {
+        const ip = e.ip_address ? escapeHtml(e.ip_address) : '—';
+        const country = e.country ? escapeHtml(e.country) : '—';
+        const ua = e.user_agent ? escapeHtml(truncate(e.user_agent, 80)) : '—';
+        const provider = escapeHtml(e.provider);
+        return `
+          <div class="flex items-center justify-between py-3.5 border-b last:border-b-0" style="border-color: var(--color-border)">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 text-sm">
+                <span class="font-semibold">${provider}</span>
+                <span style="color: var(--color-muted)">${formatDatetime(e.created_at)}</span>
+              </div>
+              <div class="text-xs mt-0.5" style="color: var(--color-muted)">
+                IP: ${ip} ／ 国: ${country}
+              </div>
+              <div class="text-xs mt-0.5 truncate" style="color: var(--color-muted)" title="${e.user_agent ? escapeHtml(e.user_agent) : ''}">
+                UA: ${ua}
+              </div>
+            </div>
+          </div>
+        `;
+      })
+      .join('');
+  }
+
+  async function loadPage(reset: boolean) {
+    errorEl.style.display = 'none';
+    if (reset) {
+      currentOffset = 0;
+      accumulated = [];
+      listEl.innerHTML = '';
+      loadingEl.style.display = '';
+      emptyEl.style.display = 'none';
+      listEl.style.display = 'none';
+      loadMoreWrap.style.display = 'none';
+    } else {
+      loadMoreBtn.disabled = true;
+      loadMoreBtn.textContent = '読み込み中...';
+    }
+
+    const provider = providerFilter.value;
+    const params = new URLSearchParams({
+      limit: String(PAGE_SIZE),
+      offset: String(currentOffset),
+    });
+    if (provider) params.set('provider', provider);
+
+    const res = await apiFetch<LoginEvent[]>(`/api/me/login-history?${params.toString()}`);
+    loadingEl.style.display = 'none';
+
+    if ('error' in res) {
+      if (reset) {
+        errorEl.textContent = 'ログイン履歴の取得に失敗しました';
+        errorEl.style.display = '';
+      } else {
+        errorEl.textContent = '追加読み込みに失敗しました';
+        errorEl.style.display = '';
+        loadMoreBtn.disabled = false;
+        loadMoreBtn.textContent = 'もっと読み込む';
+      }
+      return;
+    }
+
+    const events = res as LoginEvent[];
+    accumulated = accumulated.concat(events);
+    currentOffset += events.length;
+
+    if (accumulated.length === 0) {
+      emptyEl.style.display = '';
+      listEl.style.display = 'none';
+      loadMoreWrap.style.display = 'none';
+      return;
+    }
+
+    renderList();
+    listEl.style.display = '';
+    emptyEl.style.display = 'none';
+
+    // 取得件数が PAGE_SIZE 未満なら末尾と判断
+    if (events.length < PAGE_SIZE) {
+      loadMoreWrap.style.display = 'none';
+    } else {
+      loadMoreWrap.style.display = '';
+      loadMoreBtn.disabled = false;
+      loadMoreBtn.textContent = 'もっと読み込む';
+    }
+  }
+
+  providerFilter.addEventListener('change', () => {
+    void loadPage(true);
+  });
+
+  loadMoreBtn.addEventListener('click', () => {
+    void loadPage(false);
+  });
+
+  await loadPage(true);
+</script>
