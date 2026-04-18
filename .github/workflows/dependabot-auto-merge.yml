@@ -1,13 +1,19 @@
 name: Dependabot auto-merge
 
 # Dependabot が作成した PR のうち、patch / minor バージョンアップを
-# CI 通過後に自動的に approve & auto-merge する。
+# CI 通過後に自動的に auto-merge する。
 # major バージョンは破壊的変更の可能性があるため人手レビューを必須とする。
 #
 # 前提:
-#   - リポジトリ設定で Allow auto-merge を有効化
-#   - CI (`.github/workflows/ci.yml`) が branch protection で必須化されていること
-#   - `dependencies` ラベルは dependabot.yml 側で付与される
+#   - リポジトリ設定で Allow auto-merge が有効化
+#   - master への branch protection で CI (`.github/workflows/ci.yml`) を
+#     required status check に指定していると、CI 通過まで実際にマージを待機する
+#     （未設定の場合、auto-merge は即時マージ相当の挙動になる点に注意）
+#
+# 注記:
+#   GITHUB_TOKEN では自分が作成した PR を approve できないため approve は実施しない。
+#   branch protection で approval が必須になっている場合は、
+#   別途 PAT を secrets に登録してそのトークンで approve するワークフローを追加すること。
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -27,19 +33,16 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      - name: patch / minor は自動マージ有効化
+      - name: patch / minor は auto-merge 有効化
         if: steps.metadata.outputs.update-type == 'version-update:semver-patch' || steps.metadata.outputs.update-type == 'version-update:semver-minor'
-        run: |
-          gh pr review --approve "$PR_URL"
-          gh pr merge --auto --squash "$PR_URL"
+        run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: major はコメントのみ（手動レビュー必須）
         if: steps.metadata.outputs.update-type == 'version-update:semver-major'
-        run: |
-          gh pr comment "$PR_URL" --body "⚠️ メジャーバージョンアップのため自動マージは行いません。CHANGELOG を確認のうえ手動で対応してください。"
+        run: gh pr comment "$PR_URL" --body "⚠️ メジャーバージョンアップのため自動マージは行いません。CHANGELOG を確認のうえ手動で対応してください。"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
