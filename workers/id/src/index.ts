@@ -11,6 +11,7 @@ import {
   cleanupExpiredMcpSessions,
   cleanupExpiredRevokedAccessTokens,
   deleteExpiredRefreshTokens,
+  cleanupStaleDbscChallenges,
 } from "@0g0-id/shared";
 import { validateEnv } from "./utils/env-validation";
 import authRoutes from "./routes/auth";
@@ -98,6 +99,9 @@ export default {
         appLogger.info("期限切れリフレッシュトークンクリーンアップ完了", {
           deletedCount: refreshDeleted,
         });
+
+        await cleanupStaleDbscChallenges(env.DB);
+        appLogger.info("DBSCチャレンジクリーンアップ完了");
       })(),
     );
   },
