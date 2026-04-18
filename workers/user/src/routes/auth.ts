@@ -22,6 +22,8 @@ const authRoutes = createBffAuthRoutes({
   stateCookieName: STATE_COOKIE,
   loggerName: "user-auth",
   successRedirect: "/profile",
+  // Chrome 等の DBSC 対応ブラウザに端末バインド登録フローを開始させる
+  dbscRegistrationPath: "/auth/dbsc/start",
   loginParams: (c) => {
     const provider = c.req.query("provider") ?? "google";
     if (!isValidProvider(provider)) {
