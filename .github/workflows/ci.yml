@@ -26,8 +26,18 @@ jobs:
           node-version: "22"
           cache: "npm"
 
-      - name: 依存パッケージインストール
+      - name: 依存パッケージインストール（ルートワークスペース）
         run: npm ci
+
+      - name: 依存パッケージインストール（user frontend）
+        # workers/*/frontend は npm workspaces 対象外のため個別に install が必要
+        # （astro/tsconfigs/strict を解決するために frontend node_modules が必要）
+        run: npm ci
+        working-directory: workers/user/frontend
+
+      - name: 依存パッケージインストール（admin frontend）
+        run: npm ci
+        working-directory: workers/admin/frontend
 
       - name: check（lint + fmt + typecheck）
         run: vp check
