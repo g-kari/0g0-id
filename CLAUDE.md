@@ -62,17 +62,27 @@ cd workers/admin/frontend && npm run build   # admin SPA ビルド → ../dist/
 ```bash
 npm run deploy:user    # フロントエンドビルド + wrangler deploy
 npm run deploy:admin
-npm run deploy:id      # ⚠️ JWT_PUBLIC_KEY env が必須（下記）
+npm run deploy:id
 npm run deploy:mcp
 ```
 
 ### ⚠️ id worker の静的アセット生成
 
-`deploy:id` は `build:assets` で `dist/.well-known/*.json` と `dist/docs/*.json` を生成し、Workers Assets 経由で配信する。**鍵ローテーション時は必ず `JWT_PUBLIC_KEY` env を新しい公開鍵に差し替えてから `npm run deploy:id` を走らせること**（JWKS が dist に固定化されるため secret 差し替えだけでは反映されない）。
+`deploy:id` は `build:assets` で `dist/.well-known/*.json` と `dist/docs/*.json` を生成し、Workers Assets 経由で配信する。公開鍵は以下の優先順で解決される:
+
+1. `JWT_PUBLIC_KEY` env var（PEM） — ローカルで鍵を新規生成した直後に使う
+2. リポジトリにコミットされた `workers/id/public-key.jwk.json`（JWK） — CI / 通常ビルド
+
+**鍵ローテーション時は以下の両方を必ず更新すること**（JWKS が dist に固定化されるため、どちらか片方だけでは不整合が起きる）:
+
+- `wrangler secret put JWT_PUBLIC_KEY`（Worker runtime 用）
+- `workers/id/public-key.jwk.json` を新しい公開鍵の JWK に差し替えてコミット
 
 ```bash
+# ローテーション時のみ: 新しい公開鍵 PEM を env に渡して反映を確認
 export JWT_PUBLIC_KEY="$(cat path/to/id-pub.pem)"
 npm run deploy:id
+# public-key.jwk.json も忘れずに更新してコミット
 ```
 
 ## マイグレーション
