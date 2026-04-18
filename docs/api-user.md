@@ -83,10 +83,134 @@
 
 ## Device Authorization Grant（`/api/device/*`）
 
+RFC 8628 に準拠したデバイスフロー（スマート TV・CLI・IoT 端末など、ブラウザを直接操作できないクライアント向け）。  
+BFF（user.0g0.xyz）は **ユーザー端末側（承認 UI）** のみを担当し、`/api/device/code` と `/api/device/token` は IdP（id.0g0.xyz）で直接提供する。
+
 | Method | Path                  | 転送先 (id)                           | 用途                                         |
 | ------ | --------------------- | ------------------------------------- | -------------------------------------------- |
 | POST   | `/api/device/verify`  | `/api/device/verify`                  | ユーザーコード検証（形式: `XXXX-XXXX`）      |
 | POST   | `/api/device/approve` | `/api/device/verify`（`action` 付与） | 承認 / 拒否（`action: "approve" \| "deny"`） |
+
+### ユーザーコード仕様
+
+- 形式: `XXXX-XXXX`（ハイフン区切りの 8 文字）
+- アルファベット: `ABCDEFGHJKMNPQRSTUVWXYZ23456789`（31 文字／紛らわしい `O / 0 / I / 1 / L` を除外）
+- 大文字小文字: 入力は大文字小文字・ハイフン・空白を無視して正規化（例: `abcd ef34` → `ABCDEF34` として扱う）
+- 有効期限: **600 秒（10 分）**。過ぎると `CODE_EXPIRED` 400 を返す
+- ポーリング間隔: デバイス側トークン取得は `5 秒` ごと。承認前の polling は `authorization_pending`、レート超過は `slow_down`（どちらも id 側の `/api/token` で返す）
+
+### フロー概要
+
+```
+[デバイス]                         [ユーザー端末 (user.0g0.xyz)]                  [IdP (id.0g0.xyz)]
+    │                                          │                                           │
+    │  POST /api/device/code                   │                                           │
+    ├─────────────────────────────────────────────────────────────────────────────────────▶│
+    │                                          │                                           │
+    │◀─ { device_code, user_code, verification_uri, expires_in: 600, interval: 5 } ───────┤
+    │                                          │                                           │
+    │  ユーザーに verification_uri と user_code を提示                                      │
+    │                                          │                                           │
+    │                               ユーザーがブラウザで /device へアクセス                 │
+    │                                          │                                           │
+    │                               POST /api/device/verify { user_code }                  │
+    │                               (セッション Cookie で認証)                              │
+    │                                          ├──────────────────────────────────────────▶│
+    │                                          │◀─ { data: { service_name, scopes } }     │
+    │                                          │                                           │
+    │                               POST /api/device/approve { user_code, action }         │
+    │                                          ├──────────────────────────────────────────▶│
+    │                                          │◀─ { status: "approved" | "denied" }      │
+    │                                          │                                           │
+    │  POST /api/device/token { device_code, grant_type, client_id } を interval 秒ごとに    │
+    ├─────────────────────────────────────────────────────────────────────────────────────▶│
+    │◀─ access_token + refresh_token（承認後）／ authorization_pending（承認前）             │
+```
+
+### POST `/api/device/verify`（情報取得）
+
+ユーザーコードの妥当性を確認し、連携先サービス名と要求スコープを返す。**action を付けない**のがこのエンドポイントの役割。
+
+**リクエスト**
+
+```http
+POST /api/device/verify
+Content-Type: application/json
+Cookie: __Host-session=...
+```
+
+```json
+{ "user_code": "ABCD-EF34" }
+```
+
+| フィールド  | 型     | 必須 | 説明                                                                     |
+| ----------- | ------ | ---- | ------------------------------------------------------------------------ |
+| `user_code` | string | ○    | `XXXX-XXXX` 形式。小文字・空白・ハイフン揺れは許容（サーバ側で正規化）。 |
+
+**成功レスポンス（200）**
+
+```json
+{
+  "data": {
+    "service_name": "example-cli",
+    "scopes": ["openid", "profile", "email"]
+  }
+}
+```
+
+### POST `/api/device/approve`（承認 / 拒否）
+
+確認済みの user_code に対して承認または拒否を送る。
+
+**リクエスト**
+
+```http
+POST /api/device/approve
+Content-Type: application/json
+Cookie: __Host-session=...
+```
+
+```json
+{ "user_code": "ABCD-EF34", "action": "approve" }
+```
+
+| フィールド  | 型                      | 必須 | 説明                                |
+| ----------- | ----------------------- | ---- | ----------------------------------- |
+| `user_code` | string                  | ○    | `XXXX-XXXX` 形式。                  |
+| `action`    | `"approve"` \| `"deny"` | ○    | 他の値は `BAD_REQUEST` 400 を返す。 |
+
+**成功レスポンス（200）**
+
+```json
+{ "status": "approved" }
+```
+
+または
+
+```json
+{ "status": "denied" }
+```
+
+### エラーレスポンス（`/api/device/verify`・`/api/device/approve` 共通）
+
+BFF 経由で返るエラーは `{ error: { code, message } }` 形式。
+
+| HTTP | code                | 条件                                                    |
+| ---- | ------------------- | ------------------------------------------------------- |
+| 400  | `BAD_REQUEST`       | JSON パース失敗 / `user_code` 形式違反 / `action` 不正  |
+| 400  | `CODE_EXPIRED`      | `user_code` が 600 秒の有効期限を過ぎた                 |
+| 400  | `CODE_ALREADY_USED` | すでに承認 / 拒否済みの `user_code`                     |
+| 401  | `UNAUTHORIZED`      | セッション Cookie なし・無効・期限切れ                  |
+| 404  | `INVALID_CODE`      | 未知の `user_code`（存在しないか掃除済み）              |
+| 429  | `TOO_MANY_REQUESTS` | レートリミット超過（`deviceVerifyRateLimitMiddleware`） |
+| 502  | `UPSTREAM_ERROR`    | IdP に到達できない                                      |
+| 500  | `INTERNAL_ERROR`    | サーバ側例外                                            |
+
+### 実装参照
+
+- BFF: `workers/user/src/routes/device.ts`
+- IdP: `workers/id/src/routes/device.ts`（`/api/device/code`・`/api/device/verify`・`/api/device/token`）
+- 仕様: RFC 8628 — OAuth 2.0 Device Authorization Grant
 
 ## ヘルスチェック・フォールバック
 
