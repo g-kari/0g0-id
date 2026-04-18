@@ -5,8 +5,9 @@
   "scripts": {
     "dev": "vp dev",
     "build": "vp build",
+    "build:assets": "tsx scripts/build-assets.ts",
     "migrate": "wrangler d1 migrations apply 0g0-id-db --remote",
-    "deploy": "wrangler d1 migrations apply 0g0-id-db --remote && vp build && wrangler deploy",
+    "deploy": "wrangler d1 migrations apply 0g0-id-db --remote && vp build && npm run build:assets && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vp test run"
   },
@@ -20,6 +21,8 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.30.2",
     "@cloudflare/workers-types": "^4.20260329.1",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
     "typescript": "^6.0.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",
     "vite-plus": "^0.1.18",

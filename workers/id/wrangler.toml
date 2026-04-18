@@ -12,6 +12,22 @@ invocation_logs = true
 
 routes = [{ pattern = "id.0g0.xyz", custom_domain = true }]
 
+# 静的エンドポイント（.well-known / OpenAPI JSON）を Workers Assets 経由で配信する。
+# `npm run build:assets` で dist/ に生成した JSON をエッジから直接返す。
+# run_worker_first のデフォルトは Worker 優先。除外した 5 パスのみ Assets が先行。
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "none"
+run_worker_first = [
+  "/*",
+  "!/.well-known/jwks.json",
+  "!/.well-known/openid-configuration",
+  "!/.well-known/oauth-authorization-server",
+  "!/docs/openapi.json",
+  "!/docs/external/openapi.json",
+]
+
 [vars]
 IDP_ORIGIN = "https://id.0g0.xyz"
 USER_ORIGIN = "https://user.0g0.xyz"

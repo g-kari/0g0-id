@@ -1,5 +1,10 @@
 import { Hono } from "hono";
-import { getJWTKeys, getJWKS } from "@0g0-id/shared";
+import {
+  getJWTKeys,
+  getJWKS,
+  buildBaseOidcMetadata,
+  buildOpenIdConfiguration,
+} from "@0g0-id/shared";
 import type { IdpEnv } from "@0g0-id/shared";
 
 const app = new Hono<{ Bindings: IdpEnv }>();
@@ -12,68 +17,16 @@ app.get("/jwks.json", async (c) => {
   });
 });
 
-/** RFC 8414 / OIDC Discovery 共通メタデータを組み立てる */
-function buildBaseMetadata(issuer: string) {
-  return {
-    issuer,
-    authorization_endpoint: `${issuer}/auth/authorize`,
-    token_endpoint: `${issuer}/api/token`,
-    jwks_uri: `${issuer}/.well-known/jwks.json`,
-    scopes_supported: ["openid", "profile", "email", "phone", "address"],
-    response_types_supported: ["code"],
-    response_modes_supported: ["query"],
-    grant_types_supported: [
-      "authorization_code",
-      "refresh_token",
-      "urn:ietf:params:oauth:grant-type:device_code",
-    ],
-    subject_types_supported: ["pairwise"],
-    token_endpoint_auth_methods_supported: ["client_secret_basic", "none"],
-    code_challenge_methods_supported: ["S256"],
-    device_authorization_endpoint: `${issuer}/api/device/code`,
-    revocation_endpoint: `${issuer}/api/token/revoke`,
-    introspection_endpoint: `${issuer}/api/token/introspect`,
-    // RFC 8414 / OIDC Discovery 1.0 Section 3 RECOMMENDED: サポートするクレーム一覧
-    claims_supported: [
-      "sub",
-      "iss",
-      "aud",
-      "exp",
-      "iat",
-      "auth_time",
-      "nonce",
-      "name",
-      "picture",
-      "email",
-      "email_verified",
-      "phone_number",
-      "address",
-      "updated_at",
-      "amr",
-    ],
-  };
-}
-
 // GET /.well-known/openid-configuration — OIDC Discovery Document (RFC 8414 / OIDC Discovery 1.0)
 app.get("/openid-configuration", (c) => {
-  const issuer = c.env.IDP_ORIGIN;
-  return c.json(
-    {
-      ...buildBaseMetadata(issuer),
-      userinfo_endpoint: `${issuer}/api/userinfo`,
-      end_session_endpoint: `${issuer}/auth/logout`,
-      // OIDC Discovery 1.0 REQUIRED: IDトークン署名アルゴリズム
-      id_token_signing_alg_values_supported: ["ES256"],
-    },
-    200,
-    { "Cache-Control": "public, max-age=86400" },
-  );
+  return c.json(buildOpenIdConfiguration(c.env.IDP_ORIGIN), 200, {
+    "Cache-Control": "public, max-age=86400",
+  });
 });
 
 // GET /.well-known/oauth-authorization-server — OAuth Authorization Server Metadata (RFC 8414)
 app.get("/oauth-authorization-server", (c) => {
-  const issuer = c.env.IDP_ORIGIN;
-  return c.json(buildBaseMetadata(issuer), 200, {
+  return c.json(buildBaseOidcMetadata(c.env.IDP_ORIGIN), 200, {
     "Cache-Control": "public, max-age=86400",
   });
 });

@@ -22,6 +22,7 @@ export * from "./middleware/body-limit";
 export * from "./middleware/uuid-param";
 export * from "./lib/sql";
 export * from "./lib/redirect-uri";
+export * from "./lib/oidc-metadata";
 export * from "./lib/validation";
 export * from "./lib/cookie";
 export * from "./lib/errors";

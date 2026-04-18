@@ -62,8 +62,17 @@ cd workers/admin/frontend && npm run build   # admin SPA ビルド → ../dist/
 ```bash
 npm run deploy:user    # フロントエンドビルド + wrangler deploy
 npm run deploy:admin
-npm run deploy:id
+npm run deploy:id      # ⚠️ JWT_PUBLIC_KEY env が必須（下記）
 npm run deploy:mcp
+```
+
+### ⚠️ id worker の静的アセット生成
+
+`deploy:id` は `build:assets` で `dist/.well-known/*.json` と `dist/docs/*.json` を生成し、Workers Assets 経由で配信する。**鍵ローテーション時は必ず `JWT_PUBLIC_KEY` env を新しい公開鍵に差し替えてから `npm run deploy:id` を走らせること**（JWKS が dist に固定化されるため secret 差し替えだけでは反映されない）。
+
+```bash
+export JWT_PUBLIC_KEY="$(cat path/to/id-pub.pem)"
+npm run deploy:id
 ```
 
 ## マイグレーション
