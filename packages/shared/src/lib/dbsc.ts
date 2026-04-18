@@ -125,6 +125,100 @@ export function buildSecureSessionRegistrationHeader(options: {
 }
 
 /**
+ * DBSC リフレッシュ時の proof JWT（端末秘密鍵署名）に含めるクレーム。
+ * 仕様に従い jti（= nonce）と aud（= BFF Origin）は必須。
+ */
+export interface DbscProofClaims {
+  aud?: string;
+  jti?: string;
+  iat?: number;
+  sub?: string;
+}
+
+/**
+ * Chrome からリフレッシュ時に送られる proof JWT を既登録の公開鍵で検証する。
+ *
+ * - 登録 JWT と異なり、署名鍵は「登録時に保存した公開 JWK」。ヘッダ jwk は読まない
+ *   （読むと攻撃者が別の公開鍵を詰められる）。
+ * - alg / kty / crv を事前検証してから import することで、想定外鍵の読み込みを防ぐ。
+ * - aud は必須。bff の SELF_ORIGIN と一致するかを呼び出し側で常に指定すること。
+ * - nonce（jti）は呼び出し側で dbsc_challenges の consume と照合し、ワンタイム性を担保する。
+ *
+ * 失敗時は Error を投げる。呼び出し側は 400 系で応答すること。
+ */
+export async function verifyDbscProofJwt(
+  jwt: string,
+  options: { publicJwk: JWK; audience: string },
+): Promise<{ claims: DbscProofClaims }> {
+  const segments = jwt.split(".");
+  if (segments.length !== 3) {
+    throw new Error("DBSC proof: malformed");
+  }
+
+  let header: { alg?: unknown };
+  try {
+    header = JSON.parse(decodeBase64Url(segments[0])) as { alg?: unknown };
+  } catch {
+    throw new Error("DBSC proof: invalid header");
+  }
+  if (header.alg !== ALLOWED_ALG) {
+    throw new Error(`DBSC proof: unsupported alg ${String(header.alg)}`);
+  }
+
+  const jwk = options.publicJwk;
+  if (jwk.kty !== ALLOWED_KTY || jwk.crv !== ALLOWED_CRV) {
+    throw new Error("DBSC proof: unsupported key type");
+  }
+  if (typeof jwk.x !== "string" || typeof jwk.y !== "string") {
+    throw new Error("DBSC proof: incomplete public key");
+  }
+  if ("d" in jwk && jwk.d !== undefined) {
+    throw new Error("DBSC proof: private key material not allowed");
+  }
+
+  const publicKey = await importJWK(
+    { kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y },
+    ALLOWED_ALG,
+  );
+  if (!(publicKey instanceof CryptoKey) || publicKey.type !== "public") {
+    throw new Error("DBSC proof: imported key is not a public key");
+  }
+
+  const { payload } = await jwtVerify(jwt, publicKey, {
+    algorithms: [ALLOWED_ALG],
+    audience: options.audience,
+    requiredClaims: ["aud", "jti"],
+  });
+
+  return { claims: payload as DbscProofClaims };
+}
+
+/**
+ * Secure-Session-Challenge ヘッダ値を組み立てる。
+ *
+ * Chrome は 403 応答のこのヘッダから nonce を取り出し、秘密鍵で署名した proof JWT を再送する。
+ * 仕様形式は RFC 8941 Structured Field (String) 相当の `"<nonce>"`。
+ * nonce は base64url 等の安全な文字のみを想定し、CR/LF/" を含む値は拒否する。
+ */
+export function buildSecureSessionChallengeHeader(nonce: string): string {
+  if (!/^[A-Za-z0-9_-]+$/.test(nonce)) {
+    throw new Error("DBSC: invalid challenge nonce");
+  }
+  return `"${nonce}"`;
+}
+
+/**
+ * Secure-Session-Challenge ヘッダ／リクエストヘッダから nonce を取り出す。
+ * 不正形式は null を返す。
+ */
+export function parseSecureSessionChallengeHeader(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  const match = /^"([A-Za-z0-9_-]+)"$/.exec(trimmed);
+  return match ? match[1] : null;
+}
+
+/**
  * bff_sessions.device_public_key_jwk に保存された JSON 文字列を再検証つきで JWK に戻す。
  * 列の改ざん・破損があっても異常な公開鍵を import しないためのガード。
  */
