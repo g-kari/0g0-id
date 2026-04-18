@@ -96,6 +96,12 @@ Chrome は発行された nonce を `jti` クレームに含めた proof JWT を
 | DELETE | `/api/me/sessions/:sessionId` | `/api/users/me/tokens/:sessionId` | 特定セッションを終了（UUID 形式検証）                                              |
 | DELETE | `/api/me/sessions`            | `/api/users/me/tokens`            | 全デバイスからログアウト                                                           |
 
+## BFF セッション管理（`/api/me/bff-sessions`）
+
+| Method | Path                   | 転送先 (id)                  | 用途                                                                                                                          |
+| ------ | ---------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/me/bff-sessions` | `/api/users/me/bff-sessions` | 自分のBFFセッション一覧（DBSC 端末バインド状態を `has_device_key` / `device_bound_at` で含む。公開鍵 JWK そのものは返さない） |
+
 ## 連携サービス（`/api/connections/*`）
 
 | Method | Path                          | 転送先 (id)                            | 用途                          |

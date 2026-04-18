@@ -473,6 +473,20 @@ app.get(
   },
 );
 
+// GET /api/users/me/bff-sessions — 自分のBFFセッション一覧（DBSC 端末バインド状態を含む）
+// 公開鍵 JWK そのものは返さず、has_device_key / device_bound_at のみ返す
+app.get(
+  "/me/bff-sessions",
+  authMiddleware,
+  rejectServiceTokenMiddleware,
+  rejectBannedUserMiddleware,
+  async (c) => {
+    const tokenUser = c.get("user");
+    const sessions = await listActiveBffSessionsByUserId(c.env.DB, tokenUser.sub);
+    return c.json({ data: sessions });
+  },
+);
+
 // DELETE /api/users/me/tokens/others — 現在のセッション以外を全て失効（他デバイスからのサインアウト）
 app.delete(
   "/me/tokens/others",

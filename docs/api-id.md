@@ -61,23 +61,24 @@
 
 ### 自分自身（Bearer 必須）
 
-| Method | Path                                   | 用途                                                  |
-| ------ | -------------------------------------- | ----------------------------------------------------- |
-| GET    | `/api/users/me`                        | プロフィール取得                                      |
-| PATCH  | `/api/users/me`                        | プロフィール更新（CSRF: Origin/Referer 検証）         |
-| DELETE | `/api/users/me`                        | 退会（全トークン失効＋ユーザー削除）                  |
-| GET    | `/api/users/me/login-history`          | 自分のログイン履歴（`limit` / `offset` / `provider`） |
-| GET    | `/api/users/me/login-stats`            | 自分のログイン統計（`days`）                          |
-| GET    | `/api/users/me/login-trends`           | 自分のログイントレンド（`days`）                      |
-| GET    | `/api/users/me/security-summary`       | 自分のセキュリティサマリ                              |
-| GET    | `/api/users/me/data-export`            | 自分のデータエクスポート                              |
-| GET    | `/api/users/me/connections`            | 連携サービス一覧                                      |
-| DELETE | `/api/users/me/connections/:serviceId` | サービス連携解除（CSRF 検証）                         |
-| GET    | `/api/users/me/providers`              | 連携 SNS プロバイダー一覧                             |
-| DELETE | `/api/users/me/providers/:provider`    | SNS プロバイダー連携解除（最後の 1 件は 409）         |
-| GET    | `/api/users/me/tokens`                 | 自分のアクティブリフレッシュトークン一覧              |
-| DELETE | `/api/users/me/tokens`                 | 全トークン失効                                        |
-| DELETE | `/api/users/me/tokens/:tokenId`        | 個別トークン失効                                      |
+| Method | Path                                   | 用途                                                                                          |
+| ------ | -------------------------------------- | --------------------------------------------------------------------------------------------- |
+| GET    | `/api/users/me`                        | プロフィール取得                                                                              |
+| PATCH  | `/api/users/me`                        | プロフィール更新（CSRF: Origin/Referer 検証）                                                 |
+| DELETE | `/api/users/me`                        | 退会（全トークン失効＋ユーザー削除）                                                          |
+| GET    | `/api/users/me/login-history`          | 自分のログイン履歴（`limit` / `offset` / `provider`）                                         |
+| GET    | `/api/users/me/login-stats`            | 自分のログイン統計（`days`）                                                                  |
+| GET    | `/api/users/me/login-trends`           | 自分のログイントレンド（`days`）                                                              |
+| GET    | `/api/users/me/security-summary`       | 自分のセキュリティサマリ                                                                      |
+| GET    | `/api/users/me/data-export`            | 自分のデータエクスポート                                                                      |
+| GET    | `/api/users/me/connections`            | 連携サービス一覧                                                                              |
+| DELETE | `/api/users/me/connections/:serviceId` | サービス連携解除（CSRF 検証）                                                                 |
+| GET    | `/api/users/me/providers`              | 連携 SNS プロバイダー一覧                                                                     |
+| DELETE | `/api/users/me/providers/:provider`    | SNS プロバイダー連携解除（最後の 1 件は 409）                                                 |
+| GET    | `/api/users/me/tokens`                 | 自分のアクティブリフレッシュトークン一覧                                                      |
+| DELETE | `/api/users/me/tokens`                 | 全トークン失効                                                                                |
+| DELETE | `/api/users/me/tokens/:tokenId`        | 個別トークン失効                                                                              |
+| GET    | `/api/users/me/bff-sessions`           | 自分の BFF セッション一覧（`has_device_key` / `device_bound_at` 含む。公開鍵 JWK は返さない） |
 
 ### 管理者 API（Bearer + admin ロール必須）
 
