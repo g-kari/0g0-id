@@ -1,5 +1,5 @@
 import type { IdpEnv } from "@0g0-id/shared";
-import { timingSafeEqual } from "@0g0-id/shared";
+import { parseStrictBoolEnv, timingSafeEqual } from "@0g0-id/shared";
 
 export const INTERNAL_SECRET_HEADER = "X-Internal-Secret";
 
@@ -50,4 +50,18 @@ export function classifyInternalSecret(env: IdpEnv, req: Request): InternalSecre
 
 export function hasValidInternalSecret(env: IdpEnv, req: Request): boolean {
   return classifyInternalSecret(env, req) !== "none";
+}
+
+/**
+ * 共有 INTERNAL_SERVICE_SECRET の strict モード判定（issue #156 Phase 6）。
+ *
+ * 受理規則は `parseStrictBoolEnv` に単一ソース化されており、`DBSC_ENFORCE_SENSITIVE`
+ * の `isDbscEnforceValue` と完全に同じ（`"true"` のみ・trim + case-insensitive・`"1"`/`"yes"` 不可）。
+ * secret 管理者が「どのフラグも同じ値で on になる」と覚えられるようにする（issue #156 Phase 6 レビュー反映）。
+ *
+ * true のときは `serviceBindingMiddleware` が `kind === "shared"` を
+ * `403 DEPRECATED_INTERNAL_SECRET` で拒否する。個別 USER/ADMIN・Basic 認証には影響しない。
+ */
+export function isInternalSecretStrict(env: IdpEnv): boolean {
+  return parseStrictBoolEnv(env.INTERNAL_SECRET_STRICT);
 }

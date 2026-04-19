@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 vi.mock("@0g0-id/shared", () => ({
   timingSafeEqual: vi.fn(),
+  // isInternalSecretStrict は parseStrictBoolEnv に委譲するため、本物の実装をそのまま公開する。
+  // 純粋関数で副作用ゼロのためモック不要。
+  parseStrictBoolEnv: (raw: string | undefined | null): boolean =>
+    String(raw ?? "")
+      .trim()
+      .toLowerCase() === "true",
 }));
 
 import { timingSafeEqual } from "@0g0-id/shared";
@@ -11,6 +17,7 @@ import {
   getConfiguredInternalSecrets,
   hasValidInternalSecret,
   INTERNAL_SECRET_HEADER,
+  isInternalSecretStrict,
 } from "./internal-secret";
 
 function envWith(overrides: Partial<IdpEnv>): IdpEnv {
@@ -160,5 +167,39 @@ describe("classifyInternalSecret", () => {
     });
     expect(classifyInternalSecret(env, reqWith("wrong"))).toBe("none");
     expect(timingSafeEqual).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("isInternalSecretStrict", () => {
+  it("未設定なら false", () => {
+    expect(isInternalSecretStrict(envWith({}))).toBe(false);
+  });
+
+  it("'true' なら true", () => {
+    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "true" }))).toBe(true);
+  });
+
+  it("大文字・前後空白混入でも true（secrets-store UI のコピペ耐性）", () => {
+    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "TRUE" }))).toBe(true);
+    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "True" }))).toBe(true);
+    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "  true  " }))).toBe(true);
+    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "\ttrue\n" }))).toBe(true);
+  });
+
+  it("'1' / 'yes' / 'on' / 'enable' は false（明示的に 'true' 文字列のみ受理）", () => {
+    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "1" }))).toBe(false);
+    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "yes" }))).toBe(false);
+    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "on" }))).toBe(false);
+    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "enable" }))).toBe(false);
+  });
+
+  it("空文字は false", () => {
+    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "" }))).toBe(false);
+  });
+
+  it("false 相当の値（'false' / 'no' / '0'）は false", () => {
+    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "false" }))).toBe(false);
+    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "no" }))).toBe(false);
+    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "0" }))).toBe(false);
   });
 });

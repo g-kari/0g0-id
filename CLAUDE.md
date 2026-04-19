@@ -68,6 +68,8 @@ npm run deploy:mcp
 
 `deploy:user` / `deploy:admin` は `wrangler deploy` の前に `scripts/preflight-deploy.ts` を走らせ、`DBSC_ENFORCE_SENSITIVE` secret の登録有無を確認する。ローカル運用では warn のみで続行（fail-open）するが、**CI 経由のデプロイを追加する際は該当 job の `env:` に `PREFLIGHT_STRICT: "1"` を固定設定する**ことを推奨（issue #155 Phase 3 — secret 登録漏れの本番反映を防ぐ運用ゲート）。詳細は `docs/api-user.md` / `docs/api-admin.md` の「デプロイ運用」セクションを参照。
 
+`deploy:id` の内部シークレット撤廃ゲート（issue #156 Phase 6）: id worker の secret `INTERNAL_SECRET_STRICT="true"` を設定すると、共有 `INTERNAL_SERVICE_SECRET` 経路を `403 DEPRECATED_INTERNAL_SECRET` で拒否する。未設定・その他値では従来通り warn-only。個別 `INTERNAL_SERVICE_SECRET_USER` / `_ADMIN` と Basic 認証は無影響。Phase 5 までの観測ログで残存呼び出し元を 0 にしてから strict 化する運用。詳細は `docs/api-id.md` の運用メモを参照。
+
 ### ⚠️ id worker の静的アセット生成
 
 `deploy:id` は `build:assets` で `dist/.well-known/*.json` と `dist/docs/*.json` を生成し、Workers Assets 経由で配信する。公開鍵は以下の優先順で解決される:

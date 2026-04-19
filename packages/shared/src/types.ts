@@ -154,6 +154,13 @@ export interface IdpEnv {
   INTERNAL_SERVICE_SECRET_USER?: string;
   /** admin BFF 専用の内部シークレット。未設定時は INTERNAL_SERVICE_SECRET にフォールバック。 */
   INTERNAL_SERVICE_SECRET_ADMIN?: string;
+  /**
+   * 共有 INTERNAL_SERVICE_SECRET の strict モード（issue #156 Phase 6）。
+   * `"true"`（trim + case-insensitive）を設定すると、共有シークレットでの通過を
+   * `403 DEPRECATED_INTERNAL_SECRET` で拒否する。未設定・その他値では従来通り warn-only。
+   * 個別 INTERNAL_SERVICE_SECRET_USER/_ADMIN・Basic 認証には影響しない。
+   */
+  INTERNAL_SECRET_STRICT?: string;
 }
 
 export interface BffEnv {

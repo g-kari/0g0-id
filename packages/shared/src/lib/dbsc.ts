@@ -11,6 +11,7 @@
 
 import { jwtVerify, importJWK, type JWK } from "jose";
 import { decodeBase64Url } from "./base64url";
+import { parseStrictBoolEnv } from "./env-flags";
 
 /** Chrome が送る登録 JWT のヘッダ部（jwk が必須）。 */
 interface DbscRegistrationHeader {
@@ -102,19 +103,12 @@ export async function verifyDbscRegistrationJwt(
 /**
  * `DBSC_ENFORCE_SENSITIVE` env var が「強制モード」扱いとみなされる文字列か判定する。
  *
- * secrets-store UI のコピペで trailing space や大文字が混入しても黙って
- * フェイルオープンにならないよう、`trim().toLowerCase() === "true"` で判定する。
- * `"1"` や `"yes"` は受理しない（明示的に `true` 相当の文字列のみ許容）。
- *
+ * 判定規則は `parseStrictBoolEnv` に単一ソース化されている（issue #156 Phase 6）。
  * require-dbsc-bound ミドルウェアと、デプロイ preflight のガイド文言で挙動を
- * 一致させるための単一ソースとして export する（issue #155）。
+ * 一致させるために、ドメイン用語が付いた薄いラッパとして export する（issue #155）。
  */
 export function isDbscEnforceValue(raw: string | undefined | null): boolean {
-  return (
-    String(raw ?? "")
-      .trim()
-      .toLowerCase() === "true"
-  );
+  return parseStrictBoolEnv(raw);
 }
 
 /**

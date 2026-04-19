@@ -6,6 +6,7 @@ import {
   classifyInternalSecret,
   getConfiguredInternalSecrets,
   INTERNAL_SECRET_HEADER,
+  isInternalSecretStrict,
 } from "../utils/internal-secret";
 
 const sbLogger = createLogger("service-binding");
@@ -57,6 +58,31 @@ export const serviceBindingMiddleware = createMiddleware<{ Bindings: IdpEnv }>(a
   // 条件1: X-Internal-Secret ヘッダーによる BFF 検証
   const kind = classifyInternalSecret(c.env, c.req.raw);
   if (kind !== "none") {
+    if (kind === "shared" && isInternalSecretStrict(c.env)) {
+      // Phase 6 (issue #156): strict モードでは共有シークレットを拒否する。
+      // Phase 5 までの warn ログ / Response Deprecation ヘッダは移行中の観測用で、
+      // 個別シークレット（_USER/_ADMIN）への移行完了後に本モードへ切り替える。
+      // 拒否レスポンスにも RFC 9745 準拠の Deprecation/Link を付けて、呼び出し元が
+      // 原因を即座に特定できるようにする。
+      sbLogger.error(
+        "deprecated shared INTERNAL_SERVICE_SECRET rejected under INTERNAL_SECRET_STRICT (issue #156 Phase 6)",
+        { kind: "shared", method, path },
+      );
+      c.header("Deprecation", "true");
+      c.header("Link", '<https://github.com/g-kari/0g0-id/issues/156>; rel="deprecation"', {
+        append: true,
+      });
+      return c.json(
+        {
+          error: {
+            code: "DEPRECATED_INTERNAL_SECRET",
+            message:
+              "Shared INTERNAL_SERVICE_SECRET is deprecated; migrate to per-BFF INTERNAL_SERVICE_SECRET_USER/_ADMIN (issue #156).",
+          },
+        },
+        403,
+      );
+    }
     sbLogger.info("internal secret authenticated", { kind, method, path });
     if (kind === "shared") {
       // 共有シークレットでの通過は後方互換のため残しているが、個別シークレット移行を促すために警告。
