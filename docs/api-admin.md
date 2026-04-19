@@ -99,24 +99,25 @@ Chrome は発行された nonce を `jti` クレームに含めた proof JWT を
 
 ## ユーザー管理（`/api/users/*`）
 
-| Method | Path                             | 転送先 (id)                     | 用途                                                              |
-| ------ | -------------------------------- | ------------------------------- | ----------------------------------------------------------------- |
-| GET    | `/api/users`                     | `/api/users`                    | 一覧（`limit` / `offset` / `email` / `role` / `name` / `banned`） |
-| GET    | `/api/users/:id`                 | `/api/users/:id`                | ユーザー詳細                                                      |
-| DELETE | `/api/users/:id`                 | `/api/users/:id`                | ユーザー削除                                                      |
-| PATCH  | `/api/users/:id/role`            | `/api/users/:id/role`           | ロール変更                                                        |
-| PATCH  | `/api/users/:id/ban`             | `/api/users/:id/ban`            | BAN                                                               |
-| DELETE | `/api/users/:id/ban`             | `/api/users/:id/ban`            | BAN 解除                                                          |
-| GET    | `/api/users/:id/owned-services`  | `/api/users/:id/owned-services` | 所有サービス                                                      |
-| GET    | `/api/users/:id/services`        | `/api/users/:id/services`       | 認可中サービス                                                    |
-| GET    | `/api/users/:id/providers`       | `/api/users/:id/providers`      | 連携プロバイダー                                                  |
-| GET    | `/api/users/:id/login-history`   | 同左                            | ログイン履歴（`limit` / `offset` / `provider`）                   |
-| GET    | `/api/users/:id/login-stats`     | `/api/users/:id/login-stats`    | プロバイダー別統計（`days`）                                      |
-| GET    | `/api/users/:id/login-trends`    | `/api/users/:id/login-trends`   | 日別トレンド（`days`）                                            |
-| GET    | `/api/users/:id/tokens`          | `/api/users/:id/tokens`         | アクティブセッション一覧                                          |
-| DELETE | `/api/users/:id/tokens`          | 同左                            | 全セッション失効                                                  |
-| DELETE | `/api/users/:id/tokens/:tokenId` | 同左                            | 個別セッション失効                                                |
-| GET    | `/api/users/:id/bff-sessions`    | `/api/users/:id/bff-sessions`   | BFF セッション一覧（DBSC バインド状態 `has_device_key` 含む）     |
+| Method | Path                                     | 転送先 (id)                     | 用途                                                                                                                |
+| ------ | ---------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/users`                             | `/api/users`                    | 一覧（`limit` / `offset` / `email` / `role` / `name` / `banned`）                                                   |
+| GET    | `/api/users/:id`                         | `/api/users/:id`                | ユーザー詳細                                                                                                        |
+| DELETE | `/api/users/:id`                         | `/api/users/:id`                | ユーザー削除                                                                                                        |
+| PATCH  | `/api/users/:id/role`                    | `/api/users/:id/role`           | ロール変更                                                                                                          |
+| PATCH  | `/api/users/:id/ban`                     | `/api/users/:id/ban`            | BAN                                                                                                                 |
+| DELETE | `/api/users/:id/ban`                     | `/api/users/:id/ban`            | BAN 解除                                                                                                            |
+| GET    | `/api/users/:id/owned-services`          | `/api/users/:id/owned-services` | 所有サービス                                                                                                        |
+| GET    | `/api/users/:id/services`                | `/api/users/:id/services`       | 認可中サービス                                                                                                      |
+| GET    | `/api/users/:id/providers`               | `/api/users/:id/providers`      | 連携プロバイダー                                                                                                    |
+| GET    | `/api/users/:id/login-history`           | 同左                            | ログイン履歴（`limit` / `offset` / `provider`）                                                                     |
+| GET    | `/api/users/:id/login-stats`             | `/api/users/:id/login-stats`    | プロバイダー別統計（`days`）                                                                                        |
+| GET    | `/api/users/:id/login-trends`            | `/api/users/:id/login-trends`   | 日別トレンド（`days`）                                                                                              |
+| GET    | `/api/users/:id/tokens`                  | `/api/users/:id/tokens`         | アクティブセッション一覧                                                                                            |
+| DELETE | `/api/users/:id/tokens`                  | 同左                            | 全セッション失効                                                                                                    |
+| DELETE | `/api/users/:id/tokens/:tokenId`         | 同左                            | 個別セッション失効                                                                                                  |
+| GET    | `/api/users/:id/bff-sessions`            | `/api/users/:id/bff-sessions`   | BFF セッション一覧（DBSC バインド状態 `has_device_key` 含む）                                                       |
+| DELETE | `/api/users/:id/bff-sessions/:sessionId` | 同左                            | 単一 BFF セッション失効（管理者強制ログアウト・DBSC 端末バインド済みも対象・refresh_token は別途 `/tokens` で失効） |
 
 ## メトリクス（`/api/metrics/*`）
 

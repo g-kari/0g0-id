@@ -155,6 +155,19 @@ app.get("/:id/bff-sessions", async (c) => {
   return proxyResponse(res);
 });
 
+// DELETE /api/users/:id/bff-sessions/:sessionId — 単一の BFF セッションを失効（管理者強制ログアウト）
+app.delete("/:id/bff-sessions/:sessionId", async (c) => {
+  const sessionId = c.req.param("sessionId");
+  if (!UUID_RE.test(sessionId)) {
+    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid session ID format" } }, 400);
+  }
+  return proxyMutate(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/bff-sessions/${sessionId}`,
+  );
+});
+
 // DELETE /api/users/:id/tokens/:tokenId — ユーザーの特定セッションを失効
 app.delete("/:id/tokens/:tokenId", async (c) => {
   const tokenId = c.req.param("tokenId");

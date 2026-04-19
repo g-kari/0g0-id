@@ -223,17 +223,34 @@ import Admin from '../../layouts/Admin.astro';
           : '';
         const origin = escapeHtml(s.bff_origin);
         const ua = s.user_agent ? escapeHtml(s.user_agent) : '(User-Agent 不明)';
+        const sessionId = escapeHtml(s.id);
         return `
         <div style="padding:8px 0; border-bottom:1px solid var(--color-border);">
           <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
             <span style="font-size:0.875rem;">${origin}</span>
             ${bound}
+            <button class="btn btn-ghost revoke-bff-session-btn" data-id="${sessionId}" style="font-size:0.7rem; padding:2px 8px; margin-left:auto;">失効</button>
           </div>
           <div style="font-size:0.7rem; color:var(--color-muted); word-break:break-all;">UA: ${ua}</div>
           <div style="font-size:0.75rem; color:var(--color-muted);">作成: ${formatUnix(s.created_at)} / 有効期限: ${formatUnix(s.expires_at)}</div>
           ${boundAt}
         </div>`;
       }).join('');
+
+      // 個別 BFF セッション失効
+      document.querySelectorAll('.revoke-bff-session-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const sessionId = (btn as HTMLElement).dataset.id;
+          if (!confirm('この BFF セッションを失効させますか？\n\n注意: BFF Cookie のみ無効化します。refresh_token / 連携サービスのアクセスは「全セッション無効化」を別途実行してください。')) return;
+          const res = await apiFetch(`/api/users/${userId}/bff-sessions/${sessionId}`, { method: 'DELETE' });
+          if (res && typeof res === 'object' && 'error' in res) {
+            showToast('BFF セッション失効に失敗しました', 'error');
+          } else {
+            showToast('BFF セッションを失効しました');
+            window.location.reload();
+          }
+        });
+      });
     } else {
       bffSessionsEl.innerHTML = '<p style="color:var(--color-muted); font-size:0.875rem;">アクティブな BFF セッションはありません</p>';
     }

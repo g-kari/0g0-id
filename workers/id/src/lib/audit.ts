@@ -13,6 +13,7 @@ export type AuditAction =
   | "user.unban"
   | "user.session_revoked"
   | "user.sessions_revoked"
+  | "user.bff_session_revoked"
   | "user.delete"
   | "service.create"
   | "service.update"
