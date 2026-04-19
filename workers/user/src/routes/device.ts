@@ -1,6 +1,11 @@
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
-import { parseSession, createLogger, internalServiceHeaders } from "@0g0-id/shared";
+import {
+  parseSession,
+  createLogger,
+  internalServiceHeaders,
+  logUpstreamDeprecation,
+} from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
 import { SESSION_COOKIE } from "./auth";
 
@@ -50,6 +55,7 @@ app.post("/verify", async (c): Promise<Response> => {
       502,
     );
   }
+  logUpstreamDeprecation(idpRes, { method: "POST", path: "/api/device/verify" }, deviceLogger);
 
   // IdPのレスポンスをそのまま返す
   const responseData: unknown = await idpRes.json();
@@ -104,6 +110,7 @@ app.post("/approve", async (c): Promise<Response> => {
       502,
     );
   }
+  logUpstreamDeprecation(idpRes, { method: "POST", path: "/api/device/verify" }, deviceLogger);
 
   const responseData: unknown = await idpRes.json();
   return c.json(responseData, idpRes.status as 200 | 400 | 404 | 409 | 500);

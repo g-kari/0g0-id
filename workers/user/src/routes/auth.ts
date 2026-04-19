@@ -8,6 +8,7 @@ import {
   internalServiceHeaders,
   setOAuthStateCookie,
   createBffAuthRoutes,
+  logUpstreamDeprecation,
 } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
 
@@ -67,6 +68,7 @@ app.post("/link", async (c) => {
         },
       }),
     );
+    logUpstreamDeprecation(res, { method: "POST", path: "/auth/link-intent" }, userAuthLogger);
     if (!res.ok) {
       return c.redirect("/profile?error=link_failed");
     }

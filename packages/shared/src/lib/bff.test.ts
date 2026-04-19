@@ -229,6 +229,65 @@ describe("fetchWithAuth", () => {
     // セッションCookieは削除されない（ログアウトさせない）
     expect(vi.mocked(deleteCookie)).not.toHaveBeenCalled();
   });
+
+  it("初回・refresh・retry の 3 応答すべてに Deprecation が付いていれば warn を 3 回出す", async () => {
+    // 401→refresh→retry の 3 箇所すべてで logUpstreamDeprecation が通る不変量を固定化（issue #156 Phase 5）。
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const cookie = await encodeSession(mockSession, TEST_SECRET);
+    vi.mocked(getCookie).mockReturnValue(cookie);
+
+    const deprecationHeaders = {
+      Deprecation: "true",
+      Link: '<https://github.com/g-kari/0g0-id/issues/156>; rel="deprecation"',
+    } as const;
+
+    const { fetchWithAuth } = await import("./bff");
+    const idpFetch = vi
+      .fn()
+      // 初回: 401 + Deprecation
+      .mockResolvedValueOnce(
+        new Response("Unauthorized", { status: 401, headers: deprecationHeaders }),
+      )
+      // refresh: 200 + 新トークン + Deprecation
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: {
+              access_token: "new-at",
+              refresh_token: "new-rt",
+              user: mockSession.user,
+            },
+          }),
+          { status: 200, headers: deprecationHeaders },
+        ),
+      )
+      // retry: 200 + Deprecation
+      .mockResolvedValueOnce(
+        new Response('{"data":"ok"}', { status: 200, headers: deprecationHeaders }),
+      );
+    const ctx = {
+      req: {},
+      env: {
+        IDP: { fetch: idpFetch },
+        IDP_ORIGIN: "https://id.0g0.xyz",
+        SESSION_SECRET: TEST_SECRET,
+      },
+    } as unknown as Parameters<typeof fetchWithAuth>[0];
+
+    const result = await fetchWithAuth(ctx, "__session", "https://id.0g0.xyz/api/me");
+    expect(result.status).toBe(200);
+    const deprecationWarns = warnSpy.mock.calls.filter((call) => {
+      const payload = String(call[0] ?? "");
+      return payload.includes("upstream deprecation notice from id worker");
+    });
+    expect(deprecationWarns).toHaveLength(3);
+    // refresh の warn は path="/auth/refresh" で明示的に記録されていること
+    const refreshWarn = deprecationWarns.find((call) =>
+      String(call[0] ?? "").includes('"path":"/auth/refresh"'),
+    );
+    expect(refreshWarn).toBeDefined();
+    warnSpy.mockRestore();
+  });
 });
 
 describe("fetchWithJsonBody", () => {
@@ -532,6 +591,41 @@ describe("exchangeCodeAtIdp", () => {
     const reqArg: Request = idpFetch.mock.calls[0][0];
     expect(reqArg.headers.get("X-Internal-Secret")).toBe("secret-123");
   });
+
+  it("IdP が Deprecation ヘッダを返した場合は console.warn に通知する", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const idpFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            access_token: "at",
+            refresh_token: "rt",
+            user: { id: "u1", email: "e@e.com", name: "N", role: "user" },
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            Deprecation: "true",
+            Link: '<https://github.com/g-kari/0g0-id/issues/156>; rel="deprecation"',
+          },
+        },
+      ),
+    );
+    const env = {
+      IDP: { fetch: idpFetch },
+      IDP_ORIGIN: "https://id.0g0.xyz",
+    } as unknown as Parameters<typeof exchangeCodeAtIdp>[0];
+
+    const result = await exchangeCodeAtIdp(env, "code", "https://user.0g0.xyz/cb");
+    expect(result.ok).toBe(true);
+    const warnCall = warnSpy.mock.calls.find((call) => {
+      const payload = String(call[0] ?? "");
+      return payload.includes("upstream deprecation notice from id worker");
+    });
+    expect(warnCall).toBeDefined();
+    warnSpy.mockRestore();
+  });
 });
 
 describe("revokeTokenAtIdp", () => {
@@ -562,6 +656,31 @@ describe("revokeTokenAtIdp", () => {
     await revokeTokenAtIdp(env, "refresh-token-xyz");
     const reqArg: Request = idpFetch.mock.calls[0][0];
     expect(reqArg.headers.get("X-Internal-Secret")).toBe("my-secret");
+  });
+
+  it("IdP が Deprecation ヘッダを返した場合は console.warn に通知する", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const idpFetch = vi.fn().mockResolvedValue(
+      new Response(null, {
+        status: 204,
+        headers: {
+          Deprecation: "true",
+          Link: '<https://github.com/g-kari/0g0-id/issues/156>; rel="deprecation"',
+        },
+      }),
+    );
+    const env = {
+      IDP: { fetch: idpFetch },
+      IDP_ORIGIN: "https://id.0g0.xyz",
+    } as unknown as Parameters<typeof revokeTokenAtIdp>[0];
+
+    await revokeTokenAtIdp(env, "rt-deprecated");
+    const warnCall = warnSpy.mock.calls.find((call) => {
+      const payload = String(call[0] ?? "");
+      return payload.includes("upstream deprecation notice from id worker");
+    });
+    expect(warnCall).toBeDefined();
+    warnSpy.mockRestore();
   });
 });
 

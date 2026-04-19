@@ -24,6 +24,7 @@
 > - 成功: `internal secret authenticated` / `service client authenticated`（`kind` = `user` / `admin` / `shared`、および `serviceId`）
 > - 旧来の共有 `INTERNAL_SERVICE_SECRET` で通過した場合のみ `warn` で deprecation 警告を出力。ログを監視して残存呼び出し元を特定したうえで BFF 毎の `INTERNAL_SERVICE_SECRET_USER` / `_ADMIN` に移行し、最終的に共有シークレットを撤去する。
 > - 共有シークレット通過時は Response ヘッダにも `Deprecation: true` と `Link: <https://github.com/g-kari/0g0-id/issues/156>; rel="deprecation"` を付与（RFC 9745）。呼び出し元 BFF 側の fetch レスポンスから直接検知できるため、構造化ログに加えた二重の観測手段となる。
+> - 呼び出し元 BFF（`@0g0-id/shared` の `fetchWithAuth` / `exchangeCodeAtIdp` / `revokeTokenAtIdp` / `bff-dbsc-factory` / `require-dbsc-bound` および `workers/user` の `/auth/link`・`/api/device/*`）は受信 Response の `Deprecation` ヘッダを `logUpstreamDeprecation` で検知し、BFF ログ（ctx=`bff-upstream-deprecation`、または DBSC 系は各呼び出し元の loggerName）へ `upstream deprecation notice from id worker` を `warn` で出力する。id worker 側の `service-binding` ログだけでは「どの BFF が落ちているか」を集約判断しづらいため、BFF 側ログからも自 BFF が共有シークレット経路に落ちていることを即座に特定できる（issue #156 Phase 5）。
 > - 拒否: `internal secret mismatch`（ヘッダーあり＆不一致）・`service binding access denied`（最終 403）・`service client authentication error`（DB 例外）。不正アクセス試行の観測に使える。
 
 - JWT 署名鍵: ES256（P-256 EC）／`jose` + WebCrypto

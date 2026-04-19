@@ -3,6 +3,7 @@ import { setCookie, getCookie, deleteCookie } from "hono/cookie";
 import type { BffEnv } from "../types";
 import { decodeBase64Url } from "./base64url";
 import { timingSafeEqual } from "./crypto";
+import { logUpstreamDeprecation } from "./internal-secret-deprecation";
 
 /**
  * BFF セッション Cookie の最大有効期間（秒）。
@@ -156,6 +157,18 @@ function errorResponse(status: number, code: string, message: string): Response 
 }
 
 /**
+ * URL 文字列からログ用のパス部分だけを取り出す。
+ * 解析に失敗したら元文字列を返す（ログが落ちるのを防ぐ）。
+ */
+function safePathForLog(url: string): string {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return url;
+  }
+}
+
+/**
  * BFF→IdP間のService Bindings呼び出しに付与する内部認証ヘッダーを返す。
  *
  * 優先順位（issue #156）:
@@ -195,6 +208,10 @@ export async function fetchWithAuth(
   // BFF セッション ID を ID Worker に渡して bff_sessions の失効チェックを行わせる（issue #139）。
   const bffSessionHeader = { "X-BFF-Session-Id": session.session_id };
 
+  // Deprecation ログ出力時のトレース用 method/path。init.method 未指定時は fetch 仕様に従い GET。
+  const primaryMethod = init?.method ?? "GET";
+  const primaryPath = safePathForLog(url);
+
   const makeRequest = (token: string): Promise<Response> =>
     c.env.IDP.fetch(
       new Request(url, {
@@ -214,6 +231,7 @@ export async function fetchWithAuth(
   } catch {
     return errorResponse(502, "UPSTREAM_ERROR", "Failed to reach identity provider");
   }
+  logUpstreamDeprecation(res, { method: primaryMethod, path: primaryPath });
 
   // アクセストークン期限切れ → リフレッシュして再試行
   if (res.status === 401) {
@@ -234,6 +252,7 @@ export async function fetchWithAuth(
       // リフレッシュ自体が通信失敗 → 502
       return errorResponse(502, "UPSTREAM_ERROR", "Failed to reach identity provider");
     }
+    logUpstreamDeprecation(refreshRes, { method: "POST", path: "/auth/refresh" });
 
     if (refreshRes.ok) {
       const refreshData = await refreshRes.json<{
@@ -285,6 +304,7 @@ export async function fetchWithAuth(
       } catch {
         return errorResponse(502, "UPSTREAM_ERROR", "Failed to reach identity provider");
       }
+      logUpstreamDeprecation(res, { method: primaryMethod, path: primaryPath });
     } else if (refreshRes.status >= 500) {
       // リフレッシュエンドポイントが5xx → 502（認証失敗ではなくアップストリーム障害）
       return errorResponse(502, "UPSTREAM_ERROR", "Identity provider error");
@@ -452,6 +472,7 @@ export async function exchangeCodeAtIdp(
       body: JSON.stringify({ code, redirect_to: callbackUrl }),
     }),
   );
+  logUpstreamDeprecation(res, { method: "POST", path: "/auth/exchange" });
   if (!res.ok) return { ok: false };
   const body = await res.json<{ data: ExchangeResult }>();
   return { ok: true, data: body.data };
@@ -466,7 +487,7 @@ export async function revokeTokenAtIdp(
   refreshToken: string,
   sessionId?: string,
 ): Promise<void> {
-  await env.IDP.fetch(
+  const res = await env.IDP.fetch(
     new Request(`${env.IDP_ORIGIN}/auth/logout`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...internalServiceHeaders(env) },
@@ -476,6 +497,7 @@ export async function revokeTokenAtIdp(
       }),
     }),
   );
+  logUpstreamDeprecation(res, { method: "POST", path: "/auth/logout" });
 }
 
 /**
