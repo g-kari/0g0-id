@@ -114,4 +114,14 @@ app.get("/active-users/daily", async (c) => {
   return proxyResponse(res);
 });
 
+// GET /api/metrics/dbsc-bindings — アクティブ BFF セッションの DBSC 端末バインド集計
+app.get("/dbsc-bindings", async (c) => {
+  const res = await fetchWithAuth(
+    c,
+    SESSION_COOKIE,
+    `${c.env.IDP_ORIGIN}/api/metrics/dbsc-bindings`,
+  );
+  return proxyResponse(res);
+});
+
 export default app;

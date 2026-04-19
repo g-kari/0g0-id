@@ -270,3 +270,69 @@ export async function listActiveBffSessionsByUserId(
     device_bound_at: row.device_bound_at,
   }));
 }
+
+/**
+ * DBSC 端末バインド状態の集計（アクティブな BFF セッションが対象）。
+ * admin ダッシュボードで「Chrome 非対応環境の棚卸し」運用（issue #155 Phase 3）に利用する。
+ */
+export interface BffSessionDbscStats {
+  /** アクティブな BFF セッション総数 */
+  total: number;
+  /** DBSC 端末バインド済みのセッション数 */
+  device_bound: number;
+  /** 未バインドのセッション数 */
+  unbound: number;
+  /** BFF origin 別の内訳 */
+  by_bff_origin: Array<{
+    bff_origin: string;
+    total: number;
+    device_bound: number;
+    unbound: number;
+  }>;
+}
+
+/**
+ * アクティブな BFF セッションの DBSC バインド状況を集計する。
+ *
+ * expires_at（unix 秒）と revoked_at（NULL）で「アクティブ」を判定する条件は
+ * `listActiveBffSessionsByUserId` と揃えている。
+ * 公開鍵 JWK 自体は返さず、`device_public_key_jwk IS NOT NULL` のカウントのみ返す。
+ */
+export async function getBffSessionDbscStats(db: D1Database): Promise<BffSessionDbscStats> {
+  const now = Math.floor(Date.now() / 1000);
+  const result = await db
+    .prepare(
+      `SELECT bff_origin,
+              COUNT(*) AS total,
+              SUM(CASE WHEN device_public_key_jwk IS NOT NULL THEN 1 ELSE 0 END) AS device_bound
+         FROM bff_sessions
+        WHERE revoked_at IS NULL
+          AND expires_at > ?
+        GROUP BY bff_origin
+        ORDER BY bff_origin ASC`,
+    )
+    .bind(now)
+    .all<{ bff_origin: string; total: number; device_bound: number }>();
+  const rows = result.results;
+
+  const byOrigin = rows.map((row) => {
+    const total = Number(row.total ?? 0);
+    const deviceBound = Number(row.device_bound ?? 0);
+    return {
+      bff_origin: row.bff_origin,
+      total,
+      device_bound: deviceBound,
+      unbound: total - deviceBound,
+    };
+  });
+
+  const total = byOrigin.reduce((acc, r) => acc + r.total, 0);
+  const deviceBound = byOrigin.reduce((acc, r) => acc + r.device_bound, 0);
+
+  return {
+    total,
+    device_bound: deviceBound,
+    unbound: total - deviceBound,
+    by_bff_origin: byOrigin,
+  };
+}

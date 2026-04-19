@@ -613,4 +613,57 @@ describe("admin BFF — /api/metrics", () => {
       expect(res.status).toBe(500);
     });
   });
+
+  describe("GET /dbsc-bindings — DBSC 端末バインド集計", () => {
+    const mockStats = {
+      total: 120,
+      device_bound: 94,
+      unbound: 26,
+      by_bff_origin: [
+        { bff_origin: "https://admin.0g0.xyz", total: 12, device_bound: 12, unbound: 0 },
+        { bff_origin: "https://user.0g0.xyz", total: 108, device_bound: 82, unbound: 26 },
+      ],
+    };
+
+    it("セッションなしで401を返す", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request("/api/metrics/dbsc-bindings");
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("管理者セッションでIdPへプロキシし集計を返す", async () => {
+      const idpFetch = mockIdp(200, { data: mockStats });
+      const app = buildApp(idpFetch);
+      const res = await app.request("/api/metrics/dbsc-bindings", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: typeof mockStats }>();
+      expect(body.data.total).toBe(120);
+      expect(body.data.device_bound).toBe(94);
+      expect(body.data.by_bff_origin).toHaveLength(2);
+      expect(idpFetch).toHaveBeenCalledOnce();
+    });
+
+    it("IdP への呼び出しURLに /api/metrics/dbsc-bindings が含まれる", async () => {
+      const idpFetch = mockIdp(200, { data: mockStats });
+      const app = buildApp(idpFetch);
+      await app.request("/api/metrics/dbsc-bindings", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      const calledUrl = vi.mocked(idpFetch).mock.calls[0][0].url;
+      expect(calledUrl).toContain("/api/metrics/dbsc-bindings");
+    });
+
+    it("IdP が403を返した場合は403をプロキシする", async () => {
+      const idpFetch = mockIdp(403, { error: { code: "FORBIDDEN" } });
+      const app = buildApp(idpFetch);
+      const res = await app.request("/api/metrics/dbsc-bindings", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(403);
+    });
+  });
 });
