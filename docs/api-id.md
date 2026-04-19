@@ -23,6 +23,7 @@
 >
 > - 成功: `internal secret authenticated` / `service client authenticated`（`kind` = `user` / `admin` / `shared`、および `serviceId`）
 > - 旧来の共有 `INTERNAL_SERVICE_SECRET` で通過した場合のみ `warn` で deprecation 警告を出力。ログを監視して残存呼び出し元を特定したうえで BFF 毎の `INTERNAL_SERVICE_SECRET_USER` / `_ADMIN` に移行し、最終的に共有シークレットを撤去する。
+> - 共有シークレット通過時は Response ヘッダにも `Deprecation: true` と `Link: <https://github.com/g-kari/0g0-id/issues/156>; rel="deprecation"` を付与（RFC 9745）。呼び出し元 BFF 側の fetch レスポンスから直接検知できるため、構造化ログに加えた二重の観測手段となる。
 > - 拒否: `internal secret mismatch`（ヘッダーあり＆不一致）・`service binding access denied`（最終 403）・`service client authentication error`（DB 例外）。不正アクセス試行の観測に使える。
 
 - JWT 署名鍵: ES256（P-256 EC）／`jose` + WebCrypto

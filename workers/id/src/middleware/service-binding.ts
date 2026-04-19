@@ -66,6 +66,15 @@ export const serviceBindingMiddleware = createMiddleware<{ Bindings: IdpEnv }>(a
       );
     }
     await next();
+    if (kind === "shared") {
+      // RFC 9745: `Deprecation` ヘッダでリソース／認証方式が非推奨であることを呼び出し元に通知。
+      // 構造化ログだけだと呼び出し元 BFF 側で気づきにくいため、Response ヘッダでも並行通知する（issue #156）。
+      // Cloudflare Workers では確定済み Response の headers は immutable なため、Hono の `c.header` を使う。
+      c.header("Deprecation", "true");
+      c.header("Link", '<https://github.com/g-kari/0g0-id/issues/156>; rel="deprecation"', {
+        append: true,
+      });
+    }
     return;
   }
 
