@@ -16,6 +16,7 @@ import {
   getLoginEventIpStats,
   getLoginEventUserAgentStats,
   getRecentLoginEvents,
+  getBffSessionDbscStats,
   parseDays,
   restErrorBody,
 } from "@0g0-id/shared";
@@ -271,6 +272,18 @@ app.get("/recent-events", authMiddleware, adminMiddleware, async (c) => {
   try {
     const { events, total } = await getRecentLoginEvents(c.env.DB, limitNum, offsetNum);
     return c.json({ data: events, meta: { limit: limitNum, offset: offsetNum, total } });
+  } catch {
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
+  }
+});
+
+// GET /api/metrics/dbsc-bindings — アクティブ BFF セッションの DBSC 端末バインド集計
+// issue #155 Phase 3: 「DBSC_ENFORCE_SENSITIVE=true」運用判断の前に、
+// Chrome 非対応環境がどれだけ残っているかを棚卸しするためのダッシュボード用 API。
+app.get("/dbsc-bindings", authMiddleware, adminMiddleware, async (c) => {
+  try {
+    const stats = await getBffSessionDbscStats(c.env.DB);
+    return c.json({ data: stats });
   } catch {
     return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }

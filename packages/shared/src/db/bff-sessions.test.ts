@@ -9,6 +9,7 @@ import {
   countActiveBffSessionsByUserId,
   bindDeviceKeyToBffSession,
   listActiveBffSessionsByUserId,
+  getBffSessionDbscStats,
 } from "./bff-sessions";
 import { makeD1Mock } from "./test-helpers";
 
@@ -245,5 +246,66 @@ describe("listActiveBffSessionsByUserId", () => {
     const db = makeD1Mock(null, []);
     const sessions = await listActiveBffSessionsByUserId(db, "user-1");
     expect(sessions).toEqual([]);
+  });
+});
+
+describe("getBffSessionDbscStats", () => {
+  it("BFF origin 別の集計から全体総数・バインド済み・未バインドを算出する", async () => {
+    const rows = [
+      { bff_origin: "https://admin.0g0.xyz", total: 10, device_bound: 10 },
+      { bff_origin: "https://user.0g0.xyz", total: 100, device_bound: 80 },
+    ];
+    const db = makeD1Mock(null, rows);
+    const stats = await getBffSessionDbscStats(db);
+    expect(stats.total).toBe(110);
+    expect(stats.device_bound).toBe(90);
+    expect(stats.unbound).toBe(20);
+    expect(stats.by_bff_origin).toEqual([
+      { bff_origin: "https://admin.0g0.xyz", total: 10, device_bound: 10, unbound: 0 },
+      { bff_origin: "https://user.0g0.xyz", total: 100, device_bound: 80, unbound: 20 },
+    ]);
+  });
+
+  it("アクティブ条件（revoked_at IS NULL かつ expires_at > now）と GROUP BY bff_origin を SQL に含む", async () => {
+    const db = makeD1Mock(null, []);
+    await getBffSessionDbscStats(db);
+    const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain("FROM bff_sessions");
+    expect(sql).toContain("revoked_at IS NULL");
+    expect(sql).toContain("expires_at >");
+    expect(sql).toContain("GROUP BY bff_origin");
+    // 公開鍵 JWK そのものは SELECT 対象に含めない（件数のみ集計）
+    expect(sql).not.toContain("device_public_key_jwk AS");
+  });
+
+  it("0件なら total=device_bound=unbound=0 と空の by_bff_origin を返す", async () => {
+    const db = makeD1Mock(null, []);
+    const stats = await getBffSessionDbscStats(db);
+    expect(stats).toEqual({ total: 0, device_bound: 0, unbound: 0, by_bff_origin: [] });
+  });
+
+  it("D1 が文字列で数値を返しても Number 化される（SUM の型揺れ対策）", async () => {
+    const rows = [
+      {
+        bff_origin: "https://user.0g0.xyz",
+        total: "5" as unknown as number,
+        device_bound: "3" as unknown as number,
+      },
+    ];
+    const db = makeD1Mock(null, rows);
+    const stats = await getBffSessionDbscStats(db);
+    expect(stats.total).toBe(5);
+    expect(stats.device_bound).toBe(3);
+    expect(stats.unbound).toBe(2);
+  });
+
+  it("SUM が NULL（例: 行は 1 件だが device_public_key_jwk カウントが全部 NULL）でも 0 扱い", async () => {
+    const rows = [
+      { bff_origin: "https://user.0g0.xyz", total: 2, device_bound: null as unknown as number },
+    ];
+    const db = makeD1Mock(null, rows);
+    const stats = await getBffSessionDbscStats(db);
+    expect(stats.device_bound).toBe(0);
+    expect(stats.unbound).toBe(2);
   });
 });

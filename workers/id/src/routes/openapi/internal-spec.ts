@@ -1497,6 +1497,81 @@ export const INTERNAL_OPENAPI = {
         },
       },
     },
+    "/api/metrics/dbsc-bindings": {
+      get: {
+        tags: ["管理者 API"],
+        summary: "DBSC 端末バインド集計",
+        description:
+          "アクティブな BFF セッションのうち、DBSC（Device Bound Session Credentials）で端末バインド済み・未バインドの件数を集計する。\n\n" +
+          "`DBSC_ENFORCE_SENSITIVE=true` を本番有効化する前に、Chrome 非対応環境がどれだけ残っているかを棚卸しする用途。公開鍵 JWK 自体は返さない。",
+        security: [{ BearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "DBSC バインド集計",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    data: {
+                      type: "object",
+                      properties: {
+                        total: { type: "integer", description: "アクティブな BFF セッション総数" },
+                        device_bound: {
+                          type: "integer",
+                          description: "DBSC 端末バインド済みセッション数",
+                        },
+                        unbound: { type: "integer", description: "未バインドセッション数" },
+                        by_bff_origin: {
+                          type: "array",
+                          description: "BFF origin 別の内訳",
+                          items: {
+                            type: "object",
+                            properties: {
+                              bff_origin: { type: "string" },
+                              total: { type: "integer" },
+                              device_bound: { type: "integer" },
+                              unbound: { type: "integer" },
+                            },
+                            required: ["bff_origin", "total", "device_bound", "unbound"],
+                          },
+                        },
+                      },
+                      required: ["total", "device_bound", "unbound", "by_bff_origin"],
+                    },
+                  },
+                  required: ["data"],
+                },
+                example: {
+                  data: {
+                    total: 120,
+                    device_bound: 94,
+                    unbound: 26,
+                    by_bff_origin: [
+                      {
+                        bff_origin: "https://admin.0g0.xyz",
+                        total: 12,
+                        device_bound: 12,
+                        unbound: 0,
+                      },
+                      {
+                        bff_origin: "https://user.0g0.xyz",
+                        total: 108,
+                        device_bound: 82,
+                        unbound: 26,
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+          "401": { description: "UNAUTHORIZED" },
+          "403": { description: "FORBIDDEN — 管理者権限なし" },
+          "500": { description: "INTERNAL_ERROR" },
+        },
+      },
+    },
     "/api/token/revoke": {
       post: {
         tags: ["トークン"],

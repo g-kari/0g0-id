@@ -17,6 +17,12 @@ import Admin from '../../layouts/Admin.astro';
     </div>
   </div>
 
+  <!-- DBSC バインド集計サマリ（issue #155 Phase 3: Chrome 非対応環境の棚卸し用） -->
+  <div id="dbsc-summary" class="card" style="display:none; margin-bottom:16px; padding:16px;">
+    <h3 style="margin:0 0 8px; font-size:0.9rem; color:var(--color-muted);">BFF セッションの DBSC 端末バインド状況</h3>
+    <div id="dbsc-summary-body" style="font-size:0.875rem;"></div>
+  </div>
+
   <div id="loading" style="display:flex; justify-content:center; padding:3rem;">
     <div class="spinner"></div>
   </div>
@@ -41,7 +47,7 @@ import Admin from '../../layouts/Admin.astro';
 
 <script>
   import { apiFetch, formatDate } from '../../lib/api';
-  import type { AdminUserSummary } from '@0g0-id/api-types';
+  import type { AdminUserSummary, BffSessionDbscStats } from '@0g0-id/api-types';
 
   type UserRow = AdminUserSummary & { status: 'active' | 'banned' };
 
@@ -52,6 +58,70 @@ import Admin from '../../layouts/Admin.astro';
   const emptyMsg = document.getElementById('empty-message')!;
   const countEl = document.getElementById('user-count')!;
   const filterEl = document.getElementById('status-filter') as HTMLSelectElement;
+  const dbscSummaryEl = document.getElementById('dbsc-summary')!;
+  const dbscSummaryBodyEl = document.getElementById('dbsc-summary-body')!;
+
+  const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch] as string));
+
+  async function loadDbscSummary(): Promise<void> {
+    try {
+      const stats = await apiFetch<BffSessionDbscStats>('/api/metrics/dbsc-bindings');
+      if (
+        !stats ||
+        typeof stats !== 'object' ||
+        !('total' in stats) ||
+        !Array.isArray((stats as BffSessionDbscStats).by_bff_origin)
+      ) {
+        return;
+      }
+      const total = stats.total;
+      const bound = stats.device_bound;
+      const unbound = stats.unbound;
+      const boundPct = total > 0 ? Math.round((bound / total) * 1000) / 10 : 0;
+      const badge = (label: string, value: number, color: string) =>
+        `<span style="display:inline-block; padding:4px 10px; border-radius:999px; background:${color}; color:#fff; font-size:0.75rem; font-weight:600; margin-right:8px;">${label}: ${value}</span>`;
+      const originRows = stats.by_bff_origin
+        .map((o) => {
+          const pct = o.total > 0 ? Math.round((o.device_bound / o.total) * 1000) / 10 : 0;
+          return `<tr>
+            <td style="padding:4px 8px 4px 0; color:var(--color-muted); word-break:break-all;">${escapeHtml(o.bff_origin)}</td>
+            <td style="padding:4px 8px; text-align:right;">${o.total}</td>
+            <td style="padding:4px 8px; text-align:right; color:var(--color-success);">${o.device_bound}</td>
+            <td style="padding:4px 8px; text-align:right; color:var(--color-muted);">${o.unbound}</td>
+            <td style="padding:4px 0; text-align:right; color:var(--color-muted); font-variant-numeric:tabular-nums;">${pct.toFixed(1)}%</td>
+          </tr>`;
+        })
+        .join('');
+      dbscSummaryBodyEl.innerHTML = `
+        <div style="margin-bottom:10px;">
+          ${badge('全体', total, 'var(--color-muted)')}
+          ${badge('端末バインド済み', bound, 'var(--color-success, #2d7a3a)')}
+          ${badge('未バインド', unbound, 'var(--color-danger, #c0392b)')}
+          <span style="color:var(--color-muted); font-size:0.8rem;">バインド率 ${boundPct.toFixed(1)}%</span>
+        </div>
+        ${stats.by_bff_origin.length > 0 ? `
+          <table style="width:100%; font-size:0.8rem;">
+            <thead>
+              <tr style="color:var(--color-muted);">
+                <th style="text-align:left; padding:2px 8px 2px 0; font-weight:500;">BFF origin</th>
+                <th style="text-align:right; padding:2px 8px; font-weight:500;">合計</th>
+                <th style="text-align:right; padding:2px 8px; font-weight:500;">バインド済み</th>
+                <th style="text-align:right; padding:2px 8px; font-weight:500;">未バインド</th>
+                <th style="text-align:right; padding:2px 0; font-weight:500;">バインド率</th>
+              </tr>
+            </thead>
+            <tbody>${originRows}</tbody>
+          </table>
+        ` : ''}
+      `;
+      dbscSummaryEl.style.display = '';
+    } catch {
+      // 集計取得失敗時はユーザー一覧表示を邪魔しないよう静かに隠す
+      dbscSummaryEl.style.display = 'none';
+    }
+  }
 
   async function loadUsers(): Promise<void> {
     loadingEl.style.display = 'flex';
@@ -95,4 +165,5 @@ import Admin from '../../layouts/Admin.astro';
 
   filterEl.addEventListener('change', loadUsers);
   loadUsers();
+  loadDbscSummary();
 </script>
