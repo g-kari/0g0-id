@@ -532,6 +532,37 @@ app.delete(
   },
 );
 
+// DELETE /api/users/me/bff-sessions/:sessionId — 自分の特定 BFF セッションを失効（self-service）
+// ハイジャック疑い時のユーザー自身による即時ログアウト用。
+// IDOR ガード: revokeBffSessionByIdForUser の WHERE 句に user_id = ? を含むため、
+// 他ユーザーの sessionId を入れても 0 件で弾かれる（404 に畳み込み列挙攻撃対策）。
+// 監査ログ: 既存の self-service DELETE /me/tokens/:tokenId と揃え、admin_audit_logs には書かない。
+// 代わりに revoked_reason カラムに "user_self_revoke" を入れて trail を残す。
+app.delete(
+  "/me/bff-sessions/:sessionId",
+  authMiddleware,
+  rejectServiceTokenMiddleware,
+  rejectBannedUserMiddleware,
+  csrfMiddleware,
+  async (c) => {
+    const tokenUser = c.get("user");
+    const sessionId = c.req.param("sessionId");
+    if (!UUID_RE.test(sessionId)) {
+      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid session ID format" } }, 400);
+    }
+    const revoked = await revokeBffSessionByIdForUser(
+      c.env.DB,
+      sessionId,
+      tokenUser.sub,
+      "user_self_revoke",
+    );
+    if (revoked === 0) {
+      return c.json({ error: { code: "NOT_FOUND", message: "BFF session not found" } }, 404);
+    }
+    return c.body(null, 204);
+  },
+);
+
 // DELETE /api/users/me/tokens — 全デバイスからログアウト（全リフレッシュトークン無効化）
 app.delete(
   "/me/tokens",

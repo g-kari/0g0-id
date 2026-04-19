@@ -118,9 +118,14 @@ Chrome は発行された nonce を `jti` クレームに含めた proof JWT を
 
 ## BFF セッション管理（`/api/me/bff-sessions`）
 
-| Method | Path                   | 転送先 (id)                  | 用途                                                                                                                          |
-| ------ | ---------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/me/bff-sessions` | `/api/users/me/bff-sessions` | 自分のBFFセッション一覧（DBSC 端末バインド状態を `has_device_key` / `device_bound_at` で含む。公開鍵 JWK そのものは返さない） |
+| Method | Path                              | 転送先 (id)                             | 用途                                                                                                                          |
+| ------ | --------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/me/bff-sessions`            | `/api/users/me/bff-sessions`            | 自分のBFFセッション一覧（DBSC 端末バインド状態を `has_device_key` / `device_bound_at` で含む。公開鍵 JWK そのものは返さない） |
+| DELETE | `/api/me/bff-sessions/:sessionId` | `/api/users/me/bff-sessions/:sessionId` | 自分の特定 BFF セッションを失効（self-service・UUID 検証・他人の sessionId は 404 に畳み込み）                                |
+
+> **自セッション失効時の挙動**: `DELETE /api/me/bff-sessions/:sessionId` で渡した `sessionId` が現在の Cookie セッション ID と一致した場合のみ、BFF Cookie (`__Host-user-session`) を `Max-Age=0` で削除する（自端末ログアウト動線）。他端末セッションを失効させた場合は Cookie を保持し、操作中ブラウザの利便性を維持する。
+>
+> **強制ログアウトの完全化**: 本ルートは BFF Cookie 経路のみを停止する。攻撃者が並行して握っている `refresh_tokens`（30日有効）は残るため、ハイジャック疑い時は併せて `DELETE /api/me/sessions/:id` も実行すること（既存の admin 版運用注意と同調）。
 
 ## 連携サービス（`/api/connections/*`）
 
