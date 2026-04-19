@@ -16,6 +16,24 @@
 - **CORS**: `/api/*` は自身のオリジンのみ許可
 - **UUID 検証**: `:id` / `:userId` / `:tokenId` / `:uriId` などすべてのパスパラメータを UUID 形式で検証（不正なら 400）
 
+## デプロイ運用
+
+### プリフライトモード選択
+
+`scripts/preflight-deploy.ts` は `npm run deploy:admin` 実行時に wrangler secret list を叩き、`DBSC_ENFORCE_SENSITIVE` secret の登録有無を確認する。挙動は以下の環境変数で切り替える:
+
+| シナリオ                                          | 推奨設定                             | 挙動                                                                      |
+| ------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------- |
+| ローカル開発・手動デプロイ                        | なし（デフォルト）                   | secret 未登録でも warn のみで続行（fail-open）                            |
+| **CI の本番デプロイ job**                         | **`PREFLIGHT_STRICT=1` を env 固定** | secret 未登録なら abort（exit 1）。登録漏れでの本番反映を事前遮断         |
+| 緊急デプロイ（secret 未整備下で回避が必要な場合） | `SKIP_PREFLIGHT=1`                   | チェック自体を省略（`PREFLIGHT_STRICT` より優先）。通常運用では使用しない |
+
+**注意**: `PREFLIGHT_STRICT` は厳密比較で `"1"` のみ strict 扱い。`"true"` / `"yes"` 等を設定しても警告が出るだけで strict モードにならない（`runPreflight` の誤設定検知ログが出る）。GitHub Actions の `env:` ブロックに書く際は明示的にクォートした `PREFLIGHT_STRICT: "1"` を指定すること。裸の `true` は YAML パーサが boolean 化するため `"1"` に一致せず、strict が有効にならない。admin は管理操作という影響範囲の広さから、CI 経路での deploy を採用するなら特に strict 固定を強く推奨する。
+
+**混同注意 — プリフライト env と runtime env で受理値が逆**: preflight 側の `PREFLIGHT_STRICT` は `"1"` のみ受理する一方、runtime 側の `DBSC_ENFORCE_SENSITIVE`（`require-dbsc-bound.ts` の `isDbscEnforceValue`）は `"true"`（trim + case-insensitive）のみ enforce と判定する。両方を `"1"` で揃えると CI プリフライトは strict で通っても runtime は warn-only のままになるので、**secret 値は `"true"`、CI env は `"1"`** という組み合わせで設定すること。
+
+現状このリポジトリには deploy workflow は存在せず、ローカル `npm run deploy:admin` で本番反映する運用となっている。将来 CI 経由の deploy job を追加する場合、該当 job の `env:` ブロックに `PREFLIGHT_STRICT: "1"` を固定設定することを推奨する（secret 登録漏れの本番反映を防ぐための運用ゲート — issue #155 Phase 3）。
+
 ## 認証フロー（`/auth/*`）
 
 `createBffAuthRoutes()` 共通ルート。詳細は `packages/shared/src/routes/auth-routes.ts` を参照。
