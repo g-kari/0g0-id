@@ -93,6 +93,11 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     findRefreshTokenById: vi.fn(),
     // JTIブロックリスト
     addRevokedAccessToken: vi.fn(),
+    // INTERNAL_SECRET_STRICT 判定用（issue #156 Phase 6）— 副作用なし純粋関数なのでモック不要で実装をそのまま公開
+    parseStrictBoolEnv: (raw: string | undefined | null): boolean =>
+      String(raw ?? "")
+        .trim()
+        .toLowerCase() === "true",
     // BFFセッション（issue #139）
     createBffSession: vi.fn(),
     findActiveBffSession: vi.fn(),

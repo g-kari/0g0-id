@@ -27,6 +27,20 @@
 > - 呼び出し元 BFF（`@0g0-id/shared` の `fetchWithAuth` / `exchangeCodeAtIdp` / `revokeTokenAtIdp` / `bff-dbsc-factory` / `require-dbsc-bound` および `workers/user` の `/auth/link`・`/api/device/*`）は受信 Response の `Deprecation` ヘッダを `logUpstreamDeprecation` で検知し、BFF ログ（ctx=`bff-upstream-deprecation`、または DBSC 系は各呼び出し元の loggerName）へ `upstream deprecation notice from id worker` を `warn` で出力する。id worker 側の `service-binding` ログだけでは「どの BFF が落ちているか」を集約判断しづらいため、BFF 側ログからも自 BFF が共有シークレット経路に落ちていることを即座に特定できる（issue #156 Phase 5）。
 > - 拒否: `internal secret mismatch`（ヘッダーあり＆不一致）・`service binding access denied`（最終 403）・`service client authentication error`（DB 例外）。不正アクセス試行の観測に使える。
 
+> 共有シークレット撤廃ゲート（issue #156 Phase 6）: id worker の secret `INTERNAL_SECRET_STRICT` を `"true"`（trim + case-insensitive）に設定すると、共有 `INTERNAL_SERVICE_SECRET` による通過を `403 DEPRECATED_INTERNAL_SECRET` で拒否する。個別 `INTERNAL_SERVICE_SECRET_USER` / `_ADMIN` と `Authorization: Basic` 経路は無影響。strict 拒否時のログは `rejected under INTERNAL_SECRET_STRICT (issue #156 Phase 6)` を `error` レベル（`kind=shared`）で出力し、Response には `Deprecation: true` / `Link rel="deprecation"` を添えて呼び出し元に原因を即座に通知する。Phase 5 までの観測ログで残存呼び出し元を 0 に減らしたうえで strict 化する運用。受理値は意図的に `"true"` のみに絞り（`isDbscEnforceValue` と同じ規則・`parseStrictBoolEnv` を単一ソースとして共有）、`"1"` / `"yes"` 等での誤設定で本番が意図せず拒否モードに入らないようにしている。
+>
+> ロールバック・観測注意:
+>
+> - strict 切替前後で BFF 側の `upstream deprecation notice from id worker` warn は**どちらのモードでも出続ける**（warn-only 時は status=200 の 200 OK レスポンスに Deprecation ヘッダが付く・strict 時は status=403 の拒否レスポンスに付く）。「BFF の warn が止まったか」で切替成功を判断せず、必ず HTTP status で評価する。status 区別が必要なら各 BFF の upstream エラーハンドラ（4xx カウンタ）を併用する。
+> - ロールバックは `wrangler secret delete INTERNAL_SECRET_STRICT`。未設定に戻せば即座に warn-only モード（共有シークレット経路も 200 通過）に復帰する。
+>
+> ```bash
+> # 撤去直前の確認運用（任意）
+> wrangler secret put INTERNAL_SECRET_STRICT   # 値は "true"
+> # その後、deprecation ログ / 403 DEPRECATED_INTERNAL_SECRET が 0 件のまま推移するか観測
+> # 問題があれば `wrangler secret delete INTERNAL_SECRET_STRICT` で即座に warn-only に戻せる
+> ```
+
 - JWT 署名鍵: ES256（P-256 EC）／`jose` + WebCrypto
 - アクセストークン: 15 分、リフレッシュトークン: 30 日（ローテーション＋再使用検出）
 
