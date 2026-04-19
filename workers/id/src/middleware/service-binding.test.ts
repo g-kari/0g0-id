@@ -384,4 +384,55 @@ describe("serviceBindingMiddleware", () => {
       expect(logs.entries.find((e) => e.msg === "service binding access denied")).toBeDefined();
     });
   });
+
+  describe("Deprecation レスポンスヘッダ（issue #156 / RFC 9745）", () => {
+    const USER_SECRET = "user-bff-secret-abc";
+
+    it("共有 INTERNAL_SERVICE_SECRET で通過した時、Deprecation: true と Link rel=deprecation が付与される", async () => {
+      const { app, env } = buildApp({ INTERNAL_SERVICE_SECRET: SECRET });
+      const res = await app.request(
+        new Request(`${baseUrl}/auth/exchange`, {
+          method: "POST",
+          headers: { "X-Internal-Secret": SECRET },
+        }),
+        undefined,
+        env,
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Deprecation")).toBe("true");
+      expect(res.headers.get("Link")).toContain('rel="deprecation"');
+      expect(res.headers.get("Link")).toContain("issues/156");
+    });
+
+    it("USER 個別シークレットで通過した時、Deprecation ヘッダは付与されない", async () => {
+      const { app, env } = buildApp({ INTERNAL_SERVICE_SECRET_USER: USER_SECRET });
+      const res = await app.request(
+        new Request(`${baseUrl}/auth/exchange`, {
+          method: "POST",
+          headers: { "X-Internal-Secret": USER_SECRET },
+        }),
+        undefined,
+        env,
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Deprecation")).toBeNull();
+      expect(res.headers.get("Link")).toBeNull();
+    });
+
+    it("Authorization: Basic で通過した時、Deprecation ヘッダは付与されない", async () => {
+      vi.mocked(authenticateService).mockResolvedValue({ id: "service-1" } as never);
+      const { app, env } = buildApp({ INTERNAL_SERVICE_SECRET: SECRET, DB: {} as D1Database });
+      const res = await app.request(
+        new Request(`${baseUrl}/auth/exchange`, {
+          method: "POST",
+          headers: { Authorization: "Basic dGVzdDp0ZXN0" },
+        }),
+        undefined,
+        env,
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Deprecation")).toBeNull();
+      expect(res.headers.get("Link")).toBeNull();
+    });
+  });
 });
