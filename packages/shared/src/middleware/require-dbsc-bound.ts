@@ -4,6 +4,7 @@ import type { BffEnv } from "../types";
 import { parseSession, internalServiceHeaders } from "../lib/bff";
 import { buildSecureSessionRegistrationHeader, isDbscEnforceValue } from "../lib/dbsc";
 import { createLogger, type Logger } from "../lib/logger";
+import { logUpstreamDeprecation } from "../lib/internal-secret-deprecation";
 
 /**
  * DBSC 必須化ミドルウェアの設定。
@@ -62,6 +63,7 @@ async function fetchDbscStatus(
         body: JSON.stringify({ session_id: sessionId }),
       }),
     );
+    logUpstreamDeprecation(resp, { method: "POST", path: "/auth/dbsc/status" }, logger);
     if (!resp.ok) {
       logger.warn("[require-dbsc-bound] status lookup failed", { status: resp.status });
       return null;

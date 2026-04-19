@@ -6,6 +6,7 @@ import { parseSession } from "./bff";
 import { verifyDbscRegistrationJwt, buildSecureSessionChallengeHeader } from "./dbsc";
 import { internalServiceHeaders } from "./bff";
 import { createLogger } from "./logger";
+import { logUpstreamDeprecation } from "./internal-secret-deprecation";
 
 /** ファクトリに渡す設定 */
 export interface BffDbscConfig {
@@ -136,6 +137,7 @@ export function createBffDbscRoutes(config: BffDbscConfig) {
         body: JSON.stringify({ session_id: session.session_id, public_jwk: publicJwk }),
       }),
     );
+    logUpstreamDeprecation(bindResp, { method: "POST", path: "/auth/dbsc/bind" }, dbscLogger);
 
     if (!bindResp.ok) {
       dbscLogger.warn("[dbsc-start] IdP bind failed", { status: bindResp.status });
@@ -204,6 +206,11 @@ export function createBffDbscRoutes(config: BffDbscConfig) {
           body: JSON.stringify({ session_id: session.session_id }),
         }),
       );
+      logUpstreamDeprecation(
+        challengeResp,
+        { method: "POST", path: "/auth/dbsc/challenge" },
+        dbscLogger,
+      );
 
       if (!challengeResp.ok) {
         dbscLogger.warn("[dbsc-refresh] challenge issue failed", { status: challengeResp.status });
@@ -269,6 +276,7 @@ export function createBffDbscRoutes(config: BffDbscConfig) {
         }),
       }),
     );
+    logUpstreamDeprecation(verifyResp, { method: "POST", path: "/auth/dbsc/verify" }, dbscLogger);
 
     if (!verifyResp.ok) {
       dbscLogger.warn("[dbsc-refresh] verify failed", { status: verifyResp.status });

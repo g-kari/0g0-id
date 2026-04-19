@@ -30,6 +30,7 @@ export * from "./lib/validation";
 export * from "./lib/cookie";
 export * from "./lib/errors";
 export * from "./lib/dbsc";
+export * from "./lib/internal-secret-deprecation";
 export * from "./db/users";
 export * from "./db/services";
 export * from "./db/service-redirect-uris";
