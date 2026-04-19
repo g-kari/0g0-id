@@ -1327,6 +1327,31 @@ export const INTERNAL_OPENAPI = {
         },
       },
     },
+    "/api/users/me/bff-sessions/{sessionId}": {
+      delete: {
+        tags: ["ユーザー API"],
+        summary: "自BFFセッション失効（self-service）",
+        description:
+          "認証済みユーザー自身のBFFセッションを1件失効する。DBSC 端末バインド済みセッションも対象。user_id 一致条件により他ユーザーのセッションIDを指定した場合も `NOT_FOUND` に畳み込み、列挙攻撃を防ぐ。refresh_token は別途 `DELETE /api/users/me/tokens/:tokenId` で失効する必要がある。",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "sessionId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+            description: "失効対象のBFFセッションID",
+          },
+        ],
+        responses: {
+          "204": { description: "失効成功（body なし）" },
+          "400": { description: "BAD_REQUEST（sessionId が UUID 形式でない）" },
+          "401": { description: "UNAUTHORIZED" },
+          "403": { description: "FORBIDDEN（CSRF / service token / ban）" },
+          "404": { description: "NOT_FOUND（他ユーザーセッション・存在しないID・既失効を含む）" },
+        },
+      },
+    },
     "/api/external/users": {
       get: {
         tags: ["外部サービス向け API"],

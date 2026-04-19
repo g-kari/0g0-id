@@ -139,4 +139,115 @@ describe("user BFF — /api/me/bff-sessions", () => {
       expect(res.status).toBe(500);
     });
   });
+
+  describe("DELETE /:sessionId — 自分のBFFセッションを失効（self-service）", () => {
+    const currentSessionId = "00000000-0000-0000-0000-000000000000";
+    const otherSessionId = "00000000-0000-0000-0000-0000000000aa";
+
+    it("Cookieなし → 401（IdPは呼ばない）", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request(`/api/me/bff-sessions/${currentSessionId}`, {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("非UUID形式の sessionId → 400（IdPは呼ばない）", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/me/bff-sessions/not-a-uuid", {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(400);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("IdP 204 + 現セッションと一致 → 204 + Set-Cookie に削除指示", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      const res = await app.request(`/api/me/bff-sessions/${currentSessionId}`, {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(204);
+      const setCookie = res.headers.get("Set-Cookie");
+      expect(setCookie).toBeTruthy();
+      expect(setCookie).toContain(SESSION_COOKIE);
+      // deleteCookie は Max-Age=0 を付与する
+      expect(setCookie).toMatch(/Max-Age=0/);
+    });
+
+    it("IdP 204 + 他端末セッション失効 → 204 + Cookie 削除なし", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      const res = await app.request(`/api/me/bff-sessions/${otherSessionId}`, {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(204);
+      expect(res.headers.get("Set-Cookie")).toBeNull();
+    });
+
+    it("IdP 404 → 404 をプロキシ（Cookie 削除なし）", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: { code: "NOT_FOUND" } }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+      const app = buildApp(idpFetch);
+
+      const res = await app.request(`/api/me/bff-sessions/${currentSessionId}`, {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(404);
+      expect(res.headers.get("Set-Cookie")).toBeNull();
+    });
+
+    it("IdP 403 → 403 をプロキシ（Cookie 削除なし）", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: { code: "FORBIDDEN" } }), {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+      const app = buildApp(idpFetch);
+
+      const res = await app.request(`/api/me/bff-sessions/${currentSessionId}`, {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(403);
+      expect(res.headers.get("Set-Cookie")).toBeNull();
+    });
+
+    it("IdP の DELETE /api/users/me/bff-sessions/${id} を呼び出す", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      await app.request(`/api/me/bff-sessions/${otherSessionId}`, {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.method).toBe("DELETE");
+      expect(calledReq.url).toBe(`https://id.0g0.xyz/api/users/me/bff-sessions/${otherSessionId}`);
+      expect(calledReq.headers.get("Origin")).toBe("https://id.0g0.xyz");
+    });
+  });
 });

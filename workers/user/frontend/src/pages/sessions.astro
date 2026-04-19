@@ -110,12 +110,14 @@ import Base from '../layouts/Base.astro';
            </span>`;
       const ua = s.user_agent ? escapeHtml(s.user_agent) : '（不明）';
       const ip = s.ip ? escapeHtml(s.ip) : '（不明）';
+      const sid = escapeHtml(s.id);
       return `
         <div class="py-3.5 border-b last:border-b-0" style="border-color: var(--color-border)">
           <div class="flex items-center font-semibold text-sm">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="18" x2="12" y2="20"/></svg>
             <span class="ml-1.5">ブラウザセッション</span>
             ${boundBadge}
+            <button class="btn btn-danger btn-sm ml-auto" data-revoke-bff="${sid}" aria-label="このブラウザセッションを失効">失効</button>
           </div>
           <div class="text-xs mt-1" style="color: var(--color-muted); word-break: break-all">
             UA: ${ua}
@@ -131,6 +133,37 @@ import Base from '../layouts/Base.astro';
     }).join('');
     bffListEl.style.display = '';
   }
+
+  const BFF_REVOKE_CONFIRM =
+    'このブラウザセッションを失効させます。現在使用中のセッションの場合、自動的にログアウトされます。refresh_token は別途「連携アプリケーション」セクションから失効する必要があります。よろしいですか？';
+
+  bffListEl.addEventListener('click', async (e) => {
+    const btn = (e.target as HTMLElement).closest('[data-revoke-bff]') as HTMLButtonElement | null;
+    if (!btn) return;
+    const sid = btn.dataset.revokeBff;
+    if (!sid) return;
+    if (!confirm(BFF_REVOKE_CONFIRM)) return;
+    btn.disabled = true;
+    try {
+      const res = await apiFetch(`/api/me/bff-sessions/${encodeURIComponent(sid)}`, {
+        method: 'DELETE',
+        headers: { Origin: window.location.origin },
+      });
+      if (res && typeof res === 'object' && 'error' in res) {
+        showToast('ブラウザセッションの失効に失敗しました', 'error');
+        btn.disabled = false;
+        return;
+      }
+      // 現在使用中のセッションを失効した場合、サーバーが Set-Cookie で
+      // __Host-user-session を削除している。クライアント側では HttpOnly
+      // のため判別できないので、無条件でリロードして /login にフォールバックさせる。
+      showToast('ブラウザセッションを失効しました', 'success');
+      setTimeout(() => { window.location.reload(); }, 600);
+    } catch {
+      showToast('ブラウザセッションの失効に失敗しました', 'error');
+      btn.disabled = false;
+    }
+  });
 
   async function loadSessions(): Promise<void> {
     loadingEl.style.display = '';

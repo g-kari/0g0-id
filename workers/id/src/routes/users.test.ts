@@ -2083,6 +2083,89 @@ describe("DELETE /api/users/me/tokens/:tokenId", () => {
   });
 });
 
+// ===== DELETE /api/users/me/bff-sessions/:sessionId（self-service）=====
+describe("DELETE /api/users/me/bff-sessions/:sessionId", () => {
+  const app = buildApp();
+  const sessionId = "00000000-0000-0000-0000-0000000000bb";
+  const path = `/api/users/me/bff-sessions/${sessionId}`;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(revokeBffSessionByIdForUser).mockResolvedValue(1);
+  });
+
+  it("Authorization ヘッダーなし → 401", async () => {
+    const res = await sendRequest(app, path, { method: "DELETE", withAuth: false });
+    expect(res.status).toBe(401);
+    expect(vi.mocked(revokeBffSessionByIdForUser)).not.toHaveBeenCalled();
+  });
+
+  it("サービストークン（cid 付き）→ 403", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue({
+      ...mockUserPayload,
+      cid: "00000000-0000-0000-0000-000000000050",
+    });
+    const res = await sendRequest(app, path, {
+      method: "DELETE",
+      origin: "https://user.0g0.xyz",
+    });
+    expect(res.status).toBe(403);
+    expect(vi.mocked(revokeBffSessionByIdForUser)).not.toHaveBeenCalled();
+  });
+
+  it("BAN 済みユーザー → 401（rejectBannedUserMiddleware が UNAUTHORIZED に畳む）", async () => {
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, banned_at: "2025-01-01T00:00:00Z" });
+    const res = await sendRequest(app, path, {
+      method: "DELETE",
+      origin: "https://user.0g0.xyz",
+    });
+    expect(res.status).toBe(401);
+    expect(vi.mocked(revokeBffSessionByIdForUser)).not.toHaveBeenCalled();
+  });
+
+  it("Origin ヘッダーなし（CSRF）→ 403", async () => {
+    const res = await sendRequest(app, path, { method: "DELETE" });
+    expect(res.status).toBe(403);
+    expect(vi.mocked(revokeBffSessionByIdForUser)).not.toHaveBeenCalled();
+  });
+
+  it("非UUID形式の sessionId → 400", async () => {
+    const res = await sendRequest(app, "/api/users/me/bff-sessions/not-a-uuid", {
+      method: "DELETE",
+      origin: "https://user.0g0.xyz",
+    });
+    expect(res.status).toBe(400);
+    expect(vi.mocked(revokeBffSessionByIdForUser)).not.toHaveBeenCalled();
+  });
+
+  it("他人の sessionId（revokeBffSessionByIdForUser が 0 を返す） → 404", async () => {
+    vi.mocked(revokeBffSessionByIdForUser).mockResolvedValue(0);
+    const res = await sendRequest(app, path, {
+      method: "DELETE",
+      origin: "https://user.0g0.xyz",
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("自分の BFF セッションを失効させて 204 を返す（user_self_revoke）", async () => {
+    const res = await sendRequest(app, path, {
+      method: "DELETE",
+      origin: "https://user.0g0.xyz",
+    });
+    expect(res.status).toBe(204);
+    expect(vi.mocked(revokeBffSessionByIdForUser)).toHaveBeenCalledWith(
+      expect.anything(),
+      sessionId,
+      mockUserPayload.sub,
+      "user_self_revoke",
+    );
+  });
+});
+
 // ===== DELETE /api/users/me/tokens/others =====
 describe("DELETE /api/users/me/tokens/others", () => {
   const app = buildApp();
