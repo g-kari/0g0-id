@@ -41,6 +41,23 @@
 > # 問題があれば `wrangler secret delete INTERNAL_SECRET_STRICT` で即座に warn-only に戻せる
 > ```
 
+## デプロイ運用
+
+### プリフライトモード選択（issue #156 Phase 7）
+
+`npm run deploy:id` は `wrangler d1 migrations apply` / `vp build` / `build:assets` / `wrangler deploy` の前段に `scripts/preflight-deploy.ts` を走らせ、`INTERNAL_SECRET_STRICT` secret の登録有無を確認する。「strict 化したつもりで secret 登録漏れで warn-only のまま本番が走る」事故（Phase 6 の裏返し）を検知するためのゲート。
+
+| シナリオ                    | 必要な env                              | 挙動                                                 |
+| --------------------------- | --------------------------------------- | ---------------------------------------------------- |
+| ローカル手動                | なし                                    | 登録済み→INFO、未登録→warn のみで続行（fail-open）   |
+| CI 本番                     | `PREFLIGHT_STRICT: "1"`（クォート必須） | 未登録なら exit 1 で `wrangler deploy` 手前で abort  |
+| 緊急回避                    | `SKIP_PREFLIGHT=1`                      | wrangler CLI を呼ばずに即 exit 0                     |
+| wrangler 未認証・オフライン | なし                                    | fail-open（wrangler 本体の失敗で別途検出される前提） |
+
+混同注意: runtime 側の `INTERNAL_SECRET_STRICT` は `"true"` のみ受理（`parseStrictBoolEnv` / `isInternalSecretStrict` と単一ソース）で、一方 preflight の `PREFLIGHT_STRICT` は `"1"` のみ受理。値は**逆向き**の仕様になっているので、secret 値は `"true"`・CI env は `"1"` で覚えること。`PREFLIGHT_STRICT="true"` のような誤設定は `strict mode was NOT applied` 警告で検知される（`"1"` 以外の非空値で独立 warn 発火）。
+
+値そのものは wrangler 側で隠蔽されるため値検査はせず、「名前が登録されているか」だけを確認する。運用側では `wrangler secret put INTERNAL_SECRET_STRICT` に `"true"` を入れれば strict（共有 `INTERNAL_SERVICE_SECRET` 経路を 403 拒否）、他の非空値を入れれば明示的に warn-only とドキュメントした状態でデプロイされる。DBSC の `workers/{user,admin}/scripts/preflight-deploy.ts`（issue #155 Phase 3）と同パターン・同じ `PreflightRunner` インターフェースを使用しており、共通コアは `packages/shared/src/lib/preflight-core.ts` にある。
+
 - JWT 署名鍵: ES256（P-256 EC）／`jose` + WebCrypto
 - アクセストークン: 15 分、リフレッシュトークン: 30 日（ローテーション＋再使用検出）
 
