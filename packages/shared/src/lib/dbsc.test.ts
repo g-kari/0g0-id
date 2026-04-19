@@ -7,7 +7,34 @@ import {
   buildSecureSessionChallengeHeader,
   parseSecureSessionChallengeHeader,
   parseStoredDbscPublicJwk,
+  isDbscEnforceValue,
 } from "./dbsc";
+
+describe("isDbscEnforceValue", () => {
+  it("厳密な 'true' を受理する", () => {
+    expect(isDbscEnforceValue("true")).toBe(true);
+  });
+
+  it("大文字・trailing space 混入でも受理する（secrets-store UI のコピペ耐性）", () => {
+    expect(isDbscEnforceValue("TRUE")).toBe(true);
+    expect(isDbscEnforceValue("True")).toBe(true);
+    expect(isDbscEnforceValue("  true  ")).toBe(true);
+    expect(isDbscEnforceValue("\ttrue\n")).toBe(true);
+  });
+
+  it("'1' / 'yes' / 'on' は受理しない（明示的に 'true' 文字列のみ）", () => {
+    expect(isDbscEnforceValue("1")).toBe(false);
+    expect(isDbscEnforceValue("yes")).toBe(false);
+    expect(isDbscEnforceValue("on")).toBe(false);
+    expect(isDbscEnforceValue("enable")).toBe(false);
+  });
+
+  it("undefined / null / 空文字は false", () => {
+    expect(isDbscEnforceValue(undefined)).toBe(false);
+    expect(isDbscEnforceValue(null)).toBe(false);
+    expect(isDbscEnforceValue("")).toBe(false);
+  });
+});
 
 async function buildRegistrationJwt(options: { audience?: string } = {}): Promise<{
   jwt: string;

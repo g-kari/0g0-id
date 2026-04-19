@@ -2,7 +2,7 @@ import { createMiddleware } from "hono/factory";
 import { getCookie } from "hono/cookie";
 import type { BffEnv } from "../types";
 import { parseSession, internalServiceHeaders } from "../lib/bff";
-import { buildSecureSessionRegistrationHeader } from "../lib/dbsc";
+import { buildSecureSessionRegistrationHeader, isDbscEnforceValue } from "../lib/dbsc";
 import { createLogger, type Logger } from "../lib/logger";
 
 /**
@@ -38,12 +38,9 @@ interface StatusResponse {
 function isEnforceEnabled(config: RequireDbscBoundConfig, env: BffEnv): boolean {
   if (config.enforce === true) return true;
   if (config.enforce === "env") {
-    // secrets-store UI のコピペで trailing space や大文字が混入しても
-    // 黙ってフェイルオープンにならないよう、正規化した上で "true" と比較する。
-    const normalized = String(env.DBSC_ENFORCE_SENSITIVE ?? "")
-      .trim()
-      .toLowerCase();
-    return normalized === "true";
+    // 判定ルール（trim + lowercase == "true"）は `isDbscEnforceValue` に一本化。
+    // デプロイ preflight のガイド文言と挙動を一致させるための単一ソース。
+    return isDbscEnforceValue(env.DBSC_ENFORCE_SENSITIVE);
   }
   return false;
 }

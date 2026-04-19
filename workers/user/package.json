@@ -6,7 +6,8 @@
     "dev": "vp dev",
     "build": "vp build",
     "build:frontend": "cd frontend && npm ci && npm run build",
-    "deploy": "vp build && npm run build:frontend && wrangler deploy",
+    "preflight:deploy": "tsx scripts/preflight-deploy.ts",
+    "deploy": "npm run preflight:deploy && vp build && npm run build:frontend && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vp test run --passWithNoTests"
   },
@@ -17,6 +18,8 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.32.2",
     "@cloudflare/workers-types": "^4.20260415.1",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
     "typescript": "^6.0.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",
     "vite-plus": "^0.1.18",
