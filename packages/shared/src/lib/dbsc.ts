@@ -100,6 +100,24 @@ export async function verifyDbscRegistrationJwt(
 }
 
 /**
+ * `DBSC_ENFORCE_SENSITIVE` env var が「強制モード」扱いとみなされる文字列か判定する。
+ *
+ * secrets-store UI のコピペで trailing space や大文字が混入しても黙って
+ * フェイルオープンにならないよう、`trim().toLowerCase() === "true"` で判定する。
+ * `"1"` や `"yes"` は受理しない（明示的に `true` 相当の文字列のみ許容）。
+ *
+ * require-dbsc-bound ミドルウェアと、デプロイ preflight のガイド文言で挙動を
+ * 一致させるための単一ソースとして export する（issue #155）。
+ */
+export function isDbscEnforceValue(raw: string | undefined | null): boolean {
+  return (
+    String(raw ?? "")
+      .trim()
+      .toLowerCase() === "true"
+  );
+}
+
+/**
  * Secure-Session-Registration ヘッダ値を組み立てる。
  * Chrome がログインレスポンスでこれを見つけると DBSC 登録フローを開始する。
  *
