@@ -99,6 +99,28 @@ export async function revokeBffSession(
 }
 
 /**
+ * 単一の BFF セッションを user_id 一致条件付きで失効させる（管理者操作向け）。
+ * 失効件数を返す（指定 session が指定 user に紐づいていない場合は 0）。
+ */
+export async function revokeBffSessionByIdForUser(
+  db: D1Database,
+  sessionId: string,
+  userId: string,
+  reason: string,
+): Promise<number> {
+  const now = Math.floor(Date.now() / 1000);
+  const result = await db
+    .prepare(
+      `UPDATE bff_sessions
+          SET revoked_at = ?, revoked_reason = ?
+        WHERE id = ? AND user_id = ? AND revoked_at IS NULL`,
+    )
+    .bind(now, reason, sessionId, userId)
+    .run();
+  return result.meta?.changes ?? 0;
+}
+
+/**
  * ユーザーの全BFFセッションを失効させる（全デバイスサインアウト）。
  * 失効件数を返す。
  */

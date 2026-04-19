@@ -3,6 +3,7 @@ import {
   createBffSession,
   findActiveBffSession,
   revokeBffSession,
+  revokeBffSessionByIdForUser,
   revokeAllBffSessionsByUserId,
   cleanupStaleBffSessions,
   countActiveBffSessionsByUserId,
@@ -77,6 +78,39 @@ describe("revokeBffSession", () => {
     expect(sql).toContain("UPDATE bff_sessions");
     expect(sql).toContain("revoked_at = ?");
     expect(sql).toContain("revoked_at IS NULL");
+  });
+});
+
+describe("revokeBffSessionByIdForUser", () => {
+  it("失効した件数を返す（user_id 一致）", async () => {
+    const db = makeD1Mock(null, [], 1);
+    const count = await revokeBffSessionByIdForUser(db, "s-1", "user-1", "admin_action");
+    expect(count).toBe(1);
+  });
+
+  it("user_id 不一致や存在しない場合は 0", async () => {
+    const db = makeD1Mock(null, [], 0);
+    const count = await revokeBffSessionByIdForUser(db, "s-1", "user-2", "admin_action");
+    expect(count).toBe(0);
+  });
+
+  it("SQL に id・user_id・revoked_at IS NULL が含まれる", async () => {
+    const db = makeD1Mock(null, [], 1);
+    await revokeBffSessionByIdForUser(db, "s-1", "user-1", "admin_action");
+    const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain("UPDATE bff_sessions");
+    expect(sql).toContain("id = ?");
+    expect(sql).toContain("user_id = ?");
+    expect(sql).toContain("revoked_at IS NULL");
+  });
+
+  it("bind は now, reason, sessionId, userId の順", async () => {
+    const db = makeD1Mock(null, [], 1);
+    await revokeBffSessionByIdForUser(db, "s-1", "user-1", "admin_action");
+    const bindCall = (db._stmt.bind as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(bindCall[1]).toBe("admin_action");
+    expect(bindCall[2]).toBe("s-1");
+    expect(bindCall[3]).toBe("user-1");
   });
 });
 

@@ -12,6 +12,7 @@ import {
   revokeUserTokens,
   deleteMcpSessionsByUser,
   revokeAllBffSessionsByUserId,
+  revokeBffSessionByIdForUser,
   revokeTokenByIdForUser,
   revokeOtherUserTokens,
   listActiveSessionsByUserId,
@@ -859,6 +860,60 @@ app.get("/:id/bff-sessions", authMiddleware, adminMiddleware, async (c) => {
   const sessions = await listActiveBffSessionsByUserId(c.env.DB, targetId);
   return c.json({ data: sessions });
 });
+
+// DELETE /api/users/:id/bff-sessions/:sessionId — 単一の BFF セッションを失効（管理者のみ）
+// 端末バインドされた DBSC セッションを含め、ハイジャック疑い時の管理者強制ログアウト用。
+app.delete(
+  "/:id/bff-sessions/:sessionId",
+  authMiddleware,
+  adminMiddleware,
+  csrfMiddleware,
+  async (c) => {
+    const targetId = c.req.param("id");
+    const sessionId = c.req.param("sessionId");
+    if (!UUID_RE.test(sessionId)) {
+      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid session ID format" } }, 400);
+    }
+
+    const targetUser = await findUserById(c.env.DB, targetId);
+    if (!targetUser) {
+      return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);
+    }
+
+    const adminUser = c.get("user");
+    let revoked: number;
+    try {
+      revoked = await revokeBffSessionByIdForUser(
+        c.env.DB,
+        sessionId,
+        targetId,
+        `admin_action:${adminUser.sub}`,
+      );
+    } catch (err) {
+      await logAdminAudit(c, {
+        action: "user.bff_session_revoked",
+        targetType: "user",
+        targetId,
+        details: { sessionId, error: extractErrorMessage(err) },
+        status: "failure",
+      });
+      throw err;
+    }
+
+    if (revoked === 0) {
+      return c.json({ error: { code: "NOT_FOUND", message: "BFF session not found" } }, 404);
+    }
+
+    await logAdminAudit(c, {
+      action: "user.bff_session_revoked",
+      targetType: "user",
+      targetId,
+      details: { sessionId },
+    });
+
+    return c.body(null, 204);
+  },
+);
 
 // DELETE /api/users/:id/tokens/:tokenId — ユーザーの特定セッションを失効（管理者のみ）
 app.delete("/:id/tokens/:tokenId", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {

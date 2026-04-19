@@ -276,7 +276,7 @@ migrations/0022_auth_codes_provider.sql
 
 既存のアクション例:
 
-- `user.role_change`, `user.ban`, `user.unban`, `user.session_revoked`, `user.delete`
+- `user.role_change`, `user.ban`, `user.unban`, `user.session_revoked`, `user.bff_session_revoked`, `user.delete`
 - `service.create`, `service.update`, `service.delete`, `service.secret_rotated`, `service.owner_transferred`
 
 複数の DB 操作を伴う管理者操作は、D1 の `batch()` でアトミックに実行することが推奨されます（参考: PR #137）。

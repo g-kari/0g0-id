@@ -116,24 +116,27 @@
 
 ### 管理者 API（Bearer + admin ロール必須）
 
-| Method | Path                             | 用途                                                                    |
-| ------ | -------------------------------- | ----------------------------------------------------------------------- |
-| GET    | `/api/users`                     | ユーザー一覧（`limit` / `offset` / `email` / `name` / `role` フィルタ） |
-| GET    | `/api/users/:id`                 | ユーザー詳細                                                            |
-| DELETE | `/api/users/:id`                 | ユーザー削除                                                            |
-| PATCH  | `/api/users/:id/role`            | ロール変更（自身不可、既存トークン即時失効）                            |
-| PATCH  | `/api/users/:id/ban`             | ユーザー BAN                                                            |
-| DELETE | `/api/users/:id/ban`             | BAN 解除                                                                |
-| GET    | `/api/users/:id/services`        | 認可済みサービス一覧                                                    |
-| GET    | `/api/users/:id/owned-services`  | 所有サービス一覧                                                        |
-| GET    | `/api/users/:id/providers`       | 連携プロバイダー一覧                                                    |
-| GET    | `/api/users/:id/login-history`   | ログイン履歴                                                            |
-| GET    | `/api/users/:id/login-stats`     | ログイン統計                                                            |
-| GET    | `/api/users/:id/login-trends`    | ログイントレンド                                                        |
-| GET    | `/api/users/:id/tokens`          | リフレッシュトークン一覧                                                |
-| DELETE | `/api/users/:id/tokens`          | 全トークン失効                                                          |
-| DELETE | `/api/users/:id/tokens/:tokenId` | 個別トークン失効                                                        |
-| GET    | `/api/users/:id/bff-sessions`    | BFF セッション一覧（`has_device_key` / `device_bound_at` 含む）         |
+| Method | Path                                     | 用途                                                                                                                                                    |
+| ------ | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/users`                             | ユーザー一覧（`limit` / `offset` / `email` / `name` / `role` フィルタ）                                                                                 |
+| GET    | `/api/users/:id`                         | ユーザー詳細                                                                                                                                            |
+| DELETE | `/api/users/:id`                         | ユーザー削除                                                                                                                                            |
+| PATCH  | `/api/users/:id/role`                    | ロール変更（自身不可、既存トークン即時失効）                                                                                                            |
+| PATCH  | `/api/users/:id/ban`                     | ユーザー BAN                                                                                                                                            |
+| DELETE | `/api/users/:id/ban`                     | BAN 解除                                                                                                                                                |
+| GET    | `/api/users/:id/services`                | 認可済みサービス一覧                                                                                                                                    |
+| GET    | `/api/users/:id/owned-services`          | 所有サービス一覧                                                                                                                                        |
+| GET    | `/api/users/:id/providers`               | 連携プロバイダー一覧                                                                                                                                    |
+| GET    | `/api/users/:id/login-history`           | ログイン履歴                                                                                                                                            |
+| GET    | `/api/users/:id/login-stats`             | ログイン統計                                                                                                                                            |
+| GET    | `/api/users/:id/login-trends`            | ログイントレンド                                                                                                                                        |
+| GET    | `/api/users/:id/tokens`                  | リフレッシュトークン一覧                                                                                                                                |
+| DELETE | `/api/users/:id/tokens`                  | 全トークン失効                                                                                                                                          |
+| DELETE | `/api/users/:id/tokens/:tokenId`         | 個別トークン失効                                                                                                                                        |
+| GET    | `/api/users/:id/bff-sessions`            | BFF セッション一覧（`has_device_key` / `device_bound_at` 含む）                                                                                         |
+| DELETE | `/api/users/:id/bff-sessions/:sessionId` | 単一 BFF セッション失効（管理者・`admin_audit_logs` に `user.bff_session_revoked` 記録・`bff_sessions.revoked_reason` は `admin_action:<adminUserId>`） |
+
+> **強制ログアウトの完全化**: `DELETE /api/users/:id/bff-sessions/:sessionId` は BFF Cookie 経路のみを停止する。攻撃者が並行して握っている `refresh_tokens`（30日有効）や連携サービスのトークンは残るため、ハイジャック疑い時は併せて `DELETE /api/users/:id/tokens` も実行すること。
 
 ## 4. サービス API（`/api/services/*`・管理者）
 

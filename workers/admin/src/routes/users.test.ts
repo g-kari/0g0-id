@@ -1087,6 +1087,75 @@ describe("admin BFF — /api/users", () => {
     });
   });
 
+  describe("DELETE /:id/bff-sessions/:sessionId — 単一 BFF セッション失効", () => {
+    const SESSION_ID = "00000000-0000-0000-0000-0000000000aa";
+
+    it("非UUID形式のユーザーIDで400を返す", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request(`/api/users/not-a-uuid/bff-sessions/${SESSION_ID}`, {
+        method: "DELETE",
+      });
+      expect(res.status).toBe(400);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("非UUID形式の sessionId で400を返す", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request(`/api/users/${USER_ID}/bff-sessions/not-a-uuid`, {
+        method: "DELETE",
+      });
+      expect(res.status).toBe(400);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("セッションなしで401を返す", async () => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+
+      const res = await app.request(`/api/users/${USER_ID}/bff-sessions/${SESSION_ID}`, {
+        method: "DELETE",
+      });
+      expect(res.status).toBe(401);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+
+    it("管理者セッションでIdPへDELETEを伝播し204を返す", async () => {
+      const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      const app = buildApp(idpFetch);
+
+      const res = await app.request(`/api/users/${USER_ID}/bff-sessions/${SESSION_ID}`, {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(204);
+
+      const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
+      expect(calledReq.method).toBe("DELETE");
+      expect(calledReq.url).toBe(
+        `https://id.0g0.xyz/api/users/${USER_ID}/bff-sessions/${SESSION_ID}`,
+      );
+      expect(calledReq.headers.get("Authorization")).toBe("Bearer mock-access-token");
+      expect(calledReq.headers.get("Origin")).toBe("https://id.0g0.xyz");
+    });
+
+    it("IdPが404を返した場合はそのまま伝播する", async () => {
+      const idpFetch = mockIdp(404, { error: { code: "NOT_FOUND" } });
+      const app = buildApp(idpFetch);
+
+      const res = await app.request(`/api/users/${USER_ID}/bff-sessions/${SESSION_ID}`, {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+
+      expect(res.status).toBe(404);
+    });
+  });
+
   describe("DELETE /:id/tokens — ユーザー全セッション無効化", () => {
     it("非UUID形式のIDで400を返す", async () => {
       const idpFetch = vi.fn();
