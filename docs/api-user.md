@@ -12,6 +12,7 @@
 - **CSRF 対策**: `/api/*` / `/auth/logout` / `/auth/link` に `bffCsrfMiddleware`（Origin/Referer 検証）。`/auth/dbsc/*` は Chrome 内部発のフローで Origin ヘッダが付かないため除外し、Cookie セッション + 自署 JWT (audience=SELF_ORIGIN) + bff_origin 一致確認の多層で防御。
 - **CORS**: `/api/*` は自身のオリジン (`user.0g0.xyz`) のみ許可
 - **DBSC（Phase 1-2）**: ログイン callback 応答に `Secure-Session-Registration: (ES256);path="/auth/dbsc/start"` を付与。Chrome は端末公開鍵で自署した登録 JWT を `/auth/dbsc/start` に送り、bff_sessions に紐付ける。Phase 2 は `/auth/dbsc/refresh` で challenge-response を実装（初回 403 + `Secure-Session-Challenge: "<nonce>"`、再送は `Sec-Session-Response` に proof JWT）。短寿命 Cookie 切替は Phase 3 で対応予定。
+- **DBSC 機密操作必須化（Phase 3 導入 — issue #155）**: `/api/me/*`・`/api/connections/*`・`/api/device/*`・`/api/providers/*`・`/auth/link` の破壊的メソッド（POST/PATCH/PUT/DELETE）に `requireDbscBoundSession` ミドルウェアを適用。デフォルトは warn-only（未バインドでも通過・ログのみ）で、環境変数 `DBSC_ENFORCE_SENSITIVE="true"` を設定した環境では `403 DBSC_BINDING_REQUIRED` + `Secure-Session-Registration` ヘッダで拒否する。IdP 応答異常時は fail-open（ユーザー操作の全停止を回避）。対象はプロフィール更新・アカウント削除・連携解除・SNS 追加連携・デバイス承認など、ハイジャック時に恒久的な乗っ取りや復旧経路封鎖につながる操作。
 - **レスポンス透過**: id Worker からのレスポンスは `proxyResponse()` / `proxyMutate()` でそのままクライアントに返す
 
 ## 認証フロー（`/auth/*`）
