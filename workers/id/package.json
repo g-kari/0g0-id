@@ -20,8 +20,8 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.32.2",
-    "@cloudflare/workers-types": "^4.20260415.1",
+    "@cloudflare/vite-plugin": "^1.32.3",
+    "@cloudflare/workers-types": "^4.20260416.2",
     "@types/node": "^22.10.0",
     "tsx": "^4.19.2",
     "typescript": "^6.0.2",
