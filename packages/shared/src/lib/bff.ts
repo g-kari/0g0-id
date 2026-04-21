@@ -455,6 +455,21 @@ export interface ExchangeResult {
  * BFFからIdPへ認可コードを交換する。
  * Service Bindingsを使用してIdPのexchangeエンドポイントを呼び出す。
  */
+function isExchangeResult(obj: unknown): obj is ExchangeResult {
+  if (typeof obj !== "object" || obj === null || Array.isArray(obj)) return false;
+  const r = obj as Record<string, unknown>;
+  if (typeof r["access_token"] !== "string" || !r["access_token"]) return false;
+  if (typeof r["refresh_token"] !== "string" || !r["refresh_token"]) return false;
+  if (r["session_id"] !== undefined && typeof r["session_id"] !== "string") return false;
+  if (typeof r["user"] !== "object" || r["user"] === null || Array.isArray(r["user"])) return false;
+  const u = r["user"] as Record<string, unknown>;
+  if (typeof u["id"] !== "string" || !u["id"]) return false;
+  if (typeof u["email"] !== "string" || !u["email"]) return false;
+  if (typeof u["name"] !== "string" || !u["name"]) return false;
+  if (u["role"] !== "user" && u["role"] !== "admin") return false;
+  return true;
+}
+
 export async function exchangeCodeAtIdp(
   env: BffEnv,
   code: string,
@@ -469,8 +484,13 @@ export async function exchangeCodeAtIdp(
   );
   logUpstreamDeprecation(res, { method: "POST", path: "/auth/exchange" });
   if (!res.ok) return { ok: false };
-  const body = await res.json<{ data: ExchangeResult }>();
-  return { ok: true, data: body.data };
+  const body: unknown = await res.json();
+  const data =
+    typeof body === "object" && body !== null && "data" in body
+      ? (body as Record<string, unknown>)["data"]
+      : undefined;
+  if (!isExchangeResult(data)) return { ok: false };
+  return { ok: true, data };
 }
 
 /**
