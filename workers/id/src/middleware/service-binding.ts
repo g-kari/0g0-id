@@ -6,7 +6,6 @@ import {
   classifyInternalSecret,
   getConfiguredInternalSecrets,
   INTERNAL_SECRET_HEADER,
-  isInternalSecretStrict,
 } from "../utils/internal-secret";
 
 const sbLogger = createLogger("service-binding");
@@ -18,7 +17,6 @@ const sbLogger = createLogger("service-binding");
  * 1. X-Internal-Secret ヘッダーが以下のいずれかと一致（BFF 呼び出し）:
  *    - INTERNAL_SERVICE_SECRET_USER（user BFF 専用）
  *    - INTERNAL_SERVICE_SECRET_ADMIN（admin BFF 専用）
- *    - INTERNAL_SERVICE_SECRET（共有シークレット・後方互換・deprecation 警告対象）
  * 2. Authorization: Basic ヘッダーのクライアント認証情報がDBと一致（外部OAuthクライアント）
  *
  * シークレットが1つも設定されていない場合:
@@ -26,9 +24,6 @@ const sbLogger = createLogger("service-binding");
  * - 開発環境: スキップ（グレースフルデグラデーション）
  *
  * BFF 毎に専用シークレットを分離することで、漏洩時の影響範囲を限定できる（issue #156）。
- *
- * 認証結果（成功 / mismatch / deprecated shared secret / 403）を構造化ログで記録し、
- * 移行中のドリフト検知と不正アクセス試行の観測を可能にする。
  */
 export const serviceBindingMiddleware = createMiddleware<{ Bindings: IdpEnv }>(async (c, next) => {
   const configuredSecrets = getConfiguredInternalSecrets(c.env);
@@ -46,7 +41,6 @@ export const serviceBindingMiddleware = createMiddleware<{ Bindings: IdpEnv }>(a
         403,
       );
     }
-    // 開発環境のみの graceful bypass。env 設定ミスで本番が http:// 起動した場合に気づけるよう警告も出す。
     sbLogger.warn(
       "service binding bypassed: no internal secrets configured (non-prod only — production requires INTERNAL_SERVICE_SECRET_USER/_ADMIN)",
       { method, path, idpOrigin: c.env.IDP_ORIGIN ?? null },
@@ -58,49 +52,8 @@ export const serviceBindingMiddleware = createMiddleware<{ Bindings: IdpEnv }>(a
   // 条件1: X-Internal-Secret ヘッダーによる BFF 検証
   const kind = classifyInternalSecret(c.env, c.req.raw);
   if (kind !== "none") {
-    if (kind === "shared" && isInternalSecretStrict(c.env)) {
-      // Phase 6 (issue #156): strict モードでは共有シークレットを拒否する。
-      // Phase 5 までの warn ログ / Response Deprecation ヘッダは移行中の観測用で、
-      // 個別シークレット（_USER/_ADMIN）への移行完了後に本モードへ切り替える。
-      // 拒否レスポンスにも RFC 9745 準拠の Deprecation/Link を付けて、呼び出し元が
-      // 原因を即座に特定できるようにする。
-      sbLogger.error(
-        "deprecated shared INTERNAL_SERVICE_SECRET rejected under INTERNAL_SECRET_STRICT (issue #156 Phase 6)",
-        { kind: "shared", method, path },
-      );
-      c.header("Deprecation", "true");
-      c.header("Link", '<https://github.com/g-kari/0g0-id/issues/156>; rel="deprecation"', {
-        append: true,
-      });
-      return c.json(
-        {
-          error: {
-            code: "DEPRECATED_INTERNAL_SECRET",
-            message:
-              "Shared INTERNAL_SERVICE_SECRET is deprecated; migrate to per-BFF INTERNAL_SERVICE_SECRET_USER/_ADMIN (issue #156).",
-          },
-        },
-        403,
-      );
-    }
     sbLogger.info("internal secret authenticated", { kind, method, path });
-    if (kind === "shared") {
-      // 共有シークレットでの通過は後方互換のため残しているが、個別シークレット移行を促すために警告。
-      sbLogger.warn(
-        "deprecated shared INTERNAL_SERVICE_SECRET を使用した内部認証。BFF 毎の個別シークレット（_USER/_ADMIN）に移行してください（issue #156）。",
-        { method, path },
-      );
-    }
     await next();
-    if (kind === "shared") {
-      // RFC 9745: `Deprecation` ヘッダでリソース／認証方式が非推奨であることを呼び出し元に通知。
-      // 構造化ログだけだと呼び出し元 BFF 側で気づきにくいため、Response ヘッダでも並行通知する（issue #156）。
-      // Cloudflare Workers では確定済み Response の headers は immutable なため、Hono の `c.header` を使う。
-      c.header("Deprecation", "true");
-      c.header("Link", '<https://github.com/g-kari/0g0-id/issues/156>; rel="deprecation"', {
-        append: true,
-      });
-    }
     return;
   }
 

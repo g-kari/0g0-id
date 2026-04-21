@@ -2,12 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 vi.mock("@0g0-id/shared", () => ({
   timingSafeEqual: vi.fn(),
-  // isInternalSecretStrict は parseStrictBoolEnv に委譲するため、本物の実装をそのまま公開する。
-  // 純粋関数で副作用ゼロのためモック不要。
-  parseStrictBoolEnv: (raw: string | undefined | null): boolean =>
-    String(raw ?? "")
-      .trim()
-      .toLowerCase() === "true",
 }));
 
 import { timingSafeEqual } from "@0g0-id/shared";
@@ -17,7 +11,6 @@ import {
   getConfiguredInternalSecrets,
   hasValidInternalSecret,
   INTERNAL_SECRET_HEADER,
-  isInternalSecretStrict,
 } from "./internal-secret";
 
 function envWith(overrides: Partial<IdpEnv>): IdpEnv {
@@ -31,17 +24,12 @@ function reqWith(headerValue?: string): Request {
 }
 
 describe("getConfiguredInternalSecrets", () => {
-  it("設定済みシークレットを USER → ADMIN → 共有 の順で返す", () => {
+  it("設定済みシークレットを USER → ADMIN の順で返す", () => {
     const env = envWith({
       INTERNAL_SERVICE_SECRET_USER: "user-secret",
       INTERNAL_SERVICE_SECRET_ADMIN: "admin-secret",
-      INTERNAL_SERVICE_SECRET: "shared-secret",
     });
-    expect(getConfiguredInternalSecrets(env)).toEqual([
-      "user-secret",
-      "admin-secret",
-      "shared-secret",
-    ]);
+    expect(getConfiguredInternalSecrets(env)).toEqual(["user-secret", "admin-secret"]);
   });
 
   it("未設定・空文字は除外される", () => {
@@ -63,7 +51,7 @@ describe("hasValidInternalSecret", () => {
   });
 
   it("ヘッダー未設定なら false（timingSafeEqual は呼ばれない）", () => {
-    const env = envWith({ INTERNAL_SERVICE_SECRET: "s" });
+    const env = envWith({ INTERNAL_SERVICE_SECRET_USER: "s" });
     expect(hasValidInternalSecret(env, reqWith())).toBe(false);
     expect(timingSafeEqual).not.toHaveBeenCalled();
   });
@@ -78,7 +66,6 @@ describe("hasValidInternalSecret", () => {
     const env = envWith({
       INTERNAL_SERVICE_SECRET_USER: "user-secret",
       INTERNAL_SERVICE_SECRET_ADMIN: "admin-secret",
-      INTERNAL_SERVICE_SECRET: "shared-secret",
     });
     expect(hasValidInternalSecret(env, reqWith("admin-secret"))).toBe(true);
     expect(timingSafeEqual).toHaveBeenCalledTimes(2);
@@ -89,10 +76,9 @@ describe("hasValidInternalSecret", () => {
     const env = envWith({
       INTERNAL_SERVICE_SECRET_USER: "user-secret",
       INTERNAL_SERVICE_SECRET_ADMIN: "admin-secret",
-      INTERNAL_SERVICE_SECRET: "shared-secret",
     });
     expect(hasValidInternalSecret(env, reqWith("wrong"))).toBe(false);
-    expect(timingSafeEqual).toHaveBeenCalledTimes(3);
+    expect(timingSafeEqual).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -102,7 +88,7 @@ describe("classifyInternalSecret", () => {
   });
 
   it("ヘッダー未設定なら 'none' を返す（timingSafeEqual は呼ばれない）", () => {
-    const env = envWith({ INTERNAL_SERVICE_SECRET: "s" });
+    const env = envWith({ INTERNAL_SERVICE_SECRET_USER: "s" });
     expect(classifyInternalSecret(env, reqWith())).toBe("none");
     expect(timingSafeEqual).not.toHaveBeenCalled();
   });
@@ -117,7 +103,6 @@ describe("classifyInternalSecret", () => {
     const env = envWith({
       INTERNAL_SERVICE_SECRET_USER: "user-secret",
       INTERNAL_SERVICE_SECRET_ADMIN: "admin-secret",
-      INTERNAL_SERVICE_SECRET: "shared-secret",
     });
     expect(classifyInternalSecret(env, reqWith("user-secret"))).toBe("user");
     expect(timingSafeEqual).toHaveBeenCalledTimes(1);
@@ -128,24 +113,9 @@ describe("classifyInternalSecret", () => {
     const env = envWith({
       INTERNAL_SERVICE_SECRET_USER: "user-secret",
       INTERNAL_SERVICE_SECRET_ADMIN: "admin-secret",
-      INTERNAL_SERVICE_SECRET: "shared-secret",
     });
     expect(classifyInternalSecret(env, reqWith("admin-secret"))).toBe("admin");
     expect(timingSafeEqual).toHaveBeenCalledTimes(2);
-  });
-
-  it("共有シークレットに一致すれば 'shared' を返す（USER・ADMIN を先に照合してから）", () => {
-    vi.mocked(timingSafeEqual)
-      .mockReturnValueOnce(false)
-      .mockReturnValueOnce(false)
-      .mockReturnValueOnce(true);
-    const env = envWith({
-      INTERNAL_SERVICE_SECRET_USER: "user-secret",
-      INTERNAL_SERVICE_SECRET_ADMIN: "admin-secret",
-      INTERNAL_SERVICE_SECRET: "shared-secret",
-    });
-    expect(classifyInternalSecret(env, reqWith("shared-secret"))).toBe("shared");
-    expect(timingSafeEqual).toHaveBeenCalledTimes(3);
   });
 
   it("空文字シークレットはスキップされる（timingSafeEqual は呼ばれない）", () => {
@@ -163,43 +133,8 @@ describe("classifyInternalSecret", () => {
     const env = envWith({
       INTERNAL_SERVICE_SECRET_USER: "user-secret",
       INTERNAL_SERVICE_SECRET_ADMIN: "admin-secret",
-      INTERNAL_SERVICE_SECRET: "shared-secret",
     });
     expect(classifyInternalSecret(env, reqWith("wrong"))).toBe("none");
-    expect(timingSafeEqual).toHaveBeenCalledTimes(3);
-  });
-});
-
-describe("isInternalSecretStrict", () => {
-  it("未設定なら false", () => {
-    expect(isInternalSecretStrict(envWith({}))).toBe(false);
-  });
-
-  it("'true' なら true", () => {
-    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "true" }))).toBe(true);
-  });
-
-  it("大文字・前後空白混入でも true（secrets-store UI のコピペ耐性）", () => {
-    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "TRUE" }))).toBe(true);
-    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "True" }))).toBe(true);
-    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "  true  " }))).toBe(true);
-    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "\ttrue\n" }))).toBe(true);
-  });
-
-  it("'1' / 'yes' / 'on' / 'enable' は false（明示的に 'true' 文字列のみ受理）", () => {
-    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "1" }))).toBe(false);
-    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "yes" }))).toBe(false);
-    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "on" }))).toBe(false);
-    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "enable" }))).toBe(false);
-  });
-
-  it("空文字は false", () => {
-    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "" }))).toBe(false);
-  });
-
-  it("false 相当の値（'false' / 'no' / '0'）は false", () => {
-    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "false" }))).toBe(false);
-    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "no" }))).toBe(false);
-    expect(isInternalSecretStrict(envWith({ INTERNAL_SECRET_STRICT: "0" }))).toBe(false);
+    expect(timingSafeEqual).toHaveBeenCalledTimes(2);
   });
 });

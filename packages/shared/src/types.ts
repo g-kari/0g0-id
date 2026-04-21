@@ -145,22 +145,10 @@ export interface IdpEnv {
   RATE_LIMITER_DEVICE_VERIFY?: RateLimitBinding;
   /** /api/token POST 向けレートリミッター（client_id単位、未取得時はIP） */
   RATE_LIMITER_TOKEN_CLIENT?: RateLimitBinding;
-  /**
-   * BFF→IdP 間の内部シークレット（後方互換フォールバック）。
-   * BFF 毎の個別シークレット（INTERNAL_SERVICE_SECRET_USER / _ADMIN）が優先される。issue #156。
-   */
-  INTERNAL_SERVICE_SECRET?: string;
-  /** user BFF 専用の内部シークレット。未設定時は INTERNAL_SERVICE_SECRET にフォールバック。 */
+  /** user BFF 専用の内部シークレット。 */
   INTERNAL_SERVICE_SECRET_USER?: string;
-  /** admin BFF 専用の内部シークレット。未設定時は INTERNAL_SERVICE_SECRET にフォールバック。 */
+  /** admin BFF 専用の内部シークレット。 */
   INTERNAL_SERVICE_SECRET_ADMIN?: string;
-  /**
-   * 共有 INTERNAL_SERVICE_SECRET の strict モード（issue #156 Phase 6）。
-   * `"true"`（trim + case-insensitive）を設定すると、共有シークレットでの通過を
-   * `403 DEPRECATED_INTERNAL_SECRET` で拒否する。未設定・その他値では従来通り warn-only。
-   * 個別 INTERNAL_SERVICE_SECRET_USER/_ADMIN・Basic 認証には影響しない。
-   */
-  INTERNAL_SECRET_STRICT?: string;
 }
 
 export interface BffEnv {
@@ -170,16 +158,8 @@ export interface BffEnv {
   SELF_ORIGIN: string;
   /** BFFセッションCookieのAES-GCM暗号化キー */
   SESSION_SECRET: string;
-  /**
-   * 共有シークレット（後方互換フォールバック）。
-   * 個別 BFF で INTERNAL_SERVICE_SECRET_SELF が設定されていればそちらを優先する。
-   */
-  INTERNAL_SERVICE_SECRET?: string;
-  /**
-   * この BFF 専用の内部シークレット（推奨）。
-   * 設定されていれば INTERNAL_SERVICE_SECRET より優先される。BFF 毎の独立ローテーションを可能にする（issue #156）。
-   */
-  INTERNAL_SERVICE_SECRET_SELF?: string;
+  /** この BFF 専用の内部シークレット。BFF 毎の独立ローテーションを可能にする（issue #156）。 */
+  INTERNAL_SERVICE_SECRET_SELF: string;
   /**
    * DBSC 機密操作必須化モード（Phase 3・issue #155）。
    * `"true"` を設定すると、破壊的操作（POST/PATCH/PUT/DELETE）は DBSC で端末バインド済み

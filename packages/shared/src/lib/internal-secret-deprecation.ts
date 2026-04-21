@@ -1,12 +1,9 @@
 /**
  * id worker が RFC 9745 `Deprecation` / `Link; rel="deprecation"` ヘッダで
- * 返してくる非推奨通知を BFF 側でも観測するためのユーティリティ（issue #156）。
+ * 返してくる非推奨通知を BFF 側でも観測するための汎用ユーティリティ（issue #156）。
  *
- * 現状、id worker の serviceBindingMiddleware は、共有 `INTERNAL_SERVICE_SECRET`
- * 通過時に Response へ `Deprecation: true` と Link ヘッダを付与する。
- * BFF 側で本ヘルパを呼び出すことで、呼び出し元 BFF のログでも非推奨設定
- * （`INTERNAL_SERVICE_SECRET_SELF` 未設定）を検知できるようにし、移行計画時の
- * 棚卸し精度を上げる。
+ * Response に `Deprecation` ヘッダが含まれていれば warn ログを出力する。
+ * ヘッダがなければ即座に return する（no-op）。
  */
 import { createLogger, type Logger } from "./logger";
 

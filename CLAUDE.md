@@ -68,9 +68,7 @@ npm run deploy:mcp
 
 `deploy:user` / `deploy:admin` は `wrangler deploy` の前に `scripts/preflight-deploy.ts` を走らせ、`DBSC_ENFORCE_SENSITIVE` secret の登録有無を確認する。ローカル運用では warn のみで続行（fail-open）するが、**CI 経由のデプロイを追加する際は該当 job の `env:` に `PREFLIGHT_STRICT: "1"` を固定設定する**ことを推奨（issue #155 Phase 3 — secret 登録漏れの本番反映を防ぐ運用ゲート）。詳細は `docs/api-user.md` / `docs/api-admin.md` の「デプロイ運用」セクションを参照。
 
-`deploy:id` の内部シークレット撤廃ゲート（issue #156 Phase 6）: id worker の secret `INTERNAL_SECRET_STRICT="true"` を設定すると、共有 `INTERNAL_SERVICE_SECRET` 経路を `403 DEPRECATED_INTERNAL_SECRET` で拒否する。未設定・その他値では従来通り warn-only。個別 `INTERNAL_SERVICE_SECRET_USER` / `_ADMIN` と Basic 認証は無影響。Phase 5 までの観測ログで残存呼び出し元を 0 にしてから strict 化する運用。詳細は `docs/api-id.md` の運用メモを参照。
-
-`deploy:id` も `wrangler deploy` 前に `workers/id/scripts/preflight-deploy.ts` を走らせ、`INTERNAL_SECRET_STRICT` secret の登録有無を確認する（issue #156 Phase 7 — strict 化したつもりの設定漏れ検知）。さらに同スクリプトは `INTERNAL_SERVICE_SECRET_USER` / `INTERNAL_SERVICE_SECRET_ADMIN` の登録有無も確認する（issue #156 Phase 8 — strict モードで片方の BFF が 403 全壊する事故を事前検知）。ローカル運用では warn のみで続行（fail-open）、**CI 経由のデプロイを追加する際は該当 job の `env:` に `PREFLIGHT_STRICT: "1"` を固定設定する**ことを推奨。BFF 側の `DBSC_ENFORCE_SENSITIVE` プリフライトと同じ共通コア（`packages/shared/src/lib/preflight-core.ts`）を使用。secret 値は `"true"`・CI env は `"1"` の組み合わせで受理値が**逆向き**なので混同注意。詳細は `docs/api-id.md` の「デプロイ運用」セクションを参照。
+`deploy:id` も `wrangler deploy` 前に `workers/id/scripts/preflight-deploy.ts` を走らせ、`INTERNAL_SERVICE_SECRET_USER` / `INTERNAL_SERVICE_SECRET_ADMIN` の登録有無を確認する（issue #156 — 片方の BFF が 403 全壊する事故を事前検知）。ローカル運用では warn のみで続行（fail-open）、**CI 経由のデプロイを追加する際は該当 job の `env:` に `PREFLIGHT_STRICT: "1"` を固定設定する**ことを推奨。BFF 側の `DBSC_ENFORCE_SENSITIVE` プリフライトと同じ共通コア（`packages/shared/src/lib/preflight-core.ts`）を使用。詳細は `docs/api-id.md` の「デプロイ運用」セクションを参照。
 
 ### ⚠️ id worker の静的アセット生成
 

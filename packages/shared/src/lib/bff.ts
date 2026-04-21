@@ -169,19 +169,14 @@ function safePathForLog(url: string): string {
 }
 
 /**
- * BFF→IdP間のService Bindings呼び出しに付与する内部認証ヘッダーを返す。
+ * BFF→IdP間の内部認証ヘッダーを返す。
  *
- * 優先順位（issue #156）:
- * 1. INTERNAL_SERVICE_SECRET_SELF（この BFF 専用シークレット）
- * 2. INTERNAL_SERVICE_SECRET（共有シークレット・後方互換フォールバック）
- * 3. 両方未設定なら空オブジェクト
- *
- * BFF 毎に専用シークレットを持たせることで、漏洩時の影響範囲を当該 BFF に限定できる。
+ * `INTERNAL_SERVICE_SECRET_SELF` が設定されていれば `X-Internal-Secret` ヘッダーを付与する。
+ * BFF 毎に専用シークレットを持たせることで、漏洩時の影響範囲を当該 BFF に限定できる（issue #156）。
  */
 export function internalServiceHeaders(env: BffEnv): Record<string, string> {
-  const secret = env.INTERNAL_SERVICE_SECRET_SELF ?? env.INTERNAL_SERVICE_SECRET;
-  if (secret) {
-    return { "X-Internal-Secret": secret };
+  if (env.INTERNAL_SERVICE_SECRET_SELF) {
+    return { "X-Internal-Secret": env.INTERNAL_SERVICE_SECRET_SELF };
   }
   return {};
 }

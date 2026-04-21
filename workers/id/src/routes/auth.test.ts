@@ -171,7 +171,7 @@ const mockEnv = createMockIdpEnv({
   GITHUB_CLIENT_SECRET: "github-client-secret",
   X_CLIENT_ID: "x-client-id",
   X_CLIENT_SECRET: "x-client-secret",
-  INTERNAL_SERVICE_SECRET: "mock-internal-secret",
+  INTERNAL_SERVICE_SECRET_USER: "mock-internal-secret",
 });
 
 const mockUser = {
@@ -1133,8 +1133,8 @@ describe("POST /auth/logout", () => {
     expect(vi.mocked(addRevokedAccessToken)).not.toHaveBeenCalled();
   });
 
-  it("INTERNAL_SERVICE_SECRET設定時にヘッダーなし → 403を返す", async () => {
-    const envWithSecret = { ...mockEnv, INTERNAL_SERVICE_SECRET: "test-secret" };
+  it("INTERNAL_SERVICE_SECRET_USER設定時にヘッダーなし → 403を返す", async () => {
+    const envWithSecret = { ...mockEnv, INTERNAL_SERVICE_SECRET_USER: "test-secret" };
     const securedApp = new Hono<{ Bindings: typeof mockEnv }>();
     securedApp.route("/auth", authRoutes);
     const res = await securedApp.request(
