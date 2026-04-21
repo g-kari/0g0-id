@@ -94,6 +94,7 @@ import Admin from '../../layouts/Admin.astro';
 
 <script>
   import { apiFetch, formatDate } from '../../lib/api';
+  import { escapeHtml } from '../../lib/helpers';
   import { showToast } from '../../lib/toast';
   import type { ServiceSummary } from '@0g0-id/api-types';
 
@@ -175,11 +176,11 @@ import Admin from '../../layouts/Admin.astro';
         scopesEl.innerHTML = currentScopes
           .map(
             (s) =>
-              `<span style="display:inline-block; background:var(--color-surface); padding:2px 8px; border-radius:4px; font-size:0.8rem; margin:2px 4px 2px 0;">${s}</span>`,
+              `<span style="display:inline-block; background:var(--color-surface); padding:2px 8px; border-radius:4px; font-size:0.8rem; margin:2px 4px 2px 0;">${escapeHtml(s)}</span>`,
           )
           .join('');
       } else {
-        scopesEl.innerHTML = `<code style="font-size:0.8rem;">${service.allowed_scopes}</code>`;
+        scopesEl.innerHTML = `<code style="font-size:0.8rem;">${escapeHtml(service.allowed_scopes)}</code>`;
       }
     }
     renderScopes();
@@ -190,8 +191,8 @@ import Admin from '../../layouts/Admin.astro';
       scopeCheckboxes.innerHTML = ALL_SCOPES.map(
         (s) =>
           `<label style="display:flex; align-items:center; gap:6px; font-size:0.85rem;">
-            <input type="checkbox" value="${s}" ${currentScopes.includes(s) ? 'checked' : ''} />
-            ${s}
+            <input type="checkbox" value="${escapeHtml(s)}" ${currentScopes.includes(s) ? 'checked' : ''} />
+            ${escapeHtml(s)}
           </label>`,
       ).join('');
     });
