@@ -131,6 +131,7 @@ import Admin from '../../layouts/Admin.astro';
 
 <script>
   import { apiFetch, formatDatetime } from '../../lib/api';
+  import { escapeHtml } from '../../lib/helpers';
 
   interface DailyLoginStat { date: string; count: number; }
   interface SuspiciousLogin { user_id: string; country_count: number; countries: string; }
@@ -142,15 +143,6 @@ import Admin from '../../layouts/Admin.astro';
   function showError(msg: string): void {
     errorEl.textContent = msg;
     errorEl.style.display = '';
-  }
-
-  function escapeHtml(s: string): string {
-    return s
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
   }
 
   // 日別ログイン推移 — 簡易SVGラインチャート

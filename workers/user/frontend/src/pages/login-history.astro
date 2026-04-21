@@ -46,6 +46,7 @@ import Base from '../layouts/Base.astro';
 
 <script>
   import { apiFetch, formatDatetime } from '../lib/api';
+  import { escapeHtml, truncate } from '../lib/helpers';
   import type { LoginEvent } from '@0g0-id/api-types';
 
   const loadingEl = document.getElementById('loading')!;
@@ -59,20 +60,6 @@ import Base from '../layouts/Base.astro';
   const PAGE_SIZE = 50;
   let currentOffset = 0;
   let accumulated: LoginEvent[] = [];
-
-  function escapeHtml(s: string): string {
-    return s
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
-  function truncate(s: string, max: number): string {
-    if (s.length <= max) return s;
-    return s.slice(0, max) + '…';
-  }
 
   function renderList() {
     listEl.innerHTML = accumulated
