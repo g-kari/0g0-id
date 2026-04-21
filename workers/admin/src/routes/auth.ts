@@ -1,12 +1,12 @@
-import { createBffAuthRoutes, revokeTokenAtIdp, createLogger } from "@0g0-id/shared";
+import { createBffAuthRoutes, revokeTokenAtIdp, createLogger, COOKIE_NAMES } from "@0g0-id/shared";
 
 const adminAuthLogger = createLogger("admin-auth");
 
-const SESSION_COOKIE = "__Host-admin-session";
+const SESSION_COOKIE = COOKIE_NAMES.ADMIN_SESSION;
 
 const app = createBffAuthRoutes({
   sessionCookieName: SESSION_COOKIE,
-  stateCookieName: "__Host-admin-oauth-state",
+  stateCookieName: COOKIE_NAMES.ADMIN_STATE,
   loggerName: "admin-auth",
   successRedirect: "/dashboard",
   // Chrome 等の DBSC 対応ブラウザに端末バインド登録フローを開始させる
@@ -26,4 +26,3 @@ const app = createBffAuthRoutes({
 });
 
 export default app;
-export { SESSION_COOKIE };

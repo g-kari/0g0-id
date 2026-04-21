@@ -15,10 +15,10 @@ import {
   parseSession,
   validateBffEnv,
   requireDbscBoundSession,
+  COOKIE_NAMES,
 } from "@0g0-id/shared";
 import authRoutes from "./routes/auth";
 import dbscRoutes from "./routes/dbsc";
-import { SESSION_COOKIE } from "./routes/auth";
 import servicesRoutes from "./routes/services";
 import usersRoutes from "./routes/users";
 import metricsRoutes from "./routes/metrics";
@@ -57,13 +57,18 @@ app.use("/auth/logout", bffCsrfMiddleware);
 // 管理者ロール検証ミドルウェア（多層防御）
 // IdP側でroleがadminから降格されたセッションを早期拒否する
 app.use("/api/*", async (c, next) => {
-  const cookie = getCookie(c, SESSION_COOKIE);
+  const cookie = getCookie(c, COOKIE_NAMES.ADMIN_SESSION);
   const session = await parseSession(cookie, c.env.SESSION_SECRET);
   if (!session) {
     return c.json({ error: { code: "UNAUTHORIZED", message: "Unauthorized" } }, 401);
   }
   if (session.user.role !== "admin") {
-    deleteCookie(c, SESSION_COOKIE, { path: "/", secure: true, httpOnly: true, sameSite: "Lax" });
+    deleteCookie(c, COOKIE_NAMES.ADMIN_SESSION, {
+      path: "/",
+      secure: true,
+      httpOnly: true,
+      sameSite: "Lax",
+    });
     return c.json({ error: { code: "FORBIDDEN", message: "Forbidden" } }, 403);
   }
   await next();
@@ -75,7 +80,7 @@ app.use("/api/*", async (c, next) => {
 // `DBSC_ENFORCE_SENSITIVE="true"` を設定した環境のみ 403 で拒否する。
 // services/users の全破壊的操作に適用することで、管理画面側の機密度を底上げする。
 const dbscRequire = requireDbscBoundSession({
-  sessionCookieName: SESSION_COOKIE,
+  sessionCookieName: COOKIE_NAMES.ADMIN_SESSION,
   loggerName: "admin-dbsc-enforce",
   enforce: "env",
   registrationPath: "/auth/dbsc/start",

@@ -30,6 +30,7 @@ export * from "./lib/redirect-uri";
 export * from "./lib/oidc-metadata";
 export * from "./lib/validation";
 export * from "./lib/cookie";
+export * from "./lib/cookie-names";
 export * from "./lib/errors";
 export * from "./lib/dbsc";
 export * from "./lib/env-flags";

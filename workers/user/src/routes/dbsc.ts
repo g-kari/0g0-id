@@ -1,12 +1,11 @@
-import { createBffDbscRoutes } from "@0g0-id/shared";
-import { SESSION_COOKIE } from "./auth";
+import { createBffDbscRoutes, COOKIE_NAMES } from "@0g0-id/shared";
 
 // user BFF の DBSC ルート。実装は packages/shared の共通 factory に集約されている。
 // 差分（Cookie 名・logger 名）のみを config で注入する。
 const app = createBffDbscRoutes({
-  sessionCookieName: SESSION_COOKIE,
+  sessionCookieName: COOKIE_NAMES.USER_SESSION,
   loggerName: "user-dbsc",
-  credentialsCookieName: "__Host-user-session",
+  credentialsCookieName: COOKIE_NAMES.USER_SESSION,
 });
 
 export default app;

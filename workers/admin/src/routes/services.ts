@@ -7,9 +7,9 @@ import {
   proxyResponse,
   UUID_RE,
   uuidParamMiddleware,
+  COOKIE_NAMES,
 } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
-import { SESSION_COOKIE } from "./auth";
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
@@ -33,7 +33,7 @@ app.get("/", async (c) => {
   if (offsetRaw !== undefined) url.searchParams.set("offset", String(pagination.offset));
   const name = c.req.query("name");
   if (name) url.searchParams.set("name", name);
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
   return proxyResponse(res);
 });
 
@@ -41,7 +41,7 @@ app.get("/", async (c) => {
 app.get("/:id", async (c) => {
   const res = await fetchWithAuth(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}`,
   );
   return proxyResponse(res);
@@ -49,14 +49,19 @@ app.get("/:id", async (c) => {
 
 // POST /api/services
 app.post("/", async (c) => {
-  return fetchWithJsonBody(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/services`, "POST");
+  return fetchWithJsonBody(
+    c,
+    COOKIE_NAMES.ADMIN_SESSION,
+    `${c.env.IDP_ORIGIN}/api/services`,
+    "POST",
+  );
 });
 
 // PATCH /api/services/:id — allowed_scopesの更新
 app.patch("/:id", async (c) => {
   return fetchWithJsonBody(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}`,
     "PATCH",
   );
@@ -64,14 +69,18 @@ app.patch("/:id", async (c) => {
 
 // DELETE /api/services/:id
 app.delete("/:id", async (c) => {
-  return proxyMutate(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}`);
+  return proxyMutate(
+    c,
+    COOKIE_NAMES.ADMIN_SESSION,
+    `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}`,
+  );
 });
 
 // POST /api/services/:id/rotate-secret — client_secretの再発行
 app.post("/:id/rotate-secret", async (c) => {
   return proxyMutate(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}/rotate-secret`,
     "POST",
   );
@@ -81,7 +90,7 @@ app.post("/:id/rotate-secret", async (c) => {
 app.get("/:id/redirect-uris", async (c) => {
   const res = await fetchWithAuth(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}/redirect-uris`,
   );
   return proxyResponse(res);
@@ -91,7 +100,7 @@ app.get("/:id/redirect-uris", async (c) => {
 app.post("/:id/redirect-uris", async (c) => {
   return fetchWithJsonBody(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}/redirect-uris`,
     "POST",
   );
@@ -109,7 +118,7 @@ app.get("/:id/users", async (c) => {
   const url = new URL(`${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}/users`);
   url.searchParams.set("limit", String(pagination.limit));
   url.searchParams.set("offset", String(pagination.offset));
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
   return proxyResponse(res);
 });
 
@@ -121,7 +130,7 @@ app.delete("/:id/users/:userId", async (c) => {
   }
   return proxyMutate(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}/users/${userId}`,
   );
 });
@@ -130,7 +139,7 @@ app.delete("/:id/users/:userId", async (c) => {
 app.patch("/:id/owner", async (c) => {
   return fetchWithJsonBody(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}/owner`,
     "PATCH",
   );
@@ -144,7 +153,7 @@ app.delete("/:id/redirect-uris/:uriId", async (c) => {
   }
   return proxyMutate(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}/redirect-uris/${uriId}`,
   );
 });

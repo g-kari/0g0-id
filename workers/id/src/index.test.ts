@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 vi.mock("@0g0-id/shared", () => ({
+  COOKIE_NAMES: {
+    IDP_STATE: "__Host-oauth-state",
+    IDP_PKCE: "__Host-oauth-pkce",
+    ADMIN_SESSION: "__Host-admin-session",
+    ADMIN_STATE: "__Host-admin-oauth-state",
+    USER_SESSION: "__Host-user-session",
+    USER_STATE: "__Host-user-oauth-state",
+  },
   createLogger: vi.fn().mockReturnValue({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
   logger: () => async (_c: unknown, next: () => Promise<void>) => next(),
   securityHeaders: () => async (_c: unknown, next: () => Promise<void>) => next(),

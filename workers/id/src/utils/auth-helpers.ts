@@ -1,6 +1,6 @@
 import { type Context } from "hono";
 import { setCookie } from "hono/cookie";
-import { verifyCookie, linkProvider } from "@0g0-id/shared";
+import { verifyCookie, linkProvider, COOKIE_NAMES } from "@0g0-id/shared";
 import type { IdpEnv, TokenPayload, User, OAuthStateCookieData } from "@0g0-id/shared";
 import type { OAuthProvider } from "@0g0-id/shared";
 import { parse as parseDomain } from "tldts";
@@ -28,8 +28,8 @@ export const OAUTH_ERROR_MAP: Record<string, string> = {
 };
 
 // state/PKCE保存用Cookie名
-export const STATE_COOKIE = "__Host-oauth-state";
-export const PKCE_COOKIE = "__Host-oauth-pkce";
+export const STATE_COOKIE = COOKIE_NAMES.IDP_STATE;
+export const PKCE_COOKIE = COOKIE_NAMES.IDP_PKCE;
 
 /**
  * EXTRA_BFF_ORIGINS（カンマ区切り文字列）をパースし、

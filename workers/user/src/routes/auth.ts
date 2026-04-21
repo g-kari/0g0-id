@@ -11,16 +11,14 @@ import {
   logUpstreamDeprecation,
 } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
+import { COOKIE_NAMES } from "@0g0-id/shared";
 
 const userAuthLogger = createLogger("user-auth");
 
-const SESSION_COOKIE = "__Host-user-session";
-const STATE_COOKIE = "__Host-user-oauth-state";
-
 // 共通認証ルート（login / callback / logout）
 const authRoutes = createBffAuthRoutes({
-  sessionCookieName: SESSION_COOKIE,
-  stateCookieName: STATE_COOKIE,
+  sessionCookieName: COOKIE_NAMES.USER_SESSION,
+  stateCookieName: COOKIE_NAMES.USER_STATE,
   loggerName: "user-auth",
   successRedirect: "/profile",
   // Chrome 等の DBSC 対応ブラウザに端末バインド登録フローを開始させる
@@ -50,7 +48,7 @@ app.post("/link", async (c) => {
   }
 
   // ログイン済みセッションからアクセストークンを取得
-  const session = await parseSession(getCookie(c, SESSION_COOKIE), c.env.SESSION_SECRET);
+  const session = await parseSession(getCookie(c, COOKIE_NAMES.USER_SESSION), c.env.SESSION_SECRET);
   if (!session) {
     return c.redirect("/?error=not_authenticated");
   }
@@ -82,7 +80,7 @@ app.post("/link", async (c) => {
   const state = generateToken(16);
   const callbackUrl = `${c.env.SELF_ORIGIN}/auth/callback`;
 
-  setOAuthStateCookie(c, STATE_COOKIE, state);
+  setOAuthStateCookie(c, COOKIE_NAMES.USER_STATE, state);
 
   const loginUrl = new URL(`${c.env.IDP_ORIGIN}/auth/login`);
   loginUrl.searchParams.set("redirect_to", callbackUrl);
@@ -94,4 +92,3 @@ app.post("/link", async (c) => {
 });
 
 export default app;
-export { SESSION_COOKIE };

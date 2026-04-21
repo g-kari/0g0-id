@@ -19,6 +19,7 @@ import {
   getBffSessionDbscStats,
   parseDays,
   restErrorBody,
+  REST_ERROR_CODES,
 } from "@0g0-id/shared";
 import type { IdpEnv, TokenPayload, AdminMetrics } from "@0g0-id/shared";
 import { authMiddleware } from "../middleware/auth";
@@ -166,14 +167,20 @@ app.get("/ip-stats", authMiddleware, adminMiddleware, async (c) => {
   const daysStr = c.req.query("days");
   if (daysStr !== undefined && !/^\d+$/.test(daysStr)) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "days must be an integer between 1 and 365"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "days must be an integer between 1 and 365",
+      ),
       400,
     );
   }
   const daysNum = daysStr !== undefined ? parseInt(daysStr, 10) : 7;
   if (daysNum < 1 || daysNum > 365) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "days must be an integer between 1 and 365"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "days must be an integer between 1 and 365",
+      ),
       400,
     );
   }
@@ -181,14 +188,20 @@ app.get("/ip-stats", authMiddleware, adminMiddleware, async (c) => {
   const limitStr = c.req.query("limit");
   if (limitStr !== undefined && !/^\d+$/.test(limitStr)) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "limit must be an integer between 1 and 100",
+      ),
       400,
     );
   }
   const limitNum = limitStr !== undefined ? parseInt(limitStr, 10) : 20;
   if (limitNum < 1 || limitNum > 100) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "limit must be an integer between 1 and 100",
+      ),
       400,
     );
   }
@@ -207,14 +220,20 @@ app.get("/user-agent-stats", authMiddleware, adminMiddleware, async (c) => {
   const daysStr = c.req.query("days");
   if (daysStr !== undefined && !/^\d+$/.test(daysStr)) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "days must be an integer between 1 and 365"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "days must be an integer between 1 and 365",
+      ),
       400,
     );
   }
   const daysNum = daysStr !== undefined ? parseInt(daysStr, 10) : 7;
   if (daysNum < 1 || daysNum > 365) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "days must be an integer between 1 and 365"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "days must be an integer between 1 and 365",
+      ),
       400,
     );
   }
@@ -222,14 +241,20 @@ app.get("/user-agent-stats", authMiddleware, adminMiddleware, async (c) => {
   const limitStr = c.req.query("limit");
   if (limitStr !== undefined && !/^\d+$/.test(limitStr)) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "limit must be an integer between 1 and 100",
+      ),
       400,
     );
   }
   const limitNum = limitStr !== undefined ? parseInt(limitStr, 10) : 20;
   if (limitNum < 1 || limitNum > 100) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "limit must be an integer between 1 and 100",
+      ),
       400,
     );
   }
@@ -248,25 +273,37 @@ app.get("/recent-events", authMiddleware, adminMiddleware, async (c) => {
   const limitStr = c.req.query("limit");
   if (limitStr !== undefined && !/^\d+$/.test(limitStr)) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "limit must be an integer between 1 and 100",
+      ),
       400,
     );
   }
   const limitNum = limitStr !== undefined ? parseInt(limitStr, 10) : 50;
   if (limitNum < 1 || limitNum > 100) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "limit must be an integer between 1 and 100",
+      ),
       400,
     );
   }
 
   const offsetStr = c.req.query("offset");
   if (offsetStr !== undefined && !/^\d+$/.test(offsetStr)) {
-    return c.json(restErrorBody("INVALID_PARAMETER", "offset must be a non-negative integer"), 400);
+    return c.json(
+      restErrorBody(REST_ERROR_CODES.INVALID_PARAMETER, "offset must be a non-negative integer"),
+      400,
+    );
   }
   const offsetNum = offsetStr !== undefined ? parseInt(offsetStr, 10) : 0;
   if (offsetNum < 0) {
-    return c.json(restErrorBody("INVALID_PARAMETER", "offset must be a non-negative integer"), 400);
+    return c.json(
+      restErrorBody(REST_ERROR_CODES.INVALID_PARAMETER, "offset must be a non-negative integer"),
+      400,
+    );
   }
 
   try {

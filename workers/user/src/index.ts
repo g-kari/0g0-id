@@ -14,7 +14,8 @@ import {
   validateBffEnv,
   requireDbscBoundSession,
 } from "@0g0-id/shared";
-import authRoutes, { SESSION_COOKIE } from "./routes/auth";
+import { COOKIE_NAMES } from "@0g0-id/shared";
+import authRoutes from "./routes/auth";
 import dbscRoutes from "./routes/dbsc";
 import oauthRoutes from "./routes/oauth";
 import profileRoutes from "./routes/profile";
@@ -65,7 +66,7 @@ app.use("/auth/link", bffCsrfMiddleware);
 // /api/providers /api/login-history /api/me/security /api/me/bff-sessions /api/me/sessions 末尾GET
 // など読み取り系は SAFE_METHODS で常時スキップされるため、適用範囲を絞る必要はない。
 const dbscRequire = requireDbscBoundSession({
-  sessionCookieName: SESSION_COOKIE,
+  sessionCookieName: COOKIE_NAMES.USER_SESSION,
   loggerName: "user-dbsc-enforce",
   enforce: "env",
   registrationPath: "/auth/dbsc/start",
