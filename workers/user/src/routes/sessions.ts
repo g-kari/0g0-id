@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import {
   fetchWithAuth,
+  proxyGet,
   proxyMutate,
   proxyResponse,
   parseSession,
@@ -14,14 +15,10 @@ import type { BffEnv } from "@0g0-id/shared";
 const app = new Hono<{ Bindings: BffEnv }>();
 
 // GET /api/me/sessions — アクティブセッション一覧
-app.get("/", async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    COOKIE_NAMES.USER_SESSION,
-    `${c.env.IDP_ORIGIN}/api/users/me/tokens`,
-  );
-  return proxyResponse(res);
-});
+app.get(
+  "/",
+  proxyGet(COOKIE_NAMES.USER_SESSION, (c) => `${c.env.IDP_ORIGIN}/api/users/me/tokens`),
+);
 
 // DELETE /api/me/sessions/others — 現在のセッション以外の全セッションを終了
 app.delete("/others", async (c) => {

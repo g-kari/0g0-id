@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import {
   listAdminAuditLogs,
   getAuditLogStats,
-  parsePagination,
+  requirePagination,
   parseDays,
   restErrorBody,
   UUID_RE,
@@ -33,13 +33,8 @@ app.get("/stats", authMiddleware, adminMiddleware, async (c) => {
 
 // GET /api/admin/audit-logs — 管理者操作の監査ログ一覧（管理者のみ）
 app.get("/", authMiddleware, adminMiddleware, async (c) => {
-  const pagination = parsePagination(
-    { limit: c.req.query("limit"), offset: c.req.query("offset") },
-    { defaultLimit: 50, maxLimit: 100 },
-  );
-  if ("error" in pagination) {
-    return c.json({ error: pagination.error }, 400);
-  }
+  const pagination = requirePagination(c, { defaultLimit: 50, maxLimit: 100 });
+  if (pagination instanceof Response) return pagination;
   const { limit, offset } = pagination;
 
   const adminUserId = c.req.query("admin_user_id");

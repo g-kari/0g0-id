@@ -5,8 +5,9 @@ import {
   fetchWithJsonBody,
   isValidProvider,
   parseDays,
-  parsePagination,
+  proxyGet,
   proxyResponse,
+  requirePagination,
   REST_ERROR_CODES,
 } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
@@ -15,20 +16,15 @@ import { COOKIE_NAMES } from "@0g0-id/shared";
 const app = new Hono<{ Bindings: BffEnv }>();
 
 // GET /api/me
-app.get("/", async (c) => {
-  const res = await fetchWithAuth(c, COOKIE_NAMES.USER_SESSION, `${c.env.IDP_ORIGIN}/api/users/me`);
-  return proxyResponse(res);
-});
+app.get(
+  "/",
+  proxyGet(COOKIE_NAMES.USER_SESSION, (c) => `${c.env.IDP_ORIGIN}/api/users/me`),
+);
 
 // GET /api/me/login-history
 app.get("/login-history", async (c) => {
-  const pagination = parsePagination(
-    { limit: c.req.query("limit"), offset: c.req.query("offset") },
-    { defaultLimit: 20, maxLimit: 100 },
-  );
-  if ("error" in pagination) {
-    return c.json({ error: pagination.error }, 400);
-  }
+  const pagination = requirePagination(c, { defaultLimit: 20, maxLimit: 100 });
+  if (pagination instanceof Response) return pagination;
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/me/login-history`);
   url.searchParams.set("limit", String(pagination.limit));
   url.searchParams.set("offset", String(pagination.offset));
@@ -61,24 +57,16 @@ app.get("/login-stats", async (c) => {
 });
 
 // GET /api/me/data-export — アカウントデータ一括エクスポート
-app.get("/data-export", async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    COOKIE_NAMES.USER_SESSION,
-    `${c.env.IDP_ORIGIN}/api/users/me/data-export`,
-  );
-  return proxyResponse(res);
-});
+app.get(
+  "/data-export",
+  proxyGet(COOKIE_NAMES.USER_SESSION, (c) => `${c.env.IDP_ORIGIN}/api/users/me/data-export`),
+);
 
 // GET /api/me/security-summary — セキュリティ概要（セッション数・連携サービス数・リンク済みプロバイダー等）
-app.get("/security-summary", async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    COOKIE_NAMES.USER_SESSION,
-    `${c.env.IDP_ORIGIN}/api/users/me/security-summary`,
-  );
-  return proxyResponse(res);
-});
+app.get(
+  "/security-summary",
+  proxyGet(COOKIE_NAMES.USER_SESSION, (c) => `${c.env.IDP_ORIGIN}/api/users/me/security-summary`),
+);
 
 // PATCH /api/me
 app.patch("/", async (c) => {

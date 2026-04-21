@@ -4,9 +4,10 @@ import {
   fetchWithJsonBody,
   isValidProvider,
   parseDays,
-  parsePagination,
+  proxyGet,
   proxyMutate,
   proxyResponse,
+  requirePagination,
   REST_ERROR_CODES,
   UUID_RE,
   uuidParamMiddleware,
@@ -22,13 +23,8 @@ app.use("/:id/*", uuidParamMiddleware("id", { label: "user ID" }));
 
 // GET /api/users
 app.get("/", async (c) => {
-  const pagination = parsePagination(
-    { limit: c.req.query("limit"), offset: c.req.query("offset") },
-    { defaultLimit: 50, maxLimit: 100 },
-  );
-  if ("error" in pagination) {
-    return c.json({ error: pagination.error }, 400);
-  }
+  const pagination = requirePagination(c, { defaultLimit: 50, maxLimit: 100 });
+  if (pagination instanceof Response) return pagination;
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users`);
   url.searchParams.set("limit", String(pagination.limit));
   url.searchParams.set("offset", String(pagination.offset));
@@ -46,54 +42,42 @@ app.get("/", async (c) => {
 });
 
 // GET /api/users/:id
-app.get("/:id", async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    COOKIE_NAMES.ADMIN_SESSION,
-    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}`,
-  );
-  return proxyResponse(res);
-});
+app.get(
+  "/:id",
+  proxyGet(COOKIE_NAMES.ADMIN_SESSION, (c) => `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}`),
+);
 
 // GET /api/users/:id/owned-services — ユーザーが所有するサービス一覧
-app.get("/:id/owned-services", async (c) => {
-  const res = await fetchWithAuth(
-    c,
+app.get(
+  "/:id/owned-services",
+  proxyGet(
     COOKIE_NAMES.ADMIN_SESSION,
-    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/owned-services`,
-  );
-  return proxyResponse(res);
-});
+    (c) => `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/owned-services`,
+  ),
+);
 
 // GET /api/users/:id/services — ユーザーが認可しているサービス一覧
-app.get("/:id/services", async (c) => {
-  const res = await fetchWithAuth(
-    c,
+app.get(
+  "/:id/services",
+  proxyGet(
     COOKIE_NAMES.ADMIN_SESSION,
-    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/services`,
-  );
-  return proxyResponse(res);
-});
+    (c) => `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/services`,
+  ),
+);
 
 // GET /api/users/:id/providers — ユーザーのSNSプロバイダー連携状態
-app.get("/:id/providers", async (c) => {
-  const res = await fetchWithAuth(
-    c,
+app.get(
+  "/:id/providers",
+  proxyGet(
     COOKIE_NAMES.ADMIN_SESSION,
-    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/providers`,
-  );
-  return proxyResponse(res);
-});
+    (c) => `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/providers`,
+  ),
+);
 
 // GET /api/users/:id/login-history
 app.get("/:id/login-history", async (c) => {
-  const pagination = parsePagination(
-    { limit: c.req.query("limit"), offset: c.req.query("offset") },
-    { defaultLimit: 20, maxLimit: 100 },
-  );
-  if ("error" in pagination) {
-    return c.json({ error: pagination.error }, 400);
-  }
+  const pagination = requirePagination(c, { defaultLimit: 20, maxLimit: 100 });
+  if (pagination instanceof Response) return pagination;
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/login-history`);
   url.searchParams.set("limit", String(pagination.limit));
   url.searchParams.set("offset", String(pagination.offset));
@@ -143,24 +127,22 @@ app.get("/:id/login-trends", async (c) => {
 });
 
 // GET /api/users/:id/tokens — ユーザーのアクティブセッション一覧
-app.get("/:id/tokens", async (c) => {
-  const res = await fetchWithAuth(
-    c,
+app.get(
+  "/:id/tokens",
+  proxyGet(
     COOKIE_NAMES.ADMIN_SESSION,
-    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/tokens`,
-  );
-  return proxyResponse(res);
-});
+    (c) => `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/tokens`,
+  ),
+);
 
 // GET /api/users/:id/bff-sessions — ユーザーの BFF セッション一覧（DBSC バインド状態含む）
-app.get("/:id/bff-sessions", async (c) => {
-  const res = await fetchWithAuth(
-    c,
+app.get(
+  "/:id/bff-sessions",
+  proxyGet(
     COOKIE_NAMES.ADMIN_SESSION,
-    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/bff-sessions`,
-  );
-  return proxyResponse(res);
-});
+    (c) => `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/bff-sessions`,
+  ),
+);
 
 // DELETE /api/users/:id/bff-sessions/:sessionId — 単一の BFF セッションを失効（管理者強制ログアウト）
 app.delete("/:id/bff-sessions/:sessionId", async (c) => {

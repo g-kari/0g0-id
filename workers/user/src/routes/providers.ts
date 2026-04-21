@@ -1,24 +1,14 @@
 import { Hono } from "hono";
-import {
-  fetchWithAuth,
-  proxyMutate,
-  proxyResponse,
-  isValidProvider,
-  COOKIE_NAMES,
-} from "@0g0-id/shared";
+import { proxyGet, proxyMutate, isValidProvider, COOKIE_NAMES } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
 // GET /api/providers — 連携済みSNSプロバイダー一覧
-app.get("/", async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    COOKIE_NAMES.USER_SESSION,
-    `${c.env.IDP_ORIGIN}/api/users/me/providers`,
-  );
-  return proxyResponse(res);
-});
+app.get(
+  "/",
+  proxyGet(COOKIE_NAMES.USER_SESSION, (c) => `${c.env.IDP_ORIGIN}/api/users/me/providers`),
+);
 
 // DELETE /api/providers/:provider — SNSプロバイダー連携解除
 app.delete("/:provider", async (c) => {

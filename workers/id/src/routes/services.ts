@@ -22,7 +22,7 @@ import {
   countUsersAuthorizedForService,
   revokeUserServiceTokens,
   revokeAllServiceTokens,
-  parsePagination,
+  requirePagination,
   UUID_RE,
   uuidParamMiddleware,
   createLogger,
@@ -99,13 +99,8 @@ app.use("/:id/*", uuidParamMiddleware("id", { label: "service ID" }));
 // GET /api/services
 app.get("/", authMiddleware, adminMiddleware, async (c) => {
   const name = c.req.query("name");
-  const pagination = parsePagination(
-    { limit: c.req.query("limit"), offset: c.req.query("offset") },
-    { defaultLimit: 50, maxLimit: 100 },
-  );
-  if ("error" in pagination) {
-    return c.json({ error: pagination.error }, 400);
-  }
+  const pagination = requirePagination(c, { defaultLimit: 50, maxLimit: 100 });
+  if (pagination instanceof Response) return pagination;
   const { limit, offset } = pagination;
 
   let services: Service[];
@@ -471,13 +466,8 @@ app.patch("/:id/owner", authMiddleware, adminMiddleware, csrfMiddleware, async (
 // GET /api/services/:id/users — サービスを認可済みのユーザー一覧（管理者のみ）
 app.get("/:id/users", authMiddleware, adminMiddleware, async (c) => {
   const serviceId = c.req.param("id");
-  const pagination = parsePagination(
-    { limit: c.req.query("limit"), offset: c.req.query("offset") },
-    { defaultLimit: 50, maxLimit: 100 },
-  );
-  if ("error" in pagination) {
-    return c.json({ error: pagination.error }, 400);
-  }
+  const pagination = requirePagination(c, { defaultLimit: 50, maxLimit: 100 });
+  if (pagination instanceof Response) return pagination;
   const { limit, offset } = pagination;
 
   let service: Service | null;

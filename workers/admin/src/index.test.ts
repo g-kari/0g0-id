@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
+const { mockFetchWithAuth, mockProxyResponse } = vi.hoisted(() => ({
+  mockFetchWithAuth: vi.fn(),
+  mockProxyResponse: vi.fn(),
+}));
+
 vi.mock("@0g0-id/shared", async (importOriginal) => ({
   ...(await importOriginal()),
   logger: () => async (_c: unknown, next: () => Promise<void>) => next(),
@@ -7,8 +12,12 @@ vi.mock("@0g0-id/shared", async (importOriginal) => ({
   bodyLimitMiddleware: () => async (_c: unknown, next: () => Promise<void>) => next(),
   bffCorsMiddleware: async (_c: unknown, next: () => Promise<void>) => next(),
   bffCsrfMiddleware: async (_c: unknown, next: () => Promise<void>) => next(),
-  fetchWithAuth: vi.fn(),
-  proxyResponse: vi.fn(),
+  fetchWithAuth: mockFetchWithAuth,
+  proxyResponse: mockProxyResponse,
+  proxyGet: (cookieName: string, buildUrl: (c: any) => string) => async (c: any) => {
+    const res = await mockFetchWithAuth(c, cookieName, buildUrl(c));
+    return mockProxyResponse(res);
+  },
   parseSession: vi.fn().mockResolvedValue({
     session_id: "00000000-0000-0000-0000-000000000000",
     access_token: "mock-access-token",

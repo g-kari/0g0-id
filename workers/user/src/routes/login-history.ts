@@ -2,8 +2,8 @@ import { Hono } from "hono";
 import {
   fetchWithAuth,
   isValidProvider,
-  parsePagination,
   proxyResponse,
+  requirePagination,
   COOKIE_NAMES,
 } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
@@ -12,18 +12,12 @@ const app = new Hono<{ Bindings: BffEnv }>();
 
 // GET /api/login-history
 app.get("/", async (c) => {
-  const limitRaw = c.req.query("limit");
-  const offsetRaw = c.req.query("offset");
-  const pagination = parsePagination(
-    { limit: limitRaw, offset: offsetRaw },
-    { defaultLimit: 20, maxLimit: 100 },
-  );
-  if ("error" in pagination) {
-    return c.json({ error: pagination.error }, 400);
-  }
+  const pagination = requirePagination(c, { defaultLimit: 20, maxLimit: 100 });
+  if (pagination instanceof Response) return pagination;
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/me/login-history`);
-  if (limitRaw !== undefined) url.searchParams.set("limit", String(pagination.limit));
-  if (offsetRaw !== undefined) url.searchParams.set("offset", String(pagination.offset));
+  if (c.req.query("limit") !== undefined) url.searchParams.set("limit", String(pagination.limit));
+  if (c.req.query("offset") !== undefined)
+    url.searchParams.set("offset", String(pagination.offset));
   const provider = c.req.query("provider");
   if (provider) {
     if (!isValidProvider(provider)) {
