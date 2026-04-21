@@ -27,6 +27,7 @@ import Base from '../layouts/Base.astro';
 
 <script>
   import { apiFetch, formatDate } from '../lib/api';
+  import { escapeHtml } from '../lib/helpers';
   import { showToast } from '../lib/toast';
   import type { UserConnection } from '@0g0-id/api-types';
 
@@ -56,10 +57,10 @@ import Base from '../layouts/Base.astro';
     listEl.innerHTML = connections.map(c => `
       <div class="flex items-center justify-between py-3.5 border-b last:border-b-0" style="border-color: var(--color-border)">
         <div class="flex-1 min-w-0">
-          <div class="font-semibold text-sm truncate">${c.service_name}</div>
+          <div class="font-semibold text-sm truncate">${escapeHtml(c.service_name)}</div>
           <div class="text-xs mt-0.5" style="color: var(--color-muted)">連携日: ${formatDate(c.first_authorized_at)}</div>
         </div>
-        <button class="btn btn-danger btn-sm ml-3" data-disconnect="${c.service_id}" data-name="${c.service_name}">解除</button>
+        <button class="btn btn-danger btn-sm ml-3" data-disconnect="${escapeHtml(c.service_id)}" data-name="${escapeHtml(c.service_name)}">解除</button>
       </div>
     `).join('');
     listEl.style.display = '';
