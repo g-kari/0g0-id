@@ -11,41 +11,24 @@
 
 ## 認証方式
 
-| 方式             | ヘッダー                                                 | 用途                                                                                                                                   |
-| ---------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `BearerAuth`     | `Authorization: Bearer <JWT>`                            | アクセストークン（ES256 JWT、有効期限 15 分）                                                                                          |
-| `BasicAuth`      | `Authorization: Basic <Base64(client_id:client_secret)>` | サービス間 API（External・トークン系）。DB `services` テーブルで照合                                                                   |
-| `InternalSecret` | `X-Internal-Secret: <secret>`                            | BFF ↔ id Worker 内部呼び出し。Service Bindings 経路が基本だが HTTPS 経路でも受理される。BFF 毎の個別シークレット対応済み（issue #156） |
+| 方式             | ヘッダー                                                 | 用途                                                                                                                    |
+| ---------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `BearerAuth`     | `Authorization: Bearer <JWT>`                            | アクセストークン（ES256 JWT、有効期限 15 分）                                                                           |
+| `BasicAuth`      | `Authorization: Basic <Base64(client_id:client_secret)>` | サービス間 API（External・トークン系）。DB `services` テーブルで照合                                                    |
+| `InternalSecret` | `X-Internal-Secret: <secret>`                            | BFF ↔ id Worker 内部呼び出し。BFF 毎の個別シークレット（`INTERNAL_SERVICE_SECRET_USER` / `_ADMIN`）で認証（issue #156） |
 
 > 注: 表中で「InternalSecret」または「BasicAuth」の一方のみを示すエンドポイントでも、`serviceBindingMiddleware` で保護されるパス（`/auth/exchange`・`/auth/refresh`・`/auth/logout`・`/auth/dbsc/*`）は実際には **`X-Internal-Secret` OR `Authorization: Basic`** のいずれかで通過する。`InternalSecret` は BFF 内部通信の一次手段、`BasicAuth` は外部 OAuth クライアント用のフォールバック。
 
 > 運用メモ（observability・issue #156）: `serviceBindingMiddleware` は認証結果を構造化ログ（ctx=`service-binding`）で出力する:
 >
-> - 成功: `internal secret authenticated` / `service client authenticated`（`kind` = `user` / `admin` / `shared`、および `serviceId`）
-> - 旧来の共有 `INTERNAL_SERVICE_SECRET` で通過した場合のみ `warn` で deprecation 警告を出力。ログを監視して残存呼び出し元を特定したうえで BFF 毎の `INTERNAL_SERVICE_SECRET_USER` / `_ADMIN` に移行し、最終的に共有シークレットを撤去する。
-> - 共有シークレット通過時は Response ヘッダにも `Deprecation: true` と `Link: <https://github.com/g-kari/0g0-id/issues/156>; rel="deprecation"` を付与（RFC 9745）。呼び出し元 BFF 側の fetch レスポンスから直接検知できるため、構造化ログに加えた二重の観測手段となる。
-> - 呼び出し元 BFF（`@0g0-id/shared` の `fetchWithAuth` / `exchangeCodeAtIdp` / `revokeTokenAtIdp` / `bff-dbsc-factory` / `require-dbsc-bound` および `workers/user` の `/auth/link`・`/api/device/*`）は受信 Response の `Deprecation` ヘッダを `logUpstreamDeprecation` で検知し、BFF ログ（ctx=`bff-upstream-deprecation`、または DBSC 系は各呼び出し元の loggerName）へ `upstream deprecation notice from id worker` を `warn` で出力する。id worker 側の `service-binding` ログだけでは「どの BFF が落ちているか」を集約判断しづらいため、BFF 側ログからも自 BFF が共有シークレット経路に落ちていることを即座に特定できる（issue #156 Phase 5）。
+> - 成功: `internal secret authenticated`（`kind` = `user` / `admin`）・`service client authenticated`（`serviceId`）
 > - 拒否: `internal secret mismatch`（ヘッダーあり＆不一致）・`service binding access denied`（最終 403）・`service client authentication error`（DB 例外）。不正アクセス試行の観測に使える。
-
-> 共有シークレット撤廃ゲート（issue #156 Phase 6）: id worker の secret `INTERNAL_SECRET_STRICT` を `"true"`（trim + case-insensitive）に設定すると、共有 `INTERNAL_SERVICE_SECRET` による通過を `403 DEPRECATED_INTERNAL_SECRET` で拒否する。個別 `INTERNAL_SERVICE_SECRET_USER` / `_ADMIN` と `Authorization: Basic` 経路は無影響。strict 拒否時のログは `rejected under INTERNAL_SECRET_STRICT (issue #156 Phase 6)` を `error` レベル（`kind=shared`）で出力し、Response には `Deprecation: true` / `Link rel="deprecation"` を添えて呼び出し元に原因を即座に通知する。Phase 5 までの観測ログで残存呼び出し元を 0 に減らしたうえで strict 化する運用。受理値は意図的に `"true"` のみに絞り（`isDbscEnforceValue` と同じ規則・`parseStrictBoolEnv` を単一ソースとして共有）、`"1"` / `"yes"` 等での誤設定で本番が意図せず拒否モードに入らないようにしている。
->
-> ロールバック・観測注意:
->
-> - strict 切替前後で BFF 側の `upstream deprecation notice from id worker` warn は**どちらのモードでも出続ける**（warn-only 時は status=200 の 200 OK レスポンスに Deprecation ヘッダが付く・strict 時は status=403 の拒否レスポンスに付く）。「BFF の warn が止まったか」で切替成功を判断せず、必ず HTTP status で評価する。status 区別が必要なら各 BFF の upstream エラーハンドラ（4xx カウンタ）を併用する。
-> - ロールバックは `wrangler secret delete INTERNAL_SECRET_STRICT`。未設定に戻せば即座に warn-only モード（共有シークレット経路も 200 通過）に復帰する。
->
-> ```bash
-> # 撤去直前の確認運用（任意）
-> wrangler secret put INTERNAL_SECRET_STRICT   # 値は "true"
-> # その後、deprecation ログ / 403 DEPRECATED_INTERNAL_SECRET が 0 件のまま推移するか観測
-> # 問題があれば `wrangler secret delete INTERNAL_SECRET_STRICT` で即座に warn-only に戻せる
-> ```
 
 ## デプロイ運用
 
-### プリフライトモード選択（issue #156 Phase 7）
+### BFF シークレットのプリフライト（issue #156）
 
-`npm run deploy:id` は `wrangler d1 migrations apply` / `vp build` / `build:assets` / `wrangler deploy` の前段に `scripts/preflight-deploy.ts` を走らせ、`INTERNAL_SECRET_STRICT` secret の登録有無を確認する。「strict 化したつもりで secret 登録漏れで warn-only のまま本番が走る」事故（Phase 6 の裏返し）を検知するためのゲート。
+`npm run deploy:id` は `wrangler deploy` の前段に `scripts/preflight-deploy.ts` を走らせ、`INTERNAL_SERVICE_SECRET_USER` / `INTERNAL_SERVICE_SECRET_ADMIN` の登録有無を確認する。片方でも未登録だと該当 BFF の全 `/auth/*` 呼び出しが 403 で落ちる。
 
 | シナリオ                    | 必要な env                              | 挙動                                                 |
 | --------------------------- | --------------------------------------- | ---------------------------------------------------- |
@@ -54,35 +37,7 @@
 | 緊急回避                    | `SKIP_PREFLIGHT=1`                      | wrangler CLI を呼ばずに即 exit 0                     |
 | wrangler 未認証・オフライン | なし                                    | fail-open（wrangler 本体の失敗で別途検出される前提） |
 
-混同注意: runtime 側の `INTERNAL_SECRET_STRICT` は `"true"` のみ受理（`parseStrictBoolEnv` / `isInternalSecretStrict` と単一ソース）で、一方 preflight の `PREFLIGHT_STRICT` は `"1"` のみ受理。値は**逆向き**の仕様になっているので、secret 値は `"true"`・CI env は `"1"` で覚えること。`PREFLIGHT_STRICT="true"` のような誤設定は `strict mode was NOT applied` 警告で検知される（`"1"` 以外の非空値で独立 warn 発火）。
-
-値そのものは wrangler 側で隠蔽されるため値検査はせず、「名前が登録されているか」だけを確認する。運用側では `wrangler secret put INTERNAL_SECRET_STRICT` に `"true"` を入れれば strict（共有 `INTERNAL_SERVICE_SECRET` 経路を 403 拒否）、他の非空値を入れれば明示的に warn-only とドキュメントした状態でデプロイされる。DBSC の `workers/{user,admin}/scripts/preflight-deploy.ts`（issue #155 Phase 3）と同パターン・同じ `PreflightRunner` インターフェースを使用しており、共通コアは `packages/shared/src/lib/preflight-core.ts` にある。
-
-### 個別 BFF シークレットのプリフライト（issue #156 Phase 8）
-
-Phase 7 の `INTERNAL_SECRET_STRICT` チェックに加えて、`scripts/preflight-deploy.ts` は `INTERNAL_SERVICE_SECRET_USER` / `INTERNAL_SERVICE_SECRET_ADMIN` の登録有無も確認する。strict モード下では共有 `INTERNAL_SERVICE_SECRET` 経路が `403 DEPRECATED_INTERNAL_SECRET` で拒否されるため、**個別シークレットが片方でも未登録だと、該当 BFF からの全 `/auth/*` 呼び出しが 403 で落ちる**（Phase 6 と strict secret 登録を両方完了したあとに、個別シークレット登録を忘れていた場合の本番事故）。
-
-| 状態                                          | 出力                                                                                                                           | exit | 動作                 |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---- | -------------------- |
-| 両方登録済み                                  | `[preflight:id] Individual BFF secrets (...) are both configured.`                                                             | 0    | 続行                 |
-| 片方のみ or 両方未登録（デフォルト）          | `[preflight:id] Individual BFF secrets NOT fully configured. Missing: ...`                                                     | 0    | 続行（警告）         |
-| 片方のみ or 両方未登録 + `PREFLIGHT_STRICT=1` | 上記 warn + `[preflight:id] PREFLIGHT_STRICT=1: aborting deploy because individual BFF secrets are incomplete (missing: ...).` | 1    | 中断                 |
-| `SKIP_PREFLIGHT=1`                            | `[preflight:id] SKIP_PREFLIGHT=1 — skipping individual BFF secrets check`                                                      | 0    | 続行（チェック省略） |
-| wrangler 実行失敗                             | `wrangler secret list failed ... Skipping individual BFF secrets check.`                                                       | 0    | 続行（fail-open）    |
-
-2 つのチェック（Phase 7 + Phase 8）は独立。片方が strict abort を要求しても、もう片方の warn/error メッセージも必ず出力してから exit するため、オペレータは「どの secret が原因か」を一度の実行ログで切り分けできる。受理値規則（`PREFLIGHT_STRICT="1"` のみ・`SKIP_PREFLIGHT=1` 優先）は Phase 7 と完全に同じ。
-
-推奨デプロイシーケンス:
-
-1. Phase 1-5 の観測ログで残存 `kind="shared"` 呼び出し元を 0 件に減らす
-2. `wrangler secret put INTERNAL_SERVICE_SECRET_USER` / `_ADMIN` を両方登録（値は各 BFF の `wrangler.toml` で指定した BFF 内部シークレットと一致させる）
-3. `wrangler secret put INTERNAL_SECRET_STRICT`（値 `"true"`）
-4. CI から `PREFLIGHT_STRICT: "1"` を env で固定した上で `npm run deploy:id`
-
-このシーケンスが崩れた場合の preflight 応答:
-
-- ステップ 2 抜け (Phase 8 未整備で strict 化した): 両 BFF が 403 で壊滅 → Phase 8 preflight が両方の secret を `Missing:` として列挙し、strict 時は exit 1 で本番反映を止める
-- ステップ 3 抜け (strict 未登録のまま): 共有シークレット経路が 200 通過し続ける（挙動は Phase 6 前と同じ） → Phase 7 preflight が `NOT configured` で検知
+共通コアは `packages/shared/src/lib/preflight-core.ts` にある��DBSC の `workers/{user,admin}/scripts/preflight-deploy.ts`（issue #155 Phase 3）と同パターン・同じ `PreflightRunner` インターフェースを使用。
 
 - JWT 署名鍵: ES256（P-256 EC）／`jose` + WebCrypto
 - アクセストークン: 15 分、リフレッシュトークン: 30 日（ローテーション＋再使用検出）

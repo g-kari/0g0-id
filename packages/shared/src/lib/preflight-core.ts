@@ -1,9 +1,9 @@
 /**
  * デプロイ前の wrangler secret 登録チェック用の汎用コア。
  *
- * worker ごとの個別プリフライト（例: `bff-preflight.ts` の `DBSC_ENFORCE_SENSITIVE`、
- * `id-preflight.ts` の `INTERNAL_SECRET_STRICT`）は、secret 名と人間可読メッセージのみ
- * が異なり、入力パース・strict/skip/fail-open 判定・ログ出力フローは完全に共通。
+ * worker ごとの個別プリフライト（例: `bff-preflight.ts` の `DBSC_ENFORCE_SENSITIVE`）は、
+ * secret 名と人間可読メッセージのみが異なり、入力パース・strict/skip/fail-open 判定・
+ * ログ出力フローは完全に共通。
  * 本モジュールはその共通部を純粋関数 + runner DI として提供し、各プリフライトは
  * 薄いラッパに集約できるようにする。
  */

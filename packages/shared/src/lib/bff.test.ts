@@ -436,40 +436,21 @@ describe("setSessionCookie", () => {
 });
 
 describe("internalServiceHeaders", () => {
-  it("INTERNAL_SERVICE_SECRETが設定されている場合はX-Internal-Secretヘッダーを返す", () => {
+  it("INTERNAL_SERVICE_SECRET_SELFが設定されている場合はX-Internal-Secretヘッダーを返す", () => {
     const env = {
       IDP_ORIGIN: "https://id.0g0.xyz",
-      INTERNAL_SERVICE_SECRET: "my-internal-secret",
+      INTERNAL_SERVICE_SECRET_SELF: "my-internal-secret",
     } as unknown as Parameters<typeof internalServiceHeaders>[0];
     const headers = internalServiceHeaders(env);
     expect(headers).toEqual({ "X-Internal-Secret": "my-internal-secret" });
   });
 
-  it("INTERNAL_SERVICE_SECRETが未設定の場合は空オブジェクトを返す", () => {
+  it("INTERNAL_SERVICE_SECRET_SELFが未設定の場合は空オブジェクトを返す", () => {
     const env = {
       IDP_ORIGIN: "https://id.0g0.xyz",
     } as unknown as Parameters<typeof internalServiceHeaders>[0];
     const headers = internalServiceHeaders(env);
     expect(headers).toEqual({});
-  });
-
-  it("INTERNAL_SERVICE_SECRET_SELFが設定されている場合はそちらを優先する（issue #156）", () => {
-    const env = {
-      IDP_ORIGIN: "https://id.0g0.xyz",
-      INTERNAL_SERVICE_SECRET: "shared-fallback",
-      INTERNAL_SERVICE_SECRET_SELF: "bff-specific",
-    } as unknown as Parameters<typeof internalServiceHeaders>[0];
-    const headers = internalServiceHeaders(env);
-    expect(headers).toEqual({ "X-Internal-Secret": "bff-specific" });
-  });
-
-  it("INTERNAL_SERVICE_SECRET_SELFのみ設定されていればそれを返す", () => {
-    const env = {
-      IDP_ORIGIN: "https://id.0g0.xyz",
-      INTERNAL_SERVICE_SECRET_SELF: "bff-only",
-    } as unknown as Parameters<typeof internalServiceHeaders>[0];
-    const headers = internalServiceHeaders(env);
-    expect(headers).toEqual({ "X-Internal-Secret": "bff-only" });
   });
 });
 
@@ -584,7 +565,7 @@ describe("exchangeCodeAtIdp", () => {
     const env = {
       IDP: { fetch: idpFetch },
       IDP_ORIGIN: "https://id.0g0.xyz",
-      INTERNAL_SERVICE_SECRET: "secret-123",
+      INTERNAL_SERVICE_SECRET_SELF: "secret-123",
     } as unknown as Parameters<typeof exchangeCodeAtIdp>[0];
 
     await exchangeCodeAtIdp(env, "code", "https://user.0g0.xyz/cb");
@@ -650,7 +631,7 @@ describe("revokeTokenAtIdp", () => {
     const env = {
       IDP: { fetch: idpFetch },
       IDP_ORIGIN: "https://id.0g0.xyz",
-      INTERNAL_SERVICE_SECRET: "my-secret",
+      INTERNAL_SERVICE_SECRET_SELF: "my-secret",
     } as unknown as Parameters<typeof revokeTokenAtIdp>[0];
 
     await revokeTokenAtIdp(env, "refresh-token-xyz");

@@ -13,7 +13,7 @@ interface TestEnv {
   IDP_ORIGIN: string;
   SESSION_SECRET: string;
   SELF_ORIGIN: string;
-  INTERNAL_SERVICE_SECRET?: string;
+  INTERNAL_SERVICE_SECRET_SELF?: string;
 }
 
 function buildApp(idpFetch: (req: Request) => Promise<Response> = vi.fn(), env?: Partial<TestEnv>) {
@@ -87,7 +87,7 @@ describe("user /auth/dbsc/start", () => {
         headers: { "Content-Type": "application/json" },
       }),
     );
-    const app = buildApp(idpFetch, { INTERNAL_SERVICE_SECRET: "shared-secret" });
+    const app = buildApp(idpFetch, { INTERNAL_SERVICE_SECRET_SELF: "shared-secret" });
     const cookie = await makeSessionCookie();
     const jwt = await makeRegistrationJwt(baseUrl);
 
@@ -187,7 +187,7 @@ describe("user /auth/dbsc/refresh", () => {
         headers: { "Content-Type": "application/json" },
       }),
     );
-    const app = buildApp(idpFetch, { INTERNAL_SERVICE_SECRET: "shared-secret" });
+    const app = buildApp(idpFetch, { INTERNAL_SERVICE_SECRET_SELF: "shared-secret" });
     const cookie = await makeSessionCookie();
 
     const res = await app.request("/auth/dbsc/refresh", {
@@ -241,7 +241,7 @@ describe("user /auth/dbsc/refresh", () => {
         headers: { "Content-Type": "application/json" },
       }),
     );
-    const app = buildApp(idpFetch, { INTERNAL_SERVICE_SECRET: "shared-secret" });
+    const app = buildApp(idpFetch, { INTERNAL_SERVICE_SECRET_SELF: "shared-secret" });
     const cookie = await makeSessionCookie();
     const { privateKey } = await makeBoundKeys();
     const proofJwt = await signProofJwt(privateKey, baseUrl, "nonce-xyz");
