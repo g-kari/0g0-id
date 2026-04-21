@@ -51,6 +51,7 @@ import Base from '../layouts/Base.astro';
 <script>
   import { apiFetch, formatDatetime } from '../lib/api';
   import { showToast } from '../lib/toast';
+  import { escapeHtml, formatUnixSec } from '../lib/helpers';
   import type { ActiveSession, ActiveBffSessionSummary } from '@0g0-id/api-types';
 
   const loadingEl = document.getElementById('loading')!;
@@ -64,20 +65,6 @@ import Base from '../layouts/Base.astro';
   const bffErrorEl = document.getElementById('bff-error')!;
   const bffEmptyEl = document.getElementById('bff-empty')!;
   const bffListEl = document.getElementById('bff-list')!;
-
-  function escapeHtml(s: string): string {
-    return s.replace(/[&<>"']/g, (ch) => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;',
-    } as Record<string, string>)[ch]!);
-  }
-
-  function formatUnixSec(sec: number): string {
-    return formatDatetime(new Date(sec * 1000).toISOString());
-  }
 
   async function loadBffSessions(): Promise<void> {
     bffLoadingEl.style.display = '';

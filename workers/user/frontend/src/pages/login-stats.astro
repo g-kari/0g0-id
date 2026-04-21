@@ -61,6 +61,7 @@ import Base from '../layouts/Base.astro';
 
 <script>
   import { apiFetch, formatDate } from '../lib/api';
+  import { escapeHtml } from '../lib/helpers';
   import type { LoginProviderStat, DailyLoginStat } from '@0g0-id/api-types';
 
   const daysSelect = document.getElementById('days-select') as HTMLSelectElement;
@@ -75,12 +76,6 @@ import Base from '../layouts/Base.astro';
   const trendsTitleEl = document.getElementById('trends-title')!;
   const trendsListEl = document.getElementById('trends-list')!;
   const trendsEmptyEl = document.getElementById('trends-empty')!;
-
-  function escapeHtml(s: string): string {
-    return s.replace(/[&<>"']/g, (ch) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-    })[ch] as string);
-  }
 
   async function load(days: number) {
     loadingEl.style.display = '';

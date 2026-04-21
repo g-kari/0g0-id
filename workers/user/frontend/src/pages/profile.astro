@@ -75,6 +75,7 @@ import Base from '../layouts/Base.astro';
 <script>
   import { apiFetch } from '../lib/api';
   import { showToast } from '../lib/toast';
+  import { getInitials } from '../lib/helpers';
   import type { MyProfile } from '@0g0-id/api-types';
 
   const loading = document.getElementById('loading')!;
@@ -89,22 +90,15 @@ import Base from '../layouts/Base.astro';
   const saveBtn = document.getElementById('save-btn') as HTMLButtonElement;
   const logoutBtn = document.getElementById('logout-btn') as HTMLButtonElement;
 
-  function getInitials(user: User): string {
-    if (user.name) {
-      return user.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-    }
-    return user.email?.[0]?.toUpperCase() ?? '?';
-  }
-
-  function renderAvatar(user: User) {
+  function renderAvatar(user: MyProfile) {
     if (user.picture) {
       avatarContainer.innerHTML = `<img src="${user.picture}" alt="アバター" style="width:64px; height:64px; border-radius:50%; object-fit:cover;" />`;
     } else {
-      avatarContainer.innerHTML = `<div style="width:64px; height:64px; border-radius:50%; background:var(--color-accent); color:white; display:flex; align-items:center; justify-content:center; font-size:1.5rem; font-weight:700;">${getInitials(user)}</div>`;
+      avatarContainer.innerHTML = `<div style="width:64px; height:64px; border-radius:50%; background:var(--color-accent); color:white; display:flex; align-items:center; justify-content:center; font-size:1.5rem; font-weight:700;">${getInitials(user.name, user.email)}</div>`;
     }
   }
 
-  function populateForm(user: User) {
+  function populateForm(user: MyProfile) {
     userName.textContent = user.name ?? '—';
     userEmail.textContent = user.email;
     nameInput.value = user.name ?? '';
