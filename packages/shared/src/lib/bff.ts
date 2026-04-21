@@ -389,6 +389,16 @@ export async function proxyResponse(res: Response): Promise<Response> {
   });
 }
 
+export function proxyGet(
+  cookieName: string,
+  buildUrl: (c: Context<{ Bindings: BffEnv }>) => string,
+): (c: Context<{ Bindings: BffEnv }>) => Promise<Response> {
+  return async (c) => {
+    const res = await fetchWithAuth(c, cookieName, buildUrl(c));
+    return proxyResponse(res);
+  };
+}
+
 /**
  * ボディなし変更リクエスト（DELETE / PATCH / POST）を BFF→IdP へ転送するユーティリティ。
  * CSRF 対策として Origin ヘッダーを自動付与する。

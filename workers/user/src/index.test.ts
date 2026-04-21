@@ -8,6 +8,11 @@ vi.mock("./middleware/cors", () => ({
   userCorsMiddleware: async (_c: unknown, next: () => Promise<void>) => next(),
 }));
 
+const { mockFetchWithAuth, mockProxyResponse } = vi.hoisted(() => ({
+  mockFetchWithAuth: vi.fn(),
+  mockProxyResponse: vi.fn(),
+}));
+
 vi.mock("@0g0-id/shared", async (importOriginal) => ({
   ...(await importOriginal()),
   logger: () => async (_c: unknown, next: () => Promise<void>) => next(),
@@ -15,8 +20,12 @@ vi.mock("@0g0-id/shared", async (importOriginal) => ({
   bodyLimitMiddleware: () => async (_c: unknown, next: () => Promise<void>) => next(),
   bffCorsMiddleware: async (_c: unknown, next: () => Promise<void>) => next(),
   bffCsrfMiddleware: async (_c: unknown, next: () => Promise<void>) => next(),
-  fetchWithAuth: vi.fn(),
-  proxyResponse: vi.fn(),
+  fetchWithAuth: mockFetchWithAuth,
+  proxyResponse: mockProxyResponse,
+  proxyGet: (cookieName: string, buildUrl: (c: any) => string) => async (c: any) => {
+    const res = await mockFetchWithAuth(c, cookieName, buildUrl(c));
+    return mockProxyResponse(res);
+  },
   parseSession: vi.fn(),
   createLogger: vi
     .fn()

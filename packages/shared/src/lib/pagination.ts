@@ -1,3 +1,5 @@
+import type { Context } from "hono";
+
 export type PaginationResult =
   | { limit: number; offset: number }
   | { error: { code: string; message: string } };
@@ -28,6 +30,20 @@ export function parsePagination(
     limit: Math.min(limitRaw, options.maxLimit),
     offset: offsetRaw,
   };
+}
+
+export function requirePagination(
+  c: Context,
+  options: { defaultLimit: number; maxLimit: number } = { defaultLimit: 20, maxLimit: 100 },
+): { limit: number; offset: number } | Response {
+  const result = parsePagination(
+    { limit: c.req.query("limit"), offset: c.req.query("offset") },
+    options,
+  );
+  if ("error" in result) {
+    return c.json({ error: result.error }, 400);
+  }
+  return result;
 }
 
 export type DaysResult = { days: number } | { error: { code: string; message: string } };

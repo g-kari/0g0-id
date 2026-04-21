@@ -27,7 +27,7 @@ import {
   banUserWithRevocation,
   unbanUser,
   parseDays,
-  parsePagination,
+  requirePagination,
   isValidProvider,
   UUID_RE,
   uuidParamMiddleware,
@@ -292,13 +292,8 @@ app.get(
   rejectBannedUserMiddleware,
   async (c) => {
     const tokenUser = c.get("user");
-    const pagination = parsePagination(
-      { limit: c.req.query("limit"), offset: c.req.query("offset") },
-      { defaultLimit: 20, maxLimit: 100 },
-    );
-    if ("error" in pagination) {
-      return c.json({ error: pagination.error }, 400);
-    }
+    const pagination = requirePagination(c, { defaultLimit: 20, maxLimit: 100 });
+    if (pagination instanceof Response) return pagination;
     const { limit, offset } = pagination;
     const providerParam = c.req.query("provider") || undefined;
     if (providerParam !== undefined && !isValidProvider(providerParam)) {
@@ -661,13 +656,8 @@ app.get("/:id/providers", authMiddleware, adminMiddleware, async (c) => {
 // GET /api/users/:id/login-history（管理者のみ）
 app.get("/:id/login-history", authMiddleware, adminMiddleware, async (c) => {
   const targetId = c.req.param("id");
-  const pagination = parsePagination(
-    { limit: c.req.query("limit"), offset: c.req.query("offset") },
-    { defaultLimit: 20, maxLimit: 100 },
-  );
-  if ("error" in pagination) {
-    return c.json({ error: pagination.error }, 400);
-  }
+  const pagination = requirePagination(c, { defaultLimit: 20, maxLimit: 100 });
+  if (pagination instanceof Response) return pagination;
   const { limit, offset } = pagination;
   const providerParam = c.req.query("provider") || undefined;
   if (providerParam !== undefined && !isValidProvider(providerParam)) {
@@ -1049,13 +1039,8 @@ app.delete("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
 
 // GET /api/users（管理者のみ）
 app.get("/", authMiddleware, adminMiddleware, async (c) => {
-  const pagination = parsePagination(
-    { limit: c.req.query("limit"), offset: c.req.query("offset") },
-    { defaultLimit: 50, maxLimit: 100 },
-  );
-  if ("error" in pagination) {
-    return c.json({ error: pagination.error }, 400);
-  }
+  const pagination = requirePagination(c, { defaultLimit: 50, maxLimit: 100 });
+  if (pagination instanceof Response) return pagination;
   const { limit, offset } = pagination;
 
   const filter: UserFilter = {};

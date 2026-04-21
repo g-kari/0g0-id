@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import {
   fetchWithAuth,
   parseDays,
+  proxyGet,
   proxyResponse,
   REST_ERROR_CODES,
   COOKIE_NAMES,
@@ -11,14 +12,10 @@ import type { BffEnv } from "@0g0-id/shared";
 const app = new Hono<{ Bindings: BffEnv }>();
 
 // GET /api/me/security/summary — セキュリティ概要（アクティブセッション数・連携サービス数・最終ログインなど）
-app.get("/summary", async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    COOKIE_NAMES.USER_SESSION,
-    `${c.env.IDP_ORIGIN}/api/users/me/security-summary`,
-  );
-  return proxyResponse(res);
-});
+app.get(
+  "/summary",
+  proxyGet(COOKIE_NAMES.USER_SESSION, (c) => `${c.env.IDP_ORIGIN}/api/users/me/security-summary`),
+);
 
 // GET /api/me/security/login-stats — プロバイダー別ログイン統計（days: 1〜365、デフォルト30）
 app.get("/login-stats", async (c) => {

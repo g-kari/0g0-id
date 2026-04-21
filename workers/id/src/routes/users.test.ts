@@ -3,9 +3,9 @@ import { Hono } from "hono";
 
 // @0g0-id/sharedの全関数をモック
 vi.mock("@0g0-id/shared", async (importOriginal) => {
-  const { parseJsonBody } = await importOriginal<typeof import("@0g0-id/shared")>();
+  const actual = await importOriginal<typeof import("@0g0-id/shared")>();
   return {
-    parseJsonBody,
+    ...actual,
     createLogger: vi
       .fn()
       .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -38,41 +38,6 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     banUserWithRevocation: vi.fn(),
     unbanUser: vi.fn(),
     createAdminAuditLog: vi.fn(),
-    UUID_RE: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-    uuidParamMiddleware: (await importOriginal<typeof import("@0g0-id/shared")>())
-      .uuidParamMiddleware,
-    isValidProvider: (value: string) => ["google", "line", "twitch", "github", "x"].includes(value),
-    parseDays: (
-      daysParam: string | undefined,
-      options: { minDays?: number; maxDays?: number } = {},
-    ) => {
-      if (daysParam === undefined) return undefined;
-      const { minDays = 1, maxDays = 90 } = options;
-      const days = parseInt(daysParam, 10);
-      if (!Number.isInteger(days) || days < minDays || days > maxDays) {
-        return {
-          error: {
-            code: "INVALID_REQUEST",
-            message: `days must be an integer between ${minDays} and ${maxDays}`,
-          },
-        };
-      }
-      return { days };
-    },
-    parsePagination: (
-      query: { limit?: string; offset?: string },
-      options: { defaultLimit: number; maxLimit: number } = { defaultLimit: 20, maxLimit: 100 },
-    ) => {
-      const limitRaw = query.limit !== undefined ? parseInt(query.limit, 10) : options.defaultLimit;
-      const offsetRaw = query.offset !== undefined ? parseInt(query.offset, 10) : 0;
-      if (query.limit !== undefined && (isNaN(limitRaw) || limitRaw < 1)) {
-        return { error: "limit は1以上の整数で指定してください" };
-      }
-      if (query.offset !== undefined && (isNaN(offsetRaw) || offsetRaw < 0)) {
-        return { error: "offset は0以上の整数で指定してください" };
-      }
-      return { limit: Math.min(limitRaw, options.maxLimit), offset: offsetRaw };
-    },
     verifyAccessToken: vi.fn(),
     isAccessTokenRevoked: vi.fn().mockResolvedValue(false),
   };

@@ -2,9 +2,10 @@ import { Hono } from "hono";
 import {
   fetchWithAuth,
   fetchWithJsonBody,
-  parsePagination,
+  proxyGet,
   proxyMutate,
   proxyResponse,
+  requirePagination,
   UUID_RE,
   uuidParamMiddleware,
   COOKIE_NAMES,
@@ -19,16 +20,11 @@ app.use("/:id/*", uuidParamMiddleware("id", { label: "service ID" }));
 
 // GET /api/services
 app.get("/", async (c) => {
+  const pagination = requirePagination(c, { defaultLimit: 50, maxLimit: 100 });
+  if (pagination instanceof Response) return pagination;
+  const url = new URL(`${c.env.IDP_ORIGIN}/api/services`);
   const limitRaw = c.req.query("limit");
   const offsetRaw = c.req.query("offset");
-  const pagination = parsePagination(
-    { limit: limitRaw, offset: offsetRaw },
-    { defaultLimit: 50, maxLimit: 100 },
-  );
-  if ("error" in pagination) {
-    return c.json({ error: pagination.error }, 400);
-  }
-  const url = new URL(`${c.env.IDP_ORIGIN}/api/services`);
   if (limitRaw !== undefined) url.searchParams.set("limit", String(pagination.limit));
   if (offsetRaw !== undefined) url.searchParams.set("offset", String(pagination.offset));
   const name = c.req.query("name");
@@ -38,14 +34,13 @@ app.get("/", async (c) => {
 });
 
 // GET /api/services/:id
-app.get("/:id", async (c) => {
-  const res = await fetchWithAuth(
-    c,
+app.get(
+  "/:id",
+  proxyGet(
     COOKIE_NAMES.ADMIN_SESSION,
-    `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}`,
-  );
-  return proxyResponse(res);
-});
+    (c) => `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}`,
+  ),
+);
 
 // POST /api/services
 app.post("/", async (c) => {
@@ -87,14 +82,13 @@ app.post("/:id/rotate-secret", async (c) => {
 });
 
 // GET /api/services/:id/redirect-uris
-app.get("/:id/redirect-uris", async (c) => {
-  const res = await fetchWithAuth(
-    c,
+app.get(
+  "/:id/redirect-uris",
+  proxyGet(
     COOKIE_NAMES.ADMIN_SESSION,
-    `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}/redirect-uris`,
-  );
-  return proxyResponse(res);
-});
+    (c) => `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}/redirect-uris`,
+  ),
+);
 
 // POST /api/services/:id/redirect-uris
 app.post("/:id/redirect-uris", async (c) => {
@@ -108,13 +102,8 @@ app.post("/:id/redirect-uris", async (c) => {
 
 // GET /api/services/:id/users — サービスを認可済みのユーザー一覧
 app.get("/:id/users", async (c) => {
-  const pagination = parsePagination(
-    { limit: c.req.query("limit"), offset: c.req.query("offset") },
-    { defaultLimit: 50, maxLimit: 100 },
-  );
-  if ("error" in pagination) {
-    return c.json({ error: pagination.error }, 400);
-  }
+  const pagination = requirePagination(c, { defaultLimit: 50, maxLimit: 100 });
+  if (pagination instanceof Response) return pagination;
   const url = new URL(`${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}/users`);
   url.searchParams.set("limit", String(pagination.limit));
   url.searchParams.set("offset", String(pagination.offset));

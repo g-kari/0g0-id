@@ -1,19 +1,22 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie } from "hono/cookie";
-import { fetchWithAuth, parseSession, proxyResponse, UUID_RE, COOKIE_NAMES } from "@0g0-id/shared";
+import {
+  fetchWithAuth,
+  parseSession,
+  proxyGet,
+  proxyResponse,
+  UUID_RE,
+  COOKIE_NAMES,
+} from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
 // GET /api/me/bff-sessions — 自分のBFFセッション一覧（DBSC バインド状態を含む）
-app.get("/", async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    COOKIE_NAMES.USER_SESSION,
-    `${c.env.IDP_ORIGIN}/api/users/me/bff-sessions`,
-  );
-  return proxyResponse(res);
-});
+app.get(
+  "/",
+  proxyGet(COOKIE_NAMES.USER_SESSION, (c) => `${c.env.IDP_ORIGIN}/api/users/me/bff-sessions`),
+);
 
 // DELETE /api/me/bff-sessions/:sessionId — 自分の特定BFFセッションを失効（self-service）
 //

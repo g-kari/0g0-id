@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import {
   fetchWithAuth,
-  parsePagination,
   proxyResponse,
+  requirePagination,
   UUID_RE,
   COOKIE_NAMES,
 } from "@0g0-id/shared";
@@ -12,13 +12,8 @@ const app = new Hono<{ Bindings: BffEnv }>();
 
 // GET /api/audit-logs — 管理者操作の監査ログ一覧（IdPへプロキシ）
 app.get("/", async (c) => {
-  const pagination = parsePagination(
-    { limit: c.req.query("limit"), offset: c.req.query("offset") },
-    { defaultLimit: 50, maxLimit: 100 },
-  );
-  if ("error" in pagination) {
-    return c.json({ error: pagination.error }, 400);
-  }
+  const pagination = requirePagination(c, { defaultLimit: 50, maxLimit: 100 });
+  if (pagination instanceof Response) return pagination;
   const url = new URL(`${c.env.IDP_ORIGIN}/api/admin/audit-logs`);
   url.searchParams.set("limit", String(pagination.limit));
   url.searchParams.set("offset", String(pagination.offset));

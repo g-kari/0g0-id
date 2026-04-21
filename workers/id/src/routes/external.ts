@@ -5,7 +5,7 @@ import {
   generatePairwiseSub,
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
-  parsePagination,
+  requirePagination,
   restErrorBody,
 } from "@0g0-id/shared";
 import type { IdpEnv, User, Service, AuthorizedUserFilter } from "@0g0-id/shared";
@@ -48,13 +48,8 @@ async function buildUserData(
 app.get("/users", externalApiRateLimitMiddleware, serviceAuthMiddleware, async (c) => {
   const service = c.get("service");
 
-  const pagination = parsePagination(
-    { limit: c.req.query("limit"), offset: c.req.query("offset") },
-    { defaultLimit: 50, maxLimit: 100 },
-  );
-  if ("error" in pagination) {
-    return c.json({ error: pagination.error }, 400);
-  }
+  const pagination = requirePagination(c, { defaultLimit: 50, maxLimit: 100 });
+  if (pagination instanceof Response) return pagination;
   const { limit, offset } = pagination;
 
   const nameQuery = c.req.query("name");
