@@ -7,15 +7,16 @@ import {
   parseDays,
   parsePagination,
   proxyResponse,
+  REST_ERROR_CODES,
 } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
-import { SESSION_COOKIE } from "./auth";
+import { COOKIE_NAMES } from "@0g0-id/shared";
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
 // GET /api/me
 app.get("/", async (c) => {
-  const res = await fetchWithAuth(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/me`);
+  const res = await fetchWithAuth(c, COOKIE_NAMES.USER_SESSION, `${c.env.IDP_ORIGIN}/api/users/me`);
   return proxyResponse(res);
 });
 
@@ -38,7 +39,7 @@ app.get("/login-history", async (c) => {
     }
     url.searchParams.set("provider", provider);
   }
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.USER_SESSION, url.toString());
   return proxyResponse(res);
 });
 
@@ -49,13 +50,13 @@ app.get("/login-stats", async (c) => {
   if (daysResult !== undefined) {
     if ("error" in daysResult) {
       return c.json(
-        { error: { code: "INVALID_PARAMETER", message: daysResult.error.message } },
+        { error: { code: REST_ERROR_CODES.INVALID_PARAMETER, message: daysResult.error.message } },
         400,
       );
     }
     url.searchParams.set("days", String(daysResult.days));
   }
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.USER_SESSION, url.toString());
   return proxyResponse(res);
 });
 
@@ -63,7 +64,7 @@ app.get("/login-stats", async (c) => {
 app.get("/data-export", async (c) => {
   const res = await fetchWithAuth(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.USER_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/me/data-export`,
   );
   return proxyResponse(res);
@@ -73,7 +74,7 @@ app.get("/data-export", async (c) => {
 app.get("/security-summary", async (c) => {
   const res = await fetchWithAuth(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.USER_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/me/security-summary`,
   );
   return proxyResponse(res);
@@ -81,17 +82,32 @@ app.get("/security-summary", async (c) => {
 
 // PATCH /api/me
 app.patch("/", async (c) => {
-  return fetchWithJsonBody(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/me`, "PATCH");
+  return fetchWithJsonBody(
+    c,
+    COOKIE_NAMES.USER_SESSION,
+    `${c.env.IDP_ORIGIN}/api/users/me`,
+    "PATCH",
+  );
 });
 
 // DELETE /api/me — アカウント削除（セッションCookieも削除）
 app.delete("/", async (c) => {
-  const res = await fetchWithAuth(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/me`, {
-    method: "DELETE",
-    headers: { Origin: c.env.IDP_ORIGIN },
-  });
+  const res = await fetchWithAuth(
+    c,
+    COOKIE_NAMES.USER_SESSION,
+    `${c.env.IDP_ORIGIN}/api/users/me`,
+    {
+      method: "DELETE",
+      headers: { Origin: c.env.IDP_ORIGIN },
+    },
+  );
   if (res.status === 204) {
-    deleteCookie(c, SESSION_COOKIE, { path: "/", secure: true, httpOnly: true, sameSite: "Lax" });
+    deleteCookie(c, COOKIE_NAMES.USER_SESSION, {
+      path: "/",
+      secure: true,
+      httpOnly: true,
+      sameSite: "Lax",
+    });
     return c.body(null, 204);
   }
   return proxyResponse(res);

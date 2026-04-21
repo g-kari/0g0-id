@@ -2,9 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
 
 vi.mock("@0g0-id/shared", async (importOriginal) => {
-  const { restErrorBody } = await importOriginal<typeof import("@0g0-id/shared")>();
+  const { restErrorBody, REST_ERROR_CODES } =
+    await importOriginal<typeof import("@0g0-id/shared")>();
   return {
     restErrorBody,
+    REST_ERROR_CODES,
     createLogger: vi
       .fn()
       .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),

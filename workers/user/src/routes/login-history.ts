@@ -1,7 +1,12 @@
 import { Hono } from "hono";
-import { fetchWithAuth, isValidProvider, parsePagination, proxyResponse } from "@0g0-id/shared";
+import {
+  fetchWithAuth,
+  isValidProvider,
+  parsePagination,
+  proxyResponse,
+  COOKIE_NAMES,
+} from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
-import { SESSION_COOKIE } from "./auth";
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
@@ -26,7 +31,7 @@ app.get("/", async (c) => {
     }
     url.searchParams.set("provider", provider);
   }
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.USER_SESSION, url.toString());
   return proxyResponse(res);
 });
 

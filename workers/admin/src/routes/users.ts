@@ -7,11 +7,12 @@ import {
   parsePagination,
   proxyMutate,
   proxyResponse,
+  REST_ERROR_CODES,
   UUID_RE,
   uuidParamMiddleware,
+  COOKIE_NAMES,
 } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
-import { SESSION_COOKIE } from "./auth";
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
@@ -40,7 +41,7 @@ app.get("/", async (c) => {
   if (name) url.searchParams.set("name", name);
   if (banned === "true" || banned === "false") url.searchParams.set("banned", banned);
 
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
   return proxyResponse(res);
 });
 
@@ -48,7 +49,7 @@ app.get("/", async (c) => {
 app.get("/:id", async (c) => {
   const res = await fetchWithAuth(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}`,
   );
   return proxyResponse(res);
@@ -58,7 +59,7 @@ app.get("/:id", async (c) => {
 app.get("/:id/owned-services", async (c) => {
   const res = await fetchWithAuth(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/owned-services`,
   );
   return proxyResponse(res);
@@ -68,7 +69,7 @@ app.get("/:id/owned-services", async (c) => {
 app.get("/:id/services", async (c) => {
   const res = await fetchWithAuth(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/services`,
   );
   return proxyResponse(res);
@@ -78,7 +79,7 @@ app.get("/:id/services", async (c) => {
 app.get("/:id/providers", async (c) => {
   const res = await fetchWithAuth(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/providers`,
   );
   return proxyResponse(res);
@@ -103,7 +104,7 @@ app.get("/:id/login-history", async (c) => {
     }
     url.searchParams.set("provider", provider);
   }
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
   return proxyResponse(res);
 });
 
@@ -113,11 +114,14 @@ app.get("/:id/login-stats", async (c) => {
   const daysResult = parseDays(c.req.query("days"));
   if (daysResult !== undefined) {
     if ("error" in daysResult) {
-      return c.json({ error: { code: "INVALID_PARAMETER", message: daysResult.error } }, 400);
+      return c.json(
+        { error: { code: REST_ERROR_CODES.INVALID_PARAMETER, message: daysResult.error } },
+        400,
+      );
     }
     url.searchParams.set("days", String(daysResult.days));
   }
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
   return proxyResponse(res);
 });
 
@@ -127,11 +131,14 @@ app.get("/:id/login-trends", async (c) => {
   const daysResult = parseDays(c.req.query("days"));
   if (daysResult !== undefined) {
     if ("error" in daysResult) {
-      return c.json({ error: { code: "INVALID_PARAMETER", message: daysResult.error } }, 400);
+      return c.json(
+        { error: { code: REST_ERROR_CODES.INVALID_PARAMETER, message: daysResult.error } },
+        400,
+      );
     }
     url.searchParams.set("days", String(daysResult.days));
   }
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
   return proxyResponse(res);
 });
 
@@ -139,7 +146,7 @@ app.get("/:id/login-trends", async (c) => {
 app.get("/:id/tokens", async (c) => {
   const res = await fetchWithAuth(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/tokens`,
   );
   return proxyResponse(res);
@@ -149,7 +156,7 @@ app.get("/:id/tokens", async (c) => {
 app.get("/:id/bff-sessions", async (c) => {
   const res = await fetchWithAuth(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/bff-sessions`,
   );
   return proxyResponse(res);
@@ -163,7 +170,7 @@ app.delete("/:id/bff-sessions/:sessionId", async (c) => {
   }
   return proxyMutate(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/bff-sessions/${sessionId}`,
   );
 });
@@ -176,7 +183,7 @@ app.delete("/:id/tokens/:tokenId", async (c) => {
   }
   return proxyMutate(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/tokens/${tokenId}`,
   );
 });
@@ -185,7 +192,7 @@ app.delete("/:id/tokens/:tokenId", async (c) => {
 app.delete("/:id/tokens", async (c) => {
   return proxyMutate(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/tokens`,
   );
 });
@@ -194,7 +201,7 @@ app.delete("/:id/tokens", async (c) => {
 app.patch("/:id/role", async (c) => {
   return fetchWithJsonBody(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/role`,
     "PATCH",
   );
@@ -204,7 +211,7 @@ app.patch("/:id/role", async (c) => {
 app.patch("/:id/ban", async (c) => {
   return proxyMutate(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/ban`,
     "PATCH",
   );
@@ -212,12 +219,20 @@ app.patch("/:id/ban", async (c) => {
 
 // DELETE /api/users/:id/ban — ユーザー停止を解除
 app.delete("/:id/ban", async (c) => {
-  return proxyMutate(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/ban`);
+  return proxyMutate(
+    c,
+    COOKIE_NAMES.ADMIN_SESSION,
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/ban`,
+  );
 });
 
 // DELETE /api/users/:id
 app.delete("/:id", async (c) => {
-  return proxyMutate(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}`);
+  return proxyMutate(
+    c,
+    COOKIE_NAMES.ADMIN_SESSION,
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}`,
+  );
 });
 
 export default app;

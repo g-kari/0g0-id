@@ -1,8 +1,7 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie } from "hono/cookie";
-import { fetchWithAuth, parseSession, proxyResponse, UUID_RE } from "@0g0-id/shared";
+import { fetchWithAuth, parseSession, proxyResponse, UUID_RE, COOKIE_NAMES } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
-import { SESSION_COOKIE } from "./auth";
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
@@ -10,7 +9,7 @@ const app = new Hono<{ Bindings: BffEnv }>();
 app.get("/", async (c) => {
   const res = await fetchWithAuth(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.USER_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/me/bff-sessions`,
   );
   return proxyResponse(res);
@@ -30,11 +29,14 @@ app.delete("/:sessionId", async (c) => {
   }
 
   // 現在の Cookie セッションを事前に取得（IdP 失効後に Cookie 削除判定に使う）
-  const currentSession = await parseSession(getCookie(c, SESSION_COOKIE), c.env.SESSION_SECRET);
+  const currentSession = await parseSession(
+    getCookie(c, COOKIE_NAMES.USER_SESSION),
+    c.env.SESSION_SECRET,
+  );
 
   const res = await fetchWithAuth(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.USER_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/me/bff-sessions/${sessionId}`,
     {
       method: "DELETE",
@@ -45,7 +47,7 @@ app.delete("/:sessionId", async (c) => {
   if (res.status === 204) {
     // 自分の Cookie セッションを失効させた場合のみ Cookie 削除
     if (currentSession && currentSession.session_id === sessionId) {
-      deleteCookie(c, SESSION_COOKIE, {
+      deleteCookie(c, COOKIE_NAMES.USER_SESSION, {
         path: "/",
         secure: true,
         httpOnly: true,

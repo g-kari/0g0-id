@@ -1,7 +1,6 @@
 import { Hono } from "hono";
-import { fetchWithAuth, proxyMutate, proxyResponse, UUID_RE } from "@0g0-id/shared";
+import { fetchWithAuth, proxyMutate, proxyResponse, UUID_RE, COOKIE_NAMES } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
-import { SESSION_COOKIE } from "./auth";
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
@@ -9,7 +8,7 @@ const app = new Hono<{ Bindings: BffEnv }>();
 app.get("/", async (c) => {
   const res = await fetchWithAuth(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.USER_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/me/connections`,
   );
   return proxyResponse(res);
@@ -23,7 +22,7 @@ app.delete("/:serviceId", async (c) => {
   }
   return proxyMutate(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.USER_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/me/connections/${serviceId}`,
   );
 });

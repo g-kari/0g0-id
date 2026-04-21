@@ -5,9 +5,9 @@ import {
   createLogger,
   internalServiceHeaders,
   logUpstreamDeprecation,
+  COOKIE_NAMES,
 } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
-import { SESSION_COOKIE } from "./auth";
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
@@ -18,7 +18,7 @@ const USER_CODE_PATTERN = /^[A-Z0-9]{4}-[A-Z0-9]{4}$/;
 // POST /api/device/verify — ユーザーコード検証
 // セッションCookieからユーザー認証を確認し、IdPにuser_codeを転送する
 app.post("/verify", async (c): Promise<Response> => {
-  const session = await parseSession(getCookie(c, SESSION_COOKIE), c.env.SESSION_SECRET);
+  const session = await parseSession(getCookie(c, COOKIE_NAMES.USER_SESSION), c.env.SESSION_SECRET);
   if (!session) {
     return c.json({ error: { code: "UNAUTHORIZED", message: "Not authenticated" } }, 401);
   }
@@ -65,7 +65,7 @@ app.post("/verify", async (c): Promise<Response> => {
 // POST /api/device/approve — 承認/拒否
 // セッションCookieからユーザー認証を確認し、IdPにapprove/denyを転送する
 app.post("/approve", async (c): Promise<Response> => {
-  const session = await parseSession(getCookie(c, SESSION_COOKIE), c.env.SESSION_SECRET);
+  const session = await parseSession(getCookie(c, COOKIE_NAMES.USER_SESSION), c.env.SESSION_SECRET);
   if (!session) {
     return c.json({ error: { code: "UNAUTHORIZED", message: "Not authenticated" } }, 401);
   }
