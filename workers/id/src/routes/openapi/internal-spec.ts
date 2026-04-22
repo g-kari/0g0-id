@@ -701,6 +701,56 @@ export const INTERNAL_OPENAPI = {
         },
       },
     },
+    "/api/users/{id}/lockout": {
+      get: {
+        tags: ["ユーザー API (管理者)"],
+        summary: "ロックアウト状態取得",
+        description: "指定ユーザーのアカウントロックアウト状態を返す（管理者専用）。",
+        security: [{ BearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          "200": {
+            description: "ロックアウト状態",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    data: {
+                      type: "object",
+                      properties: {
+                        user_id: { type: "string" },
+                        failed_attempts: { type: "integer" },
+                        locked_until: { type: "string", nullable: true },
+                        last_failed_at: { type: "string", nullable: true },
+                        is_locked: { type: "boolean" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": { description: "UNAUTHORIZED" },
+          "403": { description: "FORBIDDEN — 管理者権限なし" },
+          "404": { description: "NOT_FOUND — ユーザー未存在" },
+        },
+      },
+      delete: {
+        tags: ["ユーザー API (管理者)"],
+        summary: "ロックアウト解除",
+        description:
+          "指定ユーザーのアカウントロックアウトを解除する（管理者専用）。失敗回数もリセットされる。",
+        security: [{ BearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          "200": { description: "ロックアウト解除成功" },
+          "401": { description: "UNAUTHORIZED" },
+          "403": { description: "FORBIDDEN — 管理者権限なし" },
+          "404": { description: "NOT_FOUND — ユーザー未存在" },
+        },
+      },
+    },
     "/api/users/{id}": {
       get: {
         tags: ["ユーザー API (管理者)"],

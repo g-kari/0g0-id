@@ -105,6 +105,14 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     revokeBffSession: vi.fn(),
     revokeAllBffSessionsByUserId: vi.fn(),
     BFF_SESSION_MAX_AGE_SECONDS: 7 * 24 * 60 * 60,
+    // アカウントロックアウト（issue #172）
+    isAccountLocked: vi
+      .fn()
+      .mockResolvedValue({ locked: false, lockedUntil: null, failedAttempts: 0 }),
+    recordFailedAttempt: vi
+      .fn()
+      .mockResolvedValue({ locked: false, lockedUntil: null, failedAttempts: 0 }),
+    resetFailedAttempts: vi.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -157,6 +165,9 @@ import {
   verifyCookie,
   findRefreshTokenById,
   addRevokedAccessToken,
+  isAccountLocked,
+  recordFailedAttempt,
+  resetFailedAttempts,
 } from "@0g0-id/shared";
 
 import authRoutes from "./auth";
@@ -251,6 +262,17 @@ describe("GET /auth/login", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(generateToken).mockReturnValue("mock-token-16");
     vi.mocked(generateCodeVerifier).mockReturnValue("mock-code-verifier");
     vi.mocked(generateCodeChallenge).mockResolvedValue("mock-code-challenge");
@@ -450,6 +472,17 @@ describe("GET /auth/callback", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(sha256).mockResolvedValue("hashed-value");
     vi.mocked(generateToken).mockReturnValue("mock-auth-code");
     vi.mocked(upsertUser).mockResolvedValue(mockUser);
@@ -628,6 +661,17 @@ describe("POST /auth/exchange", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     // serviceBindingMiddleware 通過用（X-Internal-Secret ヘッダー検証）
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(sha256).mockResolvedValue("hashed-code");
@@ -761,6 +805,17 @@ describe("POST /auth/refresh", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     // serviceBindingMiddleware 通過用
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(sha256).mockResolvedValue("hashed-token");
@@ -1021,6 +1076,17 @@ describe("POST /auth/logout", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     // serviceBindingMiddleware 通過用
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(sha256).mockResolvedValue("hashed-token");
@@ -1159,6 +1225,17 @@ describe("POST /auth/link-intent", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(findUserById).mockResolvedValue({ id: "user-1", banned_at: null } as never);
     vi.mocked(signCookie).mockImplementation(async (payload: string) =>
       btoa(encodeURIComponent(payload)),
@@ -1207,6 +1284,17 @@ describe("POST /auth/link-intent", () => {
 describe("GET /auth/callback - LINEプロバイダー", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(sha256).mockResolvedValue("hashed-value");
     vi.mocked(generateToken).mockReturnValue("mock-auth-code");
     vi.mocked(upsertLineUser).mockResolvedValue(mockUser);
@@ -1313,6 +1401,17 @@ describe("GET /auth/callback - LINEプロバイダー", () => {
 describe("GET /auth/callback - GitHubプロバイダー", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(sha256).mockResolvedValue("hashed-value");
     vi.mocked(generateToken).mockReturnValue("mock-auth-code");
     vi.mocked(upsertGithubUser).mockResolvedValue(mockUser);
@@ -1444,6 +1543,17 @@ describe("GET /auth/callback - GitHubプロバイダー", () => {
 describe("GET /auth/callback - Twitchプロバイダー", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(sha256).mockResolvedValue("hashed-value");
     vi.mocked(generateToken).mockReturnValue("mock-auth-code");
     vi.mocked(upsertTwitchUser).mockResolvedValue(mockUser);
@@ -1563,6 +1673,17 @@ describe("GET /auth/callback - Twitchプロバイダー", () => {
 describe("GET /auth/callback - Xプロバイダー", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(sha256).mockResolvedValue("hashed-value");
     vi.mocked(generateToken).mockReturnValue("mock-auth-code");
     vi.mocked(upsertXUser).mockResolvedValue(mockUser);
@@ -1649,6 +1770,17 @@ describe("GET /auth/callback - Xプロバイダー", () => {
 describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(sha256).mockResolvedValue("hashed-value");
     vi.mocked(generateToken).mockReturnValue("mock-auth-code");
     vi.mocked(findUserById).mockResolvedValue(mockUser);
@@ -1818,6 +1950,17 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
 describe("GET /auth/callback - ブートストラップ管理者", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(sha256).mockResolvedValue("hashed-value");
     vi.mocked(generateToken).mockReturnValue("mock-auth-code");
     vi.mocked(tryBootstrapAdmin).mockResolvedValue(true);
@@ -2044,6 +2187,17 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     // serviceBindingMiddleware 通過用
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     // sha256 は呼び出し引数に応じて返す値を変える
@@ -2292,6 +2446,17 @@ describe("GET /auth/authorize", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(findServiceByClientId).mockResolvedValue(mockService as never);
     vi.mocked(normalizeRedirectUri).mockImplementation((uri: string) => uri);
     vi.mocked(listRedirectUris).mockResolvedValue([
@@ -2466,6 +2631,17 @@ describe("GET /auth/authorize", () => {
 describe("Authorization Code Flow E2E (State Cookie Round-trip)", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     // Cookie署名モック（base64エンコード/デコードで署名をシミュレート）
     vi.mocked(signCookie).mockImplementation(async (payload: string) =>
       btoa(encodeURIComponent(payload)),

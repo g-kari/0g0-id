@@ -1225,6 +1225,7 @@ describe("GET /api/metrics/recent-events", () => {
           ip_address: "1.2.3.4",
           user_agent: "Mozilla/5.0",
           country: "JP",
+          success: 1,
           created_at: "2026-04-17T00:00:00Z",
         },
       ],

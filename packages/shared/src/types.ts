@@ -44,6 +44,7 @@ export interface LoginEvent {
   ip_address: string | null;
   user_agent: string | null;
   country: string | null;
+  success: number;
   created_at: string;
 }
 

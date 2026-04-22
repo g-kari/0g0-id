@@ -9,12 +9,13 @@ export async function insertLoginEvent(
     ipAddress?: string | null;
     userAgent?: string | null;
     country?: string | null;
+    success?: boolean;
   },
 ): Promise<void> {
   const id = crypto.randomUUID();
   await db
     .prepare(
-      "INSERT INTO login_events (id, user_id, provider, ip_address, user_agent, country) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO login_events (id, user_id, provider, ip_address, user_agent, country, success) VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(
       id,
@@ -23,6 +24,7 @@ export async function insertLoginEvent(
       data.ipAddress ?? null,
       data.userAgent ?? null,
       data.country ?? null,
+      data.success !== false ? 1 : 0,
     )
     .run();
 }
