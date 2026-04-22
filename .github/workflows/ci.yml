@@ -44,3 +44,31 @@ jobs:
 
       - name: テスト実行
         run: vp test run
+
+  audit:
+    name: npm audit（脆弱性チェック）
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v6
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: 依存パッケージインストール（ルートワークスペース）
+        run: npm ci
+
+      - name: npm audit（high以上で失敗）
+        run: npm audit --audit-level=high
+
+      - name: npm audit — user frontend
+        run: npm ci && npm audit --audit-level=high
+        working-directory: workers/user/frontend
+
+      - name: npm audit — admin frontend
+        run: npm ci && npm audit --audit-level=high
+        working-directory: workers/admin/frontend
