@@ -7,6 +7,7 @@ export default defineConfig({
   fmt: {},
   lint: {
     options: { typeAware: true, typeCheck: true },
+    ignorePatterns: ["workers/*/frontend/.astro/**"],
     rules: {
       "no-control-regex": "off",
     },
