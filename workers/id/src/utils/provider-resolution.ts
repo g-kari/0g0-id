@@ -148,6 +148,9 @@ export async function resolveProvider(
         userInfo.sub,
         userInfo.email,
       );
+      if (!isPlaceholderEmail && !(userInfo.email_verified ?? false)) {
+        return oauthError(c, "Email not verified", "UNVERIFIED_EMAIL");
+      }
       return {
         ok: true,
         sub: userInfo.sub,

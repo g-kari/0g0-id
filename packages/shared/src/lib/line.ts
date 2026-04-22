@@ -12,6 +12,7 @@ export interface LineUserInfo {
   name: string;
   picture?: string;
   email?: string;
+  email_verified?: boolean;
 }
 
 export interface LineTokenResponse {

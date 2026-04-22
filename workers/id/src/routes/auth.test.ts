@@ -1307,6 +1307,7 @@ describe("GET /auth/callback - LINEプロバイダー", () => {
       name: "LINE User",
       picture: "https://example.com/line-pic.jpg",
       email: "line@example.com",
+      email_verified: true,
     } as never);
     vi.mocked(signCookie).mockImplementation(async (payload: string) =>
       btoa(encodeURIComponent(payload)),
@@ -1865,6 +1866,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
       name: "LINE User",
       picture: null,
       email: "line@example.com",
+      email_verified: true,
     } as never);
     const stateData = buildStateCookie({
       idState: "correct-state",
@@ -1923,6 +1925,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
       name: "LINE User",
       picture: null,
       email: "line@example.com",
+      email_verified: true,
     } as never);
     const stateData = buildStateCookie({
       idState: "correct-state",
