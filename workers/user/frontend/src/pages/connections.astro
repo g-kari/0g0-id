@@ -42,14 +42,9 @@ import Base from '../layouts/Base.astro';
     emptyEl.style.display = 'none';
     listEl.style.display = 'none';
 
-    const res = await apiFetch<UserConnection[]>('/api/connections');
-    loadingEl.style.display = 'none';
-    if ('error' in res) {
-      errorEl.textContent = '連携サービスの取得に失敗しました';
-      errorEl.style.display = '';
-      return;
-    }
-    const connections = res as UserConnection[];
+    try {
+      const connections = await apiFetch<UserConnection[]>('/api/connections');
+      loadingEl.style.display = 'none';
     if (connections.length === 0) {
       emptyEl.style.display = '';
       return;
@@ -64,6 +59,11 @@ import Base from '../layouts/Base.astro';
       </div>
     `).join('');
     listEl.style.display = '';
+    } catch (err) {
+      loadingEl.style.display = 'none';
+      errorEl.textContent = '連携サービスの取得に失敗しました';
+      errorEl.style.display = '';
+    }
   }
 
   listEl.addEventListener('click', async (e) => {
@@ -72,15 +72,15 @@ import Base from '../layouts/Base.astro';
     const id = btn.dataset.disconnect!;
     const name = btn.dataset.name!;
     if (!confirm(`「${name}」との連携を解除しますか？`)) return;
-    const res = await apiFetch(`/api/connections/${id}`, {
-      method: 'DELETE',
-      headers: { Origin: window.location.origin },
-    });
-    if ('error' in res) {
-      showToast('解除に失敗しました', 'error');
-    } else {
+    try {
+      await apiFetch(`/api/connections/${id}`, {
+        method: 'DELETE',
+        headers: { Origin: window.location.origin },
+      });
       showToast('連携を解除しました', 'success');
       await loadConnections();
+    } catch {
+      showToast('解除に失敗しました', 'error');
     }
   });
 

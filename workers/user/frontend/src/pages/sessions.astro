@@ -72,14 +72,9 @@ import Base from '../layouts/Base.astro';
     bffEmptyEl.style.display = 'none';
     bffListEl.style.display = 'none';
 
-    const res = await apiFetch<ActiveBffSessionSummary[]>('/api/me/bff-sessions');
-    bffLoadingEl.style.display = 'none';
-    if ('error' in res) {
-      bffErrorEl.textContent = 'ブラウザセッション一覧の取得に失敗しました';
-      bffErrorEl.style.display = '';
-      return;
-    }
-    const sessions = res as ActiveBffSessionSummary[];
+    try {
+      const sessions = await apiFetch<ActiveBffSessionSummary[]>('/api/me/bff-sessions');
+      bffLoadingEl.style.display = 'none';
     if (sessions.length === 0) {
       bffEmptyEl.style.display = '';
       return;
@@ -119,6 +114,11 @@ import Base from '../layouts/Base.astro';
       `;
     }).join('');
     bffListEl.style.display = '';
+    } catch {
+      bffLoadingEl.style.display = 'none';
+      bffErrorEl.textContent = 'ブラウザセッション一覧の取得に失敗しました';
+      bffErrorEl.style.display = '';
+    }
   }
 
   const BFF_REVOKE_CONFIRM =
@@ -132,15 +132,10 @@ import Base from '../layouts/Base.astro';
     if (!confirm(BFF_REVOKE_CONFIRM)) return;
     btn.disabled = true;
     try {
-      const res = await apiFetch(`/api/me/bff-sessions/${encodeURIComponent(sid)}`, {
+      await apiFetch(`/api/me/bff-sessions/${encodeURIComponent(sid)}`, {
         method: 'DELETE',
         headers: { Origin: window.location.origin },
       });
-      if (res && typeof res === 'object' && 'error' in res) {
-        showToast('ブラウザセッションの失効に失敗しました', 'error');
-        btn.disabled = false;
-        return;
-      }
       // 現在使用中のセッションを失効した場合、サーバーが Set-Cookie で
       // __Host-user-session を削除している。クライアント側では HttpOnly
       // のため判別できないので、無条件でリロードして /login にフォールバックさせる。
@@ -159,14 +154,9 @@ import Base from '../layouts/Base.astro';
     listEl.style.display = 'none';
     actionsEl.style.display = 'none';
 
-    const res = await apiFetch<ActiveSession[]>('/api/me/sessions');
-    loadingEl.style.display = 'none';
-    if ('error' in res) {
-      errorEl.textContent = 'セッション一覧の取得に失敗しました';
-      errorEl.style.display = '';
-      return;
-    }
-    const sessions = res as ActiveSession[];
+    try {
+      const sessions = await apiFetch<ActiveSession[]>('/api/me/sessions');
+      loadingEl.style.display = 'none';
     if (sessions.length === 0) {
       emptyEl.style.display = '';
       return;
@@ -188,6 +178,11 @@ import Base from '../layouts/Base.astro';
     `).join('');
     listEl.style.display = '';
     actionsEl.style.display = '';
+    } catch {
+      loadingEl.style.display = 'none';
+      errorEl.textContent = 'セッション一覧の取得に失敗しました';
+      errorEl.style.display = '';
+    }
   }
 
   listEl.addEventListener('click', async (e) => {
@@ -195,29 +190,29 @@ import Base from '../layouts/Base.astro';
     if (!btn) return;
     const id = btn.dataset.revoke!;
     if (!confirm('このセッションを無効化しますか？')) return;
-    const res = await apiFetch(`/api/me/sessions/${id}`, {
-      method: 'DELETE',
-      headers: { Origin: window.location.origin },
-    });
-    if ('error' in res) {
-      showToast('無効化に失敗しました', 'error');
-    } else {
+    try {
+      await apiFetch(`/api/me/sessions/${id}`, {
+        method: 'DELETE',
+        headers: { Origin: window.location.origin },
+      });
       showToast('セッションを無効化しました', 'success');
       await loadSessions();
+    } catch {
+      showToast('無効化に失敗しました', 'error');
     }
   });
 
   revokeAllBtn.addEventListener('click', async () => {
     if (!confirm('すべてのセッションを無効化しますか？この操作後、ログアウトされます。')) return;
-    const res = await apiFetch('/api/me/sessions', {
-      method: 'DELETE',
-      headers: { Origin: window.location.origin },
-    });
-    if ('error' in res) {
-      showToast('無効化に失敗しました', 'error');
-    } else {
+    try {
+      await apiFetch('/api/me/sessions', {
+        method: 'DELETE',
+        headers: { Origin: window.location.origin },
+      });
       showToast('すべてのセッションを無効化しました', 'success');
       setTimeout(() => { window.location.href = '/'; }, 1200);
+    } catch {
+      showToast('無効化に失敗しました', 'error');
     }
   });
 

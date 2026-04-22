@@ -108,34 +108,36 @@ import Base from '../layouts/Base.astro';
     renderAvatar(user);
   }
 
-  const res = await apiFetch<MyProfile>('/api/me');
-  loading.style.display = 'none';
-  if ('error' in res) {
-    showToast(res.error.message, 'error');
-  } else {
-    populateForm(res);
+  try {
+    const me = await apiFetch<MyProfile>('/api/me');
+    loading.style.display = 'none';
+    populateForm(me);
     content.style.display = '';
+  } catch (err) {
+    loading.style.display = 'none';
+    showToast(err instanceof Error ? err.message : 'プロフィールの取得に失敗しました', 'error');
   }
 
   saveBtn.addEventListener('click', async () => {
     saveBtn.disabled = true;
     saveBtn.textContent = '保存中...';
-    const res = await apiFetch<MyProfile>('/api/me', {
-      method: 'PATCH',
-      body: JSON.stringify({
-        name: nameInput.value || null,
-        picture: pictureInput.value || null,
-        phone: phoneInput.value || null,
-        address: addressInput.value || null,
-      }),
-    });
-    saveBtn.disabled = false;
-    saveBtn.textContent = '保存';
-    if ('error' in res) {
-      showToast(res.error.message, 'error');
-    } else {
-      populateForm(res);
+    try {
+      const updated = await apiFetch<MyProfile>('/api/me', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: nameInput.value || null,
+          picture: pictureInput.value || null,
+          phone: phoneInput.value || null,
+          address: addressInput.value || null,
+        }),
+      });
+      populateForm(updated);
       showToast('保存しました', 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '保存に失敗しました', 'error');
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = '保存';
     }
   });
 
@@ -169,15 +171,15 @@ import Base from '../layouts/Base.astro';
   deleteExecuteBtn.addEventListener('click', async () => {
     deleteExecuteBtn.disabled = true;
     deleteExecuteBtn.textContent = '削除中...';
-    const res = await apiFetch('/api/me', { method: 'DELETE' });
-    if ('error' in res) {
-      deleteExecuteBtn.disabled = false;
-      deleteExecuteBtn.textContent = '削除する';
-      showToast(res.error.message, 'error');
-      deleteDialog.close();
-    } else {
+    try {
+      await apiFetch('/api/me', { method: 'DELETE' });
       showToast('アカウントを削除しました', 'success');
       setTimeout(() => { window.location.href = '/'; }, 1000);
+    } catch (err) {
+      deleteExecuteBtn.disabled = false;
+      deleteExecuteBtn.textContent = '削除する';
+      showToast(err instanceof Error ? err.message : 'アカウント削除に失敗しました', 'error');
+      deleteDialog.close();
     }
   });
 </script>

@@ -110,10 +110,11 @@ import Base from '../layouts/Base.astro';
     });
     if (provider) params.set('provider', provider);
 
-    const res = await apiFetch<LoginEvent[]>(`/api/me/login-history?${params.toString()}`);
-    loadingEl.style.display = 'none';
-
-    if ('error' in res) {
+    let events: LoginEvent[];
+    try {
+      events = await apiFetch<LoginEvent[]>(`/api/me/login-history?${params.toString()}`);
+    } catch {
+      loadingEl.style.display = 'none';
       if (reset) {
         errorEl.textContent = 'ログイン履歴の取得に失敗しました';
         errorEl.style.display = '';
@@ -125,8 +126,7 @@ import Base from '../layouts/Base.astro';
       }
       return;
     }
-
-    const events = res as LoginEvent[];
+    loadingEl.style.display = 'none';
     accumulated = accumulated.concat(events);
     currentOffset += events.length;
 
