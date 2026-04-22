@@ -87,24 +87,23 @@ import Base from '../layouts/Base.astro';
     if (!confirm(`${PROVIDER_LABELS[provider]} との連携を解除しますか？`)) return;
     btn.textContent = '解除中...';
     (btn as HTMLButtonElement).disabled = true;
-    const res = await apiFetch(`/api/providers/${provider}`, { method: 'DELETE' });
-    if (res && 'error' in res) {
-      showToast(res.error.message, 'error');
-      render();
-    } else {
+    try {
+      await apiFetch(`/api/providers/${provider}`, { method: 'DELETE' });
       statuses = statuses.map(s => s.provider === provider ? { ...s, connected: false } : s);
       showToast(`${PROVIDER_LABELS[provider]} の連携を解除しました`, 'success');
-      render();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '連携解除に失敗しました', 'error');
     }
+    render();
   });
 
-  const res = await apiFetch<ProviderStatus[]>('/api/providers');
-  loadingEl.style.display = 'none';
-  if ('error' in res) {
-    showToast(res.error.message, 'error');
-  } else {
-    statuses = res as ProviderStatus[];
+  try {
+    statuses = await apiFetch<ProviderStatus[]>('/api/providers');
+    loadingEl.style.display = 'none';
     render();
     contentEl.style.display = '';
+  } catch (err) {
+    loadingEl.style.display = 'none';
+    showToast(err instanceof Error ? err.message : 'プロバイダー一覧の取得に失敗しました', 'error');
   }
 </script>

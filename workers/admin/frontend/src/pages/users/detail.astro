@@ -185,12 +185,12 @@ import Admin from '../../layouts/Admin.astro';
         btn.addEventListener('click', async () => {
           const tokenId = (btn as HTMLElement).dataset.id;
           if (!confirm('このセッションを無効化しますか？')) return;
-          const res = await apiFetch(`/api/users/${userId}/tokens/${tokenId}`, { method: 'DELETE' });
-          if (res && typeof res === 'object' && 'error' in res) {
-            showToast('セッション無効化に失敗しました', 'error');
-          } else {
+          try {
+            await apiFetch(`/api/users/${userId}/tokens/${tokenId}`, { method: 'DELETE' });
             showToast('セッションを無効化しました');
             window.location.reload();
+          } catch {
+            showToast('セッション無効化に失敗しました', 'error');
           }
         });
       });
@@ -234,12 +234,12 @@ import Admin from '../../layouts/Admin.astro';
         btn.addEventListener('click', async () => {
           const sessionId = (btn as HTMLElement).dataset.id;
           if (!confirm('この BFF セッションを失効させますか？\n\n注意: BFF Cookie のみ無効化します。refresh_token / 連携サービスのアクセスは「全セッション無効化」を別途実行してください。')) return;
-          const res = await apiFetch(`/api/users/${userId}/bff-sessions/${sessionId}`, { method: 'DELETE' });
-          if (res && typeof res === 'object' && 'error' in res) {
-            showToast('BFF セッション失効に失敗しました', 'error');
-          } else {
+          try {
+            await apiFetch(`/api/users/${userId}/bff-sessions/${sessionId}`, { method: 'DELETE' });
             showToast('BFF セッションを失効しました');
             window.location.reload();
+          } catch {
+            showToast('BFF セッション失効に失敗しました', 'error');
           }
         });
       });
@@ -250,12 +250,12 @@ import Admin from '../../layouts/Admin.astro';
     // 全セッション無効化
     revokeAllBtn.addEventListener('click', async () => {
       if (!confirm('このユーザーの全セッションを無効化しますか？')) return;
-      const res = await apiFetch(`/api/users/${userId}/tokens`, { method: 'DELETE' });
-      if (res && typeof res === 'object' && 'error' in res) {
-        showToast('全セッション無効化に失敗しました', 'error');
-      } else {
+      try {
+        await apiFetch(`/api/users/${userId}/tokens`, { method: 'DELETE' });
         showToast('全セッションを無効化しました');
         window.location.reload();
+      } catch {
+        showToast('全セッション無効化に失敗しました', 'error');
       }
     });
 
@@ -272,49 +272,49 @@ import Admin from '../../layouts/Admin.astro';
     toggleRoleBtn.addEventListener('click', async () => {
       const newRole = user.role === 'admin' ? 'user' : 'admin';
       if (!confirm(`このユーザーを${newRole === 'admin' ? '管理者' : 'ユーザー'}に変更しますか？`)) return;
-      const res = await apiFetch(`/api/users/${userId}/role`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: newRole }),
-      });
-      if (res && typeof res === 'object' && 'error' in res) {
-        showToast('ロール変更に失敗しました', 'error');
-      } else {
+      try {
+        await apiFetch(`/api/users/${userId}/role`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: newRole }),
+        });
         showToast('ロールを変更しました');
         window.location.reload();
+      } catch {
+        showToast('ロール変更に失敗しました', 'error');
       }
     });
 
     toggleBanBtn.addEventListener('click', async () => {
       if (isBanned) {
         if (!confirm('このユーザーのBANを解除しますか？')) return;
-        const res = await apiFetch(`/api/users/${userId}/ban`, { method: 'DELETE' });
-        if (res && typeof res === 'object' && 'error' in res) {
-          showToast('BAN解除に失敗しました', 'error');
-        } else {
+        try {
+          await apiFetch(`/api/users/${userId}/ban`, { method: 'DELETE' });
           showToast('BANを解除しました');
           window.location.reload();
+        } catch {
+          showToast('BAN解除に失敗しました', 'error');
         }
       } else {
         if (!confirm('このユーザーをBANしますか？')) return;
-        const res = await apiFetch(`/api/users/${userId}/ban`, { method: 'PATCH' });
-        if (res && typeof res === 'object' && 'error' in res) {
-          showToast('BAN処理に失敗しました', 'error');
-        } else {
+        try {
+          await apiFetch(`/api/users/${userId}/ban`, { method: 'PATCH' });
           showToast('ユーザーをBANしました');
           window.location.reload();
+        } catch {
+          showToast('BAN処理に失敗しました', 'error');
         }
       }
     });
 
     deleteBtn.addEventListener('click', async () => {
       if (!confirm('このユーザーを完全に削除しますか？この操作は取り消せません。')) return;
-      const res = await apiFetch(`/api/users/${userId}`, { method: 'DELETE' });
-      if (res && typeof res === 'object' && 'error' in res) {
-        showToast('ユーザー削除に失敗しました', 'error');
-      } else {
+      try {
+        await apiFetch(`/api/users/${userId}`, { method: 'DELETE' });
         showToast('ユーザーを削除しました');
         window.location.href = '/users';
+      } catch {
+        showToast('ユーザー削除に失敗しました', 'error');
       }
     });
 

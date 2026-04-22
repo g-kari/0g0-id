@@ -84,21 +84,23 @@ import Base from '../layouts/Base.astro';
     providersCardEl.style.display = 'none';
     trendsCardEl.style.display = 'none';
 
-    const [providersRes, trendsRes] = await Promise.all([
-      apiFetch<LoginProviderStat[]>(`/api/me/login-stats?days=${days}`),
-      apiFetch<DailyLoginStat[]>(`/api/me/security/login-trends?days=${days}`),
-    ]);
-
-    loadingEl.style.display = 'none';
-
-    if ('error' in providersRes || 'error' in trendsRes) {
+    let providers: LoginProviderStat[];
+    let trends: DailyLoginStat[];
+    try {
+      [providers, trends] = await Promise.all([
+        apiFetch<LoginProviderStat[]>(`/api/me/login-stats?days=${days}`),
+        apiFetch<DailyLoginStat[]>(`/api/me/security/login-trends?days=${days}`),
+      ]);
+    } catch {
+      loadingEl.style.display = 'none';
       errorEl.textContent = 'ログイン統計の取得に失敗しました';
       errorEl.style.display = '';
       return;
     }
 
-    const providers = (providersRes as LoginProviderStat[]).slice().sort((a, b) => b.count - a.count);
-    const trends = trendsRes as DailyLoginStat[];
+    loadingEl.style.display = 'none';
+
+    providers = providers.slice().sort((a, b) => b.count - a.count);
 
     if (providers.length === 0 && trends.length === 0) {
       emptyEl.style.display = '';
