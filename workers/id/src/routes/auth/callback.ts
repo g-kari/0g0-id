@@ -11,6 +11,9 @@ import {
   createAuthCode,
   insertLoginEvent,
   createLogger,
+  isAccountLocked,
+  recordFailedAttempt,
+  resetFailedAttempts,
 } from "@0g0-id/shared";
 import {
   type OAuthProvider,
@@ -146,6 +149,9 @@ export async function handleCallback(c: Context<{ Bindings: IdpEnv; Variables: V
     // BAN済みユーザーへのプロバイダー連携を防止（DBに書き込む前にチェック）
     const linkTargetUser = await findUserById(c.env.DB, stateData.linkUserId);
     if (!linkTargetUser || linkTargetUser.banned_at !== null) {
+      if (linkTargetUser) {
+        await recordFailedAttempt(c.env.DB, linkTargetUser.id).catch(() => {});
+      }
       return c.json(
         { error: { code: "ACCOUNT_BANNED", message: "Your account has been suspended" } },
         403,
@@ -176,6 +182,41 @@ export async function handleCallback(c: Context<{ Bindings: IdpEnv; Variables: V
     );
   }
 
+  // アカウントロックアウトチェック
+  const lockoutStatus = await isAccountLocked(c.env.DB, user.id);
+  if (lockoutStatus.locked) {
+    authLogger.warn("[oauth-callback] Account locked out", {
+      userId: user.id,
+      lockedUntil: lockoutStatus.lockedUntil,
+      failedAttempts: lockoutStatus.failedAttempts,
+    });
+    try {
+      const ipAddress = getClientIp(c.req.raw);
+      const userAgent = c.req.header("user-agent")?.slice(0, 512) ?? null;
+      const country = c.req.header("cf-ipcountry") ?? null;
+      await insertLoginEvent(c.env.DB, {
+        userId: user.id,
+        provider,
+        ipAddress,
+        userAgent,
+        country,
+        success: false,
+      });
+    } catch {
+      // ログ記録失敗はフローに影響させない
+    }
+    return c.json(
+      {
+        error: {
+          code: "ACCOUNT_LOCKED",
+          message: "Too many failed login attempts. Please try again later.",
+          locked_until: lockoutStatus.lockedUntil,
+        },
+      },
+      429,
+    );
+  }
+
   // 管理者ブートストラップ（管理者が0人の場合のみ・原子的操作）
   if (
     c.env.BOOTSTRAP_ADMIN_EMAIL &&
@@ -199,10 +240,9 @@ export async function handleCallback(c: Context<{ Bindings: IdpEnv; Variables: V
     }
   }
 
-  // ログインイベント記録（エラーがあってもログインフローは継続）
+  // ログインイベント記録 + ロックアウトカウンターリセット（エラーがあってもログインフローは継続）
   try {
     const ipAddress = getClientIp(c.req.raw);
-    // user-agent は任意長の文字列のため 512 文字に切り詰め（ストレージ DoS 防止）
     const userAgent = c.req.header("user-agent")?.slice(0, 512) ?? null;
     const country = c.req.header("cf-ipcountry") ?? null;
     await insertLoginEvent(c.env.DB, {
@@ -211,7 +251,11 @@ export async function handleCallback(c: Context<{ Bindings: IdpEnv; Variables: V
       ipAddress,
       userAgent,
       country,
+      success: true,
     });
+    if (lockoutStatus.failedAttempts > 0) {
+      await resetFailedAttempts(c.env.DB, user.id);
+    }
   } catch (err) {
     authLogger.error("[login-event] Failed to record login event", err);
   }

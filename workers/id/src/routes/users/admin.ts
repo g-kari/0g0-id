@@ -24,6 +24,8 @@ import {
   isValidProvider,
   UUID_RE,
   parseJsonBody,
+  getAccountLockout,
+  clearLockout,
 } from "@0g0-id/shared";
 import { authMiddleware } from "../../middleware/auth";
 import { adminMiddleware } from "../../middleware/admin";
@@ -291,6 +293,52 @@ app.delete("/:id/ban", authMiddleware, adminMiddleware, csrfMiddleware, async (c
   }
 
   return c.json({ data: formatAdminUserSummary(updated) });
+});
+
+// GET /api/users/:id/lockout — ユーザーのロックアウト状態（管理者のみ）
+app.get("/:id/lockout", authMiddleware, adminMiddleware, async (c) => {
+  const targetId = c.req.param("id");
+
+  const targetUser = await findUserById(c.env.DB, targetId);
+  if (!targetUser) {
+    return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);
+  }
+
+  const lockout = await getAccountLockout(c.env.DB, targetId);
+  if (!lockout) {
+    return c.json({
+      data: { user_id: targetId, failed_attempts: 0, locked_until: null, last_failed_at: null },
+    });
+  }
+
+  const now = new Date().toISOString();
+  const isLocked = lockout.locked_until !== null && lockout.locked_until > now;
+  return c.json({
+    data: {
+      ...lockout,
+      is_locked: isLocked,
+    },
+  });
+});
+
+// DELETE /api/users/:id/lockout — ロックアウト解除（管理者のみ）
+app.delete("/:id/lockout", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+  const targetId = c.req.param("id");
+
+  const targetUser = await findUserById(c.env.DB, targetId);
+  if (!targetUser) {
+    return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);
+  }
+
+  await clearLockout(c.env.DB, targetId);
+
+  await logAdminAudit(c, {
+    action: "user.lockout_clear",
+    targetType: "user",
+    targetId,
+  });
+
+  return c.json({ data: { message: "Lockout cleared" } });
 });
 
 // GET /api/users/:id/tokens — ユーザーのアクティブセッション一覧（管理者のみ）

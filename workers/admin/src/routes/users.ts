@@ -208,6 +208,24 @@ app.delete("/:id/ban", async (c) => {
   );
 });
 
+// GET /api/users/:id/lockout — ロックアウト状態取得
+app.get(
+  "/:id/lockout",
+  proxyGet(
+    COOKIE_NAMES.ADMIN_SESSION,
+    (c) => `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/lockout`,
+  ),
+);
+
+// DELETE /api/users/:id/lockout — ロックアウト解除
+app.delete("/:id/lockout", async (c) => {
+  return proxyMutate(
+    c,
+    COOKIE_NAMES.ADMIN_SESSION,
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/lockout`,
+  );
+});
+
 // DELETE /api/users/:id
 app.delete("/:id", async (c) => {
   return proxyMutate(

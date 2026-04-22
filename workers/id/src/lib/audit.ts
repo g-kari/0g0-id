@@ -22,7 +22,8 @@ export type AuditAction =
   | "service.redirect_uri_deleted"
   | "service.secret_rotated"
   | "service.owner_transferred"
-  | "service.user_access_revoked";
+  | "service.user_access_revoked"
+  | "user.lockout_clear";
 
 /** 監査ログ対象リソースの種別。 */
 export type AuditTargetType = "user" | "service";

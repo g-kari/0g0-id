@@ -10,6 +10,7 @@ const baseLoginEvent: LoginEvent = {
   ip_address: "1.2.3.4",
   user_agent: "Mozilla/5.0",
   country: null,
+  success: 1,
   created_at: "2024-01-01T00:00:00Z",
 };
 
@@ -32,6 +33,7 @@ describe("insertLoginEvent", () => {
       "1.2.3.4",
       "Mozilla/5.0",
       null,
+      1,
     );
     expect(stmt.run).toHaveBeenCalled();
   });
@@ -53,6 +55,7 @@ describe("insertLoginEvent", () => {
       null,
       "Chrome/120",
       null,
+      1,
     );
   });
 
@@ -73,6 +76,7 @@ describe("insertLoginEvent", () => {
       "10.0.0.1",
       null,
       null,
+      1,
     );
   });
 
@@ -91,6 +95,7 @@ describe("insertLoginEvent", () => {
       null,
       null,
       null,
+      1,
     );
   });
 
@@ -112,6 +117,7 @@ describe("insertLoginEvent", () => {
       "1.2.3.4",
       "Mozilla/5.0",
       "JP",
+      1,
     );
   });
 

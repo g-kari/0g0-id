@@ -53,6 +53,14 @@ import Admin from '../../layouts/Admin.astro';
       <div id="bff-sessions-list">読み込み中...</div>
     </div>
 
+    <div class="card" id="lockout-card" style="padding:20px; margin-bottom:24px; display:none;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <h3 style="margin:0; font-size:0.9rem; color:var(--color-muted);">アカウントロックアウト</h3>
+        <button id="clear-lockout-btn" class="btn btn-ghost" style="font-size:0.8rem; padding:4px 10px; display:none;">ロックアウト解除</button>
+      </div>
+      <div id="lockout-info"></div>
+    </div>
+
     <div class="card" style="padding:20px;">
       <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">操作</h3>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -317,6 +325,55 @@ import Admin from '../../layouts/Admin.astro';
         showToast('ユーザー削除に失敗しました', 'error');
       }
     });
+
+    // ロックアウト状態の取得・表示
+    const lockoutCard = document.getElementById('lockout-card')!;
+    const lockoutInfo = document.getElementById('lockout-info')!;
+    const clearLockoutBtn = document.getElementById('clear-lockout-btn')!;
+
+    try {
+      const lockout = await apiFetch<{
+        user_id: string;
+        failed_attempts: number;
+        locked_until: string | null;
+        last_failed_at: string | null;
+        is_locked?: boolean;
+      }>(`/api/users/${userId}/lockout`);
+
+      if (lockout.failed_attempts > 0 || lockout.locked_until) {
+        lockoutCard.style.display = '';
+        const isLocked = lockout.is_locked ?? (lockout.locked_until !== null && lockout.locked_until > new Date().toISOString());
+        lockoutInfo.innerHTML = `
+          <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:0.875rem;">
+            <div>
+              <span style="color:var(--color-muted);">状態:</span>
+              ${isLocked
+                ? '<span style="color:var(--color-danger); font-weight:600;">🔒 ロック中</span>'
+                : '<span style="color:var(--color-success);">解除済み</span>'}
+            </div>
+            <div>
+              <span style="color:var(--color-muted);">失敗回数:</span>
+              <span style="font-weight:600;">${lockout.failed_attempts}</span>
+            </div>
+            ${lockout.locked_until ? `<div><span style="color:var(--color-muted);">ロック期限:</span> ${formatDatetime(lockout.locked_until)}</div>` : ''}
+            ${lockout.last_failed_at ? `<div><span style="color:var(--color-muted);">最終失敗:</span> ${formatDatetime(lockout.last_failed_at)}</div>` : ''}
+          </div>
+        `;
+        clearLockoutBtn.style.display = '';
+        clearLockoutBtn.addEventListener('click', async () => {
+          if (!confirm('ロックアウトを解除しますか？失敗回数もリセットされます。')) return;
+          try {
+            await apiFetch(`/api/users/${userId}/lockout`, { method: 'DELETE' });
+            showToast('ロックアウトを解除しました');
+            window.location.reload();
+          } catch {
+            showToast('ロックアウト解除に失敗しました', 'error');
+          }
+        });
+      }
+    } catch {
+      // ロックアウト情報取得失敗は無視
+    }
 
   } catch {
     loadingEl.style.display = 'none';
