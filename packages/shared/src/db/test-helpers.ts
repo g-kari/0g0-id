@@ -28,6 +28,8 @@ export function makeD1Mock(
  * 必須フィールドにはデフォルト値が設定され、overridesで上書き可能。
  * 返り値はIdpEnv型なので app.request() に直接渡せる（as unknown as 不要）。
  */
+const passRateLimiter = { limit: () => Promise.resolve({ success: true }) };
+
 export function createMockIdpEnv(overrides: Partial<IdpEnv> = {}): IdpEnv {
   return {
     DB: {} as D1Database,
@@ -39,6 +41,11 @@ export function createMockIdpEnv(overrides: Partial<IdpEnv> = {}): IdpEnv {
     USER_ORIGIN: "https://user.0g0.xyz",
     ADMIN_ORIGIN: "https://admin.0g0.xyz",
     COOKIE_SECRET: "test-cookie-secret-32chars-long!!",
+    RATE_LIMITER_AUTH: passRateLimiter,
+    RATE_LIMITER_EXTERNAL: passRateLimiter,
+    RATE_LIMITER_TOKEN: passRateLimiter,
+    RATE_LIMITER_TOKEN_CLIENT: passRateLimiter,
+    RATE_LIMITER_DEVICE_VERIFY: passRateLimiter,
     ...overrides,
   };
 }

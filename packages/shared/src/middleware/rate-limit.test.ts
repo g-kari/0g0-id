@@ -82,10 +82,18 @@ describe("createRateLimitMiddleware", () => {
     expect(res.headers.get("Retry-After")).toBe("120");
   });
 
-  it("バインディング未設定の場合はスキップして通過する", async () => {
+  it("開発環境でバインディング未設定の場合はスキップして通過する", async () => {
     const app = buildApp({ RATE_LIMITER: undefined, ORIGIN: "http://localhost" });
     const res = await app.request("/test");
     expect(res.status).toBe(200);
+  });
+
+  it("本番環境でバインディング未設定の場合は503を返す", async () => {
+    const app = buildApp({ RATE_LIMITER: undefined, ORIGIN: "https://example.com" });
+    const res = await app.request("/test");
+    expect(res.status).toBe(503);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("SERVICE_UNAVAILABLE");
   });
 
   it("cf-connecting-ip をキーとして limit() を呼ぶ", async () => {
