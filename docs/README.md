@@ -30,6 +30,7 @@
 | ファイル                                                   | 概要                                     |
 | ---------------------------------------------------------- | ---------------------------------------- |
 | [cloudflare-github-setup.md](./cloudflare-github-setup.md) | Cloudflare ↔ GitHub 連携セットアップ手順 |
+| [deployment.md](./deployment.md)                           | デプロイ手順・シークレット管理ガイド     |
 
 ## アーキテクチャ
 
