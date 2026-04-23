@@ -23,6 +23,7 @@ export * from "./lib/logger";
 export * from "./lib/providers";
 export * from "./lib/parse-body";
 export * from "./middleware/body-limit";
+export * from "./middleware/rate-limit";
 export * from "./middleware/uuid-param";
 export * from "./middleware/require-dbsc-bound";
 export * from "./lib/sql";
