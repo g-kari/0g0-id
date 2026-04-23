@@ -173,12 +173,91 @@ env:
 マイグレーションファイルは `migrations/` ディレクトリに配置される。
 `deploy:id` の内部で自動適用されるが、**push 前に手動で本番 DB へ適用することを推奨する**。
 
+### 5.1 マイグレーション適用コマンド
+
 ```bash
 # 本番 DB にマイグレーション適用
 npm run migrate:id
+
+# ローカル D1 にマイグレーション適用（開発時）
+cd workers/id
+npx wrangler d1 migrations apply 0g0-id-db --local
 ```
 
 > ⚠️ 新しいマイグレーションファイルを追加して適用せずにデプロイすると、`D1_ERROR: no such column` が本番で発生する。
+
+### 5.2 マイグレーションファイル一覧
+
+| ファイル                                  | 概要                                                                               |
+| ----------------------------------------- | ---------------------------------------------------------------------------------- |
+| `0001_initial.sql`                        | 初期スキーマ（users, services, service_redirect_uris, auth_codes, refresh_tokens） |
+| `0002_performance_indexes.sql`            | auth_codes / refresh_tokens に部分インデックス追加                                 |
+| `0003_user_profile_fields.sql`            | ユーザープロフィール拡張（phone, address）                                         |
+| `0004_auth_codes_cascade_delete.sql`      | auth_codes.user_id に ON DELETE CASCADE 追加                                       |
+| `0005_add_line_twitch_providers.sql`      | LINE・Twitch プロバイダー対応                                                      |
+| `0006_add_github_x_providers.sql`         | GitHub・X プロバイダー対応                                                         |
+| `0007_login_events.sql`                   | ログインイベント記録テーブル                                                       |
+| `0008_auth_codes_service_id.sql`          | auth_codes に service_id カラム追加                                                |
+| `0009_oidc_improvements.sql`              | OIDC 改善（nonce, code_challenge, scope 等）                                       |
+| `0010_user_ban.sql`                       | ユーザー停止機能（banned_at）                                                      |
+| `0011_admin_audit_logs.sql`               | 管理者監査ログテーブル                                                             |
+| `0012_login_events_country.sql`           | login_events に country カラム追加                                                 |
+| `0013_refresh_token_revoke_reason.sql`    | refresh_tokens に revoked_reason カラム追加                                        |
+| `0014_admin_audit_logs_add_status.sql`    | admin_audit_logs に status カラム追加                                              |
+| `0015_refresh_tokens_pairwise_sub.sql`    | refresh_tokens にペアワイズ sub カラム追加                                         |
+| `0016_refresh_tokens_scope.sql`           | リフレッシュトークンに発行時スコープを記録                                         |
+| `0017_device_codes.sql`                   | Device Authorization Grant（RFC 8628）用テーブル                                   |
+| `0018_device_codes_check_constraint.sql`  | device_codes に CHECK 制約追加                                                     |
+| `0019_mcp_sessions.sql`                   | MCP セッション管理テーブル                                                         |
+| `0020_revoked_access_tokens.sql`          | アクセストークン失効テーブル（jti ブロックリスト）                                 |
+| `0021_add_user_id_to_mcp_sessions.sql`    | mcp_sessions に user_id カラム追加                                                 |
+| `0022_auth_codes_provider.sql`            | auth_codes に provider カラム追加（amr クレーム用）                                |
+| `0023_bff_sessions.sql`                   | BFF セッション管理テーブル                                                         |
+| `0024_bff_sessions_dbsc.sql`              | DBSC Phase 1（device_public_key_jwk, device_bound_at）                             |
+| `0025_dbsc_challenges.sql`                | DBSC Phase 2 チャレンジテーブル                                                    |
+| `0026_additional_performance_indexes.sql` | パフォーマンス改善：複合インデックス追加                                           |
+| `0027_account_lockouts.sql`               | アカウントロックアウト管理                                                         |
+
+### 5.3 ローカル開発でのマイグレーション
+
+ローカル D1 は `--local` フラグで操作する。`wrangler d1 migrations apply` はまだ適用されていないマイグレーションのみを実行する。
+
+```bash
+cd workers/id
+
+# 全マイグレーションを一括適用（未適用分のみ実行）
+npx wrangler d1 migrations apply 0g0-id-db --local
+
+# 個別に SQL を実行する場合（デバッグ用）
+npx wrangler d1 execute 0g0-id-db --local --file=../../migrations/0027_account_lockouts.sql
+
+# ローカル DB の中身を確認
+npx wrangler d1 execute 0g0-id-db --local --command="SELECT name FROM sqlite_master WHERE type='table'"
+```
+
+### 5.4 マイグレーション失敗時のロールバック
+
+D1 にはネイティブのロールバック機能がないため、**Time Travel** を使用して復旧する。
+
+#### Time Travel による復旧手順
+
+```bash
+# 1. マイグレーション適用前のブックマークを取得
+#    （事前に記録しておくか、タイムスタンプから逆算）
+npx wrangler d1 time-travel info 0g0-id-db
+
+# 2. 特定時点のブックマークに復元
+npx wrangler d1 time-travel restore 0g0-id-db --bookmark=<bookmark_id>
+
+# 3. 復元後、アプリケーションの動作を確認
+curl https://id.0g0.xyz/api/health
+```
+
+#### 注意事項
+
+- Time Travel の保持期間はプランに依存（Workers Free: 過去 30 日）
+- 復元はデータベース全体に影響する（特定テーブルのみの復元は不可）
+- 復元後はマイグレーション管理テーブル（`d1_migrations`）の状態も巻き戻るため、修正済みマイグレーションの再適用が必要
 
 ---
 

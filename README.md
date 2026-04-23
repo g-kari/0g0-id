@@ -48,6 +48,11 @@ mcp.0g0.xyz   — MCP Worker（Claude Code連携）
 | リフレッシュトークン | ローテーション + reuse detection（family 全失効）         |
 | 管理者権限           | DB ロールベース + 初回ブートストラップ                    |
 
+## 動作要件
+
+- **Node.js**: v20.x 以上（LTS 推奨）
+- **npm**: v11.x 以上（`packageManager` フィールドで `npm@11.12.1` に固定）
+
 ## セットアップ
 
 ### 1. 依存インストール
@@ -66,9 +71,15 @@ wrangler d1 create 0g0-id-db
 ### 3. マイグレーション実行
 
 ```bash
+# ローカル D1 に全マイグレーション適用
 cd workers/id
-npx wrangler d1 execute 0g0-id-db --remote --file=../../migrations/0001_initial.sql
+npx wrangler d1 migrations apply 0g0-id-db --local
+
+# 本番 D1 に適用（push 前に必ず実行）
+npm run migrate:id
 ```
+
+> ⚠️ 新しいマイグレーションを追加して適用せずにデプロイすると `D1_ERROR: no such column` が本番で発生します。
 
 ### 4. ES256 鍵ペア生成
 
