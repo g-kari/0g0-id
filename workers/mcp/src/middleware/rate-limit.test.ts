@@ -2,14 +2,18 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
 import { mcpRateLimitMiddleware } from "./rate-limit";
 
-vi.mock("@0g0-id/shared", () => ({
-  createLogger: vi.fn().mockReturnValue({
-    warn: vi.fn(),
-    info: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock("@0g0-id/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@0g0-id/shared")>();
+  return {
+    ...actual,
+    createLogger: vi.fn().mockReturnValue({
+      warn: vi.fn(),
+      info: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    }),
+  };
+});
 
 const baseUrl = "https://mcp.example.com";
 

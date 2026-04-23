@@ -45,6 +45,14 @@ jobs:
       - name: テスト実行
         run: vp test run
 
+      - name: フロントエンドビルド検証（user）
+        run: npm run build
+        working-directory: workers/user/frontend
+
+      - name: フロントエンドビルド検証（admin）
+        run: npm run build
+        working-directory: workers/admin/frontend
+
   audit:
     name: npm audit（脆弱性チェック）
     runs-on: ubuntu-latest
