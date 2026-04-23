@@ -66,10 +66,20 @@ describe("authRateLimitMiddleware", () => {
     expect(res.headers.get("Retry-After")).toBe("60");
   });
 
-  it("バインディング未設定の場合はスキップして通過する", async () => {
-    const app = buildApp(makeBaseEnv({ RATE_LIMITER_AUTH: undefined }));
+  it("開発環境でバインディング未設定の場合はスキップして通過する", async () => {
+    const app = buildApp(
+      makeBaseEnv({ RATE_LIMITER_AUTH: undefined, IDP_ORIGIN: "http://localhost:8787" }),
+    );
     const res = await app.request("/auth/login");
     expect(res.status).toBe(200);
+  });
+
+  it("本番環境でバインディング未設定の場合は503を返す", async () => {
+    const app = buildApp(makeBaseEnv({ RATE_LIMITER_AUTH: undefined }));
+    const res = await app.request("/auth/login");
+    expect(res.status).toBe(503);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("SERVICE_UNAVAILABLE");
   });
 
   it("cf-connecting-ip ヘッダーをキーとして limit() を呼ぶ", async () => {
@@ -142,10 +152,20 @@ describe("externalApiRateLimitMiddleware", () => {
     expect(res.headers.get("Retry-After")).toBe("60");
   });
 
-  it("バインディング未設定の場合はスキップして通過する", async () => {
-    const app = buildApp(makeBaseEnv({ RATE_LIMITER_EXTERNAL: undefined }));
+  it("開発環境でバインディング未設定の場合はスキップして通過する", async () => {
+    const app = buildApp(
+      makeBaseEnv({ RATE_LIMITER_EXTERNAL: undefined, IDP_ORIGIN: "http://localhost:8787" }),
+    );
     const res = await app.request("/api/external/users");
     expect(res.status).toBe(200);
+  });
+
+  it("本番環境でバインディング未設定の場合は503を返す", async () => {
+    const app = buildApp(makeBaseEnv({ RATE_LIMITER_EXTERNAL: undefined }));
+    const res = await app.request("/api/external/users");
+    expect(res.status).toBe(503);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("SERVICE_UNAVAILABLE");
   });
 
   it("Basic認証の client_id をキーとして limit() を呼ぶ", async () => {
@@ -224,10 +244,20 @@ describe("tokenApiRateLimitMiddleware", () => {
     expect(res.headers.get("Retry-After")).toBe("60");
   });
 
-  it("バインディング未設定の場合はスキップして通過する", async () => {
-    const app = buildApp(makeBaseEnv({ RATE_LIMITER_TOKEN: undefined }));
+  it("開発環境でバインディング未設定の場合はスキップして通過する", async () => {
+    const app = buildApp(
+      makeBaseEnv({ RATE_LIMITER_TOKEN: undefined, IDP_ORIGIN: "http://localhost:8787" }),
+    );
     const res = await app.request("/auth/exchange");
     expect(res.status).toBe(200);
+  });
+
+  it("本番環境でバインディング未設定の場合は503を返す", async () => {
+    const app = buildApp(makeBaseEnv({ RATE_LIMITER_TOKEN: undefined }));
+    const res = await app.request("/auth/exchange");
+    expect(res.status).toBe(503);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("SERVICE_UNAVAILABLE");
   });
 
   it("cf-connecting-ip ヘッダーをキーとして limit() を呼ぶ", async () => {
@@ -283,10 +313,20 @@ describe("tokenApiClientRateLimitMiddleware", () => {
     expect(body.error.code).toBe("TOO_MANY_REQUESTS");
   });
 
-  it("バインディング未設定の場合はスキップして通過する", async () => {
-    const app = buildApp(makeBaseEnv({ RATE_LIMITER_TOKEN_CLIENT: undefined }));
+  it("開発環境でバインディング未設定の場合はスキップして通過する", async () => {
+    const app = buildApp(
+      makeBaseEnv({ RATE_LIMITER_TOKEN_CLIENT: undefined, IDP_ORIGIN: "http://localhost:8787" }),
+    );
     const res = await app.request("/api/token");
     expect(res.status).toBe(200);
+  });
+
+  it("本番環境でバインディング未設定の場合は503を返す", async () => {
+    const app = buildApp(makeBaseEnv({ RATE_LIMITER_TOKEN_CLIENT: undefined }));
+    const res = await app.request("/api/token");
+    expect(res.status).toBe(503);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("SERVICE_UNAVAILABLE");
   });
 
   it("Authorization: Basic ヘッダーの client_id をキーとして使う（コンフィデンシャルクライアント）", async () => {

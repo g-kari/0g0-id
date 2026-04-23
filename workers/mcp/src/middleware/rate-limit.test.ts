@@ -49,14 +49,32 @@ describe("mcpRateLimitMiddleware", () => {
     vi.resetAllMocks();
   });
 
-  it("RATE_LIMITER_MCPバインディングがない場合はスキップして200を返す", async () => {
-    const { app, env } = buildApp({ RATE_LIMITER_MCP: undefined });
+  it("開発環境でバインディング未設定の場合はスキップして200を返す", async () => {
+    const { app, env } = buildApp({
+      RATE_LIMITER_MCP: undefined,
+      MCP_ORIGIN: "http://localhost:8787",
+    });
     const res = await app.request(
       new Request(`${baseUrl}/test`),
       undefined,
       env as unknown as Record<string, string>,
     );
     expect(res.status).toBe(200);
+  });
+
+  it("本番環境でバインディング未設定の場合は503を返す", async () => {
+    const { app, env } = buildApp({
+      RATE_LIMITER_MCP: undefined,
+      MCP_ORIGIN: "https://mcp.example.com",
+    });
+    const res = await app.request(
+      new Request(`${baseUrl}/test`),
+      undefined,
+      env as unknown as Record<string, string>,
+    );
+    expect(res.status).toBe(503);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("SERVICE_UNAVAILABLE");
   });
 
   it("レートリミット成功の場合は200を返す", async () => {

@@ -45,14 +45,20 @@ export function createRateLimitMiddleware<
   return createMiddleware<{ Bindings: E; Variables: V }>(async (c, next) => {
     const binding = getBinding(c.env);
     if (!binding) {
+      const prod = isProduction?.(c.env) ?? false;
       if (!warnedBindings.has(bindingName)) {
         warnedBindings.add(bindingName);
-        const prod = isProduction?.(c.env) ?? false;
         logConfigWarning(
           prod,
           `[rate-limit] ${bindingName} binding is not configured — rate limiting is DISABLED.`,
           " ⚠️ PRODUCTION: Configure this binding in wrangler.toml immediately.",
           " Configure this binding in wrangler.toml for production deployments.",
+        );
+      }
+      if (prod) {
+        return c.json(
+          { error: { code: "SERVICE_UNAVAILABLE", message: "Rate limiter not configured" } },
+          503,
         );
       }
       return next();
