@@ -56,6 +56,59 @@
 | POST   | `/api/token/revoke`                       | BasicAuth  | RFC 7009 トークン失効。                                                                                   |
 | POST   | `/api/device/code`                        | BasicAuth  | OAuth Device Authorization Grant（RFC 8628）開始。                                                        |
 | POST   | `/api/device/token`                       | BasicAuth  | Device grant でのトークン取得。                                                                           |
+| POST   | `/api/device/verify`                      | BearerAuth | デバイスコード承認/拒否（BFF 用）。                                                                       |
+
+### POST `/api/device/verify` 詳細
+
+BFF がユーザーの代わりにデバイスコードを承認または拒否するためのエンドポイント。
+RFC 8628 標準仕様の `/api/device/code`・`/api/device/token` とは異なる独自エンドポイント。
+
+**認証**: Bearer トークン（アクセストークン）
+**ミドルウェア**: `authMiddleware` + `rejectServiceTokenMiddleware` + `rejectBannedUserMiddleware` + レートリミット（2 重）
+
+#### リクエストボディ
+
+| フィールド  | 型       | 必須 | 説明                                                             |
+| ----------- | -------- | ---- | ---------------------------------------------------------------- |
+| `user_code` | `string` | ✅   | デバイスコード（`XXXX-XXXX` 形式、ハイフン・空白は正規化で除去） |
+| `action`    | `string` | —    | `"approve"` / `"deny"` を指定。省略時はコード情報の取得のみ      |
+
+`user_code` の文字セット: `ABCDEFGHJKMNPQRSTUVWXYZ23456789`（紛らわしい文字 0/1/I/L/O を除外）。
+
+#### レスポンス
+
+**action 省略時（情報取得）** — 200:
+
+```jsonc
+{
+  "data": {
+    "service_name": "My App",
+    "scopes": ["openid", "profile", "email"],
+  },
+}
+```
+
+**action = `"approve"`** — 200:
+
+```jsonc
+{ "status": "approved" }
+```
+
+**action = `"deny"`** — 200:
+
+```jsonc
+{ "status": "denied" }
+```
+
+#### エラーコード
+
+| コード              | HTTP | 説明                                      |
+| ------------------- | ---- | ----------------------------------------- |
+| `BAD_REQUEST`       | 400  | `user_code` 必須、形式不正、`action` 不正 |
+| `INVALID_CODE`      | 404  | コード不存在または期限切れ                |
+| `CODE_EXPIRED`      | 400  | デバイスコード有効期限切れ                |
+| `CODE_ALREADY_USED` | 400  | 既に承認/拒否済み                         |
+| `INTERNAL_ERROR`    | 500  | サーバー側エラー                          |
 
 ## 2. 独自認証フロー（BFF / 外部サービス両対応）
 
