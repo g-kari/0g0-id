@@ -2,25 +2,29 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
 
 // @0g0-id/shared の全関数をモック
-vi.mock("@0g0-id/shared", () => ({
-  createLogger: vi
-    .fn()
-    .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
-  sha256: vi.fn(),
-  findServiceByClientId: vi.fn(),
-  findServiceById: vi.fn(),
-  findUserById: vi.fn(),
-  createDeviceCode: vi.fn(),
-  findDeviceCodeByUserCode: vi.fn(),
-  findDeviceCodeByHash: vi.fn(),
-  approveDeviceCode: vi.fn(),
-  denyDeviceCode: vi.fn(),
-  tryUpdateDeviceCodePolledAt: vi.fn(),
-  deleteDeviceCode: vi.fn(),
-  deleteApprovedDeviceCode: vi.fn(),
-  deleteExpiredDeviceCodes: vi.fn(),
-  signIdToken: vi.fn(),
-}));
+vi.mock("@0g0-id/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@0g0-id/shared")>();
+  return {
+    ...actual,
+    createLogger: vi
+      .fn()
+      .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+    sha256: vi.fn(),
+    findServiceByClientId: vi.fn(),
+    findServiceById: vi.fn(),
+    findUserById: vi.fn(),
+    createDeviceCode: vi.fn(),
+    findDeviceCodeByUserCode: vi.fn(),
+    findDeviceCodeByHash: vi.fn(),
+    approveDeviceCode: vi.fn(),
+    denyDeviceCode: vi.fn(),
+    tryUpdateDeviceCodePolledAt: vi.fn(),
+    deleteDeviceCode: vi.fn(),
+    deleteApprovedDeviceCode: vi.fn(),
+    deleteExpiredDeviceCodes: vi.fn(),
+    signIdToken: vi.fn(),
+  };
+});
 
 // token-pair ユーティリティのモック
 vi.mock("../utils/token-pair", () => ({

@@ -3,40 +3,40 @@ import { Hono } from "hono";
 import { createMockIdpEnv } from "../../../../packages/shared/src/db/test-helpers";
 
 // @0g0-id/sharedの全関数をモック
-vi.mock("@0g0-id/shared", () => ({
-  createLogger: vi
-    .fn()
-    .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
-  findRefreshTokenByHash: vi.fn(),
-  findServiceByClientId: vi.fn(),
-  findServiceById: vi.fn(),
-  findUserById: vi.fn(),
-  revokeRefreshToken: vi.fn(),
-  sha256: vi.fn(),
-  generatePairwiseSub: vi.fn(),
-  timingSafeEqual: vi.fn(),
-  verifyAccessToken: vi.fn(),
-  // POST /api/token/ grant types で使用
-  findAndConsumeAuthCode: vi.fn(),
-  findAndRevokeRefreshToken: vi.fn(),
-  unrevokeRefreshToken: vi.fn(),
-  revokeTokenFamily: vi.fn(),
-  generateCodeChallenge: vi.fn(),
-  signIdToken: vi.fn(),
-  matchRedirectUri: vi.fn(),
-  normalizeRedirectUri: vi.fn(),
-  signAccessToken: vi.fn(),
-  generateToken: vi.fn(),
-  createRefreshToken: vi.fn(),
-  // JTIブロックリスト
-  addRevokedAccessToken: vi.fn(),
-  isAccessTokenRevoked: vi.fn(),
-  // HMAC-SHA256署名付きCookie（auth.ts経由の間接利用対策）
-  signCookie: vi.fn(),
-  verifyCookie: vi.fn(),
-  // token-recovery.ts 経由で使用
-  findRefreshTokenById: vi.fn(),
-}));
+vi.mock("@0g0-id/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@0g0-id/shared")>();
+  return {
+    ...actual,
+    createLogger: vi
+      .fn()
+      .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+    findRefreshTokenByHash: vi.fn(),
+    findServiceByClientId: vi.fn(),
+    findServiceById: vi.fn(),
+    findUserById: vi.fn(),
+    revokeRefreshToken: vi.fn(),
+    sha256: vi.fn(),
+    generatePairwiseSub: vi.fn(),
+    timingSafeEqual: vi.fn(),
+    verifyAccessToken: vi.fn(),
+    findAndConsumeAuthCode: vi.fn(),
+    findAndRevokeRefreshToken: vi.fn(),
+    unrevokeRefreshToken: vi.fn(),
+    revokeTokenFamily: vi.fn(),
+    generateCodeChallenge: vi.fn(),
+    signIdToken: vi.fn(),
+    matchRedirectUri: vi.fn(),
+    normalizeRedirectUri: vi.fn(),
+    signAccessToken: vi.fn(),
+    generateToken: vi.fn(),
+    createRefreshToken: vi.fn(),
+    addRevokedAccessToken: vi.fn(),
+    isAccessTokenRevoked: vi.fn(),
+    signCookie: vi.fn(),
+    verifyCookie: vi.fn(),
+    findRefreshTokenById: vi.fn(),
+  };
+});
 
 import {
   findRefreshTokenByHash,
