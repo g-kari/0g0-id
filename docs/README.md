@@ -31,6 +31,7 @@
 | ---------------------------------------------------------- | ---------------------------------------- |
 | [cloudflare-github-setup.md](./cloudflare-github-setup.md) | Cloudflare ↔ GitHub 連携セットアップ手順 |
 | [deployment.md](./deployment.md)                           | デプロイ手順・シークレット管理ガイド     |
+| [disaster-recovery.md](./disaster-recovery.md)             | D1 バックアップ・災害復旧手順            |
 
 ## アーキテクチャ
 
