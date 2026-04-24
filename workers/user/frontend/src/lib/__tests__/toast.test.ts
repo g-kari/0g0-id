@@ -3,23 +3,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { showToast } from "../../lib/toast";
 
 describe("showToast", () => {
-  let container: HTMLDivElement;
-
   beforeEach(() => {
-    container = document.createElement("div");
-    container.id = "toast-container";
-    document.body.appendChild(container);
     vi.useFakeTimers();
   });
 
   afterEach(() => {
     vi.useRealTimers();
-    container.remove();
+    document.body.innerHTML = "";
   });
 
   it("creates a toast element in the container", () => {
     showToast("Hello", "success");
-    const toast = container.querySelector(".toast");
+    const container = document.getElementById("toast-container");
+    expect(container).not.toBeNull();
+    const toast = container!.querySelector(".toast");
     expect(toast).not.toBeNull();
     expect(toast!.textContent).toBe("Hello");
     expect(toast!.classList.contains("toast-success")).toBe(true);
@@ -27,28 +24,29 @@ describe("showToast", () => {
 
   it("creates error toast", () => {
     showToast("Error occurred", "error");
-    const toast = container.querySelector(".toast-error");
+    const toast = document.querySelector(".toast-error");
     expect(toast).not.toBeNull();
     expect(toast!.textContent).toBe("Error occurred");
   });
 
   it("removes toast after timeout", () => {
     showToast("Temporary", "success");
-    expect(container.querySelector(".toast")).not.toBeNull();
+    expect(document.querySelector(".toast")).not.toBeNull();
 
     vi.advanceTimersByTime(3000);
-    expect(container.querySelector(".toast")).toBeNull();
+    expect(document.querySelector(".toast")).toBeNull();
   });
 
-  it("handles missing container gracefully", () => {
-    container.remove();
-    // Should not throw
-    expect(() => showToast("No container", "success")).not.toThrow();
+  it("auto-creates container when missing", () => {
+    showToast("Auto container", "success");
+    const container = document.getElementById("toast-container");
+    expect(container).not.toBeNull();
+    expect(container!.className).toBe("toast-container");
   });
 
   it("defaults to success type", () => {
     showToast("Default");
-    const toast = container.querySelector(".toast");
+    const toast = document.querySelector(".toast");
     expect(toast!.classList.contains("toast-success")).toBe(true);
   });
 });

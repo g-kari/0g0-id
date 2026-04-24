@@ -1,17 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
-
-// Mock api.ts so helpers.ts can import formatDatetime without DOM deps
-vi.mock("../../lib/api", () => ({
-  formatDatetime: (iso: string) =>
-    new Date(iso).toLocaleString("ja-JP", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
-}));
-
+import { describe, expect, it } from "vitest";
 import { escapeHtml, formatUnixSec, getInitials, truncate } from "../../lib/helpers";
 
 describe("escapeHtml", () => {
