@@ -11,17 +11,17 @@
   },
   "dependencies": {
     "@0g0-id/shared": "*",
-    "hono": "^4.12.14",
+    "hono": "^4.12.15",
     "jose": "^6.2.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.32.3",
-    "@cloudflare/workers-types": "^4.20260416.2",
-    "typescript": "^6.0.2",
+    "@cloudflare/vite-plugin": "^1.33.2",
+    "@cloudflare/workers-types": "^4.20260424.1",
+    "typescript": "^6.0.3",
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",
-    "vite-plus": "^0.1.18",
+    "vite-plus": "^0.1.19",
     "vitest": "npm:@voidzero-dev/vite-plus-test@latest",
-    "wrangler": "^4.78.0"
+    "wrangler": "^4.85.0"
   }
 }
