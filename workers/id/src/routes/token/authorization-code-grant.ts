@@ -94,13 +94,10 @@ export async function handleAuthorizationCodeGrant(
   try {
     // ユーザー情報取得
     const user = await findUserById(c.env.DB, authCode.user_id);
-    if (!user) {
-      return c.json({ error: "invalid_grant", error_description: "User not found" }, 400);
-    }
-    if (user.banned_at !== null) {
+    if (!user || user.banned_at !== null) {
       return c.json(
-        { error: "access_denied", error_description: "Account has been suspended" },
-        403,
+        { error: "invalid_grant", error_description: "Invalid or expired authorization code" },
+        400,
       );
     }
 

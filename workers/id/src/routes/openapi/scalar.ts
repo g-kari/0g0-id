@@ -19,6 +19,15 @@ export const DOCS_CSP =
   "worker-src blob:; " +
   "frame-ancestors 'none'";
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 // ─── Scalar HTML テンプレート ────────────────────────────────────────
 export function scalarHtml(specUrl: string, title: string, markdownUrl: string): string {
   return `<!doctype html>
@@ -26,15 +35,15 @@ export function scalarHtml(specUrl: string, title: string, markdownUrl: string):
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
+  <title>${escapeHtml(title)}</title>
   <style>
     #ai-link { position: fixed; bottom: 16px; right: 16px; z-index: 9999; background: #1a1a1a; color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px; text-decoration: none; font-family: sans-serif; opacity: 0.8; }
     #ai-link:hover { opacity: 1; }
   </style>
 </head>
 <body>
-  <a id="ai-link" href="${markdownUrl}">📄 Markdown版 (AI向け)</a>
-  <script id="api-reference" data-url="${specUrl}"></script>
+  <a id="ai-link" href="${escapeHtml(markdownUrl)}">📄 Markdown版 (AI向け)</a>
+  <script id="api-reference" data-url="${escapeHtml(specUrl)}"></script>
   <script src="${SCALAR_CDN}" crossorigin="anonymous"></script>
 </body>
 </html>`;

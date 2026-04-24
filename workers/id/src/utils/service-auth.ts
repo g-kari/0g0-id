@@ -19,7 +19,7 @@ export function parseBasicAuth(
     return null;
   }
   const colonIndex = credentials.indexOf(":");
-  if (colonIndex === -1) return null;
+  if (colonIndex <= 0 || colonIndex === credentials.length - 1) return null;
   return {
     clientId: credentials.slice(0, colonIndex),
     clientSecret: credentials.slice(colonIndex + 1),

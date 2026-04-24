@@ -1246,7 +1246,7 @@ describe("POST /api/token/ — authorization_code grant", () => {
     expect(body.error).toBe("invalid_grant");
   });
 
-  it("BANされたユーザー → { error: access_denied } + 403", async () => {
+  it("BANされたユーザー → アカウント列挙防止のため invalid_grant + 400", async () => {
     vi.mocked(findUserById).mockResolvedValue({ ...mockUser, banned_at: "2024-01-01T00:00:00Z" });
     const res = await sendRequest(app, "/api/token", {
       method: "POST",
@@ -1258,9 +1258,10 @@ describe("POST /api/token/ — authorization_code grant", () => {
         code_verifier: "a".repeat(43),
       },
     });
-    expect(res.status).toBe(403);
-    const body = await res.json<{ error: string }>();
-    expect(body.error).toBe("access_denied");
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string; error_description: string }>();
+    expect(body.error).toBe("invalid_grant");
+    expect(body.error_description).toBe("Invalid or expired authorization code");
   });
 
   it("openidスコープあり → id_tokenを含む成功レスポンス", async () => {
