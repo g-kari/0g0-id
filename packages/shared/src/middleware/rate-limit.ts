@@ -2,6 +2,7 @@ import { createMiddleware } from "hono/factory";
 import type { Context } from "hono";
 import type { RateLimitBinding } from "../types";
 import { createLogger } from "../lib/logger";
+import { restErrorBody } from "../lib/errors";
 
 const warnedBindings = new Set<string>();
 
@@ -56,10 +57,7 @@ export function createRateLimitMiddleware<
         );
       }
       if (prod) {
-        return c.json(
-          { error: { code: "SERVICE_UNAVAILABLE", message: "Rate limiter not configured" } },
-          503,
-        );
+        return c.json(restErrorBody("SERVICE_UNAVAILABLE", "Rate limiter not configured"), 503);
       }
       return next();
     }
@@ -74,16 +72,9 @@ export function createRateLimitMiddleware<
     }
     const { success } = await binding.limit({ key });
     if (!success) {
-      return c.json(
-        {
-          error: {
-            code: "TOO_MANY_REQUESTS",
-            message: errorMessage,
-          },
-        },
-        429,
-        { "Retry-After": String(retryAfterSeconds) },
-      );
+      return c.json(restErrorBody("TOO_MANY_REQUESTS", errorMessage), 429, {
+        "Retry-After": String(retryAfterSeconds),
+      });
     }
     await next();
   });

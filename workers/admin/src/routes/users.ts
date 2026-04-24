@@ -9,6 +9,7 @@ import {
   proxyResponse,
   requirePagination,
   REST_ERROR_CODES,
+  restErrorBody,
   UUID_RE,
   uuidParamMiddleware,
   COOKIE_NAMES,
@@ -84,7 +85,7 @@ app.get("/:id/login-history", async (c) => {
   const provider = c.req.query("provider");
   if (provider) {
     if (!isValidProvider(provider)) {
-      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid provider" } }, 400);
+      return c.json(restErrorBody("BAD_REQUEST", "Invalid provider"), 400);
     }
     url.searchParams.set("provider", provider);
   }
@@ -99,7 +100,7 @@ app.get("/:id/login-stats", async (c) => {
   if (daysResult !== undefined) {
     if ("error" in daysResult) {
       return c.json(
-        { error: { code: REST_ERROR_CODES.INVALID_PARAMETER, message: daysResult.error } },
+        restErrorBody(REST_ERROR_CODES.INVALID_PARAMETER, daysResult.error.message),
         400,
       );
     }
@@ -116,7 +117,7 @@ app.get("/:id/login-trends", async (c) => {
   if (daysResult !== undefined) {
     if ("error" in daysResult) {
       return c.json(
-        { error: { code: REST_ERROR_CODES.INVALID_PARAMETER, message: daysResult.error } },
+        restErrorBody(REST_ERROR_CODES.INVALID_PARAMETER, daysResult.error.message),
         400,
       );
     }
@@ -148,7 +149,7 @@ app.get(
 app.delete("/:id/bff-sessions/:sessionId", async (c) => {
   const sessionId = c.req.param("sessionId");
   if (!UUID_RE.test(sessionId)) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid session ID format" } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", "Invalid session ID format"), 400);
   }
   return proxyMutate(
     c,
@@ -161,7 +162,7 @@ app.delete("/:id/bff-sessions/:sessionId", async (c) => {
 app.delete("/:id/tokens/:tokenId", async (c) => {
   const tokenId = c.req.param("tokenId");
   if (!UUID_RE.test(tokenId)) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid token ID format" } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", "Invalid token ID format"), 400);
   }
   return proxyMutate(
     c,
