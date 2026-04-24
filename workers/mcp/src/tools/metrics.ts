@@ -1,4 +1,5 @@
 import type { McpTool } from "../mcp";
+import { jsonResponse } from "./_helpers";
 import {
   countUsers,
   countServices,
@@ -67,7 +68,7 @@ export const getSystemMetricsTool: McpTool = {
       },
     };
 
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return jsonResponse(result);
   },
 };
 
@@ -98,7 +99,7 @@ export const getSuspiciousLoginsTool: McpTool = {
       meta: { hours, min_countries: minCountries },
     };
 
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return jsonResponse(result);
   },
 };
 
@@ -116,7 +117,7 @@ export const getServiceTokenStatsTool: McpTool = {
 
     const result = { data: stats };
 
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return jsonResponse(result);
   },
 };
 
@@ -131,7 +132,7 @@ export const getActiveUserStatsTool: McpTool = {
   },
   handler: async (_params, context) => {
     const stats = await getActiveUserStats(context.db);
-    return { content: [{ type: "text", text: JSON.stringify({ data: stats }, null, 2) }] };
+    return jsonResponse({ data: stats });
   },
 };
 
@@ -149,7 +150,7 @@ export const getDailyActiveUsersTool: McpTool = {
   handler: async (params, context) => {
     const days = Math.max(1, Math.min(90, Number(params.days) || 30));
     const data = await getDailyActiveUsers(context.db, days);
-    return { content: [{ type: "text", text: JSON.stringify({ data, days }, null, 2) }] };
+    return jsonResponse({ data, days });
   },
 };
 
@@ -167,7 +168,7 @@ export const getLoginTrendsTool: McpTool = {
   handler: async (params, context) => {
     const days = Math.max(1, Math.min(365, Number(params.days) || 30));
     const data = await getDailyLoginTrends(context.db, days);
-    return { content: [{ type: "text", text: JSON.stringify({ data, days }, null, 2) }] };
+    return jsonResponse({ data, days });
   },
 };
 
@@ -185,6 +186,6 @@ export const getUserRegistrationsTool: McpTool = {
   handler: async (params, context) => {
     const days = Math.max(1, Math.min(365, Number(params.days) || 30));
     const data = await getDailyUserRegistrations(context.db, days);
-    return { content: [{ type: "text", text: JSON.stringify({ data, days }, null, 2) }] };
+    return jsonResponse({ data, days });
   },
 };
