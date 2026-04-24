@@ -6,6 +6,7 @@ import {
   proxyMutate,
   proxyResponse,
   requirePagination,
+  restErrorBody,
   UUID_RE,
   uuidParamMiddleware,
   COOKIE_NAMES,
@@ -115,7 +116,7 @@ app.get("/:id/users", async (c) => {
 app.delete("/:id/users/:userId", async (c) => {
   const userId = c.req.param("userId");
   if (!UUID_RE.test(userId)) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid user ID format" } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", "Invalid user ID format"), 400);
   }
   return proxyMutate(
     c,
@@ -138,7 +139,7 @@ app.patch("/:id/owner", async (c) => {
 app.delete("/:id/redirect-uris/:uriId", async (c) => {
   const uriId = c.req.param("uriId");
   if (!UUID_RE.test(uriId)) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid URI ID format" } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", "Invalid URI ID format"), 400);
   }
   return proxyMutate(
     c,

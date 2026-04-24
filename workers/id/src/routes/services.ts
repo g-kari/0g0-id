@@ -26,6 +26,7 @@ import {
   UUID_RE,
   uuidParamMiddleware,
   createLogger,
+  restErrorBody,
 } from "@0g0-id/shared";
 import type {
   IdpEnv,
@@ -112,7 +113,7 @@ app.get("/", authMiddleware, adminMiddleware, async (c) => {
     ]);
   } catch (err) {
     servicesLogger.error("[services] Failed to list services", err);
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
 
   return c.json({
@@ -140,10 +141,10 @@ app.get("/:id", authMiddleware, adminMiddleware, async (c) => {
     service = await findServiceById(c.env.DB, serviceId);
   } catch (err) {
     servicesLogger.error("[services] Failed to fetch service", err);
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
   if (!service) {
-    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
+    return c.json(restErrorBody("NOT_FOUND", "Service not found"), 404);
   }
 
   return c.json({
@@ -183,7 +184,7 @@ app.post("/", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
     });
   } catch (err) {
     servicesLogger.error("[services] Failed to create service", err);
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
 
   await logAdminAudit(c, {
@@ -225,11 +226,11 @@ app.patch("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => 
     });
   } catch (err) {
     servicesLogger.error("[services] Failed to update service", err);
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
 
   if (!updated) {
-    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
+    return c.json(restErrorBody("NOT_FOUND", "Service not found"), 404);
   }
 
   await logAdminAudit(c, {
@@ -262,10 +263,10 @@ app.delete("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
     service = await findServiceById(c.env.DB, serviceId);
   } catch (err) {
     servicesLogger.error("[services] Failed to fetch service for deletion", err);
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
   if (!service) {
-    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
+    return c.json(restErrorBody("NOT_FOUND", "Service not found"), 404);
   }
 
   // サービス削除前に全ユーザーのアクティブトークンを失効させる
@@ -274,7 +275,7 @@ app.delete("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
     revokedCount = await revokeAllServiceTokens(c.env.DB, serviceId, "service_delete");
   } catch (err) {
     servicesLogger.error("[services] Failed to revoke tokens before deletion", err);
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
   if (revokedCount > 0) {
     servicesLogger.info(
@@ -286,7 +287,7 @@ app.delete("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
     await deleteService(c.env.DB, serviceId);
   } catch (err) {
     servicesLogger.error("[services] Failed to delete service", err);
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
 
   await logAdminAudit(c, {
@@ -311,10 +312,10 @@ app.get("/:id/redirect-uris", authMiddleware, adminMiddleware, async (c) => {
     ]);
   } catch (err) {
     servicesLogger.error("[services] Failed to fetch redirect URIs", err);
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
   if (!service) {
-    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
+    return c.json(restErrorBody("NOT_FOUND", "Service not found"), 404);
   }
 
   return c.json({ data: uris });
@@ -328,10 +329,10 @@ app.post("/:id/redirect-uris", authMiddleware, adminMiddleware, csrfMiddleware, 
     service = await findServiceById(c.env.DB, serviceId);
   } catch (err) {
     servicesLogger.error("[services] Failed to fetch service for redirect URI", err);
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
   if (!service) {
-    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
+    return c.json(restErrorBody("NOT_FOUND", "Service not found"), 404);
   }
 
   const result = await parseJsonBody(c, AddRedirectUriSchema);
@@ -339,7 +340,7 @@ app.post("/:id/redirect-uris", authMiddleware, adminMiddleware, csrfMiddleware, 
 
   const normalized = normalizeRedirectUri(result.data.uri);
   if (!normalized) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid redirect URI" } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", "Invalid redirect URI"), 400);
   }
 
   let uri;
@@ -351,7 +352,7 @@ app.post("/:id/redirect-uris", authMiddleware, adminMiddleware, csrfMiddleware, 
     });
   } catch (err) {
     servicesLogger.error("[services] Failed to add redirect URI (possibly duplicate)", err);
-    return c.json({ error: { code: "CONFLICT", message: "Redirect URI already exists" } }, 409);
+    return c.json(restErrorBody("CONFLICT", "Redirect URI already exists"), 409);
   }
 
   await logAdminAudit(c, {
@@ -372,10 +373,10 @@ app.post("/:id/rotate-secret", authMiddleware, adminMiddleware, csrfMiddleware, 
     service = await findServiceById(c.env.DB, serviceId);
   } catch (err) {
     servicesLogger.error("[services] Failed to fetch service for secret rotation", err);
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
   if (!service) {
-    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
+    return c.json(restErrorBody("NOT_FOUND", "Service not found"), 404);
   }
 
   const newClientSecret = generateClientSecret();
@@ -386,10 +387,10 @@ app.post("/:id/rotate-secret", authMiddleware, adminMiddleware, csrfMiddleware, 
     updated = await rotateClientSecret(c.env.DB, serviceId, newClientSecretHash);
   } catch (err) {
     servicesLogger.error("[services] Failed to rotate client secret", err);
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
   if (!updated) {
-    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
+    return c.json(restErrorBody("NOT_FOUND", "Service not found"), 404);
   }
 
   await logAdminAudit(c, {
@@ -425,13 +426,13 @@ app.patch("/:id/owner", authMiddleware, adminMiddleware, csrfMiddleware, async (
     ]);
   } catch (err) {
     servicesLogger.error("[services] Failed to fetch service/user for ownership transfer", err);
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
   if (!service) {
-    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
+    return c.json(restErrorBody("NOT_FOUND", "Service not found"), 404);
   }
   if (!newOwner) {
-    return c.json({ error: { code: "NOT_FOUND", message: "New owner user not found" } }, 404);
+    return c.json(restErrorBody("NOT_FOUND", "New owner user not found"), 404);
   }
 
   let updated: Service | null;
@@ -439,10 +440,10 @@ app.patch("/:id/owner", authMiddleware, adminMiddleware, csrfMiddleware, async (
     updated = await transferServiceOwnership(c.env.DB, serviceId, new_owner_user_id);
   } catch (err) {
     servicesLogger.error("[services] Failed to transfer service ownership", err);
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
   if (!updated) {
-    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
+    return c.json(restErrorBody("NOT_FOUND", "Service not found"), 404);
   }
 
   await logAdminAudit(c, {
@@ -483,10 +484,10 @@ app.get("/:id/users", authMiddleware, adminMiddleware, async (c) => {
     ]);
   } catch (err) {
     servicesLogger.error("[services] Failed to fetch service users", err);
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
   if (!service) {
-    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
+    return c.json(restErrorBody("NOT_FOUND", "Service not found"), 404);
   }
 
   return c.json({
@@ -507,7 +508,7 @@ app.delete("/:id/users/:userId", authMiddleware, adminMiddleware, csrfMiddleware
   const serviceId = c.req.param("id");
   const userId = c.req.param("userId");
   if (!UUID_RE.test(userId)) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid user ID format" } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", "Invalid user ID format"), 400);
   }
 
   let service: Service | null;
@@ -519,13 +520,13 @@ app.delete("/:id/users/:userId", authMiddleware, adminMiddleware, csrfMiddleware
     ]);
   } catch (err) {
     servicesLogger.error("[services] Failed to fetch service/user for access revocation", err);
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
   if (!service) {
-    return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
+    return c.json(restErrorBody("NOT_FOUND", "Service not found"), 404);
   }
   if (!user) {
-    return c.json({ error: { code: "NOT_FOUND", message: "User not found" } }, 404);
+    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
   }
 
   let revokedCount: number;
@@ -533,13 +534,11 @@ app.delete("/:id/users/:userId", authMiddleware, adminMiddleware, csrfMiddleware
     revokedCount = await revokeUserServiceTokens(c.env.DB, userId, serviceId, "admin_action");
   } catch (err) {
     servicesLogger.error("[services] Failed to revoke user service tokens", err);
-    return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
   if (revokedCount === 0) {
     return c.json(
-      {
-        error: { code: "NOT_FOUND", message: "User has no active authorization for this service" },
-      },
+      restErrorBody("NOT_FOUND", "User has no active authorization for this service"),
       404,
     );
   }
@@ -564,7 +563,7 @@ app.delete(
     const serviceId = c.req.param("id");
     const uriId = c.req.param("uriId");
     if (!UUID_RE.test(uriId)) {
-      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid URI ID format" } }, 400);
+      return c.json(restErrorBody("BAD_REQUEST", "Invalid URI ID format"), 400);
     }
 
     let service: Service | null;
@@ -576,20 +575,20 @@ app.delete(
       ]);
     } catch (err) {
       servicesLogger.error("[services] Failed to fetch service/redirect URI for deletion", err);
-      return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+      return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
     }
     if (!service) {
-      return c.json({ error: { code: "NOT_FOUND", message: "Service not found" } }, 404);
+      return c.json(restErrorBody("NOT_FOUND", "Service not found"), 404);
     }
     if (!redirectUri) {
-      return c.json({ error: { code: "NOT_FOUND", message: "Redirect URI not found" } }, 404);
+      return c.json(restErrorBody("NOT_FOUND", "Redirect URI not found"), 404);
     }
 
     try {
       await deleteRedirectUri(c.env.DB, uriId, serviceId);
     } catch (err) {
       servicesLogger.error("[services] Failed to delete redirect URI", err);
-      return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+      return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
     }
 
     await logAdminAudit(c, {
