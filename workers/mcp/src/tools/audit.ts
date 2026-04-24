@@ -1,4 +1,5 @@
 import type { McpTool } from "../mcp";
+import { jsonResponse } from "./_helpers";
 import { listAdminAuditLogs, getAuditLogStats, type AuditLogFilter } from "@0g0-id/shared";
 
 export const getAuditLogsTool: McpTool = {
@@ -55,7 +56,7 @@ export const getAuditLogsTool: McpTool = {
       },
     };
 
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return jsonResponse(result);
   },
 };
 
@@ -75,6 +76,6 @@ export const getAuditStatsTool: McpTool = {
 
     const stats = await getAuditLogStats(context.db, days);
 
-    return { content: [{ type: "text", text: JSON.stringify(stats, null, 2) }] };
+    return jsonResponse(stats);
   },
 };
