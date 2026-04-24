@@ -12,29 +12,31 @@ describe("showToast", () => {
     document.body.innerHTML = "";
   });
 
-  it("creates a toast element appended to body", () => {
+  it("creates a toast element in auto-generated container", () => {
     showToast("Hello");
-    const toast = document.body.querySelector("div");
+    const container = document.getElementById("toast-container");
+    expect(container).not.toBeNull();
+    const toast = container!.querySelector(".toast");
     expect(toast).not.toBeNull();
     expect(toast!.textContent).toBe("Hello");
   });
 
-  it("applies success background by default", () => {
+  it("applies success class by default", () => {
     showToast("OK");
-    const toast = document.body.querySelector("div")!;
-    expect(toast.style.cssText).toContain("var(--color-success,#38a169)");
+    const toast = document.querySelector(".toast")!;
+    expect(toast.classList.contains("toast-success")).toBe(true);
   });
 
-  it("applies error background when type is error", () => {
+  it("applies error class when type is error", () => {
     showToast("Fail", "error");
-    const toast = document.body.querySelector("div")!;
-    expect(toast.style.cssText).toContain("var(--color-danger,#e53e3e)");
+    const toast = document.querySelector(".toast")!;
+    expect(toast.classList.contains("toast-error")).toBe(true);
   });
 
   it("removes toast after 3000ms", () => {
     showToast("Bye");
-    expect(document.body.querySelector("div")).not.toBeNull();
+    expect(document.querySelector(".toast")).not.toBeNull();
     vi.advanceTimersByTime(3000);
-    expect(document.body.querySelector("div")).toBeNull();
+    expect(document.querySelector(".toast")).toBeNull();
   });
 });
