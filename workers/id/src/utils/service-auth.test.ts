@@ -59,12 +59,14 @@ describe("parseBasicAuth", () => {
     });
   });
 
-  it("clientId が空文字の場合も返す", () => {
+  it("clientId が空文字の場合は null を返す", () => {
     const encoded = btoa(":secretonly");
-    expect(parseBasicAuth(`Basic ${encoded}`)).toEqual({
-      clientId: "",
-      clientSecret: "secretonly",
-    });
+    expect(parseBasicAuth(`Basic ${encoded}`)).toBeNull();
+  });
+
+  it("clientSecret が空文字の場合は null を返す", () => {
+    const encoded = btoa("clientonly:");
+    expect(parseBasicAuth(`Basic ${encoded}`)).toBeNull();
   });
 });
 
