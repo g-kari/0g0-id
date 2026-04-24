@@ -1,10 +1,3 @@
-import type { UserConfig } from "vite-plus";
-import { defineConfig } from "vite-plus";
+import { createViteConfig } from "../../packages/shared/src/config/vite.config.base.js";
 
-export default defineConfig(async (): Promise<UserConfig> => {
-  const plugins = process.env.VITEST ? [] : (await import("@cloudflare/vite-plugin")).cloudflare();
-  return {
-    plugins: plugins as UserConfig["plugins"],
-    server: { port: 8787 },
-  };
-});
+export default createViteConfig(8787);
