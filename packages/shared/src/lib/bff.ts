@@ -140,7 +140,7 @@ export async function encodeSession(session: BffSession, secret: string): Promis
 }
 
 /**
- * セッションCookieを30日間有効で設定する。
+ * セッションCookieを7日間有効で設定する。
  */
 export async function setSessionCookie<E extends { Bindings: BffEnv }>(
   c: Context<E>,

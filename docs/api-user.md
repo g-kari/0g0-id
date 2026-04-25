@@ -79,6 +79,163 @@ Chrome は発行された nonce を `jti` クレームに含めた proof JWT を
 
 エラー: 401 `UNAUTHORIZED`（Cookie なし）、400 `INVALID_REQUEST`（nonce 発行失敗・proof 形式不正）／ `INVALID_PROOF`（署名不一致・aud 不一致・nonce 期限切れ／消費済み、すべて列挙対策で一本化）、500 `INTERNAL_ERROR`（IdP 障害）。
 
+## DBSC エンドポイント詳細（`/auth/dbsc/*`）
+
+DBSC（Device Bound Session Credentials）のエンドポイントは、`packages/shared/src/lib/bff-dbsc-factory.ts` の `createBffDbscRoutes()` ファクトリで生成される共通実装を使用する。user / admin BFF で Cookie 名・ロガー名のみ異なり、処理フローとセキュリティ方針は完全に同一。
+
+CSRF 対策: `/auth/dbsc/*` は Chrome 内部発のフローで `Origin` ヘッダが付かないため `bffCsrfMiddleware` を除外し、Cookie セッション + 自署 JWT（`aud` = `SELF_ORIGIN`）+ `bff_origin` 一致確認の多層で防御する。
+
+### POST `/auth/dbsc/start` — 端末公開鍵登録
+
+Chrome が `Secure-Session-Registration` ヘッダに応じて送信する登録 JWT を受け取り、IdP の `/auth/dbsc/bind` に転送して端末公開鍵をセッションに紐付ける。
+
+**リクエスト**
+
+```http
+POST /auth/dbsc/start
+Content-Type: application/jwt
+Cookie: __Host-user-session=<signed-session>
+```
+
+```
+eyJhbGciOiJFUzI1NiIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6Ii4uLiIsInkiOiIuLi4ifX0.eyJhdWQiOiJodHRwczovL3VzZXIuMGcwLnh5eiJ9.signature
+```
+
+または JSON 形式:
+
+```http
+POST /auth/dbsc/start
+Content-Type: application/json
+Cookie: __Host-user-session=<signed-session>
+```
+
+```json
+{ "jwt": "eyJhbGciOiJFUzI1NiJ9..." }
+```
+
+**成功レスポンス（200）**
+
+```json
+{
+  "session_identifier": "<bff_sessions.id>",
+  "refresh_url": "/auth/dbsc/refresh",
+  "scope": { "include_site": true },
+  "credentials": [{ "type": "cookie", "name": "__Host-user-session" }]
+}
+```
+
+**エラーレスポンス**
+
+| HTTP | code              | 条件                                                                      |
+| ---- | ----------------- | ------------------------------------------------------------------------- |
+| 400  | `INVALID_REQUEST` | JWT 本文なし・形式不正・IdP バインド拒否（列挙対策で 4xx は一律畳み込み） |
+| 400  | `INVALID_JWT`     | 登録 JWT の署名検証失敗                                                   |
+| 401  | `UNAUTHORIZED`    | セッション Cookie なし・無効                                              |
+| 500  | `INTERNAL_ERROR`  | IdP 障害（5xx）                                                           |
+
+### POST `/auth/dbsc/refresh` — challenge-response リフレッシュ
+
+2 段階のフローで端末バインドを検証する。
+
+#### Phase 1: challenge 発行（初回 POST、`Sec-Session-Response` ヘッダなし）
+
+**リクエスト**
+
+```http
+POST /auth/dbsc/refresh
+Cookie: __Host-user-session=<signed-session>
+```
+
+**レスポンス（403）**
+
+```http
+HTTP/1.1 403 Forbidden
+Secure-Session-Challenge: "<nonce>"
+Content-Type: application/json
+```
+
+```json
+{
+  "error": {
+    "code": "SESSION_CHALLENGE_REQUIRED",
+    "message": "Challenge issued"
+  }
+}
+```
+
+`Secure-Session-Challenge` ヘッダの値は RFC 8941 Structured Field String 形式（ダブルクォート囲み）。Chrome はこの nonce を `jti` クレームに含めた proof JWT を端末秘密鍵（ES256）で署名し、再送する。
+
+#### Phase 2: proof 検証（再送、`Sec-Session-Response` ヘッダあり）
+
+**リクエスト**
+
+```http
+POST /auth/dbsc/refresh
+Cookie: __Host-user-session=<signed-session>
+Sec-Session-Response: eyJhbGciOiJFUzI1NiJ9.eyJhdWQiOiJodHRwczovL3VzZXIuMGcwLnh5eiIsImp0aSI6Im5vbmNlLXZhbHVlIn0.signature
+```
+
+**成功レスポンス（200）**
+
+```json
+{
+  "session_identifier": "<bff_sessions.id>",
+  "refresh_url": "/auth/dbsc/refresh",
+  "scope": { "include_site": true },
+  "credentials": [{ "type": "cookie", "name": "__Host-user-session" }]
+}
+```
+
+Phase 2 時点では既存 Cookie は据え置き。短寿命 Cookie 切替は Phase 3 で対応予定。
+
+**エラーレスポンス**
+
+| HTTP | code              | 条件                                                               |
+| ---- | ----------------- | ------------------------------------------------------------------ |
+| 400  | `INVALID_REQUEST` | nonce 発行失敗・proof 形式不正・端末未バインド（列挙対策で一本化） |
+| 400  | `INVALID_PROOF`   | 署名不一致・aud 不一致・nonce 期限切れ・消費済み                   |
+| 401  | `UNAUTHORIZED`    | セッション Cookie なし・無効                                       |
+| 500  | `INTERNAL_ERROR`  | IdP 障害                                                           |
+
+### 内部通信の流れ
+
+```
+[Chrome]                    [user BFF (user.0g0.xyz)]              [IdP (id.0g0.xyz)]
+   │                                 │                                      │
+   │  POST /auth/dbsc/start          │                                      │
+   │  (registration JWT)             │                                      │
+   ├────────────────────────────────▶│                                      │
+   │                                 │  POST /auth/dbsc/bind                │
+   │                                 │  X-Internal-Secret + X-BFF-Origin    │
+   │                                 ├─────────────────────────────────────▶│
+   │                                 │◀── { data: { session_id, bound_at }}│
+   │◀── { session_identifier, ... } │                                      │
+   │                                 │                                      │
+   │  POST /auth/dbsc/refresh        │                                      │
+   │  (Sec-Session-Response なし)    │                                      │
+   ├────────────────────────────────▶│                                      │
+   │                                 │  POST /auth/dbsc/challenge           │
+   │                                 ├─────────────────────────────────────▶│
+   │                                 │◀── { data: { nonce, expires_at } }  │
+   │◀── 403 + Challenge: "<nonce>"  │                                      │
+   │                                 │                                      │
+   │  POST /auth/dbsc/refresh        │                                      │
+   │  Sec-Session-Response: <proof>  │                                      │
+   ├────────────────────────────────▶│                                      │
+   │                                 │  POST /auth/dbsc/verify              │
+   │                                 ├─────────────────────────────────────▶│
+   │                                 │◀── { data: { session_id, verified }}│
+   │◀── 200 { session_identifier }  │                                      │
+```
+
+### 実装参照
+
+- BFF ルート定義: `workers/user/src/routes/dbsc.ts`（12 行、factory wrapper のみ）
+- 共通ファクトリ: `packages/shared/src/lib/bff-dbsc-factory.ts`（`createBffDbscRoutes()`）
+- IdP ハンドラー: `workers/id/src/routes/auth/dbsc.ts`（`handleDbscBind` / `handleDbscChallenge` / `handleDbscVerify` / `handleDbscStatus`）
+- DBSC ユーティリティ: `packages/shared/src/lib/dbsc.ts`（JWT 検証・ヘッダ構築）
+- 機密操作必須化ミドルウェア: `packages/shared/src/middleware/require-dbsc-bound.ts`
+
 ## OAuth / OIDC プロバイダー選択（`/login`）
 
 | Method | Path     | 用途                                                                                                                                                                                                                             |
