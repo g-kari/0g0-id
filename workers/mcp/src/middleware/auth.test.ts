@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
-import { jwtVerify } from "jose";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 import { findUserById, isAccessTokenRevoked } from "@0g0-id/shared";
 import { mcpAuthMiddleware, mcpRejectBannedUserMiddleware, mcpAdminMiddleware } from "./auth";
+import { resetJwksCache } from "./auth";
 
 vi.mock("jose", () => ({
   createRemoteJWKSet: vi.fn().mockReturnValue({}),
@@ -344,5 +345,59 @@ describe("mcpAdminMiddleware", () => {
       mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(200);
+  });
+});
+
+describe("JWKS cache TTL", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    resetJwksCache();
+  });
+
+  it("TTL内は同じJWKSインスタンスをキャッシュから返す", async () => {
+    vi.mocked(jwtVerify).mockResolvedValue({
+      payload: mockPayload,
+      protectedHeader: { alg: "ES256" },
+    } as any);
+
+    const app = buildAuthApp();
+
+    await app.request(
+      new Request(`${baseUrl}/test`, { headers: { Authorization: "Bearer token1" } }),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+    await app.request(
+      new Request(`${baseUrl}/test`, { headers: { Authorization: "Bearer token2" } }),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+
+    expect(vi.mocked(createRemoteJWKSet)).toHaveBeenCalledTimes(1);
+  });
+
+  it("TTL超過後はJWKSを再生成する", async () => {
+    vi.mocked(jwtVerify).mockResolvedValue({
+      payload: mockPayload,
+      protectedHeader: { alg: "ES256" },
+    } as any);
+
+    const app = buildAuthApp();
+
+    await app.request(
+      new Request(`${baseUrl}/test`, { headers: { Authorization: "Bearer token1" } }),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60 * 60 * 1000 + 1);
+
+    await app.request(
+      new Request(`${baseUrl}/test`, { headers: { Authorization: "Bearer token2" } }),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+
+    expect(vi.mocked(createRemoteJWKSet)).toHaveBeenCalledTimes(2);
   });
 });

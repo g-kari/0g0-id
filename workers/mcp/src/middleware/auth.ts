@@ -15,17 +15,25 @@ type McpEnv = {
   };
 };
 
-/**
- * IDP_ORIGIN ごとに JWKS クライアントをキャッシュする。
- * createRemoteJWKSet は内部で鍵キャッシュ・ローテーション対応を行う。
- */
-const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+const JWKS_CACHE_TTL_MS = 60 * 60 * 1000;
+
+interface JwksCacheEntry {
+  jwks: ReturnType<typeof createRemoteJWKSet>;
+  cachedAt: number;
+}
+
+const jwksCache = new Map<string, JwksCacheEntry>();
+
+/** @internal テスト用 */
+export function resetJwksCache(): void {
+  jwksCache.clear();
+}
 
 function getJWKS(idpOrigin: string): ReturnType<typeof createRemoteJWKSet> {
-  const cached = jwksCache.get(idpOrigin);
-  if (cached) return cached;
+  const entry = jwksCache.get(idpOrigin);
+  if (entry && Date.now() - entry.cachedAt < JWKS_CACHE_TTL_MS) return entry.jwks;
   const jwks = createRemoteJWKSet(new URL(`${idpOrigin}/.well-known/jwks.json`));
-  jwksCache.set(idpOrigin, jwks);
+  jwksCache.set(idpOrigin, { jwks, cachedAt: Date.now() });
   return jwks;
 }
 
