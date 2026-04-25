@@ -4,9 +4,11 @@ import { createLogger } from "@0g0-id/shared";
 import type { IdpEnv, TokenPayload, User, MyProfile, AdminUserSummary } from "@0g0-id/shared";
 import {
   countServicesByOwner,
+  findUserById,
   revokeUserTokens,
   deleteMcpSessionsByUser,
   deleteUser,
+  restErrorBody,
 } from "@0g0-id/shared";
 
 export const PatchMeSchema = z
@@ -86,6 +88,24 @@ export function formatAdminUserSummary(user: User): AdminUserSummary {
     banned_at: user.banned_at,
     created_at: user.created_at,
   };
+}
+
+/**
+ * ユーザーIDでユーザーを検索し、存在しない場合は404エラーレスポンスを返す。
+ * 存在する場合はUserオブジェクトを返す。
+ */
+export async function requireTargetUser(
+  db: D1Database,
+  targetId: string,
+): Promise<User | Response> {
+  const user = await findUserById(db, targetId);
+  if (!user) {
+    return new Response(JSON.stringify(restErrorBody("NOT_FOUND", "User not found")), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  return user;
 }
 
 export async function performUserDeletion(

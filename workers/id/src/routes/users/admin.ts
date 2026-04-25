@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import type { IdpEnv, UserFilter } from "@0g0-id/shared";
 import {
-  findUserById,
   listUsers,
   countUsers,
   listUserConnections,
@@ -38,6 +37,7 @@ import {
   formatAdminUserDetail,
   formatAdminUserSummary,
   performUserDeletion,
+  requireTargetUser,
   usersLogger,
 } from "./_shared";
 
@@ -46,21 +46,17 @@ const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 // GET /api/users/:id（管理者のみ）
 app.get("/:id", authMiddleware, adminMiddleware, async (c) => {
   const targetId = c.req.param("id");
-  const user = await findUserById(c.env.DB, targetId);
-  if (!user) {
-    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-  }
-  return c.json({ data: formatAdminUserDetail(user) });
+  const userResult = await requireTargetUser(c.env.DB, targetId);
+  if (userResult instanceof Response) return userResult;
+  return c.json({ data: formatAdminUserDetail(userResult) });
 });
 
 // GET /api/users/:id/owned-services — ユーザーが所有するサービス一覧（管理者のみ）
 app.get("/:id/owned-services", authMiddleware, adminMiddleware, async (c) => {
   const targetId = c.req.param("id");
 
-  const targetUser = await findUserById(c.env.DB, targetId);
-  if (!targetUser) {
-    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-  }
+  const targetUser = await requireTargetUser(c.env.DB, targetId);
+  if (targetUser instanceof Response) return targetUser;
 
   const services = await listServicesByOwner(c.env.DB, targetId);
   return c.json({
@@ -78,10 +74,8 @@ app.get("/:id/owned-services", authMiddleware, adminMiddleware, async (c) => {
 app.get("/:id/services", authMiddleware, adminMiddleware, async (c) => {
   const targetId = c.req.param("id");
 
-  const targetUser = await findUserById(c.env.DB, targetId);
-  if (!targetUser) {
-    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-  }
+  const targetUser = await requireTargetUser(c.env.DB, targetId);
+  if (targetUser instanceof Response) return targetUser;
 
   const connections = await listUserConnections(c.env.DB, targetId);
   return c.json({ data: connections });
@@ -91,10 +85,8 @@ app.get("/:id/services", authMiddleware, adminMiddleware, async (c) => {
 app.get("/:id/providers", authMiddleware, adminMiddleware, async (c) => {
   const targetId = c.req.param("id");
 
-  const targetUser = await findUserById(c.env.DB, targetId);
-  if (!targetUser) {
-    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-  }
+  const targetUser = await requireTargetUser(c.env.DB, targetId);
+  if (targetUser instanceof Response) return targetUser;
 
   const providers = await getUserProviders(c.env.DB, targetId);
   return c.json({ data: providers });
@@ -111,10 +103,8 @@ app.get("/:id/login-history", authMiddleware, adminMiddleware, async (c) => {
     return c.json(restErrorBody("BAD_REQUEST", "Invalid provider"), 400);
   }
 
-  const targetUser = await findUserById(c.env.DB, targetId);
-  if (!targetUser) {
-    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-  }
+  const targetUser = await requireTargetUser(c.env.DB, targetId);
+  if (targetUser instanceof Response) return targetUser;
 
   const { events, total } = await getLoginEventsByUserId(
     c.env.DB,
@@ -135,10 +125,8 @@ app.get("/:id/login-stats", authMiddleware, adminMiddleware, async (c) => {
   }
   const days = daysResult?.days ?? 30;
 
-  const targetUser = await findUserById(c.env.DB, targetId);
-  if (!targetUser) {
-    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-  }
+  const targetUser = await requireTargetUser(c.env.DB, targetId);
+  if (targetUser instanceof Response) return targetUser;
 
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   const stats = await getUserLoginProviderStats(c.env.DB, targetId, sinceIso);
@@ -154,10 +142,8 @@ app.get("/:id/login-trends", authMiddleware, adminMiddleware, async (c) => {
   }
   const days = daysResult?.days ?? 30;
 
-  const targetUser = await findUserById(c.env.DB, targetId);
-  if (!targetUser) {
-    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-  }
+  const targetUser = await requireTargetUser(c.env.DB, targetId);
+  if (targetUser instanceof Response) return targetUser;
 
   const trends = await getUserDailyLoginTrends(c.env.DB, targetId, days);
   return c.json({ data: trends, days });
@@ -176,10 +162,8 @@ app.patch("/:id/role", authMiddleware, adminMiddleware, csrfMiddleware, async (c
     return c.json(restErrorBody("FORBIDDEN", "Cannot change your own role"), 403);
   }
 
-  const targetUser = await findUserById(c.env.DB, targetId);
-  if (!targetUser) {
-    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-  }
+  const targetUser = await requireTargetUser(c.env.DB, targetId);
+  if (targetUser instanceof Response) return targetUser;
 
   if (targetUser.role === role) {
     return c.json({ data: formatAdminUserSummary(targetUser) });
@@ -222,10 +206,8 @@ app.patch("/:id/ban", authMiddleware, adminMiddleware, csrfMiddleware, async (c)
     return c.json(restErrorBody("FORBIDDEN", "Cannot ban yourself"), 403);
   }
 
-  const targetUser = await findUserById(c.env.DB, targetId);
-  if (!targetUser) {
-    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-  }
+  const targetUser = await requireTargetUser(c.env.DB, targetId);
+  if (targetUser instanceof Response) return targetUser;
 
   if (targetUser.role === "admin") {
     return c.json(restErrorBody("FORBIDDEN", "Cannot ban an admin user"), 403);
@@ -262,10 +244,8 @@ app.patch("/:id/ban", authMiddleware, adminMiddleware, csrfMiddleware, async (c)
 app.delete("/:id/ban", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const targetId = c.req.param("id");
 
-  const targetUser = await findUserById(c.env.DB, targetId);
-  if (!targetUser) {
-    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-  }
+  const targetUser = await requireTargetUser(c.env.DB, targetId);
+  if (targetUser instanceof Response) return targetUser;
 
   if (targetUser.banned_at === null) {
     return c.json(restErrorBody("CONFLICT", "User is not banned"), 409);
@@ -297,10 +277,8 @@ app.delete("/:id/ban", authMiddleware, adminMiddleware, csrfMiddleware, async (c
 app.get("/:id/lockout", authMiddleware, adminMiddleware, async (c) => {
   const targetId = c.req.param("id");
 
-  const targetUser = await findUserById(c.env.DB, targetId);
-  if (!targetUser) {
-    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-  }
+  const targetUser = await requireTargetUser(c.env.DB, targetId);
+  if (targetUser instanceof Response) return targetUser;
 
   const lockout = await getAccountLockout(c.env.DB, targetId);
   if (!lockout) {
@@ -323,10 +301,8 @@ app.get("/:id/lockout", authMiddleware, adminMiddleware, async (c) => {
 app.delete("/:id/lockout", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const targetId = c.req.param("id");
 
-  const targetUser = await findUserById(c.env.DB, targetId);
-  if (!targetUser) {
-    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-  }
+  const targetUser = await requireTargetUser(c.env.DB, targetId);
+  if (targetUser instanceof Response) return targetUser;
 
   await clearLockout(c.env.DB, targetId);
 
@@ -343,10 +319,8 @@ app.delete("/:id/lockout", authMiddleware, adminMiddleware, csrfMiddleware, asyn
 app.get("/:id/tokens", authMiddleware, adminMiddleware, async (c) => {
   const targetId = c.req.param("id");
 
-  const targetUser = await findUserById(c.env.DB, targetId);
-  if (!targetUser) {
-    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-  }
+  const targetUser = await requireTargetUser(c.env.DB, targetId);
+  if (targetUser instanceof Response) return targetUser;
 
   const sessions = await listActiveSessionsByUserId(c.env.DB, targetId);
   return c.json({ data: sessions });
@@ -356,10 +330,8 @@ app.get("/:id/tokens", authMiddleware, adminMiddleware, async (c) => {
 app.get("/:id/bff-sessions", authMiddleware, adminMiddleware, async (c) => {
   const targetId = c.req.param("id");
 
-  const targetUser = await findUserById(c.env.DB, targetId);
-  if (!targetUser) {
-    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-  }
+  const targetUser = await requireTargetUser(c.env.DB, targetId);
+  if (targetUser instanceof Response) return targetUser;
 
   const sessions = await listActiveBffSessionsByUserId(c.env.DB, targetId);
   return c.json({ data: sessions });
@@ -378,10 +350,8 @@ app.delete(
       return c.json(restErrorBody("BAD_REQUEST", "Invalid session ID format"), 400);
     }
 
-    const targetUser = await findUserById(c.env.DB, targetId);
-    if (!targetUser) {
-      return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-    }
+    const targetUser = await requireTargetUser(c.env.DB, targetId);
+    if (targetUser instanceof Response) return targetUser;
 
     const adminUser = c.get("user");
     let revoked: number;
@@ -426,10 +396,8 @@ app.delete("/:id/tokens/:tokenId", authMiddleware, adminMiddleware, csrfMiddlewa
     return c.json(restErrorBody("BAD_REQUEST", "Invalid token ID format"), 400);
   }
 
-  const targetUser = await findUserById(c.env.DB, targetId);
-  if (!targetUser) {
-    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-  }
+  const targetUser = await requireTargetUser(c.env.DB, targetId);
+  if (targetUser instanceof Response) return targetUser;
 
   let revoked;
   try {
@@ -463,10 +431,8 @@ app.delete("/:id/tokens/:tokenId", authMiddleware, adminMiddleware, csrfMiddlewa
 app.delete("/:id/tokens", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
   const targetId = c.req.param("id");
 
-  const targetUser = await findUserById(c.env.DB, targetId);
-  if (!targetUser) {
-    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-  }
+  const targetUser = await requireTargetUser(c.env.DB, targetId);
+  if (targetUser instanceof Response) return targetUser;
 
   try {
     await revokeUserTokens(c.env.DB, targetId, "admin_action");
@@ -499,10 +465,8 @@ app.delete("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
     return c.json(restErrorBody("FORBIDDEN", "Cannot delete yourself"), 403);
   }
 
-  const targetUser = await findUserById(c.env.DB, targetId);
-  if (!targetUser) {
-    return c.json(restErrorBody("NOT_FOUND", "User not found"), 404);
-  }
+  const targetUser = await requireTargetUser(c.env.DB, targetId);
+  if (targetUser instanceof Response) return targetUser;
 
   const deleteError = await performUserDeletion(c.env.DB, targetId);
   if (deleteError) {
