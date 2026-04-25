@@ -11,6 +11,17 @@ import { logUpstreamDeprecation } from "./internal-secret-deprecation";
  */
 export const BFF_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 
+/**
+ * セッション Cookie 削除時の共通オプション。
+ * deleteCookie(c, name, SESSION_COOKIE_DELETE_OPTIONS) の形で使う。
+ */
+export const SESSION_COOKIE_DELETE_OPTIONS = {
+  path: "/",
+  secure: true,
+  httpOnly: true,
+  sameSite: "Lax" as const,
+};
+
 export interface BffSession {
   /**
    * bff_sessions テーブルの行 ID。Cookie 値に含めて送信し、BFF→IdP リクエスト毎に
@@ -131,8 +142,8 @@ export async function encodeSession(session: BffSession, secret: string): Promis
 /**
  * セッションCookieを30日間有効で設定する。
  */
-export async function setSessionCookie(
-  c: Context<{ Bindings: BffEnv }>,
+export async function setSessionCookie<E extends { Bindings: BffEnv }>(
+  c: Context<E>,
   cookieName: string,
   session: BffSession,
 ): Promise<void> {
@@ -187,8 +198,8 @@ export function internalServiceHeaders(env: BffEnv): Record<string, string> {
  * リフレッシュに成功した場合はセッションCookieも更新する。
  * Service Bindingのフェッチ失敗は502として返す。
  */
-export async function fetchWithAuth(
-  c: Context<{ Bindings: BffEnv }>,
+export async function fetchWithAuth<E extends { Bindings: BffEnv }>(
+  c: Context<E>,
   sessionCookieName: string,
   url: string,
   init?: RequestInit,
@@ -265,12 +276,7 @@ export async function fetchWithAuth(
         typeof refreshData.data?.refresh_token !== "string" ||
         !refreshData.data.refresh_token
       ) {
-        deleteCookie(c, sessionCookieName, {
-          path: "/",
-          secure: true,
-          httpOnly: true,
-          sameSite: "Lax",
-        });
+        deleteCookie(c, sessionCookieName, SESSION_COOKIE_DELETE_OPTIONS);
         return errorResponse(401, "UNAUTHORIZED", "Session expired");
       }
 
@@ -325,12 +331,7 @@ export async function fetchWithAuth(
       }
 
       // TOKEN_REUSE・TOKEN_EXPIRED・INVALID_TOKEN 等の真のセッション無効時のみCookieを削除する
-      deleteCookie(c, sessionCookieName, {
-        path: "/",
-        secure: true,
-        httpOnly: true,
-        sameSite: "Lax",
-      });
+      deleteCookie(c, sessionCookieName, SESSION_COOKIE_DELETE_OPTIONS);
       return errorResponse(401, "UNAUTHORIZED", "Session expired");
     }
   }

@@ -19,7 +19,7 @@ import {
   banUserWithRevocation,
   unbanUser,
   parseDays,
-  requirePagination,
+  paginationMiddleware,
   isValidProvider,
   UUID_RE,
   parseJsonBody,
@@ -93,28 +93,32 @@ app.get("/:id/providers", authMiddleware, adminMiddleware, async (c) => {
 });
 
 // GET /api/users/:id/login-history（管理者のみ）
-app.get("/:id/login-history", authMiddleware, adminMiddleware, async (c) => {
-  const targetId = c.req.param("id");
-  const pagination = requirePagination(c, { defaultLimit: 20, maxLimit: 100 });
-  if (pagination instanceof Response) return pagination;
-  const { limit, offset } = pagination;
-  const providerParam = c.req.query("provider") || undefined;
-  if (providerParam !== undefined && !isValidProvider(providerParam)) {
-    return c.json(restErrorBody("BAD_REQUEST", "Invalid provider"), 400);
-  }
+app.get(
+  "/:id/login-history",
+  authMiddleware,
+  adminMiddleware,
+  paginationMiddleware({ defaultLimit: 20, maxLimit: 100 }),
+  async (c) => {
+    const targetId = c.req.param("id");
+    const { limit, offset } = c.get("pagination");
+    const providerParam = c.req.query("provider") || undefined;
+    if (providerParam !== undefined && !isValidProvider(providerParam)) {
+      return c.json(restErrorBody("BAD_REQUEST", "Invalid provider"), 400);
+    }
 
-  const targetUser = await requireTargetUser(c.env.DB, targetId);
-  if (targetUser instanceof Response) return targetUser;
+    const targetUser = await requireTargetUser(c.env.DB, targetId);
+    if (targetUser instanceof Response) return targetUser;
 
-  const { events, total } = await getLoginEventsByUserId(
-    c.env.DB,
-    targetId,
-    limit,
-    offset,
-    providerParam,
-  );
-  return c.json({ data: events, total });
-});
+    const { events, total } = await getLoginEventsByUserId(
+      c.env.DB,
+      targetId,
+      limit,
+      offset,
+      providerParam,
+    );
+    return c.json({ data: events, total });
+  },
+);
 
 // GET /api/users/:id/login-stats — ユーザーのプロバイダー別ログイン統計（管理者のみ）
 app.get("/:id/login-stats", authMiddleware, adminMiddleware, async (c) => {
@@ -483,34 +487,38 @@ app.delete("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
 });
 
 // GET /api/users（管理者のみ）
-app.get("/", authMiddleware, adminMiddleware, async (c) => {
-  const pagination = requirePagination(c, { defaultLimit: 50, maxLimit: 100 });
-  if (pagination instanceof Response) return pagination;
-  const { limit, offset } = pagination;
+app.get(
+  "/",
+  authMiddleware,
+  adminMiddleware,
+  paginationMiddleware({ defaultLimit: 50, maxLimit: 100 }),
+  async (c) => {
+    const { limit, offset } = c.get("pagination");
 
-  const filter: UserFilter = {};
-  const emailQuery = c.req.query("email");
-  const roleQuery = c.req.query("role");
-  const nameQuery = c.req.query("name");
-  const bannedQuery = c.req.query("banned");
+    const filter: UserFilter = {};
+    const emailQuery = c.req.query("email");
+    const roleQuery = c.req.query("role");
+    const nameQuery = c.req.query("name");
+    const bannedQuery = c.req.query("banned");
 
-  if (emailQuery) filter.email = emailQuery;
-  if (roleQuery === "user" || roleQuery === "admin") filter.role = roleQuery;
-  if (nameQuery) filter.name = nameQuery;
-  if (bannedQuery === "true") filter.banned = true;
-  else if (bannedQuery === "false") filter.banned = false;
+    if (emailQuery) filter.email = emailQuery;
+    if (roleQuery === "user" || roleQuery === "admin") filter.role = roleQuery;
+    if (nameQuery) filter.name = nameQuery;
+    if (bannedQuery === "true") filter.banned = true;
+    else if (bannedQuery === "false") filter.banned = false;
 
-  let users, total;
-  try {
-    [users, total] = await Promise.all([
-      listUsers(c.env.DB, limit, offset, filter),
-      countUsers(c.env.DB, filter),
-    ]);
-  } catch (err) {
-    usersLogger.error("[users] Failed to fetch users", err);
-    return c.json(restErrorBody("INTERNAL_ERROR", "Failed to fetch users"), 500);
-  }
-  return c.json({ data: users.map(formatAdminUserSummary), total });
-});
+    let users, total;
+    try {
+      [users, total] = await Promise.all([
+        listUsers(c.env.DB, limit, offset, filter),
+        countUsers(c.env.DB, filter),
+      ]);
+    } catch (err) {
+      usersLogger.error("[users] Failed to fetch users", err);
+      return c.json(restErrorBody("INTERNAL_ERROR", "Failed to fetch users"), 500);
+    }
+    return c.json({ data: users.map(formatAdminUserSummary), total });
+  },
+);
 
 export default app;

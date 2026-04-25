@@ -4,10 +4,10 @@ import {
   fetchWithJsonBody,
   isValidProvider,
   parseDays,
+  paginationMiddleware,
   proxyGet,
   proxyMutate,
   proxyResponse,
-  requirePagination,
   REST_ERROR_CODES,
   restErrorBody,
   UUID_RE,
@@ -23,12 +23,11 @@ app.use("/:id", uuidParamMiddleware("id", { label: "user ID" }));
 app.use("/:id/*", uuidParamMiddleware("id", { label: "user ID" }));
 
 // GET /api/users
-app.get("/", async (c) => {
-  const pagination = requirePagination(c, { defaultLimit: 50, maxLimit: 100 });
-  if (pagination instanceof Response) return pagination;
+app.get("/", paginationMiddleware({ defaultLimit: 50, maxLimit: 100 }), async (c) => {
+  const { limit, offset } = c.get("pagination");
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users`);
-  url.searchParams.set("limit", String(pagination.limit));
-  url.searchParams.set("offset", String(pagination.offset));
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("offset", String(offset));
   const email = c.req.query("email");
   const role = c.req.query("role");
   const name = c.req.query("name");
@@ -76,22 +75,25 @@ app.get(
 );
 
 // GET /api/users/:id/login-history
-app.get("/:id/login-history", async (c) => {
-  const pagination = requirePagination(c, { defaultLimit: 20, maxLimit: 100 });
-  if (pagination instanceof Response) return pagination;
-  const url = new URL(`${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/login-history`);
-  url.searchParams.set("limit", String(pagination.limit));
-  url.searchParams.set("offset", String(pagination.offset));
-  const provider = c.req.query("provider");
-  if (provider) {
-    if (!isValidProvider(provider)) {
-      return c.json(restErrorBody("BAD_REQUEST", "Invalid provider"), 400);
+app.get(
+  "/:id/login-history",
+  paginationMiddleware({ defaultLimit: 20, maxLimit: 100 }),
+  async (c) => {
+    const { limit, offset } = c.get("pagination");
+    const url = new URL(`${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/login-history`);
+    url.searchParams.set("limit", String(limit));
+    url.searchParams.set("offset", String(offset));
+    const provider = c.req.query("provider");
+    if (provider) {
+      if (!isValidProvider(provider)) {
+        return c.json(restErrorBody("BAD_REQUEST", "Invalid provider"), 400);
+      }
+      url.searchParams.set("provider", provider);
     }
-    url.searchParams.set("provider", provider);
-  }
-  const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
-  return proxyResponse(res);
-});
+    const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
+    return proxyResponse(res);
+  },
+);
 
 // GET /api/users/:id/login-stats — ユーザーのプロバイダー別ログイン統計
 app.get("/:id/login-stats", async (c) => {

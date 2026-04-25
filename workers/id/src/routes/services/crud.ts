@@ -9,7 +9,7 @@ import {
   generateClientId,
   generateClientSecret,
   sha256,
-  requirePagination,
+  paginationMiddleware,
   revokeAllServiceTokens,
   restErrorBody,
   parseJsonBody,
@@ -29,40 +29,44 @@ import {
 const app = new Hono<ServiceAppEnv>();
 
 // GET /api/services
-app.get("/", authMiddleware, adminMiddleware, async (c) => {
-  const name = c.req.query("name");
-  const pagination = requirePagination(c, { defaultLimit: 50, maxLimit: 100 });
-  if (pagination instanceof Response) return pagination;
-  const { limit, offset } = pagination;
+app.get(
+  "/",
+  authMiddleware,
+  adminMiddleware,
+  paginationMiddleware({ defaultLimit: 50, maxLimit: 100 }),
+  async (c) => {
+    const name = c.req.query("name");
+    const { limit, offset } = c.get("pagination");
 
-  let services: Service[];
-  let total: number;
-  try {
-    [services, total] = await Promise.all([
-      listServices(c.env.DB, { name, limit, offset }),
-      countServices(c.env.DB, { name }),
-    ]);
-  } catch (err) {
-    servicesLogger.error("[services] Failed to list services", err);
-    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
-  }
+    let services: Service[];
+    let total: number;
+    try {
+      [services, total] = await Promise.all([
+        listServices(c.env.DB, { name, limit, offset }),
+        countServices(c.env.DB, { name }),
+      ]);
+    } catch (err) {
+      servicesLogger.error("[services] Failed to list services", err);
+      return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
+    }
 
-  return c.json({
-    data: services.map(
-      (s): ServiceSummary => ({
-        id: s.id,
-        name: s.name,
-        client_id: s.client_id,
-        allowed_scopes: s.allowed_scopes,
-        owner_user_id: s.owner_user_id,
-        created_at: s.created_at,
-      }),
-    ),
-    total,
-    limit,
-    offset,
-  });
-});
+    return c.json({
+      data: services.map(
+        (s): ServiceSummary => ({
+          id: s.id,
+          name: s.name,
+          client_id: s.client_id,
+          allowed_scopes: s.allowed_scopes,
+          owner_user_id: s.owner_user_id,
+          created_at: s.created_at,
+        }),
+      ),
+      total,
+      limit,
+      offset,
+    });
+  },
+);
 
 // GET /api/services/:id
 app.get("/:id", authMiddleware, adminMiddleware, async (c) => {

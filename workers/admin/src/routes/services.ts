@@ -2,10 +2,10 @@ import { Hono } from "hono";
 import {
   fetchWithAuth,
   fetchWithJsonBody,
+  paginationMiddleware,
   proxyGet,
   proxyMutate,
   proxyResponse,
-  requirePagination,
   restErrorBody,
   UUID_RE,
   uuidParamMiddleware,
@@ -20,14 +20,13 @@ app.use("/:id", uuidParamMiddleware("id", { label: "service ID" }));
 app.use("/:id/*", uuidParamMiddleware("id", { label: "service ID" }));
 
 // GET /api/services
-app.get("/", async (c) => {
-  const pagination = requirePagination(c, { defaultLimit: 50, maxLimit: 100 });
-  if (pagination instanceof Response) return pagination;
+app.get("/", paginationMiddleware({ defaultLimit: 50, maxLimit: 100 }), async (c) => {
+  const { limit, offset } = c.get("pagination");
   const url = new URL(`${c.env.IDP_ORIGIN}/api/services`);
   const limitRaw = c.req.query("limit");
   const offsetRaw = c.req.query("offset");
-  if (limitRaw !== undefined) url.searchParams.set("limit", String(pagination.limit));
-  if (offsetRaw !== undefined) url.searchParams.set("offset", String(pagination.offset));
+  if (limitRaw !== undefined) url.searchParams.set("limit", String(limit));
+  if (offsetRaw !== undefined) url.searchParams.set("offset", String(offset));
   const name = c.req.query("name");
   if (name) url.searchParams.set("name", name);
   const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
@@ -102,12 +101,11 @@ app.post("/:id/redirect-uris", async (c) => {
 });
 
 // GET /api/services/:id/users — サービスを認可済みのユーザー一覧
-app.get("/:id/users", async (c) => {
-  const pagination = requirePagination(c, { defaultLimit: 50, maxLimit: 100 });
-  if (pagination instanceof Response) return pagination;
+app.get("/:id/users", paginationMiddleware({ defaultLimit: 50, maxLimit: 100 }), async (c) => {
+  const { limit, offset } = c.get("pagination");
   const url = new URL(`${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}/users`);
-  url.searchParams.set("limit", String(pagination.limit));
-  url.searchParams.set("offset", String(pagination.offset));
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("offset", String(offset));
   const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
   return proxyResponse(res);
 });
