@@ -17,9 +17,10 @@ import {
   upsertGithubUser,
   upsertXUser,
   createLogger,
+  restErrorBody,
 } from "@0g0-id/shared";
 import type { IdpEnv, TokenPayload, User } from "@0g0-id/shared";
-import type { OAuthProvider } from "@0g0-id/shared";
+import { PROVIDER_DISPLAY_NAMES, type OAuthProvider } from "@0g0-id/shared";
 
 type Variables = { user: TokenPayload };
 
@@ -35,7 +36,7 @@ function oauthError(
   message: string,
   code: string = "OAUTH_ERROR",
 ): { ok: false; response: Response } {
-  return { ok: false, response: c.json({ error: { code, message } }, 400) };
+  return { ok: false, response: c.json(restErrorBody(code, message), 400) };
 }
 
 /**
@@ -90,12 +91,13 @@ export async function resolveProvider(
   pkceVerifier: string,
   callbackUri: string,
 ): Promise<ProviderResolution> {
+  const displayName = PROVIDER_DISPLAY_NAMES[provider];
   switch (provider) {
     case "google": {
       const result = await exchangeAndFetchUserInfo(
         c,
-        "google",
-        "Google",
+        provider,
+        displayName,
         () =>
           exchangeGoogleCode({
             code,
@@ -129,8 +131,8 @@ export async function resolveProvider(
     case "line": {
       const result = await exchangeAndFetchUserInfo(
         c,
-        "line",
-        "LINE",
+        provider,
+        displayName,
         () =>
           exchangeLineCode({
             code,
@@ -169,8 +171,8 @@ export async function resolveProvider(
     case "twitch": {
       const result = await exchangeAndFetchUserInfo(
         c,
-        "twitch",
-        "Twitch",
+        provider,
+        displayName,
         () =>
           exchangeTwitchCode({
             code,
@@ -210,8 +212,8 @@ export async function resolveProvider(
     case "github": {
       const result = await exchangeAndFetchUserInfo(
         c,
-        "github",
-        "GitHub",
+        provider,
+        displayName,
         () =>
           exchangeGithubCode({
             code,
@@ -257,8 +259,8 @@ export async function resolveProvider(
     case "x": {
       const result = await exchangeAndFetchUserInfo(
         c,
-        "x",
-        "X",
+        provider,
+        displayName,
         () =>
           exchangeXCode({
             code,

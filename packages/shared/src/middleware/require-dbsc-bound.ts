@@ -5,6 +5,7 @@ import { parseSession, internalServiceHeaders } from "../lib/bff";
 import { buildSecureSessionRegistrationHeader, isDbscEnforceValue } from "../lib/dbsc";
 import { createLogger, type Logger } from "../lib/logger";
 import { logUpstreamDeprecation } from "../lib/internal-secret-deprecation";
+import { restErrorBody } from "../lib/errors";
 
 /**
  * DBSC 必須化ミドルウェアの設定。
@@ -26,7 +27,7 @@ export interface RequireDbscBoundConfig {
    * enforce=true 時に 403 と一緒に付与され、Chrome がこの path に registration JWT を POST する。
    * 例: `"/auth/dbsc/start"`
    */
-  registrationPath: string;
+  registrationPath?: string;
 }
 
 /** CSRF 安全メソッド（副作用なし）はチェックを省く */
@@ -143,15 +144,10 @@ export function requireDbscBoundSession(config: RequireDbscBoundConfig) {
     });
     c.header(
       "Secure-Session-Registration",
-      buildSecureSessionRegistrationHeader({ path: config.registrationPath }),
+      buildSecureSessionRegistrationHeader({ path: config.registrationPath ?? "/auth/dbsc/start" }),
     );
     return c.json(
-      {
-        error: {
-          code: "DBSC_BINDING_REQUIRED",
-          message: "This operation requires a device-bound session",
-        },
-      },
+      restErrorBody("DBSC_BINDING_REQUIRED", "This operation requires a device-bound session"),
       403,
     );
   });

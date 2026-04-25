@@ -33,7 +33,7 @@ function buildEnv(overrides: Partial<BffEnv> = {}): BffEnv {
   } as BffEnv;
 }
 
-function buildApp(env: BffEnv, enforce: "env" | true | false = "env") {
+function buildApp(env: BffEnv, enforce: "env" | true | false = "env", registrationPath?: string) {
   const app = new Hono<{ Bindings: BffEnv }>();
   app.use(
     "/api/*",
@@ -41,7 +41,7 @@ function buildApp(env: BffEnv, enforce: "env" | true | false = "env") {
       sessionCookieName: SESSION_COOKIE,
       loggerName: "test-dbsc",
       enforce,
-      registrationPath: "/auth/dbsc/start",
+      ...(registrationPath !== undefined ? { registrationPath } : {}),
     }),
   );
   app.get("/api/safe", (c) => c.json({ ok: true }));
@@ -181,6 +181,21 @@ describe("requireDbscBoundSession", () => {
       headers: { Cookie: `${SESSION_COOKIE}=${cookie}` },
     });
     expect(res.status).toBe(200);
+  });
+
+  it("registrationPath 省略時はデフォルト '/auth/dbsc/start' が使われる", async () => {
+    const env = buildEnv();
+    const cookie = await makeCookie();
+    mockIdpStatus(env, { data: { device_bound: false, device_bound_at: null } });
+    // registrationPath を渡さずに buildApp を呼び出す
+    const { request } = buildApp(env, true);
+    const res = await request("/api/dangerous", {
+      method: "POST",
+      headers: { Cookie: `${SESSION_COOKIE}=${cookie}` },
+    });
+    expect(res.status).toBe(403);
+    const header = res.headers.get("Secure-Session-Registration");
+    expect(header).toContain('path="/auth/dbsc/start"');
   });
 
   it("IDP に正しい ボディと X-BFF-Origin / X-Internal-Secret を送る", async () => {
