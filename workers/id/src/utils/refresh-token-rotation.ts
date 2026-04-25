@@ -7,6 +7,55 @@ import type { IdpEnv, User, RefreshToken } from "@0g0-id/shared";
 import { attemptUnrevokeToken } from "./token-recovery";
 import { issueTokenPair } from "./token-pair";
 
+/**
+ * リフレッシュトークン・ローテーション 状態遷移図
+ *
+ *   ┌─────────────────────────────────────────────────────────┐
+ *   │  クライアントが refresh_token を提示                    │
+ *   └──────────────────────┬──────────────────────────────────┘
+ *                          ▼
+ *              findAndRevokeRefreshToken(tokenHash)
+ *                   ┌──────┴──────┐
+ *                   │  失効成功?  │
+ *                   └──────┬──────┘
+ *              ┌───────────┼───────────────┐
+ *             Yes          No              No (トークン自体不在)
+ *              │           │               │
+ *              ▼           ▼               ▼
+ *        [正常フロー]  revoked_reason      INVALID_TOKEN
+ *     旧トークン失効   == "rotation"?
+ *     新ペア発行開始      │
+ *              │     ┌────┴────┐
+ *              │    Yes        No
+ *              │     │         │
+ *              │     ▼         ▼
+ *              │  経過 < 30s?  INVALID_TOKEN
+ *              │  ┌──┴──┐
+ *              │ Yes    No
+ *              │  │      │
+ *              │  ▼      ▼
+ *              │ TOKEN_  TOKEN_REUSE
+ *              │ ROTATED + ファミリー全失効
+ *              │ (並行競合:
+ *              │  セッション有効)
+ *              │
+ *              ▼
+ *       issueTokenPair()
+ *         ┌────┴────┐
+ *        成功      失敗
+ *         │         │
+ *         ▼         ▼
+ *    新アクセス   並行で reuse_detected
+ *    + 新リフレッシュ  が発動済み?
+ *    トークン返却  ┌──┴──┐
+ *                 Yes    No
+ *                  │      │
+ *                  ▼      ▼
+ *             TOKEN_REUSE  attemptUnrevokeToken()
+ *                          → INTERNAL_ERROR
+ *                         (旧トークン復元試行)
+ */
+
 /** リフレッシュトークンのローテーション前バリデーション結果 */
 export type RefreshTokenValidationResult =
   | { ok: true; storedToken: RefreshToken }
