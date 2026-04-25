@@ -13,6 +13,11 @@ vi.mock("jose", () => ({
 vi.mock("@0g0-id/shared", () => ({
   findUserById: vi.fn(),
   isAccessTokenRevoked: vi.fn(),
+  jsonRpcErrorBody: (code: number, message: string) => ({
+    jsonrpc: "2.0",
+    id: null,
+    error: { code, message },
+  }),
 }));
 
 const mockEnv = {
@@ -25,7 +30,13 @@ const mockEnv = {
 const baseUrl = "https://mcp.example.com";
 
 const mockPayload = {
+  iss: "https://id.example.com",
   sub: "user-123",
+  aud: "https://id.example.com",
+  exp: Math.floor(Date.now() / 1000) + 3600,
+  iat: Math.floor(Date.now() / 1000),
+  jti: "test-jti",
+  kid: "test-kid",
   role: "user",
   email: "test@example.com",
 };
@@ -74,6 +85,12 @@ function buildAdminApp(user?: unknown) {
   return app;
 }
 
+interface JsonRpcErrorResponse {
+  jsonrpc: "2.0";
+  id: null;
+  error: { code: number; message: string };
+}
+
 describe("mcpAuthMiddleware", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -87,8 +104,10 @@ describe("mcpAuthMiddleware", () => {
       mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(401);
-    const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("UNAUTHORIZED");
+    const body = await res.json<JsonRpcErrorResponse>();
+    expect(body.jsonrpc).toBe("2.0");
+    expect(body.id).toBeNull();
+    expect(body.error.code).toBe(-32001);
     expect(res.headers.get("WWW-Authenticate")).toContain("Bearer resource_metadata=");
     expect(res.headers.get("WWW-Authenticate")).toContain(mockEnv.MCP_ORIGIN);
   });
@@ -103,8 +122,8 @@ describe("mcpAuthMiddleware", () => {
       mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(401);
-    const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("UNAUTHORIZED");
+    const body = await res.json<JsonRpcErrorResponse>();
+    expect(body.error.code).toBe(-32001);
   });
 
   it("有効なBearerトークンの場合は200を返す", async () => {
@@ -135,6 +154,27 @@ describe("mcpAuthMiddleware", () => {
     );
   });
 
+  it("ペイロードがTokenPayloadスキーマに合致しない場合は401を返す", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(jwtVerify).mockResolvedValue({
+      payload: { sub: "user-123" },
+      protectedHeader: { alg: "ES256" },
+    } as any);
+
+    const app = buildAuthApp();
+    const res = await app.request(
+      new Request(`${baseUrl}/test`, {
+        headers: { Authorization: "Bearer valid.jwt.token" },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+    expect(res.status).toBe(401);
+    const body = await res.json<JsonRpcErrorResponse>();
+    expect(body.error.code).toBe(-32001);
+    expect(body.error.message).toBe("Invalid token payload");
+  });
+
   it("リボークされたトークンの場合は401を返す", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(jwtVerify).mockResolvedValue({
@@ -152,16 +192,17 @@ describe("mcpAuthMiddleware", () => {
       mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(401);
-    const body = await res.json<{ error: { code: string; message: string } }>();
-    expect(body.error.code).toBe("UNAUTHORIZED");
+    const body = await res.json<JsonRpcErrorResponse>();
+    expect(body.error.code).toBe(-32001);
     expect(body.error.message).toBe("Token has been revoked");
     expect(vi.mocked(isAccessTokenRevoked)).toHaveBeenCalledWith(mockEnv.DB, "revoked-jti");
   });
 
-  it("jtiがないトークンの場合はリボークチェックをスキップして200を返す", async () => {
+  it("jtiがないトークンの場合はZodバリデーションで401を返す", async () => {
+    const payloadWithoutJti = { ...mockPayload, jti: undefined };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(jwtVerify).mockResolvedValue({
-      payload: mockPayload, // jtiなし
+      payload: payloadWithoutJti,
       protectedHeader: { alg: "ES256" },
     } as any);
 
@@ -173,8 +214,10 @@ describe("mcpAuthMiddleware", () => {
       undefined,
       mockEnv as unknown as Record<string, string>,
     );
-    expect(res.status).toBe(200);
-    expect(vi.mocked(isAccessTokenRevoked)).not.toHaveBeenCalled();
+    expect(res.status).toBe(401);
+    const body = await res.json<JsonRpcErrorResponse>();
+    expect(body.error.code).toBe(-32001);
+    expect(body.error.message).toBe("Invalid token payload");
   });
 
   it("JWT検証失敗時は401を返す", async () => {
@@ -189,8 +232,8 @@ describe("mcpAuthMiddleware", () => {
       mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(401);
-    const body = await res.json<{ error: { code: string; message: string } }>();
-    expect(body.error.code).toBe("UNAUTHORIZED");
+    const body = await res.json<JsonRpcErrorResponse>();
+    expect(body.error.code).toBe(-32001);
     expect(body.error.message).toBe("Invalid or expired token");
     expect(res.headers.get("WWW-Authenticate")).toContain('error="invalid_token"');
     expect(res.headers.get("WWW-Authenticate")).toContain(mockEnv.MCP_ORIGIN);
@@ -210,8 +253,8 @@ describe("mcpRejectBannedUserMiddleware", () => {
       mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(401);
-    const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("UNAUTHORIZED");
+    const body = await res.json<JsonRpcErrorResponse>();
+    expect(body.error.code).toBe(-32001);
   });
 
   it("ユーザーがDBに存在しない場合は401を返す", async () => {
@@ -224,8 +267,8 @@ describe("mcpRejectBannedUserMiddleware", () => {
       mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(401);
-    const body = await res.json<{ error: { code: string; message: string } }>();
-    expect(body.error.code).toBe("UNAUTHORIZED");
+    const body = await res.json<JsonRpcErrorResponse>();
+    expect(body.error.code).toBe(-32001);
     expect(body.error.message).toBe("Account suspended or not found");
     expect(vi.mocked(findUserById)).toHaveBeenCalledWith(mockEnv.DB, mockPayload.sub);
   });
@@ -243,8 +286,8 @@ describe("mcpRejectBannedUserMiddleware", () => {
       mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(401);
-    const body = await res.json<{ error: { code: string; message: string } }>();
-    expect(body.error.code).toBe("UNAUTHORIZED");
+    const body = await res.json<JsonRpcErrorResponse>();
+    expect(body.error.code).toBe(-32001);
     expect(body.error.message).toBe("Account suspended or not found");
   });
 
@@ -271,8 +314,8 @@ describe("mcpRejectBannedUserMiddleware", () => {
       mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(500);
-    const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("INTERNAL_ERROR");
+    const body = await res.json<JsonRpcErrorResponse>();
+    expect(body.error.code).toBe(-32603);
   });
 });
 
@@ -289,8 +332,8 @@ describe("mcpAdminMiddleware", () => {
       mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(403);
-    const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("FORBIDDEN");
+    const body = await res.json<JsonRpcErrorResponse>();
+    expect(body.error.code).toBe(-32001);
   });
 
   it("adminロール以外のユーザーの場合は403を返す", async () => {
@@ -301,21 +344,21 @@ describe("mcpAdminMiddleware", () => {
       mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(403);
-    const body = await res.json<{ error: { code: string; message: string } }>();
-    expect(body.error.code).toBe("FORBIDDEN");
+    const body = await res.json<JsonRpcErrorResponse>();
+    expect(body.error.code).toBe(-32001);
     expect(body.error.message).toBe("Admin role required");
   });
 
   it("jtiがないadminトークンの場合は401を返す", async () => {
-    const app = buildAdminApp({ ...mockPayload, role: "admin" });
+    const app = buildAdminApp({ ...mockPayload, role: "admin", jti: undefined });
     const res = await app.request(
       new Request(`${baseUrl}/test`),
       undefined,
       mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(401);
-    const body = await res.json<{ error: { code: string; message: string } }>();
-    expect(body.error.code).toBe("UNAUTHORIZED");
+    const body = await res.json<JsonRpcErrorResponse>();
+    expect(body.error.code).toBe(-32001);
     expect(body.error.message).toBe("Invalid token: missing jti");
   });
 
@@ -329,8 +372,8 @@ describe("mcpAdminMiddleware", () => {
       mockEnv as unknown as Record<string, string>,
     );
     expect(res.status).toBe(401);
-    const body = await res.json<{ error: { code: string; message: string } }>();
-    expect(body.error.code).toBe("UNAUTHORIZED");
+    const body = await res.json<JsonRpcErrorResponse>();
+    expect(body.error.code).toBe(-32001);
     expect(body.error.message).toBe("Token has been revoked");
     expect(vi.mocked(isAccessTokenRevoked)).toHaveBeenCalledWith(mockEnv.DB, "revoked-jti");
   });
