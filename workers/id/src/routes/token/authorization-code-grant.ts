@@ -85,6 +85,21 @@ export async function handleAuthorizationCodeGrant(
         400,
       );
     }
+    if (codeVerifier.length < 43 || codeVerifier.length > 128) {
+      return c.json(
+        { error: "invalid_request", error_description: "code_verifier must be 43-128 characters" },
+        400,
+      );
+    }
+    if (!/^[A-Za-z0-9\-._~]+$/.test(codeVerifier)) {
+      return c.json(
+        {
+          error: "invalid_request",
+          error_description: "code_verifier contains invalid characters",
+        },
+        400,
+      );
+    }
     const expectedChallenge = await generateCodeChallenge(codeVerifier);
     if (!timingSafeEqual(expectedChallenge, authCode.code_challenge)) {
       return c.json({ error: "invalid_grant", error_description: "code_verifier mismatch" }, 400);

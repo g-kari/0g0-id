@@ -314,6 +314,78 @@ describe("handleAuthorizationCodeGrant", () => {
       expect(body.error_description).toContain("code_verifier is required");
     });
 
+    it("code_verifier が短すぎる → 400", async () => {
+      vi.mocked(resolveOAuthClient).mockResolvedValue({
+        ok: true,
+        service: mockService,
+        isPublicClient: false,
+      });
+      vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
+        ...mockAuthCode,
+        code_challenge: "challenge-value",
+      });
+
+      const c = createMockContext({}, "Basic dGVzdDp0ZXN0");
+      const res = await handleAuthorizationCodeGrant(c, {
+        code: "test-code",
+        redirect_uri: "https://example.com/callback",
+        code_verifier: "too-short",
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body.error).toBe("invalid_request");
+      expect(body.error_description).toContain("43-128");
+    });
+
+    it("code_verifier が長すぎる → 400", async () => {
+      vi.mocked(resolveOAuthClient).mockResolvedValue({
+        ok: true,
+        service: mockService,
+        isPublicClient: false,
+      });
+      vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
+        ...mockAuthCode,
+        code_challenge: "challenge-value",
+      });
+
+      const c = createMockContext({}, "Basic dGVzdDp0ZXN0");
+      const res = await handleAuthorizationCodeGrant(c, {
+        code: "test-code",
+        redirect_uri: "https://example.com/callback",
+        code_verifier: "a".repeat(129),
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body.error).toBe("invalid_request");
+      expect(body.error_description).toContain("43-128");
+    });
+
+    it("code_verifier に不正な文字 → 400", async () => {
+      vi.mocked(resolveOAuthClient).mockResolvedValue({
+        ok: true,
+        service: mockService,
+        isPublicClient: false,
+      });
+      vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
+        ...mockAuthCode,
+        code_challenge: "challenge-value",
+      });
+
+      const c = createMockContext({}, "Basic dGVzdDp0ZXN0");
+      const res = await handleAuthorizationCodeGrant(c, {
+        code: "test-code",
+        redirect_uri: "https://example.com/callback",
+        code_verifier: "valid-chars-but-has-invalid-chars!@#$%abc1234",
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body.error).toBe("invalid_request");
+      expect(body.error_description).toContain("invalid characters");
+    });
+
     it("code_verifier 不一致 → 400", async () => {
       vi.mocked(resolveOAuthClient).mockResolvedValue({
         ok: true,
@@ -331,7 +403,7 @@ describe("handleAuthorizationCodeGrant", () => {
       const res = await handleAuthorizationCodeGrant(c, {
         code: "test-code",
         redirect_uri: "https://example.com/callback",
-        code_verifier: "wrong-verifier",
+        code_verifier: "wrong-verifier-that-is-long-enough-to-pass-length-check",
       });
 
       expect(res.status).toBe(400);
