@@ -3,7 +3,6 @@ import { getCookie, deleteCookie } from "hono/cookie";
 import type { IdpEnv, OAuthStateCookieData, TokenPayload, User } from "@0g0-id/shared";
 import {
   timingSafeEqual,
-  verifyCookie,
   findUserById,
   tryBootstrapAdmin,
   generateToken,
@@ -15,12 +14,7 @@ import {
   recordFailedAttempt,
   resetFailedAttempts,
 } from "@0g0-id/shared";
-import {
-  type OAuthProvider,
-  PROVIDER_DISPLAY_NAMES,
-  isValidProvider,
-  PROVIDER_CREDENTIALS,
-} from "@0g0-id/shared";
+import { type OAuthProvider, PROVIDER_DISPLAY_NAMES, isValidProvider } from "@0g0-id/shared";
 import { getClientIp } from "../../utils/ip";
 import { type ProviderResolution, resolveProvider } from "../../utils/provider-resolution";
 import {
@@ -30,6 +24,7 @@ import {
   PKCE_COOKIE,
   parseStateFromCookie,
   handleProviderLink,
+  validateProviderCredentials,
 } from "../../utils/auth-helpers";
 
 const authLogger = createLogger("auth");
@@ -78,21 +73,9 @@ async function validateCallbackState(
     };
   }
 
-  const verifiedPayload = await verifyCookie(stateCookieRaw, c.env.COOKIE_SECRET);
-  if (!verifiedPayload) {
-    authLogger.error("[oauth-callback] State cookie signature verification failed");
-    clearOAuthCookies(c);
-    return {
-      ok: false,
-      response: c.json({ error: { code: "BAD_REQUEST", message: "Invalid state cookie" } }, 400),
-    };
-  }
-
-  let stateData: OAuthStateCookieData;
-  try {
-    stateData = JSON.parse(verifiedPayload);
-  } catch (err) {
-    authLogger.error("[oauth-callback] Failed to parse state cookie", err);
+  const stateData = await parseStateFromCookie(stateCookieRaw, c.env.COOKIE_SECRET);
+  if (!stateData) {
+    authLogger.error("[oauth-callback] State cookie verification or parse failed");
     clearOAuthCookies(c);
     return {
       ok: false,
@@ -135,22 +118,12 @@ function validateProviderConfig(
       ),
     };
   }
-  if (provider !== "google") {
-    const creds = PROVIDER_CREDENTIALS[provider];
-    if (!c.env[creds.id] || !c.env[creds.secret]) {
-      return {
-        ok: false,
-        response: c.json(
-          {
-            error: {
-              code: "PROVIDER_NOT_CONFIGURED",
-              message: `${creds.name} provider is not configured`,
-            },
-          },
-          400,
-        ),
-      };
-    }
+  const credResult = validateProviderCredentials(provider, c.env);
+  if (!credResult.ok) {
+    return {
+      ok: false,
+      response: c.json({ error: { code: credResult.code, message: credResult.message } }, 400),
+    };
   }
   return { ok: true, provider };
 }
