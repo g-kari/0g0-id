@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vite-plus/test";
+import { describe, it, expect, vi } from "vite-plus/test";
 import {
   isAccountLocked,
   recordFailedAttempt,
@@ -89,6 +89,38 @@ describe("recordFailedAttempt", () => {
     expect(result.locked).toBe(true);
     expect(result.lockedUntil).not.toBeNull();
     expect(result.failedAttempts).toBe(6);
+  });
+
+  it("前回失敗からmaxLockSeconds超過 → failed_attemptsがリセットされる", async () => {
+    const oldDate = new Date(Date.now() - 4000 * 1000).toISOString();
+    const db = makeD1Mock({
+      user_id: "user-1",
+      failed_attempts: 10,
+      locked_until: null,
+      last_failed_at: oldDate,
+      updated_at: oldDate,
+    });
+    await recordFailedAttempt(db, "user-1");
+    const deleteCalls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls.filter(
+      ([sql]: string[]) => sql.includes("DELETE FROM account_lockouts"),
+    );
+    expect(deleteCalls.length).toBe(1);
+  });
+
+  it("前回失敗からmaxLockSeconds以内 → failed_attemptsは蓄積される", async () => {
+    const recentDate = new Date(Date.now() - 100 * 1000).toISOString();
+    const db = makeD1Mock({
+      user_id: "user-1",
+      failed_attempts: 6,
+      locked_until: null,
+      last_failed_at: recentDate,
+      updated_at: recentDate,
+    });
+    await recordFailedAttempt(db, "user-1");
+    const deleteCalls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls.filter(
+      ([sql]: string[]) => sql.includes("DELETE FROM account_lockouts"),
+    );
+    expect(deleteCalls.length).toBe(0);
   });
 });
 

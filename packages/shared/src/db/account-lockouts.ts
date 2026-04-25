@@ -64,6 +64,15 @@ export async function recordFailedAttempt(
   const now = new Date();
   const nowIso = now.toISOString();
 
+  const existing = await getAccountLockout(db, userId);
+  const shouldDecay =
+    existing?.last_failed_at &&
+    now.getTime() - new Date(existing.last_failed_at).getTime() > config.maxLockSeconds * 1000;
+
+  if (shouldDecay) {
+    await db.prepare("DELETE FROM account_lockouts WHERE user_id = ?").bind(userId).run();
+  }
+
   await db
     .prepare(
       `INSERT INTO account_lockouts (user_id, failed_attempts, locked_until, last_failed_at, updated_at)
