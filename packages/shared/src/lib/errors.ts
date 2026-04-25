@@ -52,6 +52,16 @@ export interface OAuthErrorBody {
 }
 
 /**
+ * JSON-RPC 2.0 エラーレスポンスボディ。
+ * MCP Worker の認証ミドルウェア等で使用する。
+ */
+export interface JsonRpcErrorBody {
+  jsonrpc: "2.0";
+  id: null;
+  error: { code: number; message: string };
+}
+
+/**
  * REST API エラーボディを生成する。
  *
  * @example
@@ -69,4 +79,12 @@ export function restErrorBody(code: string, message: string): RestErrorBody {
  */
 export function oauthErrorBody(error: string, description?: string): OAuthErrorBody {
   return description === undefined ? { error } : { error, error_description: description };
+}
+
+/**
+ * JSON-RPC 2.0 エラーボディを生成する。
+ * id=null は「リクエスト ID が不明」を示す（認証失敗時はリクエスト本文を解釈しないため）。
+ */
+export function jsonRpcErrorBody(code: number, message: string): JsonRpcErrorBody {
+  return { jsonrpc: "2.0", id: null, error: { code, message } };
 }

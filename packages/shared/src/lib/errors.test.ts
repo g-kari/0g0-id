@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vite-plus/test";
-import { REST_ERROR_CODES, restErrorBody, oauthErrorBody } from "./errors";
+import { REST_ERROR_CODES, restErrorBody, oauthErrorBody, jsonRpcErrorBody } from "./errors";
 
 describe("REST_ERROR_CODES", () => {
   it("全コードがキーと値で一致する", () => {
@@ -54,5 +54,21 @@ describe("oauthErrorBody", () => {
     const body = oauthErrorBody("invalid_grant", undefined);
     expect(body).toEqual({ error: "invalid_grant" });
     expect(body).not.toHaveProperty("error_description");
+  });
+});
+
+describe("jsonRpcErrorBody", () => {
+  it("JSON-RPC 2.0 形式のエラーボディを生成する", () => {
+    const body = jsonRpcErrorBody(-32001, "Unauthorized");
+    expect(body).toEqual({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32001, message: "Unauthorized" },
+    });
+  });
+
+  it("標準エラーコードも受け付ける", () => {
+    const body = jsonRpcErrorBody(-32603, "Internal error");
+    expect(body.error.code).toBe(-32603);
   });
 });
