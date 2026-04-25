@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import {
   listAdminAuditLogs,
   getAuditLogStats,
-  requirePagination,
+  paginationMiddleware,
   parseDays,
   restErrorBody,
   UUID_RE,
@@ -32,38 +32,42 @@ app.get("/stats", authMiddleware, adminMiddleware, async (c) => {
 });
 
 // GET /api/admin/audit-logs — 管理者操作の監査ログ一覧（管理者のみ）
-app.get("/", authMiddleware, adminMiddleware, async (c) => {
-  const pagination = requirePagination(c, { defaultLimit: 50, maxLimit: 100 });
-  if (pagination instanceof Response) return pagination;
-  const { limit, offset } = pagination;
+app.get(
+  "/",
+  authMiddleware,
+  adminMiddleware,
+  paginationMiddleware({ defaultLimit: 50, maxLimit: 100 }),
+  async (c) => {
+    const { limit, offset } = c.get("pagination");
 
-  const adminUserId = c.req.query("admin_user_id");
-  const targetId = c.req.query("target_id");
-  const action = c.req.query("action");
+    const adminUserId = c.req.query("admin_user_id");
+    const targetId = c.req.query("target_id");
+    const action = c.req.query("action");
 
-  if (adminUserId !== undefined && !UUID_RE.test(adminUserId)) {
-    return c.json(restErrorBody("BAD_REQUEST", "Invalid admin_user_id format"), 400);
-  }
-  if (targetId !== undefined && !UUID_RE.test(targetId)) {
-    return c.json(restErrorBody("BAD_REQUEST", "Invalid target_id format"), 400);
-  }
-  if (action !== undefined && !/^[a-z]+\.[a-z_]+$/.test(action)) {
-    return c.json(restErrorBody("BAD_REQUEST", "Invalid action format"), 400);
-  }
+    if (adminUserId !== undefined && !UUID_RE.test(adminUserId)) {
+      return c.json(restErrorBody("BAD_REQUEST", "Invalid admin_user_id format"), 400);
+    }
+    if (targetId !== undefined && !UUID_RE.test(targetId)) {
+      return c.json(restErrorBody("BAD_REQUEST", "Invalid target_id format"), 400);
+    }
+    if (action !== undefined && !/^[a-z]+\.[a-z_]+$/.test(action)) {
+      return c.json(restErrorBody("BAD_REQUEST", "Invalid action format"), 400);
+    }
 
-  try {
-    const { logs, total } = await listAdminAuditLogs(c.env.DB, limit, offset, {
-      adminUserId,
-      targetId,
-      action,
-    });
-    return c.json({
-      data: logs,
-      pagination: { total, limit, offset },
-    });
-  } catch {
-    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
-  }
-});
+    try {
+      const { logs, total } = await listAdminAuditLogs(c.env.DB, limit, offset, {
+        adminUserId,
+        targetId,
+        action,
+      });
+      return c.json({
+        data: logs,
+        pagination: { total, limit, offset },
+      });
+    } catch {
+      return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
+    }
+  },
+);
 
 export default app;

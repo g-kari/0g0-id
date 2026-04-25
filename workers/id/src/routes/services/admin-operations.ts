@@ -9,7 +9,7 @@ import {
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
   revokeUserServiceTokens,
-  requirePagination,
+  paginationMiddleware,
   UUID_RE,
   restErrorBody,
   parseJsonBody,
@@ -123,43 +123,47 @@ app.patch("/:id/owner", authMiddleware, adminMiddleware, csrfMiddleware, async (
 });
 
 // GET /api/services/:id/users — サービスを認可済みのユーザー一覧（管理者のみ）
-app.get("/:id/users", authMiddleware, adminMiddleware, async (c) => {
-  const serviceId = c.req.param("id");
-  const pagination = requirePagination(c, { defaultLimit: 50, maxLimit: 100 });
-  if (pagination instanceof Response) return pagination;
-  const { limit, offset } = pagination;
+app.get(
+  "/:id/users",
+  authMiddleware,
+  adminMiddleware,
+  paginationMiddleware({ defaultLimit: 50, maxLimit: 100 }),
+  async (c) => {
+    const serviceId = c.req.param("id");
+    const { limit, offset } = c.get("pagination");
 
-  let service: Service | null;
-  let users: User[];
-  let total: number;
-  try {
-    [service, [users, total]] = await Promise.all([
-      findServiceById(c.env.DB, serviceId),
-      Promise.all([
-        listUsersAuthorizedForService(c.env.DB, serviceId, limit, offset),
-        countUsersAuthorizedForService(c.env.DB, serviceId),
-      ]),
-    ]);
-  } catch (err) {
-    servicesLogger.error("[services] Failed to fetch service users", err);
-    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
-  }
-  if (!service) {
-    return c.json(restErrorBody("NOT_FOUND", "Service not found"), 404);
-  }
+    let service: Service | null;
+    let users: User[];
+    let total: number;
+    try {
+      [service, [users, total]] = await Promise.all([
+        findServiceById(c.env.DB, serviceId),
+        Promise.all([
+          listUsersAuthorizedForService(c.env.DB, serviceId, limit, offset),
+          countUsersAuthorizedForService(c.env.DB, serviceId),
+        ]),
+      ]);
+    } catch (err) {
+      servicesLogger.error("[services] Failed to fetch service users", err);
+      return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
+    }
+    if (!service) {
+      return c.json(restErrorBody("NOT_FOUND", "Service not found"), 404);
+    }
 
-  return c.json({
-    data: users.map((u) => ({
-      id: u.id,
-      email: u.email,
-      name: u.name,
-      picture: u.picture,
-      role: u.role,
-      created_at: u.created_at,
-    })),
-    total,
-  });
-});
+    return c.json({
+      data: users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        picture: u.picture,
+        role: u.role,
+        created_at: u.created_at,
+      })),
+      total,
+    });
+  },
+);
 
 // DELETE /api/services/:id/users/:userId — ユーザーのサービスアクセスを失効
 app.delete("/:id/users/:userId", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {

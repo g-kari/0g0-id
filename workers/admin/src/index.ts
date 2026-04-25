@@ -16,6 +16,7 @@ import {
   validateBffEnv,
   requireDbscBoundSession,
   COOKIE_NAMES,
+  SESSION_COOKIE_DELETE_OPTIONS,
 } from "@0g0-id/shared";
 import authRoutes from "./routes/auth";
 import dbscRoutes from "./routes/dbsc";
@@ -63,12 +64,7 @@ app.use("/api/*", async (c, next) => {
     return c.json({ error: { code: "UNAUTHORIZED", message: "Unauthorized" } }, 401);
   }
   if (session.user.role !== "admin") {
-    deleteCookie(c, COOKIE_NAMES.ADMIN_SESSION, {
-      path: "/",
-      secure: true,
-      httpOnly: true,
-      sameSite: "Lax",
-    });
+    deleteCookie(c, COOKIE_NAMES.ADMIN_SESSION, SESSION_COOKIE_DELETE_OPTIONS);
     return c.json({ error: { code: "FORBIDDEN", message: "Forbidden" } }, 403);
   }
   await next();

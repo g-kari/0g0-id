@@ -5,7 +5,7 @@ import {
   generatePairwiseSub,
   listUsersAuthorizedForService,
   countUsersAuthorizedForService,
-  requirePagination,
+  paginationMiddleware,
   restErrorBody,
 } from "@0g0-id/shared";
 import type { IdpEnv, User, Service, AuthorizedUserFilter } from "@0g0-id/shared";
@@ -45,46 +45,51 @@ async function buildUserData(
 }
 
 // GET /api/external/users — 認可済みユーザー一覧（外部サービス向け）
-app.get("/users", externalApiRateLimitMiddleware, serviceAuthMiddleware, async (c) => {
-  const service = c.get("service");
+app.get(
+  "/users",
+  externalApiRateLimitMiddleware,
+  serviceAuthMiddleware,
+  paginationMiddleware({ defaultLimit: 50, maxLimit: 100 }),
+  async (c) => {
+    const service = c.get("service");
+    const { limit, offset } = c.get("pagination");
 
-  const pagination = requirePagination(c, { defaultLimit: 50, maxLimit: 100 });
-  if (pagination instanceof Response) return pagination;
-  const { limit, offset } = pagination;
+    const nameQuery = c.req.query("name");
+    const emailQuery = c.req.query("email");
 
-  const nameQuery = c.req.query("name");
-  const emailQuery = c.req.query("email");
+    const allowedScopes = parseAllowedScopes(service.allowed_scopes);
 
-  const allowedScopes = parseAllowedScopes(service.allowed_scopes);
+    if (nameQuery && !allowedScopes.includes("profile")) {
+      return c.json(restErrorBody("FORBIDDEN", "name filter requires profile scope"), 403);
+    }
+    if (emailQuery && !allowedScopes.includes("email")) {
+      return c.json(restErrorBody("FORBIDDEN", "email filter requires email scope"), 403);
+    }
 
-  if (nameQuery && !allowedScopes.includes("profile")) {
-    return c.json(restErrorBody("FORBIDDEN", "name filter requires profile scope"), 403);
-  }
-  if (emailQuery && !allowedScopes.includes("email")) {
-    return c.json(restErrorBody("FORBIDDEN", "email filter requires email scope"), 403);
-  }
+    const filter: AuthorizedUserFilter = {
+      ...(nameQuery ? { name: nameQuery } : {}),
+      ...(emailQuery ? { email: emailQuery } : {}),
+    };
 
-  const filter: AuthorizedUserFilter = {
-    ...(nameQuery ? { name: nameQuery } : {}),
-    ...(emailQuery ? { email: emailQuery } : {}),
-  };
+    let users: User[];
+    let total: number;
+    try {
+      [users, total] = await Promise.all([
+        listUsersAuthorizedForService(c.env.DB, service.id, limit, offset, filter),
+        countUsersAuthorizedForService(c.env.DB, service.id, filter),
+      ]);
+    } catch {
+      return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
+    }
 
-  let users: User[];
-  let total: number;
-  try {
-    [users, total] = await Promise.all([
-      listUsersAuthorizedForService(c.env.DB, service.id, limit, offset, filter),
-      countUsersAuthorizedForService(c.env.DB, service.id, filter),
-    ]);
-  } catch {
-    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
-  }
+    // listUsersAuthorizedForService のSQLで banned_at IS NULL フィルタ済み
+    const data = await Promise.all(
+      users.map((user) => buildUserData(service, user, allowedScopes)),
+    );
 
-  // listUsersAuthorizedForService のSQLで banned_at IS NULL フィルタ済み
-  const data = await Promise.all(users.map((user) => buildUserData(service, user, allowedScopes)));
-
-  return c.json({ data, meta: { total, limit, offset } });
-});
+    return c.json({ data, meta: { total, limit, offset } });
+  },
+);
 
 // GET /api/external/users/:sub — ペアワイズsubによるユーザー検索（外部サービス向け）
 app.get("/users/:sub", externalApiRateLimitMiddleware, serviceAuthMiddleware, async (c) => {

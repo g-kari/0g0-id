@@ -5,10 +5,11 @@ import {
   fetchWithJsonBody,
   isValidProvider,
   parseDays,
+  paginationMiddleware,
   proxyGet,
   proxyResponse,
-  requirePagination,
   REST_ERROR_CODES,
+  SESSION_COOKIE_DELETE_OPTIONS,
 } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
 import { COOKIE_NAMES } from "@0g0-id/shared";
@@ -22,12 +23,11 @@ app.get(
 );
 
 // GET /api/me/login-history
-app.get("/login-history", async (c) => {
-  const pagination = requirePagination(c, { defaultLimit: 20, maxLimit: 100 });
-  if (pagination instanceof Response) return pagination;
+app.get("/login-history", paginationMiddleware({ defaultLimit: 20, maxLimit: 100 }), async (c) => {
+  const { limit, offset } = c.get("pagination");
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/me/login-history`);
-  url.searchParams.set("limit", String(pagination.limit));
-  url.searchParams.set("offset", String(pagination.offset));
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("offset", String(offset));
   const provider = c.req.query("provider");
   if (provider) {
     if (!isValidProvider(provider)) {
@@ -90,12 +90,7 @@ app.delete("/", async (c) => {
     },
   );
   if (res.status === 204) {
-    deleteCookie(c, COOKIE_NAMES.USER_SESSION, {
-      path: "/",
-      secure: true,
-      httpOnly: true,
-      sameSite: "Lax",
-    });
+    deleteCookie(c, COOKIE_NAMES.USER_SESSION, SESSION_COOKIE_DELETE_OPTIONS);
     return c.body(null, 204);
   }
   return proxyResponse(res);

@@ -18,7 +18,7 @@ import {
   getUserDailyLoginTrends,
   updateUserProfile,
   parseDays,
-  requirePagination,
+  paginationMiddleware,
   isValidProvider,
   UUID_RE,
   parseJsonBody,
@@ -176,11 +176,10 @@ app.get(
   authMiddleware,
   rejectServiceTokenMiddleware,
   rejectBannedUserMiddleware,
+  paginationMiddleware({ defaultLimit: 20, maxLimit: 100 }),
   async (c) => {
     const tokenUser = c.get("user");
-    const pagination = requirePagination(c, { defaultLimit: 20, maxLimit: 100 });
-    if (pagination instanceof Response) return pagination;
-    const { limit, offset } = pagination;
+    const { limit, offset } = c.get("pagination");
     const providerParam = c.req.query("provider") || undefined;
     if (providerParam !== undefined && !isValidProvider(providerParam)) {
       return c.json({ error: { code: "BAD_REQUEST", message: "Invalid provider" } }, 400);

@@ -2,7 +2,13 @@ import { Hono } from "hono";
 import { getCookie, deleteCookie } from "hono/cookie";
 import type { BffEnv } from "../types";
 import { generateToken } from "./crypto";
-import { parseSession, setSessionCookie, exchangeCodeAtIdp, revokeTokenAtIdp } from "./bff";
+import {
+  parseSession,
+  setSessionCookie,
+  exchangeCodeAtIdp,
+  revokeTokenAtIdp,
+  SESSION_COOKIE_DELETE_OPTIONS,
+} from "./bff";
 import { setOAuthStateCookie, verifyAndConsumeOAuthState } from "./bff";
 import { createLogger } from "./logger";
 import type { ExchangeResult } from "./bff";
@@ -135,12 +141,7 @@ export function createBffAuthRoutes(config: BffAuthConfig) {
       }
     }
 
-    deleteCookie(c, config.sessionCookieName, {
-      path: "/",
-      secure: true,
-      httpOnly: true,
-      sameSite: "Lax",
-    });
+    deleteCookie(c, config.sessionCookieName, SESSION_COOKIE_DELETE_OPTIONS);
     return c.redirect("/");
   });
 

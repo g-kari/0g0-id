@@ -7,6 +7,7 @@ import {
   proxyResponse,
   UUID_RE,
   COOKIE_NAMES,
+  SESSION_COOKIE_DELETE_OPTIONS,
 } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
 
@@ -50,12 +51,7 @@ app.delete("/:sessionId", async (c) => {
   if (res.status === 204) {
     // 自分の Cookie セッションを失効させた場合のみ Cookie 削除
     if (currentSession && currentSession.session_id === sessionId) {
-      deleteCookie(c, COOKIE_NAMES.USER_SESSION, {
-        path: "/",
-        secure: true,
-        httpOnly: true,
-        sameSite: "Lax",
-      });
+      deleteCookie(c, COOKIE_NAMES.USER_SESSION, SESSION_COOKIE_DELETE_OPTIONS);
     }
     return c.body(null, 204);
   }
