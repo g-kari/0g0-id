@@ -331,7 +331,7 @@ describe("handleAuthorizationCodeGrant", () => {
       const res = await handleAuthorizationCodeGrant(c, {
         code: "test-code",
         redirect_uri: "https://example.com/callback",
-        code_verifier: "wrong-verifier",
+        code_verifier: "wrong-verifier-that-is-long-enough-to-pass-length-check",
       });
 
       expect(res.status).toBe(400);
