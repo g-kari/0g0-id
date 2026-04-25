@@ -79,7 +79,6 @@ const dbscRequire = requireDbscBoundSession({
   sessionCookieName: COOKIE_NAMES.ADMIN_SESSION,
   loggerName: "admin-dbsc-enforce",
   enforce: "env",
-  registrationPath: "/auth/dbsc/start",
 });
 app.use("/api/services/*", dbscRequire);
 app.use("/api/users/*", dbscRequire);

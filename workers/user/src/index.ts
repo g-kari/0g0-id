@@ -69,7 +69,6 @@ const dbscRequire = requireDbscBoundSession({
   sessionCookieName: COOKIE_NAMES.USER_SESSION,
   loggerName: "user-dbsc-enforce",
   enforce: "env",
-  registrationPath: "/auth/dbsc/start",
 });
 // Hono v4 の `/*` は「ゼロ以上の任意セグメント」にマッチするため `/api/me/*` は
 // `/api/me` 単体（PATCH・DELETE）も配下サブパスもカバーする。

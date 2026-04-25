@@ -18,6 +18,14 @@ vi.mock("@0g0-id/shared", () => ({
   upsertGithubUser: vi.fn(),
   upsertXUser: vi.fn(),
   createLogger: vi.fn(() => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn() })),
+  restErrorBody: (code: string, message: string) => ({ error: { code, message } }),
+  PROVIDER_DISPLAY_NAMES: {
+    google: "Google",
+    line: "LINE",
+    twitch: "Twitch",
+    github: "GitHub",
+    x: "X",
+  },
 }));
 
 import {
