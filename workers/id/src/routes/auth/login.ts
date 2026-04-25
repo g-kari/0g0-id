@@ -1,10 +1,6 @@
 import type { Context } from "hono";
 import type { IdpEnv, OAuthStateCookieData, TokenPayload } from "@0g0-id/shared";
 import {
-  findServiceByClientId,
-  normalizeRedirectUri,
-  listRedirectUris,
-  matchRedirectUri,
   generateCodeVerifier,
   generateCodeChallenge,
   generateToken,
@@ -16,8 +12,8 @@ import {
   buildGithubAuthUrl,
   buildXAuthUrl,
 } from "@0g0-id/shared";
-import { isValidProvider, PROVIDER_CREDENTIALS } from "@0g0-id/shared";
-import { validateNonce, validateCodeChallenge } from "../../utils/scopes";
+import { isValidProvider } from "@0g0-id/shared";
+import { validateNonce, validateCodeChallengeParams } from "../../utils/scopes";
 import {
   CALLBACK_PATH,
   STATE_COOKIE,
@@ -25,6 +21,8 @@ import {
   isAllowedRedirectTo,
   isBffOrigin,
   setSecureCookie,
+  validateProviderCredentials,
+  validateServiceRedirectUri,
 } from "../../utils/auth-helpers";
 
 /**
@@ -63,19 +61,9 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
   const provider = providerParam;
 
   // プロバイダー資格情報の確認（Google以外はオプション設定）
-  if (provider !== "google") {
-    const creds = PROVIDER_CREDENTIALS[provider];
-    if (!c.env[creds.id] || !c.env[creds.secret]) {
-      return c.json(
-        {
-          error: {
-            code: "PROVIDER_NOT_CONFIGURED",
-            message: `${creds.name} provider is not configured`,
-          },
-        },
-        400,
-      );
-    }
+  const credResult = validateProviderCredentials(provider, c.env);
+  if (!credResult.ok) {
+    return c.json({ error: { code: credResult.code, message: credResult.message } }, 400);
   }
 
   // redirect_to の検証
@@ -83,22 +71,11 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
   // client_id 指定なし → 同一ベースドメイン / EXTRA_BFF_ORIGINS で検証（BFF フロー）
   let serviceId: string | undefined;
   if (clientId) {
-    const service = await findServiceByClientId(c.env.DB, clientId);
-    if (!service) {
-      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid client_id" } }, 400);
+    const uriResult = await validateServiceRedirectUri(c.env.DB, clientId, redirectTo);
+    if (!uriResult.ok) {
+      return c.json({ error: { code: "BAD_REQUEST", message: uriResult.error } }, 400);
     }
-    const normalizedRedirectTo = normalizeRedirectUri(redirectTo);
-    if (!normalizedRedirectTo) {
-      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid redirect_to" } }, 400);
-    }
-    // 登録済みredirect_uriをmatchRedirectUriで比較（/auth/authorizeと同じロジック）
-    // localhostの場合はポート番号を無視してマッチ（RFC 8252 §7.3準拠）
-    const registeredUris = await listRedirectUris(c.env.DB, service.id);
-    const matched = registeredUris.some((ru) => matchRedirectUri(ru.uri, normalizedRedirectTo));
-    if (!matched) {
-      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid redirect_to" } }, 400);
-    }
-    serviceId = service.id;
+    serviceId = uriResult.serviceId;
   } else {
     // client_id なしは BFF オリジン（USER_ORIGIN / ADMIN_ORIGIN / EXTRA_BFF_ORIGINS）のみ許可
     const isBff = isBffOrigin(
@@ -144,27 +121,7 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
     return c.json({ error: { code: "BAD_REQUEST", message: "scope too long" } }, 400);
   }
 
-  // code_challenge が指定された場合は S256 のみ許可（OAuth 2.1 / RFC 7636）
-  // code_challenge_method が省略された場合も拒否（デフォルトplainとの混同防止）
-  if (codeChallenge && codeChallengeMethod !== "S256") {
-    return c.json(
-      { error: { code: "BAD_REQUEST", message: "Only S256 code_challenge_method is supported" } },
-      400,
-    );
-  }
-  if (!codeChallenge && codeChallengeMethod !== undefined) {
-    return c.json(
-      {
-        error: {
-          code: "BAD_REQUEST",
-          message: "code_challenge is required when code_challenge_method is specified",
-        },
-      },
-      400,
-    );
-  }
-  // RFC 7636 §4.2: S256のcode_challengeはBASE64URL(SHA256(code_verifier)) = 43文字
-  const codeChallengeError = validateCodeChallenge(codeChallenge);
+  const codeChallengeError = validateCodeChallengeParams(codeChallenge, codeChallengeMethod);
   if (codeChallengeError) {
     return c.json({ error: { code: "BAD_REQUEST", message: codeChallengeError } }, 400);
   }
