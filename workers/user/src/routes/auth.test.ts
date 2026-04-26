@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { encodeSession } from "@0g0-id/shared";
 import { Hono } from "hono";
+import { makeSessionCookie } from "@0g0-id/shared/test-helpers";
 
 import authRoutes from "./auth";
 
@@ -23,16 +23,6 @@ function buildApp(idpFetch: (req: Request) => Promise<Response>) {
       });
     },
   };
-}
-
-async function makeSessionCookie(userId = "user-123"): Promise<string> {
-  const session = {
-    session_id: "00000000-0000-0000-0000-000000000000",
-    access_token: "mock-access-token",
-    refresh_token: "mock-refresh-token",
-    user: { id: userId, email: "user@example.com", name: "Test User", role: "user" as const },
-  };
-  return encodeSession(session, "test-secret");
 }
 
 describe("user BFF — /auth", () => {
@@ -274,7 +264,7 @@ describe("user BFF — /auth", () => {
 
       const res = await app.request("/auth/link?provider=github", {
         method: "POST",
-        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie("user-abc")}` },
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie({ userId: "user-abc" })}` },
       });
 
       expect(res.status).toBe(302);
