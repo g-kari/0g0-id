@@ -238,6 +238,88 @@ describe("mcpAuthMiddleware", () => {
     expect(res.headers.get("WWW-Authenticate")).toContain('error="invalid_token"');
     expect(res.headers.get("WWW-Authenticate")).toContain(mockEnv.MCP_ORIGIN);
   });
+
+  it("Bearer の後が空文字列の場合はヘッダーがtrimされ401を返す", async () => {
+    const app = buildAuthApp();
+    const res = await app.request(
+      new Request(`${baseUrl}/test`, {
+        headers: { Authorization: "Bearer " },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+    expect(res.status).toBe(401);
+    const body = await res.json<JsonRpcErrorResponse>();
+    expect(body.error.code).toBe(-32001);
+    // "Bearer " は末尾スペースがtrimされ "Bearer" となり startsWith("Bearer ") が false になる
+    expect(body.error.message).toBe("Bearer token required");
+  });
+
+  it("optionalフィールドscope/cid付きの有効なトークンの場合は200を返す", async () => {
+    const payloadWithOptionals = {
+      ...mockPayload,
+      scope: "read write",
+      cid: "client-abc",
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(jwtVerify).mockResolvedValue({
+      payload: payloadWithOptionals,
+      protectedHeader: { alg: "ES256" },
+    } as any);
+
+    const app = buildAuthApp();
+    const res = await app.request(
+      new Request(`${baseUrl}/test`, {
+        headers: { Authorization: "Bearer valid.jwt.token" },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("isAccessTokenRevokedが例外を投げた場合はcatchで401を返す", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(jwtVerify).mockResolvedValue({
+      payload: mockPayload,
+      protectedHeader: { alg: "ES256" },
+    } as any);
+    vi.mocked(isAccessTokenRevoked).mockRejectedValue(new Error("DB error"));
+
+    const app = buildAuthApp();
+    const res = await app.request(
+      new Request(`${baseUrl}/test`, {
+        headers: { Authorization: "Bearer valid.jwt.token" },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+    expect(res.status).toBe(401);
+    const body = await res.json<JsonRpcErrorResponse>();
+    expect(body.error.code).toBe(-32001);
+    expect(body.error.message).toBe("Invalid or expired token");
+  });
+
+  it("isAccessTokenRevokedがfalseを返す場合は200を返しリボークチェックが呼ばれたことを検証", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(jwtVerify).mockResolvedValue({
+      payload: mockPayload,
+      protectedHeader: { alg: "ES256" },
+    } as any);
+    vi.mocked(isAccessTokenRevoked).mockResolvedValue(false);
+
+    const app = buildAuthApp();
+    const res = await app.request(
+      new Request(`${baseUrl}/test`, {
+        headers: { Authorization: "Bearer valid.jwt.token" },
+      }),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+    expect(res.status).toBe(200);
+    expect(vi.mocked(isAccessTokenRevoked)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(isAccessTokenRevoked)).toHaveBeenCalledWith(mockEnv.DB, mockPayload.jti);
+  });
 });
 
 describe("mcpRejectBannedUserMiddleware", () => {
@@ -389,6 +471,18 @@ describe("mcpAdminMiddleware", () => {
     );
     expect(res.status).toBe(200);
   });
+
+  it("isAccessTokenRevokedが例外を投げた場合はtry-catchがないため500を返す", async () => {
+    vi.mocked(isAccessTokenRevoked).mockRejectedValue(new Error("DB error"));
+
+    const app = buildAdminApp({ ...mockPayload, role: "admin", jti: "valid-jti" });
+    const res = await app.request(
+      new Request(`${baseUrl}/test`),
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+    expect(res.status).toBe(500);
+  });
 });
 
 describe("JWKS cache TTL", () => {
@@ -442,5 +536,34 @@ describe("JWKS cache TTL", () => {
     );
 
     expect(vi.mocked(createRemoteJWKSet)).toHaveBeenCalledTimes(2);
+  });
+
+  it("異なるIDP_ORIGINの場合は別々のキャッシュエントリが作成される", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(jwtVerify).mockResolvedValue({
+      payload: mockPayload,
+      protectedHeader: { alg: "ES256" },
+    } as any);
+
+    const app = buildAuthApp();
+
+    const envA = { ...mockEnv, IDP_ORIGIN: "https://idp-a.example.com" };
+    const envB = { ...mockEnv, IDP_ORIGIN: "https://idp-b.example.com" };
+
+    await app.request(
+      new Request(`${baseUrl}/test`, { headers: { Authorization: "Bearer token1" } }),
+      undefined,
+      envA as unknown as Record<string, string>,
+    );
+    await app.request(
+      new Request(`${baseUrl}/test`, { headers: { Authorization: "Bearer token2" } }),
+      undefined,
+      envB as unknown as Record<string, string>,
+    );
+
+    expect(vi.mocked(createRemoteJWKSet)).toHaveBeenCalledTimes(2);
+    const calls = vi.mocked(createRemoteJWKSet).mock.calls;
+    expect(calls[0][0].toString()).toBe("https://idp-a.example.com/.well-known/jwks.json");
+    expect(calls[1][0].toString()).toBe("https://idp-b.example.com/.well-known/jwks.json");
   });
 });
