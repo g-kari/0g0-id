@@ -181,7 +181,8 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
   const stateData = JSON.stringify(statePayload);
   const signedStateData = await signCookie(stateData, c.env.COOKIE_SECRET);
   setSecureCookie(c, STATE_COOKIE, signedStateData, 600); // 10分
-  setSecureCookie(c, PKCE_COOKIE, idCodeVerifier, 600);
+  const signedPkce = await signCookie(idCodeVerifier, c.env.COOKIE_SECRET);
+  setSecureCookie(c, PKCE_COOKIE, signedPkce, 600);
 
   const callbackUri = `${c.env.IDP_ORIGIN}${CALLBACK_PATH}`;
   const commonParams = { redirectUri: callbackUri, state: idState, codeChallenge: idCodeChallenge };

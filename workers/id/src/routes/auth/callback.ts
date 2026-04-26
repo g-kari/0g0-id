@@ -13,6 +13,7 @@ import {
   isAccountLocked,
   recordFailedAttempt,
   resetFailedAttempts,
+  verifyCookie,
 } from "@0g0-id/shared";
 import { type OAuthProvider, PROVIDER_DISPLAY_NAMES, isValidProvider } from "@0g0-id/shared";
 import { getClientIp } from "../../utils/ip";
@@ -64,12 +65,22 @@ async function validateCallbackState(
   state: string,
 ): Promise<CallbackResult<{ stateData: OAuthStateCookieData; pkceVerifier: string }>> {
   const stateCookieRaw = getCookie(c, STATE_COOKIE);
-  const pkceVerifier = getCookie(c, PKCE_COOKIE);
+  const pkceCookieRaw = getCookie(c, PKCE_COOKIE);
 
-  if (!stateCookieRaw || !pkceVerifier) {
+  if (!stateCookieRaw || !pkceCookieRaw) {
     return {
       ok: false,
       response: c.json({ error: { code: "BAD_REQUEST", message: "Missing session cookies" } }, 400),
+    };
+  }
+
+  const pkceVerifier = await verifyCookie(pkceCookieRaw, c.env.COOKIE_SECRET);
+  if (!pkceVerifier) {
+    authLogger.error("[oauth-callback] PKCE cookie verification failed");
+    clearOAuthCookies(c);
+    return {
+      ok: false,
+      response: c.json({ error: { code: "BAD_REQUEST", message: "Invalid PKCE cookie" } }, 400),
     };
   }
 
