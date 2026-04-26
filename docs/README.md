@@ -25,6 +25,14 @@
 | https://id.0g0.xyz/docs/openapi.md  | id 内部 OpenAPI の Markdown 版 |
 | https://id.0g0.xyz/docs/external.md | id 外部 OpenAPI の Markdown 版 |
 
+## セキュリティ・設計ドキュメント
+
+| ファイル                                               | 概要                                                   |
+| ------------------------------------------------------ | ------------------------------------------------------ |
+| [dbsc.md](./dbsc.md)                                   | DBSC（Device Bound Session Credentials）仕様・フロー図 |
+| [environment-variables.md](./environment-variables.md) | 全 Worker の環境変数・シークレット・Bindings 一覧      |
+| [asset-generation.md](./asset-generation.md)           | 静的アセット生成（JWKS / OIDC）・鍵ローテーション手順  |
+
 ## 運用ドキュメント
 
 | ファイル                                                   | 概要                                     |
