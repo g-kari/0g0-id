@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
 import { SignJWT, exportJWK, generateKeyPair, type JWK } from "jose";
-import { encodeSession } from "@0g0-id/shared";
+import { makeSessionCookie as makeSessionCookieValue } from "@0g0-id/shared/test-helpers";
 import dbscRoutes from "./dbsc";
 
 const baseUrl = "https://user.0g0.xyz";
@@ -32,15 +32,13 @@ function buildApp(idpFetch: (req: Request) => Promise<Response> = vi.fn(), env?:
 }
 
 async function makeSessionCookie(): Promise<string> {
-  const encoded = await encodeSession(
-    {
-      session_id: "00000000-0000-0000-0000-000000000000",
-      access_token: "mock-at",
-      refresh_token: "mock-rt",
-      user: { id: "user-1", email: "user@example.com", name: "User", role: "user" },
-    },
-    SESSION_SECRET,
-  );
+  const encoded = await makeSessionCookieValue({
+    userId: "user-1",
+    name: "User",
+    accessToken: "mock-at",
+    refreshToken: "mock-rt",
+    secret: SESSION_SECRET,
+  });
   return `${SESSION_COOKIE}=${encoded}`;
 }
 
