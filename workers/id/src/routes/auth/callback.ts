@@ -26,6 +26,7 @@ import {
   parseStateFromCookie,
   handleProviderLink,
   validateProviderCredentials,
+  isAllowedRedirectTo,
 } from "../../utils/auth-helpers";
 
 const authLogger = createLogger("auth");
@@ -46,7 +47,10 @@ async function handleOAuthError(c: CallbackContext, error: string): Promise<Resp
 
   if (stateCookieRaw) {
     const stateData = await parseStateFromCookie(stateCookieRaw, c.env.COOKIE_SECRET);
-    if (stateData) {
+    if (
+      stateData &&
+      isAllowedRedirectTo(stateData.redirectTo, c.env.IDP_ORIGIN, c.env.EXTRA_BFF_ORIGINS)
+    ) {
       const safeErrorCode = error in OAUTH_ERROR_MAP ? error : "access_denied";
       const errorUrl = new URL(stateData.redirectTo);
       errorUrl.searchParams.set("error", safeErrorCode);
@@ -294,6 +298,13 @@ async function finalizeLogin(
       { error: { code: "SERVER_ERROR", message: "Failed to create authorization code" } },
       500,
     );
+  }
+
+  if (!isAllowedRedirectTo(stateData.redirectTo, c.env.IDP_ORIGIN, c.env.EXTRA_BFF_ORIGINS)) {
+    authLogger.error("[callback] Redirect URL failed allowlist check", {
+      redirectTo: stateData.redirectTo,
+    });
+    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid redirect URL" } }, 400);
   }
 
   const callbackUrl = new URL(stateData.redirectTo);
