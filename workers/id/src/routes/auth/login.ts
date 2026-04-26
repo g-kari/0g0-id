@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import type { IdpEnv, OAuthStateCookieData, TokenPayload } from "@0g0-id/shared";
+import { restErrorBody } from "@0g0-id/shared";
 import {
   generateCodeVerifier,
   generateCodeChallenge,
@@ -24,6 +25,7 @@ import {
   validateProviderCredentials,
   validateServiceRedirectUri,
 } from "../../utils/auth-helpers";
+import { validateRequiredParams, validateParamLengths } from "../../utils/validation";
 
 /**
  * GET /auth/login — BFFからのリダイレクト受け取り + プロバイダー認可へリダイレクト
@@ -40,30 +42,29 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
   // サーバー側で発行したワンタイムトークン（link_token）を使用する
   const linkToken = c.req.query("link_token");
 
-  if (!redirectTo || !bffState) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Missing required parameters" } }, 400);
-  }
+  const requiredErr = validateRequiredParams(c, [
+    { value: redirectTo, message: "Missing required parameters" },
+    { value: bffState, message: "Missing required parameters" },
+  ]);
+  if (requiredErr) return requiredErr;
+  if (!redirectTo || !bffState) return requiredErr!;
 
-  // redirect_to パラメータの長さ制限（Cookie内stateData肥大化防止）
-  if (redirectTo.length > 2048) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "redirect_to too long" } }, 400);
-  }
-
-  // state パラメータの長さ制限（Cookie汚染・過大データ保存防止）
-  if (bffState.length > 1024) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "state parameter too long" } }, 400);
-  }
+  const lengthErr = validateParamLengths(c, [
+    { value: redirectTo, max: 2048, message: "redirect_to too long" },
+    { value: bffState, max: 1024, message: "state parameter too long" },
+  ]);
+  if (lengthErr) return lengthErr;
 
   // providerの検証
   if (!isValidProvider(providerParam)) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid provider" } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", "Invalid provider"), 400);
   }
   const provider = providerParam;
 
   // プロバイダー資格情報の確認（Google以外はオプション設定）
   const credResult = validateProviderCredentials(provider, c.env);
   if (!credResult.ok) {
-    return c.json({ error: { code: credResult.code, message: credResult.message } }, 400);
+    return c.json(restErrorBody(credResult.code, credResult.message), 400);
   }
 
   // redirect_to の検証
@@ -73,7 +74,7 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
   if (clientId) {
     const uriResult = await validateServiceRedirectUri(c.env.DB, clientId, redirectTo);
     if (!uriResult.ok) {
-      return c.json({ error: { code: "BAD_REQUEST", message: uriResult.error } }, 400);
+      return c.json(restErrorBody("BAD_REQUEST", uriResult.error), 400);
     }
     serviceId = uriResult.serviceId;
   } else {
@@ -94,13 +95,11 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
       );
       if (isKnownDomain) {
         return c.json(
-          {
-            error: { code: "BAD_REQUEST", message: "client_id is required for external services" },
-          },
+          restErrorBody("BAD_REQUEST", "client_id is required for external services"),
           400,
         );
       }
-      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid redirect_to" } }, 400);
+      return c.json(restErrorBody("BAD_REQUEST", "Invalid redirect_to"), 400);
     }
   }
 
@@ -111,19 +110,19 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
   // nonce の長さ・制御文字制限（RFC 7636 に準じて 128 文字まで、制御文字禁止）
   const nonceError = validateNonce(nonce);
   if (nonceError) {
-    return c.json({ error: { code: "BAD_REQUEST", message: nonceError } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", nonceError), 400);
   }
   const codeChallengeMethod = c.req.query("code_challenge_method");
   const scope = c.req.query("scope");
 
-  // scope の長さ制限
-  if (scope !== undefined && scope.length > 2048) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "scope too long" } }, 400);
-  }
+  const scopeLenErr = validateParamLengths(c, [
+    { value: scope, max: 2048, message: "scope too long" },
+  ]);
+  if (scopeLenErr) return scopeLenErr;
 
   const codeChallengeError = validateCodeChallengeParams(codeChallenge, codeChallengeMethod);
   if (codeChallengeError) {
-    return c.json({ error: { code: "BAD_REQUEST", message: codeChallengeError } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", codeChallengeError), 400);
   }
 
   // link_token の検証（SNSプロバイダー連携フロー）
@@ -132,19 +131,13 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
   if (linkToken) {
     const payload = await verifyCookie(linkToken, c.env.COOKIE_SECRET);
     if (!payload) {
-      return c.json(
-        { error: { code: "INVALID_LINK_TOKEN", message: "Invalid or expired link token" } },
-        400,
-      );
+      return c.json(restErrorBody("INVALID_LINK_TOKEN", "Invalid or expired link token"), 400);
     }
     let parsed: { purpose: string; sub: string; exp: number };
     try {
       parsed = JSON.parse(payload) as { purpose: string; sub: string; exp: number };
     } catch {
-      return c.json(
-        { error: { code: "INVALID_LINK_TOKEN", message: "Invalid or expired link token" } },
-        400,
-      );
+      return c.json(restErrorBody("INVALID_LINK_TOKEN", "Invalid or expired link token"), 400);
     }
     if (
       parsed.purpose !== "link" ||
@@ -152,10 +145,7 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
       typeof parsed.exp !== "number" ||
       parsed.exp < Date.now()
     ) {
-      return c.json(
-        { error: { code: "INVALID_LINK_TOKEN", message: "Invalid or expired link token" } },
-        400,
-      );
+      return c.json(restErrorBody("INVALID_LINK_TOKEN", "Invalid or expired link token"), 400);
     }
     linkUserId = parsed.sub;
   }
