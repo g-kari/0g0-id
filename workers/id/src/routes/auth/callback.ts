@@ -13,6 +13,7 @@ import {
   isAccountLocked,
   recordFailedAttempt,
   resetFailedAttempts,
+  restErrorBody,
   verifyCookie,
 } from "@0g0-id/shared";
 import { type OAuthProvider, PROVIDER_DISPLAY_NAMES, isValidProvider } from "@0g0-id/shared";
@@ -61,7 +62,7 @@ async function handleOAuthError(c: CallbackContext, error: string): Promise<Resp
 
   const safeMessage =
     OAUTH_ERROR_MAP[error as keyof typeof OAUTH_ERROR_MAP] ?? "Authentication failed";
-  return c.json({ error: { code: "OAUTH_ERROR", message: safeMessage } }, 400);
+  return c.json(restErrorBody("OAUTH_ERROR", safeMessage), 400);
 }
 
 async function validateCallbackState(
@@ -74,7 +75,7 @@ async function validateCallbackState(
   if (!stateCookieRaw || !pkceCookieRaw) {
     return {
       ok: false,
-      response: c.json({ error: { code: "BAD_REQUEST", message: "Missing session cookies" } }, 400),
+      response: c.json(restErrorBody("BAD_REQUEST", "Missing session cookies"), 400),
     };
   }
 
@@ -84,7 +85,7 @@ async function validateCallbackState(
     clearOAuthCookies(c);
     return {
       ok: false,
-      response: c.json({ error: { code: "BAD_REQUEST", message: "Invalid PKCE cookie" } }, 400),
+      response: c.json(restErrorBody("BAD_REQUEST", "Invalid PKCE cookie"), 400),
     };
   }
 
@@ -94,7 +95,7 @@ async function validateCallbackState(
     clearOAuthCookies(c);
     return {
       ok: false,
-      response: c.json({ error: { code: "BAD_REQUEST", message: "Invalid state cookie" } }, 400),
+      response: c.json(restErrorBody("BAD_REQUEST", "Invalid state cookie"), 400),
     };
   }
 
@@ -102,7 +103,7 @@ async function validateCallbackState(
     clearOAuthCookies(c);
     return {
       ok: false,
-      response: c.json({ error: { code: "BAD_REQUEST", message: "State mismatch" } }, 400),
+      response: c.json(restErrorBody("BAD_REQUEST", "State mismatch"), 400),
     };
   }
 
@@ -117,27 +118,21 @@ function validateProviderConfig(
   if (!stateData.provider) {
     return {
       ok: false,
-      response: c.json(
-        { error: { code: "BAD_REQUEST", message: "Missing provider in state" } },
-        400,
-      ),
+      response: c.json(restErrorBody("BAD_REQUEST", "Missing provider in state"), 400),
     };
   }
   const provider: OAuthProvider = stateData.provider;
   if (!isValidProvider(provider)) {
     return {
       ok: false,
-      response: c.json(
-        { error: { code: "BAD_REQUEST", message: "Invalid provider in state" } },
-        400,
-      ),
+      response: c.json(restErrorBody("BAD_REQUEST", "Invalid provider in state"), 400),
     };
   }
   const credResult = validateProviderCredentials(provider, c.env);
   if (!credResult.ok) {
     return {
       ok: false,
-      response: c.json({ error: { code: credResult.code, message: credResult.message } }, 400),
+      response: c.json(restErrorBody(credResult.code, credResult.message), 400),
     };
   }
   return { ok: true, provider };
@@ -160,10 +155,7 @@ async function resolveUserAccount(
       }
       return {
         ok: false,
-        response: c.json(
-          { error: { code: "ACCOUNT_BANNED", message: "Your account has been suspended" } },
-          403,
-        ),
+        response: c.json(restErrorBody("ACCOUNT_BANNED", "Your account has been suspended"), 403),
       };
     }
     const result = await handleProviderLink(c.env.DB, stateData.linkUserId, provider, resolved.sub);
@@ -171,12 +163,10 @@ async function resolveUserAccount(
       return {
         ok: false,
         response: c.json(
-          {
-            error: {
-              code: "PROVIDER_ALREADY_LINKED",
-              message: `This ${PROVIDER_DISPLAY_NAMES[provider]} account is already linked to another user`,
-            },
-          },
+          restErrorBody(
+            "PROVIDER_ALREADY_LINKED",
+            `This ${PROVIDER_DISPLAY_NAMES[provider]} account is already linked to another user`,
+          ),
           409,
         ),
       };
@@ -189,10 +179,7 @@ async function resolveUserAccount(
   if (user.banned_at !== null) {
     return {
       ok: false,
-      response: c.json(
-        { error: { code: "ACCOUNT_BANNED", message: "Your account has been suspended" } },
-        403,
-      ),
+      response: c.json(restErrorBody("ACCOUNT_BANNED", "Your account has been suspended"), 403),
     };
   }
 
@@ -227,8 +214,10 @@ async function finalizeLogin(
     return c.json(
       {
         error: {
-          code: "ACCOUNT_LOCKED",
-          message: "Too many failed login attempts. Please try again later.",
+          ...restErrorBody(
+            "ACCOUNT_LOCKED",
+            "Too many failed login attempts. Please try again later.",
+          ).error,
           locked_until: lockoutStatus.lockedUntil,
         },
       },
@@ -247,12 +236,7 @@ async function finalizeLogin(
     } catch (err) {
       authLogger.error("[bootstrap] Failed to elevate bootstrap admin", err);
       return c.json(
-        {
-          error: {
-            code: "INTERNAL_ERROR",
-            message: "Failed to elevate bootstrap admin. Please try again.",
-          },
-        },
+        restErrorBody("INTERNAL_ERROR", "Failed to elevate bootstrap admin. Please try again."),
         500,
       );
     }
@@ -294,17 +278,14 @@ async function finalizeLogin(
     });
   } catch (err) {
     authLogger.error("[callback] Failed to create authorization code", err);
-    return c.json(
-      { error: { code: "SERVER_ERROR", message: "Failed to create authorization code" } },
-      500,
-    );
+    return c.json(restErrorBody("INTERNAL_ERROR", "Failed to create authorization code"), 500);
   }
 
   if (!isAllowedRedirectTo(stateData.redirectTo, c.env.IDP_ORIGIN, c.env.EXTRA_BFF_ORIGINS)) {
     authLogger.error("[callback] Redirect URL failed allowlist check", {
       redirectTo: stateData.redirectTo,
     });
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid redirect URL" } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", "Invalid redirect URL"), 400);
   }
 
   const callbackUrl = new URL(stateData.redirectTo);
@@ -327,7 +308,7 @@ export async function handleCallback(c: CallbackContext) {
 
   if (!code || !state) {
     clearOAuthCookies(c);
-    return c.json({ error: { code: "BAD_REQUEST", message: "Missing code or state" } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", "Missing code or state"), 400);
   }
 
   const stateResult = await validateCallbackState(c, state);
