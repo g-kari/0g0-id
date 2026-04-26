@@ -1,14 +1,18 @@
+import { z } from "zod";
+
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
 
-export interface GoogleUserInfo {
-  sub: string;
-  email: string;
-  email_verified: boolean;
-  name: string;
-  picture?: string;
-}
+const GoogleUserInfoSchema = z.object({
+  sub: z.string(),
+  email: z.string(),
+  email_verified: z.boolean(),
+  name: z.string(),
+  picture: z.string().optional(),
+});
+
+export type GoogleUserInfo = z.infer<typeof GoogleUserInfoSchema>;
 
 export interface GoogleTokenResponse {
   access_token: string;
@@ -95,7 +99,7 @@ export async function fetchGoogleUserInfo(accessToken: string): Promise<GoogleUs
   }
 
   try {
-    return (await response.json()) as GoogleUserInfo;
+    return GoogleUserInfoSchema.parse(await response.json());
   } catch {
     throw new Error("Google userinfo fetch failed: Invalid JSON response");
   }
