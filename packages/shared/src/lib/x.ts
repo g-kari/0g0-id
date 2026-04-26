@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { fetchWithRetry } from "./fetch-retry";
 import { createLogger } from "./logger";
 
@@ -7,16 +8,20 @@ const X_AUTH_URL = "https://twitter.com/i/oauth2/authorize";
 const X_TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
 const X_USER_URL = "https://api.twitter.com/2/users/me";
 
-export interface XUserInfo {
-  id: string;
-  name: string | null;
-  username: string;
-  profile_image_url?: string;
-}
+const XUserInfoSchema = z.object({
+  id: z.string(),
+  name: z.string().nullable(),
+  username: z.string(),
+  profile_image_url: z.string().optional(),
+});
 
-export interface XUserResponse {
-  data: XUserInfo;
-}
+const XUserResponseSchema = z.object({
+  data: XUserInfoSchema,
+});
+
+export type XUserInfo = z.infer<typeof XUserInfoSchema>;
+
+export type XUserResponse = z.infer<typeof XUserResponseSchema>;
 
 export interface XTokenResponse {
   access_token: string;
@@ -104,7 +109,7 @@ export async function fetchXUserInfo(accessToken: string): Promise<XUserInfo> {
   }
 
   try {
-    const data = (await response.json()) as XUserResponse;
+    const data = XUserResponseSchema.parse(await response.json());
     return data.data;
   } catch {
     throw new Error("X user info fetch failed: Invalid JSON response");
