@@ -83,10 +83,15 @@ async function upsertProviderUser(
     return user;
   }
 
-  // 同メールの既存ユーザーにプロバイダーを連携
+  // 同メールの既存ユーザーにプロバイダーを連携（既存ユーザーのメールが検証済みの場合のみ）
   if (opts.emailLink !== undefined) {
     const existingByEmail = await findUserByEmail(db, opts.email);
-    if (existingByEmail) {
+    if (
+      existingByEmail &&
+      existingByEmail.email_verified &&
+      !existingByEmail.banned_at &&
+      !existingByEmail[subColumn as keyof User]
+    ) {
       let sql: string;
       let bindings: unknown[];
       if (opts.emailLink.emailVerified !== undefined) {
