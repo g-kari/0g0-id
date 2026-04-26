@@ -100,6 +100,56 @@ describe("validateAndRevokeRefreshToken", () => {
     expect(result).toEqual({ ok: false, reason: "INVALID_TOKEN" });
     expect(revokeTokenFamily).not.toHaveBeenCalled();
   });
+
+  it("30秒境界値: revoked_at がちょうど30秒前の場合は TOKEN_REUSE になる（strict less than）", async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(null);
+    const revokedAt = new Date(Date.now() - 30_000).toISOString(); // ちょうど30秒前
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(
+      makeToken({ revoked_reason: "rotation", revoked_at: revokedAt, family_id: "family-1" }),
+    );
+    vi.mocked(revokeTokenFamily).mockResolvedValue(undefined);
+    const result = await validateAndRevokeRefreshToken(mockDb, "hash-abc");
+    expect(result).toEqual({ ok: false, reason: "TOKEN_REUSE" });
+    expect(revokeTokenFamily).toHaveBeenCalledWith(mockDb, "family-1", "reuse_detected");
+  });
+
+  it("revoked_at が null の rotation トークンは revokedMs=0 となり TOKEN_REUSE になる", async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(null);
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(
+      makeToken({ revoked_reason: "rotation", revoked_at: null, family_id: "family-1" }),
+    );
+    vi.mocked(revokeTokenFamily).mockResolvedValue(undefined);
+    const result = await validateAndRevokeRefreshToken(mockDb, "hash-abc");
+    expect(result).toEqual({ ok: false, reason: "TOKEN_REUSE" });
+    expect(revokeTokenFamily).toHaveBeenCalledWith(mockDb, "family-1", "reuse_detected");
+  });
+
+  it("findAndRevokeRefreshToken が例外を投げた場合はそのまま伝播する", async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockRejectedValue(new Error("DB connection failed"));
+    await expect(validateAndRevokeRefreshToken(mockDb, "hash-abc")).rejects.toThrow(
+      "DB connection failed",
+    );
+  });
+
+  it("findRefreshTokenByHash が例外を投げた場合はそのまま伝播する", async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(null);
+    vi.mocked(findRefreshTokenByHash).mockRejectedValue(new Error("DB read error"));
+    await expect(validateAndRevokeRefreshToken(mockDb, "hash-abc")).rejects.toThrow(
+      "DB read error",
+    );
+  });
+
+  it("revokeTokenFamily が例外を投げた場合はそのまま伝播する", async () => {
+    vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(null);
+    const revokedAt = new Date(Date.now() - 60_000).toISOString();
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(
+      makeToken({ revoked_reason: "rotation", revoked_at: revokedAt, family_id: "family-1" }),
+    );
+    vi.mocked(revokeTokenFamily).mockRejectedValue(new Error("DB write error"));
+    await expect(validateAndRevokeRefreshToken(mockDb, "hash-abc")).rejects.toThrow(
+      "DB write error",
+    );
+  });
 });
 
 // ===== issueTokenPairWithRecovery =====
@@ -208,5 +258,42 @@ describe("issueTokenPairWithRecovery", () => {
       "stored-id",
       expect.stringContaining("test-ctx"),
     );
+  });
+
+  it("attemptUnrevokeToken が例外を投げた場合はそのまま伝播する（catch内のawait）", async () => {
+    vi.mocked(issueTokenPair).mockRejectedValue(new Error("DB error"));
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(makeToken({ revoked_reason: "rotation" }));
+    vi.mocked(attemptUnrevokeToken).mockRejectedValue(new Error("unrevoke failed"));
+    await expect(
+      issueTokenPairWithRecovery(
+        mockDb,
+        mockEnv,
+        mockUser,
+        issueParams,
+        "stored-id",
+        "hash-abc",
+        mockLogger,
+        "test-ctx",
+      ),
+    ).rejects.toThrow("unrevoke failed");
+  });
+
+  it("issueTokenPair 失敗時に logger.error が適切な引数で呼ばれる", async () => {
+    const dbError = new Error("DB error");
+    vi.mocked(issueTokenPair).mockRejectedValue(dbError);
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(null);
+    vi.mocked(attemptUnrevokeToken).mockResolvedValue(undefined);
+    await issueTokenPairWithRecovery(
+      mockDb,
+      mockEnv,
+      mockUser,
+      issueParams,
+      "stored-id",
+      "hash-abc",
+      mockLogger,
+      "test-ctx",
+    );
+    expect(mockLogger.error).toHaveBeenCalledTimes(1);
+    expect(mockLogger.error).toHaveBeenCalledWith("test-ctx: issueTokenPair failed", dbError);
   });
 });
