@@ -521,7 +521,9 @@ describe("GET /auth/callback", () => {
       provider: "google",
     });
     const res = await sendRequest(app, "/auth/callback?error=access_denied", {
-      headers: { Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier` },
+      headers: {
+        Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
+      },
     });
     expect(res.status).toBe(302);
     const location = res.headers.get("Location") ?? "";
@@ -539,7 +541,9 @@ describe("GET /auth/callback", () => {
       provider: "google",
     });
     const res = await sendRequest(app, "/auth/callback?error=unknown_internal_error", {
-      headers: { Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier` },
+      headers: {
+        Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
+      },
     });
     expect(res.status).toBe(302);
     const location = res.headers.get("Location") ?? "";
@@ -574,7 +578,7 @@ describe("GET /auth/callback", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=wrong-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -595,7 +599,7 @@ describe("GET /auth/callback", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -624,7 +628,7 @@ describe("GET /auth/callback", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -639,7 +643,7 @@ describe("GET /auth/callback", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=some-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=!!!invalid-base64!!!; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=!!!invalid-base64!!!; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1327,7 +1331,7 @@ describe("GET /auth/callback - LINEプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1350,7 +1354,7 @@ describe("GET /auth/callback - LINEプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1377,7 +1381,7 @@ describe("GET /auth/callback - LINEプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1447,7 +1451,7 @@ describe("GET /auth/callback - GitHubプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1483,7 +1487,7 @@ describe("GET /auth/callback - GitHubプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1519,7 +1523,7 @@ describe("GET /auth/callback - GitHubプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1587,7 +1591,7 @@ describe("GET /auth/callback - Twitchプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1621,7 +1625,7 @@ describe("GET /auth/callback - Twitchプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1654,7 +1658,7 @@ describe("GET /auth/callback - Twitchプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1716,7 +1720,7 @@ describe("GET /auth/callback - Xプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1749,7 +1753,7 @@ describe("GET /auth/callback - Xプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1816,7 +1820,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1844,7 +1848,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1874,7 +1878,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1901,7 +1905,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1933,7 +1937,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -2001,7 +2005,7 @@ describe("GET /auth/callback - ブートストラップ管理者", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -2023,7 +2027,7 @@ describe("GET /auth/callback - ブートストラップ管理者", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -2043,7 +2047,7 @@ describe("GET /auth/callback - ブートストラップ管理者", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -2065,7 +2069,7 @@ describe("GET /auth/callback - ブートストラップ管理者", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
