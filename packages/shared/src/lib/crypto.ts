@@ -29,11 +29,17 @@ export async function sha256(input: string): Promise<string> {
 }
 
 /**
- * ペアワイズsub識別子を生成する（OIDC pairwise subject）
- * sha256(clientId:userId) でサービスごとに一意なsub値を返す
+ * ペアワイズsub識別子を生成する（OIDC pairwise subject / OIDC Core 1.0 §8.1）
+ * salt が指定されている場合は sha256(salt:clientId:userId)、
+ * 未指定の場合は sha256(clientId:userId) で後方互換を維持する。
  */
-export async function generatePairwiseSub(clientId: string, userId: string): Promise<string> {
-  return sha256(`${clientId}:${userId}`);
+export async function generatePairwiseSub(
+  clientId: string,
+  userId: string,
+  salt?: string,
+): Promise<string> {
+  const input = salt ? `${salt}:${clientId}:${userId}` : `${clientId}:${userId}`;
+  return sha256(input);
 }
 
 /**

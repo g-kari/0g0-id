@@ -116,6 +116,8 @@ export interface RateLimitBinding {
 
 export interface IdpEnv {
   DB: D1Database;
+  /** link_token JTI のワンタイム消費チェック用 KV。未設定時はチェックをスキップ（段階的導入）。 */
+  LINK_TOKEN_KV?: KVNamespace;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   LINE_CLIENT_ID?: string;
@@ -150,6 +152,8 @@ export interface IdpEnv {
   INTERNAL_SERVICE_SECRET_USER?: string;
   /** admin BFF 専用の内部シークレット。 */
   INTERNAL_SERVICE_SECRET_ADMIN?: string;
+  /** ペアワイズsub計算用のサーバーサイドシークレットソルト（OIDC Core 1.0 §8.1） */
+  PAIRWISE_SALT?: string;
 }
 
 export interface BffEnv {

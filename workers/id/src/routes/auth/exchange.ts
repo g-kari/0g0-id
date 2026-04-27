@@ -104,7 +104,7 @@ export async function handleExchange(c: Context<{ Bindings: IdpEnv; Variables: V
 
     serviceId = service.id;
     // ペアワイズ sub（OIDC Core 1.0 §8.1）: sha256(client_id:user_id)
-    idTokenSub = await generatePairwiseSub(service.client_id, user.id);
+    idTokenSub = await generatePairwiseSub(service.client_id, user.id, c.env.PAIRWISE_SALT);
     idTokenAud = service.client_id;
     // サービストークンのスコープ: 要求スコープとサービスの allowed_scopes を交差検証
     serviceScope = resolveEffectiveScope(authCode.scope, service.allowed_scopes);

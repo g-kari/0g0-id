@@ -33,8 +33,9 @@ async function buildUserData(
   service: Service,
   user: User,
   allowedScopes: string[],
+  pairwiseSalt?: string,
 ): Promise<Record<string, unknown>> {
-  const sub = await generatePairwiseSub(service.client_id, user.id);
+  const sub = await generatePairwiseSub(service.client_id, user.id, pairwiseSalt);
   const data: Record<string, unknown> = { sub };
   for (const scope of allowedScopes) {
     if (scope in SCOPE_FIELDS) {
@@ -84,7 +85,7 @@ app.get(
 
     // listUsersAuthorizedForService のSQLで banned_at IS NULL フィルタ済み
     const data = await Promise.all(
-      users.map((user) => buildUserData(service, user, allowedScopes)),
+      users.map((user) => buildUserData(service, user, allowedScopes, c.env.PAIRWISE_SALT)),
     );
 
     return c.json({ data, meta: { total, limit, offset } });
@@ -117,7 +118,7 @@ app.get("/users/:sub", externalApiRateLimitMiddleware, serviceAuthMiddleware, as
     }
 
     const allowedScopes = parseAllowedScopes(service.allowed_scopes);
-    const data = await buildUserData(service, user, allowedScopes);
+    const data = await buildUserData(service, user, allowedScopes, c.env.PAIRWISE_SALT);
 
     return c.json({ data });
   } catch {

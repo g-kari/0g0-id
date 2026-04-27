@@ -38,7 +38,9 @@ async function handleUserInfo(c: AppContext): Promise<Response> {
   const scopes = tokenUser.scope ? new Set(tokenUser.scope.split(" ")) : null;
 
   // サービストークン（cid設定済み）はペアワイズsub、BFFセッションは内部IDを返す
-  const sub = tokenUser.cid ? await generatePairwiseSub(tokenUser.cid, user.id) : user.id;
+  const sub = tokenUser.cid
+    ? await generatePairwiseSub(tokenUser.cid, user.id, c.env.PAIRWISE_SALT)
+    : user.id;
 
   const claims: Record<string, unknown> = {
     sub,

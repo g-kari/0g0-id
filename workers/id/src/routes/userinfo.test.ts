@@ -305,7 +305,11 @@ describe("GET /api/userinfo", () => {
       expect(res.status).toBe(200);
       const body = await res.json<Record<string, unknown>>();
       expect(body.sub).toBe("pairwise-sub-hash");
-      expect(vi.mocked(generatePairwiseSub)).toHaveBeenCalledWith("test-client-id", "user-1");
+      expect(vi.mocked(generatePairwiseSub)).toHaveBeenCalledWith(
+        "test-client-id",
+        "user-1",
+        undefined,
+      );
     });
 
     it("cidなしトークン（BFFセッション）→ 内部IDをそのまま返す", async () => {

@@ -13,8 +13,7 @@ export async function handleLinkIntent(c: Context<{ Bindings: IdpEnv; Variables:
   const tokenUser = c.get("user");
 
   // HMAC-SHA256署名付きトークンを生成（DBアクセス不要、自己完結型）
-  // JTI を含むが消費チェックは未実装のため、有効期限（2分）内は再利用可能。
-  // 厳密なワンタイム性が必要になった場合は KV/DB での消費記録を追加すること。
+  // JTI を含み、login.ts で KV（LINK_TOKEN_KV）による消費チェックを行うことでワンタイム性を保証する。
   const tokenPayload = JSON.stringify({
     purpose: "link",
     sub: tokenUser.sub,
