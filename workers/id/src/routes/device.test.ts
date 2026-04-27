@@ -19,7 +19,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     approveDeviceCode: vi.fn(),
     denyDeviceCode: vi.fn(),
     tryUpdateDeviceCodePolledAt: vi.fn(),
-    deleteDeviceCode: vi.fn(),
+    deleteDeviceCode: vi.fn().mockResolvedValue(undefined),
     deleteApprovedDeviceCode: vi.fn(),
     deleteExpiredDeviceCodes: vi.fn(),
     signIdToken: vi.fn(),
