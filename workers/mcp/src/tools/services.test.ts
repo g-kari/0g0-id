@@ -918,10 +918,10 @@ describe("transferServiceOwnershipTool", () => {
   });
 
   it("new_owner_user_id未指定はエラー", async () => {
+    vi.mocked(findServiceById).mockResolvedValue(mockService as never);
     const result = await transferServiceOwnershipTool.handler({ service_id: "svc-1" }, mockContext);
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("new_owner_user_id は必須");
-    expect(vi.mocked(findServiceById)).not.toHaveBeenCalled();
   });
 
   it("サービスが見つからない場合はエラー", async () => {

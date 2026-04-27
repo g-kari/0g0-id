@@ -2,7 +2,6 @@ import type { McpTool } from "../mcp";
 import {
   listServices,
   countServices,
-  findServiceById,
   findUserById,
   createService,
   deleteService,
@@ -27,6 +26,8 @@ import {
 import {
   requireString,
   isErrorResponse,
+  requireServiceValidation,
+  isValidationError,
   errorResponse,
   jsonResponse,
   textResponse,
@@ -96,13 +97,9 @@ export const getServiceTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = requireString(params.service_id, "service_id");
-    if (isErrorResponse(serviceId)) return serviceId;
-
-    const service = await findServiceById(context.db, serviceId);
-    if (!service) {
-      return errorResponse("サービスが見つかりません");
-    }
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { service } = validated;
 
     // client_secret_hash は返さない
     const result = {
@@ -198,13 +195,9 @@ export const deleteServiceTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = requireString(params.service_id, "service_id");
-    if (isErrorResponse(serviceId)) return serviceId;
-
-    const service = await findServiceById(context.db, serviceId);
-    if (!service) {
-      return errorResponse("サービスが見つかりません");
-    }
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId, service } = validated;
 
     // サービス削除前に全ユーザーのアクティブトークンを失効させる（REST APIと同じ挙動）
     const revokedCount = await revokeAllServiceTokens(context.db, serviceId, "service_delete");
@@ -239,13 +232,9 @@ export const rotateServiceSecretTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = requireString(params.service_id, "service_id");
-    if (isErrorResponse(serviceId)) return serviceId;
-
-    const service = await findServiceById(context.db, serviceId);
-    if (!service) {
-      return errorResponse("サービスが見つかりません");
-    }
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId, service } = validated;
 
     const newClientSecret = generateClientSecret();
     const newClientSecretHash = await sha256(newClientSecret);
@@ -296,13 +285,9 @@ export const updateServiceTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = requireString(params.service_id, "service_id");
-    if (isErrorResponse(serviceId)) return serviceId;
-
-    const service = await findServiceById(context.db, serviceId);
-    if (!service) {
-      return errorResponse("サービスが見つかりません");
-    }
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId } = validated;
 
     const name =
       typeof params.name === "string" && params.name.length > 0 ? params.name : undefined;
@@ -360,13 +345,9 @@ export const listRedirectUrisTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = requireString(params.service_id, "service_id");
-    if (isErrorResponse(serviceId)) return serviceId;
-
-    const service = await findServiceById(context.db, serviceId);
-    if (!service) {
-      return errorResponse("サービスが見つかりません");
-    }
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId, service } = validated;
 
     const uris = await listRedirectUris(context.db, serviceId);
     const result = {
@@ -395,8 +376,9 @@ export const addRedirectUriTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = requireString(params.service_id, "service_id");
-    if (isErrorResponse(serviceId)) return serviceId;
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId } = validated;
 
     const uri = requireString(params.uri, "uri");
     if (isErrorResponse(uri)) return uri;
@@ -406,11 +388,6 @@ export const addRedirectUriTool: McpTool = {
       return errorResponse(
         "無効なリダイレクトURIです（https必須、フラグメント禁止、localhostのみhttp可）",
       );
-    }
-
-    const service = await findServiceById(context.db, serviceId);
-    if (!service) {
-      return errorResponse("サービスが見つかりません");
     }
 
     let added;
@@ -453,16 +430,12 @@ export const deleteRedirectUriTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = requireString(params.service_id, "service_id");
-    if (isErrorResponse(serviceId)) return serviceId;
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId } = validated;
 
     const uriId = requireString(params.uri_id, "uri_id");
     if (isErrorResponse(uriId)) return uriId;
-
-    const service = await findServiceById(context.db, serviceId);
-    if (!service) {
-      return errorResponse("サービスが見つかりません");
-    }
 
     const existing = await findRedirectUriById(context.db, uriId, serviceId);
     if (!existing) {
@@ -501,13 +474,9 @@ export const listServiceUsersTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = requireString(params.service_id, "service_id");
-    if (isErrorResponse(serviceId)) return serviceId;
-
-    const service = await findServiceById(context.db, serviceId);
-    if (!service) {
-      return errorResponse("サービスが見つかりません");
-    }
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId, service } = validated;
 
     const page = Math.max(1, Number(params.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(params.limit) || 50));
@@ -554,20 +523,14 @@ export const revokeServiceUserAccessTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = requireString(params.service_id, "service_id");
-    if (isErrorResponse(serviceId)) return serviceId;
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId, service } = validated;
 
     const userId = requireString(params.user_id, "user_id");
     if (isErrorResponse(userId)) return userId;
 
-    const [service, user] = await Promise.all([
-      findServiceById(context.db, serviceId),
-      findUserById(context.db, userId),
-    ]);
-
-    if (!service) {
-      return errorResponse("サービスが見つかりません");
-    }
+    const user = await findUserById(context.db, userId);
     if (!user) {
       return errorResponse("ユーザーが見つかりません");
     }
@@ -612,20 +575,14 @@ export const transferServiceOwnershipTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = requireString(params.service_id, "service_id");
-    if (isErrorResponse(serviceId)) return serviceId;
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId, service } = validated;
 
     const newOwnerUserId = requireString(params.new_owner_user_id, "new_owner_user_id");
     if (isErrorResponse(newOwnerUserId)) return newOwnerUserId;
 
-    const [service, newOwner] = await Promise.all([
-      findServiceById(context.db, serviceId),
-      findUserById(context.db, newOwnerUserId),
-    ]);
-
-    if (!service) {
-      return errorResponse("サービスが見つかりません");
-    }
+    const newOwner = await findUserById(context.db, newOwnerUserId);
     if (!newOwner) {
       return errorResponse("新しいオーナーのユーザーが見つかりません");
     }
