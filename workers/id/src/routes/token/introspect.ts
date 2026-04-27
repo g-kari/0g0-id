@@ -22,6 +22,7 @@ async function introspectRefreshToken(
   service: Service,
   tokenHash: string,
   issuer: string,
+  pairwiseSalt?: string,
 ): Promise<Record<string, unknown> | null> {
   let refreshToken: RefreshToken | null;
   let user: User | null | undefined;
@@ -46,7 +47,7 @@ async function introspectRefreshToken(
   }
   const scopeStr = refreshToken.scope ?? "";
   const scopeList = scopeStr.split(" ").filter((s: string) => s !== "openid" && s !== "");
-  const sub = await generatePairwiseSub(service.client_id, refreshToken.user_id);
+  const sub = await generatePairwiseSub(service.client_id, refreshToken.user_id, pairwiseSalt);
   const response: Record<string, unknown> = {
     active: true,
     iss: issuer,
@@ -89,7 +90,7 @@ async function introspectJwtToken(
     }
     const tokenScopeStr = payload.scope ?? "";
     const tokenScopes = tokenScopeStr.split(" ").filter((s: string) => s !== "openid" && s !== "");
-    const sub = await generatePairwiseSub(service.client_id, payload.sub);
+    const sub = await generatePairwiseSub(service.client_id, payload.sub, env.PAIRWISE_SALT);
     const jwtResponse: Record<string, unknown> = {
       active: true,
       iss: payload.iss,
@@ -148,6 +149,7 @@ export async function handleIntrospect(c: Context<{ Bindings: IdpEnv }>) {
           introspectService,
           tokenHash,
           c.env.IDP_ORIGIN,
+          c.env.PAIRWISE_SALT,
         );
       }
     } else {
@@ -156,6 +158,7 @@ export async function handleIntrospect(c: Context<{ Bindings: IdpEnv }>) {
         introspectService,
         tokenHash,
         c.env.IDP_ORIGIN,
+        c.env.PAIRWISE_SALT,
       );
       if (result === null) {
         result = await introspectJwtToken(c.env.DB, introspectService, token, c.env);

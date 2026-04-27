@@ -301,7 +301,7 @@ describe("POST /api/token/introspect", () => {
       expect(body.sub).toBe("pairwise-sub-1");
       expect(body.token_type).toBe("refresh_token");
       expect(body.scope).toBe("openid profile email");
-      expect(generatePairwiseSub).toHaveBeenCalledWith("test-client", "user-1");
+      expect(generatePairwiseSub).toHaveBeenCalledWith("test-client", "user-1", undefined);
       expect(applyUserClaims).toHaveBeenCalled();
     });
 

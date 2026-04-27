@@ -47,7 +47,9 @@ export async function issueTokenPair(
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
 
   // サービス連携時はペアワイズsubを事前計算して保存（外部API逆引き用）
-  const pairwiseSub = clientId ? await generatePairwiseSub(clientId, user.id) : null;
+  const pairwiseSub = clientId
+    ? await generatePairwiseSub(clientId, user.id, env.PAIRWISE_SALT)
+    : null;
 
   await createRefreshToken(db, {
     id: crypto.randomUUID(),
@@ -99,7 +101,7 @@ export async function issueIdToken(
     return undefined;
   }
 
-  const pairwiseSub = await generatePairwiseSub(service.client_id, user.id);
+  const pairwiseSub = await generatePairwiseSub(service.client_id, user.id, env.PAIRWISE_SALT);
   const authTime = Math.floor(Date.now() / 1000);
 
   return signIdToken(

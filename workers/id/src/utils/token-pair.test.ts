@@ -109,7 +109,7 @@ describe("issueTokenPair", () => {
       clientId: "client-abc",
     });
 
-    expect(generatePairwiseSub).toHaveBeenCalledWith("client-abc", "user-123");
+    expect(generatePairwiseSub).toHaveBeenCalledWith("client-abc", "user-123", undefined);
     expect(createRefreshToken).toHaveBeenCalledWith(
       mockDb,
       expect.objectContaining({ pairwiseSub: "pairwise-sub-hash" }),

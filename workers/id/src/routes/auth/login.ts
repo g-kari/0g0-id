@@ -133,9 +133,9 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
     if (!payload) {
       return c.json(restErrorBody("INVALID_LINK_TOKEN", "Invalid or expired link token"), 400);
     }
-    let parsed: { purpose: string; sub: string; exp: number };
+    let parsed: { purpose: string; sub: string; exp: number; jti?: string };
     try {
-      parsed = JSON.parse(payload) as { purpose: string; sub: string; exp: number };
+      parsed = JSON.parse(payload) as { purpose: string; sub: string; exp: number; jti?: string };
     } catch {
       return c.json(restErrorBody("INVALID_LINK_TOKEN", "Invalid or expired link token"), 400);
     }
@@ -146,6 +146,14 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
       parsed.exp < Date.now()
     ) {
       return c.json(restErrorBody("INVALID_LINK_TOKEN", "Invalid or expired link token"), 400);
+    }
+    // jti 消費チェック（ワンタイム性保証）
+    if (parsed.jti && c.env.LINK_TOKEN_KV) {
+      const consumed = await c.env.LINK_TOKEN_KV.get(`jti:${parsed.jti}`);
+      if (consumed) {
+        return c.json(restErrorBody("INVALID_LINK_TOKEN", "Link token already consumed"), 400);
+      }
+      await c.env.LINK_TOKEN_KV.put(`jti:${parsed.jti}`, "1", { expirationTtl: 120 });
     }
     linkUserId = parsed.sub;
   }
