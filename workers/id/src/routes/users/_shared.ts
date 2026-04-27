@@ -1,7 +1,15 @@
 import { Hono } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
 import { createLogger } from "@0g0-id/shared";
-import type { IdpEnv, TokenPayload, User, MyProfile, AdminUserSummary } from "@0g0-id/shared";
+import type {
+  IdpEnv,
+  TokenPayload,
+  User,
+  MyProfile,
+  AdminUserSummary,
+  RestErrorBody,
+} from "@0g0-id/shared";
 import {
   countServicesByOwner,
   findUserById,
@@ -97,15 +105,14 @@ export function formatAdminUserSummary(user: User): AdminUserSummary {
 export async function requireTargetUser(
   db: D1Database,
   targetId: string,
-): Promise<User | Response> {
+): Promise<
+  { ok: true; user: User } | { ok: false; error: RestErrorBody; status: ContentfulStatusCode }
+> {
   const user = await findUserById(db, targetId);
   if (!user) {
-    return new Response(JSON.stringify(restErrorBody("NOT_FOUND", "User not found")), {
-      status: 404,
-      headers: { "Content-Type": "application/json" },
-    });
+    return { ok: false, error: restErrorBody("NOT_FOUND", "User not found"), status: 404 };
   }
-  return user;
+  return { ok: true, user };
 }
 
 export async function performUserDeletion(
