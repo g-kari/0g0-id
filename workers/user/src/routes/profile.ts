@@ -8,6 +8,7 @@ import {
   paginationMiddleware,
   proxyGet,
   proxyResponse,
+  restErrorBody,
   REST_ERROR_CODES,
   SESSION_COOKIE_DELETE_OPTIONS,
 } from "@0g0-id/shared";
@@ -31,7 +32,7 @@ app.get("/login-history", paginationMiddleware({ defaultLimit: 20, maxLimit: 100
   const provider = c.req.query("provider");
   if (provider) {
     if (!isValidProvider(provider)) {
-      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid provider" } }, 400);
+      return c.json(restErrorBody("BAD_REQUEST", "Invalid provider"), 400);
     }
     url.searchParams.set("provider", provider);
   }
@@ -46,7 +47,7 @@ app.get("/login-stats", async (c) => {
   if (daysResult !== undefined) {
     if ("error" in daysResult) {
       return c.json(
-        { error: { code: REST_ERROR_CODES.INVALID_PARAMETER, message: daysResult.error.message } },
+        restErrorBody(REST_ERROR_CODES.INVALID_PARAMETER, daysResult.error.message),
         400,
       );
     }

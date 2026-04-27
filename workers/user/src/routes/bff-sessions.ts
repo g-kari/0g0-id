@@ -5,6 +5,7 @@ import {
   parseSession,
   proxyGet,
   proxyResponse,
+  restErrorBody,
   UUID_RE,
   COOKIE_NAMES,
   SESSION_COOKIE_DELETE_OPTIONS,
@@ -29,7 +30,7 @@ app.get(
 app.delete("/:sessionId", async (c) => {
   const sessionId = c.req.param("sessionId");
   if (!UUID_RE.test(sessionId)) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid session ID format" } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", "Invalid session ID format"), 400);
   }
 
   // 現在の Cookie セッションを事前に取得（IdP 失効後に Cookie 削除判定に使う）

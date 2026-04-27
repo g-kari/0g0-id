@@ -4,6 +4,7 @@ import {
   parseDays,
   proxyGet,
   proxyResponse,
+  restErrorBody,
   REST_ERROR_CODES,
   COOKIE_NAMES,
 } from "@0g0-id/shared";
@@ -24,7 +25,7 @@ app.get("/login-stats", async (c) => {
   if (daysResult !== undefined) {
     if ("error" in daysResult) {
       return c.json(
-        { error: { code: REST_ERROR_CODES.INVALID_PARAMETER, message: daysResult.error.message } },
+        restErrorBody(REST_ERROR_CODES.INVALID_PARAMETER, daysResult.error.message),
         400,
       );
     }
@@ -41,7 +42,7 @@ app.get("/login-trends", async (c) => {
   if (daysResult !== undefined) {
     if ("error" in daysResult) {
       return c.json(
-        { error: { code: REST_ERROR_CODES.INVALID_PARAMETER, message: daysResult.error.message } },
+        restErrorBody(REST_ERROR_CODES.INVALID_PARAMETER, daysResult.error.message),
         400,
       );
     }

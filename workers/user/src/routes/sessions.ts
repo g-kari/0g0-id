@@ -6,6 +6,7 @@ import {
   proxyMutate,
   proxyResponse,
   parseSession,
+  restErrorBody,
   sha256,
   UUID_RE,
   COOKIE_NAMES,
@@ -24,7 +25,7 @@ app.get(
 app.delete("/others", async (c) => {
   const session = await parseSession(getCookie(c, COOKIE_NAMES.USER_SESSION), c.env.SESSION_SECRET);
   if (!session) {
-    return c.json({ error: { code: "UNAUTHORIZED", message: "Not authenticated" } }, 401);
+    return c.json(restErrorBody("UNAUTHORIZED", "Not authenticated"), 401);
   }
   const tokenHash = await sha256(session.refresh_token);
   const res = await fetchWithAuth(
@@ -47,7 +48,7 @@ app.delete("/others", async (c) => {
 app.delete("/:sessionId", async (c) => {
   const sessionId = c.req.param("sessionId");
   if (!UUID_RE.test(sessionId)) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid session ID format" } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", "Invalid session ID format"), 400);
   }
   return proxyMutate(
     c,

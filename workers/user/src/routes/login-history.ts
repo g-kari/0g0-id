@@ -4,6 +4,7 @@ import {
   isValidProvider,
   paginationMiddleware,
   proxyResponse,
+  restErrorBody,
   COOKIE_NAMES,
 } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
@@ -19,7 +20,7 @@ app.get("/", paginationMiddleware({ defaultLimit: 20, maxLimit: 100 }), async (c
   const provider = c.req.query("provider");
   if (provider) {
     if (!isValidProvider(provider)) {
-      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid provider" } }, 400);
+      return c.json(restErrorBody("BAD_REQUEST", "Invalid provider"), 400);
     }
     url.searchParams.set("provider", provider);
   }
