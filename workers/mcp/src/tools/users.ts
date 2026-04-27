@@ -1,6 +1,5 @@
 import type { McpTool } from "../mcp";
 import {
-  findUserById,
   listUsers,
   countUsers,
   banUserWithRevocation,
@@ -25,6 +24,8 @@ import {
   errorResponse,
   jsonResponse,
   textResponse,
+  requireUserValidation,
+  isValidationError,
 } from "./_helpers";
 
 export const listUsersTool: McpTool = {
@@ -92,13 +93,9 @@ export const getUserTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = requireString(params.user_id, "user_id");
-    if (isErrorResponse(userId)) return userId;
-
-    const user = await findUserById(context.db, userId);
-    if (!user) {
-      return errorResponse("ユーザーが見つかりません");
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { user } = validated;
 
     return jsonResponse(user);
   },
@@ -117,13 +114,9 @@ export const banUserTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = requireString(params.user_id, "user_id");
-    if (isErrorResponse(userId)) return userId;
-
-    const existing = await findUserById(context.db, userId);
-    if (!existing) {
-      return errorResponse("ユーザーが見つかりません");
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId } = validated;
 
     // BAN + 全トークン失効 + MCPセッション削除 を D1 batch() でアトミックに実行
     const user = await banUserWithRevocation(context.db, userId);
@@ -152,13 +145,9 @@ export const unbanUserTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = requireString(params.user_id, "user_id");
-    if (isErrorResponse(userId)) return userId;
-
-    const existing = await findUserById(context.db, userId);
-    if (!existing) {
-      return errorResponse("ユーザーが見つかりません");
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId } = validated;
 
     const user = await unbanUser(context.db, userId);
     await createAdminAuditLog(context.db, {
@@ -184,13 +173,9 @@ export const deleteUserTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = requireString(params.user_id, "user_id");
-    if (isErrorResponse(userId)) return userId;
-
-    const existing = await findUserById(context.db, userId);
-    if (!existing) {
-      return errorResponse("ユーザーが見つかりません");
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId } = validated;
 
     await revokeUserTokens(context.db, userId, "security_event");
     await deleteMcpSessionsByUser(context.db, userId);
@@ -249,16 +234,12 @@ export const getUserLoginStatsTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = requireString(params.user_id, "user_id");
-    if (isErrorResponse(userId)) return userId;
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId } = validated;
 
     const days = Math.min(365, Math.max(1, Number(params.days) || 30));
     const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-
-    const user = await findUserById(context.db, userId);
-    if (!user) {
-      return errorResponse("ユーザーが見つかりません");
-    }
 
     const stats = await getUserLoginProviderStats(context.db, userId, sinceIso);
     return jsonResponse({ stats, days });
@@ -279,15 +260,11 @@ export const getUserLoginTrendsTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = requireString(params.user_id, "user_id");
-    if (isErrorResponse(userId)) return userId;
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId } = validated;
 
     const days = Math.min(365, Math.max(1, Number(params.days) || 30));
-
-    const user = await findUserById(context.db, userId);
-    if (!user) {
-      return errorResponse("ユーザーが見つかりません");
-    }
 
     const trends = await getUserDailyLoginTrends(context.db, userId, days);
     return jsonResponse({ trends, days });
@@ -328,13 +305,9 @@ export const listUserSessionsTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = requireString(params.user_id, "user_id");
-    if (isErrorResponse(userId)) return userId;
-
-    const user = await findUserById(context.db, userId);
-    if (!user) {
-      return errorResponse("ユーザーが見つかりません");
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId, user } = validated;
 
     const sessions = await listActiveSessionsByUserId(context.db, userId);
 
@@ -361,13 +334,9 @@ export const revokeUserSessionsTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = requireString(params.user_id, "user_id");
-    if (isErrorResponse(userId)) return userId;
-
-    const user = await findUserById(context.db, userId);
-    if (!user) {
-      return errorResponse("ユーザーが見つかりません");
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId, user } = validated;
 
     await revokeUserTokens(context.db, userId, "admin_action");
     await deleteMcpSessionsByUser(context.db, userId);
@@ -396,13 +365,9 @@ export const getUserOwnedServicesTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = requireString(params.user_id, "user_id");
-    if (isErrorResponse(userId)) return userId;
-
-    const user = await findUserById(context.db, userId);
-    if (!user) {
-      return errorResponse("ユーザーが見つかりません");
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId, user } = validated;
 
     const services = await listServicesByOwner(context.db, userId);
     const result = {
@@ -434,13 +399,9 @@ export const getUserAuthorizedServicesTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = requireString(params.user_id, "user_id");
-    if (isErrorResponse(userId)) return userId;
-
-    const user = await findUserById(context.db, userId);
-    if (!user) {
-      return errorResponse("ユーザーが見つかりません");
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId, user } = validated;
 
     const connections = await listUserConnections(context.db, userId);
     const result = {
@@ -471,23 +432,17 @@ export const updateUserRoleTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = requireString(params.user_id, "user_id");
-    if (isErrorResponse(userId)) return userId;
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId, user } = validated;
 
     const role = params.role;
     if (role !== "user" && role !== "admin") {
       return errorResponse('role は "user" または "admin" を指定してください');
     }
 
-    const existing = await findUserById(context.db, userId);
-    if (!existing) {
-      return errorResponse("ユーザーが見つかりません");
-    }
-
-    if (existing.role === role) {
-      return textResponse(
-        `ユーザー ${existing.name} (${existing.email}) のロールは既に "${role}" です`,
-      );
+    if (user.role === role) {
+      return textResponse(`ユーザー ${user.name} (${user.email}) のロールは既に "${role}" です`);
     }
 
     // ロール変更 + 全トークン失効 + MCPセッション削除 を D1 batch() でアトミックに実行
@@ -499,7 +454,7 @@ export const updateUserRoleTool: McpTool = {
       action: "user.role_change",
       targetType: "user",
       targetId: userId,
-      details: { from: existing.role, to: role },
+      details: { from: user.role, to: role },
     });
 
     const result = {

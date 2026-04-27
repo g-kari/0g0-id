@@ -751,13 +751,13 @@ describe("updateUserRoleTool", () => {
   });
 
   it("不正なroleはエラー", async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser as never);
     const result = await updateUserRoleTool.handler(
       { user_id: "user-1", role: "superadmin" },
       mockContext,
     );
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("role");
-    expect(vi.mocked(findUserById)).not.toHaveBeenCalled();
   });
 
   it("ユーザーが見つからない場合はエラー", async () => {
