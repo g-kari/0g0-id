@@ -14,6 +14,7 @@ import {
   countServicesByOwner,
   findUserById,
   revokeUserTokens,
+  revokeAllBffSessionsByUserId,
   deleteMcpSessionsByUser,
   deleteUser,
   restErrorBody,
@@ -127,6 +128,7 @@ export async function performUserDeletion(
     };
   }
   await revokeUserTokens(db, userId, "admin_action");
+  await revokeAllBffSessionsByUserId(db, userId, "admin_action");
   await deleteMcpSessionsByUser(db, userId);
   await deleteUser(db, userId);
   return null;

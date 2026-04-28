@@ -53,6 +53,7 @@ import {
   listUserConnections,
   revokeUserServiceTokens,
   revokeUserTokens,
+  revokeAllBffSessionsByUserId,
   revokeTokenByIdForUser,
   revokeOtherUserTokens,
   listActiveSessionsByUserId,
@@ -1044,6 +1045,11 @@ describe("DELETE /api/users/:id", () => {
       origin: "https://admin.0g0.xyz",
     });
     expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(
+      expect.anything(),
+      "00000000-0000-0000-0000-000000000004",
+      "admin_action",
+    );
+    expect(vi.mocked(revokeAllBffSessionsByUserId)).toHaveBeenCalledWith(
       expect.anything(),
       "00000000-0000-0000-0000-000000000004",
       "admin_action",
@@ -2677,13 +2683,22 @@ describe("DELETE /api/users/me", () => {
       mockUserPayload.sub,
       "admin_action",
     );
+    expect(vi.mocked(revokeAllBffSessionsByUserId)).toHaveBeenCalledWith(
+      expect.anything(),
+      mockUserPayload.sub,
+      "admin_action",
+    );
     expect(vi.mocked(deleteUser)).toHaveBeenCalledWith(expect.anything(), mockUserPayload.sub);
   });
 
-  it("revokeUserTokensがdeleteUserより先に呼ばれる", async () => {
+  it("revokeUserTokens・revokeAllBffSessionsByUserIdがdeleteUserより先に呼ばれる", async () => {
     const callOrder: string[] = [];
     vi.mocked(revokeUserTokens).mockImplementation(async () => {
-      callOrder.push("revoke");
+      callOrder.push("revokeTokens");
+    });
+    vi.mocked(revokeAllBffSessionsByUserId).mockImplementation(async () => {
+      callOrder.push("revokeBffSessions");
+      return 0;
     });
     vi.mocked(deleteUser).mockImplementation(async () => {
       callOrder.push("delete");
@@ -2695,7 +2710,7 @@ describe("DELETE /api/users/me", () => {
       origin: "https://id.0g0.xyz",
     });
 
-    expect(callOrder).toEqual(["revoke", "delete"]);
+    expect(callOrder).toEqual(["revokeTokens", "revokeBffSessions", "delete"]);
   });
 });
 

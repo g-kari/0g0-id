@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vite-plus/test";
+import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
 import { validateEnv, _resetValidationCache } from "./env-validation";
 import type { IdpEnv } from "@0g0-id/shared";
 
@@ -143,5 +143,45 @@ describe("validateEnv", () => {
     const result2 = validateEnv(validEnv as IdpEnv);
     expect(result2.ok).toBe(true);
     expect(result1).not.toBe(result2);
+  });
+
+  describe("レートリミッター binding 警告", () => {
+    const rateLimiterBindings = [
+      "RATE_LIMITER_AUTH",
+      "RATE_LIMITER_EXTERNAL",
+      "RATE_LIMITER_TOKEN",
+      "RATE_LIMITER_TOKEN_CLIENT",
+      "RATE_LIMITER_DEVICE_VERIFY",
+    ];
+
+    it("本番環境でRATE_LIMITER未設定時にconsole.warnが呼ばれる", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      // validEnv は IDP_ORIGIN が https:// なので本番扱い
+      const result = validateEnv(validEnv as IdpEnv);
+      expect(result.ok).toBe(true);
+      expect(warnSpy).toHaveBeenCalledTimes(rateLimiterBindings.length);
+      for (const bindingName of rateLimiterBindings) {
+        expect(warnSpy.mock.calls.some((call) => (call[0] as string).includes(bindingName))).toBe(
+          true,
+        );
+      }
+      warnSpy.mockRestore();
+    });
+
+    it("非本番環境ではconsole.warnが呼ばれない", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const devEnv = { ...validEnv, IDP_ORIGIN: "http://localhost:8787" };
+      const result = validateEnv(devEnv as IdpEnv);
+      expect(result.ok).toBe(true);
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it("本番環境でもvalidation結果はok: trueである（warningであってerrorではない）", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const result = validateEnv(validEnv as IdpEnv);
+      expect(result.ok).toBe(true);
+      warnSpy.mockRestore();
+    });
   });
 });

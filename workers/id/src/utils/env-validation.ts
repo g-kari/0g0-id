@@ -62,6 +62,23 @@ export function validateEnv(env: IdpEnv): EnvValidationResult {
     }
   }
 
+  // 本番環境ではレートリミッターの binding 未設定を警告（起動は止めない）
+  const isProduction = env.IDP_ORIGIN?.startsWith("https://") ?? false;
+  if (isProduction) {
+    const rateLimiterBindings = [
+      "RATE_LIMITER_AUTH",
+      "RATE_LIMITER_EXTERNAL",
+      "RATE_LIMITER_TOKEN",
+      "RATE_LIMITER_TOKEN_CLIENT",
+      "RATE_LIMITER_DEVICE_VERIFY",
+    ] as const;
+    for (const bindingName of rateLimiterBindings) {
+      if (!env[bindingName]) {
+        console.warn(`${bindingName}: 本番環境ではレートリミッターの binding 設定が必要です`);
+      }
+    }
+  }
+
   if (errors.length > 0) {
     // 検証失敗時はキャッシュしない（環境変数修正後にisolate再起動なしで回復できるようにする）
     return { ok: false, errors };
