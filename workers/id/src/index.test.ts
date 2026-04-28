@@ -84,6 +84,7 @@ const mockEnv = {
   USER_ORIGIN: "https://user.0g0.xyz",
   ADMIN_ORIGIN: "https://admin.0g0.xyz",
   COOKIE_SECRET: "mock-cookie-secret-for-testing-32chars!!",
+  PAIRWISE_SALT: "test-pairwise-salt-value",
 };
 
 describe("GET /api/health", () => {
