@@ -11,6 +11,7 @@ const validEnv: Partial<IdpEnv> = {
   USER_ORIGIN: "https://user.0g0.xyz",
   ADMIN_ORIGIN: "https://admin.0g0.xyz",
   COOKIE_SECRET: "a".repeat(32),
+  PAIRWISE_SALT: "test-pairwise-salt-value",
 };
 
 beforeEach(() => {
@@ -182,6 +183,33 @@ describe("validateEnv", () => {
       const result = validateEnv(validEnv as IdpEnv);
       expect(result.ok).toBe(true);
       warnSpy.mockRestore();
+    });
+  });
+
+  describe("PAIRWISE_SALT バリデーション", () => {
+    it("本番環境でPAIRWISE_SALT未設定の場合はエラーを返す", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { PAIRWISE_SALT: _, ...envWithoutSalt } = validEnv;
+      const result = validateEnv(envWithoutSalt as IdpEnv);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors.some((e) => e.includes("PAIRWISE_SALT"))).toBe(true);
+      }
+      warnSpy.mockRestore();
+    });
+
+    it("本番環境でPAIRWISE_SALT設定済みの場合はエラーなし", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const env = { ...validEnv, PAIRWISE_SALT: "a-secure-random-salt-value" } as IdpEnv;
+      const result = validateEnv(env);
+      expect(result.ok).toBe(true);
+      warnSpy.mockRestore();
+    });
+
+    it("非本番環境ではPAIRWISE_SALT未設定でもエラーにならない", () => {
+      const env = { ...validEnv, IDP_ORIGIN: "http://localhost:8787" } as IdpEnv;
+      const result = validateEnv(env);
+      expect(result.ok).toBe(true);
     });
   });
 });

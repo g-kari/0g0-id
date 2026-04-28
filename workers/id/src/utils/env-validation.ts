@@ -70,6 +70,12 @@ export function validateEnv(env: IdpEnv): EnvValidationResult {
         console.warn(`${bindingName}: 本番環境ではレートリミッターの binding 設定が必要です`);
       }
     }
+
+    if (!env.PAIRWISE_SALT) {
+      errors.push(
+        "PAIRWISE_SALT: 本番環境ではペアワイズsub計算用のソルトが必須です（OIDC Core §8.1）",
+      );
+    }
   }
 
   if (errors.length > 0) {
