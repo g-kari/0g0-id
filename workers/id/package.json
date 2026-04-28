@@ -15,13 +15,13 @@
   "dependencies": {
     "@0g0-id/shared": "*",
     "hono": "^4.12.15",
-    "jose": "^6.2.2",
+    "jose": "^6.2.3",
     "tldts": "^7.0.28",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.33.2",
-    "@cloudflare/workers-types": "^4.20260424.1",
+    "@cloudflare/workers-types": "^4.20260426.1",
     "@types/node": "^22.10.0",
     "tsx": "^4.19.2",
     "typescript": "^6.0.3",
