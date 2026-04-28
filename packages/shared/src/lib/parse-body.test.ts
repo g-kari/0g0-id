@@ -50,7 +50,7 @@ describe("parseJsonBody", () => {
     expect(body.error.message).toBe("Invalid JSON body");
   });
 
-  it("Zod バリデーション失敗 → 400 BAD_REQUEST を返す", async () => {
+  it("Zod バリデーション失敗 → 400 VALIDATION_ERROR と details を返す", async () => {
     const res = await app.request(
       new Request("https://example.com/test", {
         method: "POST",
@@ -59,11 +59,15 @@ describe("parseJsonBody", () => {
       }),
     );
     expect(res.status).toBe(400);
-    const body = await res.json<{ error: { code: string; message: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    const body = await res.json<{
+      error: { code: string; message: string; details: { path: string[]; message: string }[] };
+    }>();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.details).toHaveLength(1);
+    expect(body.error.details[0].path).toEqual(["age"]);
   });
 
-  it("必須フィールド欠如 → 400 BAD_REQUEST を返す", async () => {
+  it("必須フィールド欠如 → 400 VALIDATION_ERROR を返す", async () => {
     const res = await app.request(
       new Request("https://example.com/test", {
         method: "POST",
@@ -72,11 +76,15 @@ describe("parseJsonBody", () => {
       }),
     );
     expect(res.status).toBe(400);
-    const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    const body = await res.json<{
+      error: { code: string; details: { path: string[]; message: string }[] };
+    }>();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.details).toHaveLength(1);
+    expect(body.error.details[0].path).toEqual(["age"]);
   });
 
-  it("空オブジェクト → バリデーション失敗で 400 を返す", async () => {
+  it("空オブジェクト → 全フィールドのエラーを details に含む", async () => {
     const res = await app.request(
       new Request("https://example.com/test", {
         method: "POST",
@@ -85,8 +93,14 @@ describe("parseJsonBody", () => {
       }),
     );
     expect(res.status).toBe(400);
-    const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    const body = await res.json<{
+      error: { code: string; details: { path: string[]; message: string }[] };
+    }>();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.details).toHaveLength(2);
+    const paths = body.error.details.map((d) => d.path[0]);
+    expect(paths).toContain("name");
+    expect(paths).toContain("age");
   });
 
   it("スキーマ通過時は ok: true と data を返す", async () => {
@@ -103,7 +117,7 @@ describe("parseJsonBody", () => {
     expect(body.data).toBeTruthy();
   });
 
-  it("型が違うフィールド → バリデーション失敗で 400 を返す", async () => {
+  it("型が違うフィールド → 全フィールドのエラーを返す", async () => {
     const res = await app.request(
       new Request("https://example.com/test", {
         method: "POST",
@@ -112,11 +126,14 @@ describe("parseJsonBody", () => {
       }),
     );
     expect(res.status).toBe(400);
-    const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    const body = await res.json<{
+      error: { code: string; details: { path: string[]; message: string }[] };
+    }>();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.details).toHaveLength(2);
   });
 
-  it("null ボディ → バリデーション失敗で 400 を返す", async () => {
+  it("null ボディ → VALIDATION_ERROR を返す", async () => {
     const res = await app.request(
       new Request("https://example.com/test", {
         method: "POST",
@@ -126,6 +143,6 @@ describe("parseJsonBody", () => {
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 });
