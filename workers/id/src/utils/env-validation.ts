@@ -71,6 +71,12 @@ export function validateEnv(env: IdpEnv): EnvValidationResult {
       }
     }
 
+    if (!env.LINK_TOKEN_KV) {
+      console.warn(
+        "LINK_TOKEN_KV: 本番環境では link_token のワンタイム消費チェック用 KV binding が必要です",
+      );
+    }
+
     if (!env.PAIRWISE_SALT) {
       errors.push(
         "PAIRWISE_SALT: 本番環境ではペアワイズsub計算用のソルトが必須です（OIDC Core §8.1）",
