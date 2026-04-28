@@ -1,5 +1,6 @@
 import type { Context, Env } from "hono";
 import type { z } from "zod";
+import { validationErrorBody } from "./errors";
 
 /**
  * リクエストボディのJSONパースとZodバリデーションを一括で行うユーティリティ。
@@ -26,15 +27,14 @@ export async function parseJsonBody<T, E extends Env = Env>(
 
   const parsed = schema.safeParse(rawBody);
   if (!parsed.success) {
+    const details = parsed.error.issues.map((issue) => ({
+      path: issue.path.map(String),
+      message: issue.message,
+    }));
     return {
       ok: false,
       response: c.json(
-        {
-          error: {
-            code: "BAD_REQUEST",
-            message: parsed.error.issues[0]?.message ?? "Invalid request",
-          },
-        },
+        validationErrorBody(parsed.error.issues[0]?.message ?? "Invalid request", details),
         400,
       ),
     };

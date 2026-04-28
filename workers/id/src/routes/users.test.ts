@@ -449,7 +449,7 @@ describe("PATCH /api/users/me", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("全フィールドが未指定の場合 → 400を返す", async () => {
@@ -460,7 +460,7 @@ describe("PATCH /api/users/me", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("nameなしでpictureだけ更新できる", async () => {
@@ -534,7 +534,7 @@ describe("PATCH /api/users/me", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("pictureにjavascript: URLを指定 → 400を返す", async () => {
@@ -545,7 +545,7 @@ describe("PATCH /api/users/me", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("pictureにdata: URLを指定 → 400を返す", async () => {
@@ -556,7 +556,7 @@ describe("PATCH /api/users/me", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("pictureに有効なHTTPS URLを指定 → 成功する", async () => {
@@ -582,7 +582,7 @@ describe("PATCH /api/users/me", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("phoneが51文字 → 400を返す", async () => {
@@ -593,7 +593,7 @@ describe("PATCH /api/users/me", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("addressが501文字 → 400を返す", async () => {
@@ -604,7 +604,7 @@ describe("PATCH /api/users/me", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 });
 
@@ -949,7 +949,7 @@ describe("PATCH /api/users/:id/role", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("ロール変更時にbatchで既存トークン失効・MCPセッション削除が同時に実行される", async () => {
@@ -2194,7 +2194,7 @@ describe("DELETE /api/users/me/tokens/others", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("token_hashが空文字の場合 → 400を返す", async () => {
@@ -2205,7 +2205,7 @@ describe("DELETE /api/users/me/tokens/others", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("該当セッションがない場合はrevoked_count: 0を返す", async () => {

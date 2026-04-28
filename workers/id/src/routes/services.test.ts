@@ -405,7 +405,7 @@ describe("POST /api/services", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("nameが空文字の場合 → 400を返す", async () => {
@@ -472,7 +472,7 @@ describe("POST /api/services", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string; message: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
     expect(body.error.message).toContain("profile");
   });
 
@@ -484,7 +484,7 @@ describe("POST /api/services", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string; message: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
     expect(body.error.message).toContain("allowed_scopes must not be empty");
   });
 
@@ -496,7 +496,7 @@ describe("POST /api/services", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("サービス作成時に監査ログが記録される", async () => {
@@ -569,7 +569,7 @@ describe("PATCH /api/services/:id", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("不正なスコープが含まれる場合 → 400を返す", async () => {
@@ -580,7 +580,7 @@ describe("PATCH /api/services/:id", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string; message: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
     expect(body.error.message).toContain("profile");
   });
 
@@ -657,7 +657,7 @@ describe("PATCH /api/services/:id", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("nameが空文字の場合 → 400を返す", async () => {
@@ -668,7 +668,7 @@ describe("PATCH /api/services/:id", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("nameが存在しないサービスの場合 → 404を返す", async () => {
@@ -911,7 +911,7 @@ describe("POST /api/services/:id/redirect-uris", () => {
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("不正なURIの場合 → 400を返す", async () => {
@@ -927,7 +927,7 @@ describe("POST /api/services/:id/redirect-uris", () => {
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("重複するURIの場合 → 409を返す", async () => {
@@ -986,7 +986,7 @@ describe("POST /api/services/:id/redirect-uris", () => {
     );
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("https:// URI（非localhost）は登録を許可する", async () => {
@@ -1283,7 +1283,7 @@ describe("PATCH /api/services/:id/owner", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("不正なJSONボディ → 400を返す", async () => {

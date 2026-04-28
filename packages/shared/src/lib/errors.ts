@@ -28,6 +28,7 @@ export const REST_ERROR_CODES = {
   PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
   TOO_MANY_REQUESTS: "TOO_MANY_REQUESTS",
   INTERNAL_ERROR: "INTERNAL_ERROR",
+  VALIDATION_ERROR: "VALIDATION_ERROR",
 } as const;
 
 export type RestErrorCode = (typeof REST_ERROR_CODES)[keyof typeof REST_ERROR_CODES];
@@ -39,6 +40,19 @@ export interface RestErrorBody {
   error: {
     code: string;
     message: string;
+  };
+}
+
+export interface ValidationErrorDetail {
+  path: string[];
+  message: string;
+}
+
+export interface RestValidationErrorBody {
+  error: {
+    code: "VALIDATION_ERROR";
+    message: string;
+    details: ValidationErrorDetail[];
   };
 }
 
@@ -59,6 +73,16 @@ export interface JsonRpcErrorBody {
   jsonrpc: "2.0";
   id: null;
   error: { code: number; message: string };
+}
+
+/**
+ * Zod バリデーションエラーボディを生成する。全フィールドのエラーを details に含める。
+ */
+export function validationErrorBody(
+  message: string,
+  details: ValidationErrorDetail[],
+): RestValidationErrorBody {
+  return { error: { code: "VALIDATION_ERROR", message, details } };
 }
 
 /**

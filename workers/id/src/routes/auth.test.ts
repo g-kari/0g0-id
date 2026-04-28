@@ -716,7 +716,7 @@ describe("POST /auth/exchange", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("無効なコード → 400を返す", async () => {
@@ -852,7 +852,7 @@ describe("POST /auth/refresh", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("トークンが存在しない → 401を返す", async () => {
