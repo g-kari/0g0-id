@@ -160,7 +160,7 @@ describe("validateEnv", () => {
       // validEnv は IDP_ORIGIN が https:// なので本番扱い
       const result = validateEnv(validEnv as IdpEnv);
       expect(result.ok).toBe(true);
-      expect(warnSpy).toHaveBeenCalledTimes(rateLimiterBindings.length);
+      expect(warnSpy).toHaveBeenCalledTimes(rateLimiterBindings.length + 1);
       for (const bindingName of rateLimiterBindings) {
         expect(warnSpy.mock.calls.some((call) => (call[0] as string).includes(bindingName))).toBe(
           true,
@@ -182,6 +182,40 @@ describe("validateEnv", () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       const result = validateEnv(validEnv as IdpEnv);
       expect(result.ok).toBe(true);
+      warnSpy.mockRestore();
+    });
+  });
+
+  describe("LINK_TOKEN_KV binding 警告", () => {
+    it("本番環境でLINK_TOKEN_KV未設定時にconsole.warnが呼ばれる", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const result = validateEnv(validEnv as IdpEnv);
+      expect(result.ok).toBe(true);
+      expect(warnSpy.mock.calls.some((call) => (call[0] as string).includes("LINK_TOKEN_KV"))).toBe(
+        true,
+      );
+      warnSpy.mockRestore();
+    });
+
+    it("本番環境でLINK_TOKEN_KV設定済みの場合はwarnが呼ばれない", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const env = { ...validEnv, LINK_TOKEN_KV: {} } as unknown as IdpEnv;
+      const result = validateEnv(env);
+      expect(result.ok).toBe(true);
+      expect(warnSpy.mock.calls.some((call) => (call[0] as string).includes("LINK_TOKEN_KV"))).toBe(
+        false,
+      );
+      warnSpy.mockRestore();
+    });
+
+    it("非本番環境ではLINK_TOKEN_KV未設定でもwarnが呼ばれない", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const devEnv = { ...validEnv, IDP_ORIGIN: "http://localhost:8787" };
+      const result = validateEnv(devEnv as IdpEnv);
+      expect(result.ok).toBe(true);
+      expect(warnSpy.mock.calls.some((call) => (call[0] as string).includes("LINK_TOKEN_KV"))).toBe(
+        false,
+      );
       warnSpy.mockRestore();
     });
   });
