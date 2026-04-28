@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { IdpEnv } from "@0g0-id/shared";
+import { PROVIDER_CREDENTIALS, type IdpEnv } from "@0g0-id/shared";
 
 /**
  * 起動時に必須の環境変数を検証するスキーマ
@@ -46,14 +46,7 @@ export function validateEnv(env: IdpEnv): EnvValidationResult {
     : result.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`);
 
   // オプションプロバイダーの認証情報は片方だけ設定されていてはならない（設定ミスの早期検知）
-  const optionalProviderPairs = [
-    { id: "LINE_CLIENT_ID" as const, secret: "LINE_CLIENT_SECRET" as const, name: "LINE" },
-    { id: "TWITCH_CLIENT_ID" as const, secret: "TWITCH_CLIENT_SECRET" as const, name: "Twitch" },
-    { id: "GITHUB_CLIENT_ID" as const, secret: "GITHUB_CLIENT_SECRET" as const, name: "GitHub" },
-    { id: "X_CLIENT_ID" as const, secret: "X_CLIENT_SECRET" as const, name: "X" },
-  ];
-
-  for (const pair of optionalProviderPairs) {
+  for (const pair of Object.values(PROVIDER_CREDENTIALS)) {
     const hasId = !!env[pair.id];
     const hasSecret = !!env[pair.secret];
     if (hasId !== hasSecret) {
