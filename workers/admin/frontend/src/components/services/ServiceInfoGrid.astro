@@ -1,0 +1,22 @@
+<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; margin-bottom:24px;">
+  <div class="card" style="padding:20px;">
+    <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">基本情報</h3>
+    <table style="width:100%; font-size:0.875rem;">
+      <tbody id="info-tbody"></tbody>
+    </table>
+  </div>
+  <div class="card" style="padding:20px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <h3 style="margin:0; font-size:0.9rem; color:var(--color-muted);">許可スコープ</h3>
+      <button id="btn-edit-scopes" class="btn btn-ghost" style="font-size:0.75rem; padding:2px 8px;">編集</button>
+    </div>
+    <div id="scopes-list"></div>
+    <div id="scopes-edit" style="display:none; margin-top:8px;">
+      <div id="scope-checkboxes" style="display:flex; flex-direction:column; gap:6px;"></div>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button id="btn-save-scopes" class="btn btn-primary" style="font-size:0.8rem; padding:4px 10px;">保存</button>
+        <button id="btn-cancel-scopes" class="btn btn-ghost" style="font-size:0.8rem; padding:4px 10px;">キャンセル</button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,74 +1,27 @@
 ---
 import Admin from '../../layouts/Admin.astro';
+import LoadingState from '../../components/common/LoadingState.astro';
+import ErrorState from '../../components/common/ErrorState.astro';
+import UserHeader from '../../components/users/UserHeader.astro';
+import UserInfoGrid from '../../components/users/UserInfoGrid.astro';
+import SessionsCard from '../../components/users/SessionsCard.astro';
+import BffSessionsCard from '../../components/users/BffSessionsCard.astro';
+import LockoutCard from '../../components/users/LockoutCard.astro';
+import UserActionsCard from '../../components/users/UserActionsCard.astro';
 ---
 <Admin title="ユーザー詳細 — 0g0 Admin">
-  <div id="loading" style="text-align:center; padding:48px;">
-    <div class="spinner"></div>
-    <p style="color:var(--color-muted); margin-top:12px;">読み込み中...</p>
-  </div>
-  <div id="error" style="display:none; text-align:center; padding:48px;">
-    <p style="color:var(--color-danger);">ユーザー情報の取得に失敗しました</p>
-    <a href="/users" class="btn" style="margin-top:12px;">← ユーザー一覧に戻る</a>
-  </div>
+  <LoadingState />
+  <ErrorState message="ユーザー情報の取得に失敗しました" backHref="/users" backLabel="← ユーザー一覧に戻る" />
   <div id="content" style="display:none;">
     <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px;">
       <a href="/users" style="color:var(--color-muted); text-decoration:none; font-size:0.9rem;">← 一覧に戻る</a>
     </div>
-    <div class="card" style="margin-bottom:24px;">
-      <div style="display:flex; align-items:center; gap:16px; padding:20px;">
-        <div id="avatar" style="width:56px; height:56px; border-radius:50%; background:var(--color-surface); display:flex; align-items:center; justify-content:center; font-size:1.5rem; overflow:hidden;"></div>
-        <div style="flex:1;">
-          <h1 class="page-title" id="user-name" style="margin:0;"></h1>
-          <p style="color:var(--color-muted); margin:4px 0 0;" id="user-email"></p>
-        </div>
-        <div style="display:flex; gap:8px;" id="badges"></div>
-      </div>
-    </div>
-
-    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; margin-bottom:24px;">
-      <div class="card" style="padding:20px;">
-        <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">基本情報</h3>
-        <table style="width:100%; font-size:0.875rem;">
-          <tbody id="info-tbody"></tbody>
-        </table>
-      </div>
-      <div class="card" style="padding:20px;">
-        <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">プロバイダー連携</h3>
-        <div id="providers-list">読み込み中...</div>
-      </div>
-    </div>
-
-    <div class="card" style="padding:20px; margin-bottom:24px;">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-        <h3 style="margin:0; font-size:0.9rem; color:var(--color-muted);">アクティブセッション</h3>
-        <button id="revoke-all-btn" class="btn btn-danger" style="font-size:0.8rem; padding:4px 10px; display:none;">全セッション無効化</button>
-      </div>
-      <div id="sessions-list">読み込み中...</div>
-    </div>
-
-    <div class="card" style="padding:20px; margin-bottom:24px;">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-        <h3 style="margin:0; font-size:0.9rem; color:var(--color-muted);">BFF セッション（ブラウザ Cookie）</h3>
-      </div>
-      <div id="bff-sessions-list">読み込み中...</div>
-    </div>
-
-    <div class="card" id="lockout-card" style="padding:20px; margin-bottom:24px; display:none;">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-        <h3 style="margin:0; font-size:0.9rem; color:var(--color-muted);">アカウントロックアウト</h3>
-        <button id="clear-lockout-btn" class="btn btn-ghost" style="font-size:0.8rem; padding:4px 10px; display:none;">ロックアウト解除</button>
-      </div>
-      <div id="lockout-info"></div>
-    </div>
-
-    <div class="card" style="padding:20px;">
-      <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">操作</h3>
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button id="toggle-role-btn" class="btn" style="font-size:0.85rem;"></button>
-        <button id="toggle-ban-btn" class="btn" style="font-size:0.85rem;"></button>
-        <button id="delete-btn" class="btn btn-danger" style="font-size:0.85rem;">ユーザー削除</button>
-      </div>
-    </div>
+    <UserHeader />
+    <UserInfoGrid />
+    <SessionsCard />
+    <BffSessionsCard />
+    <LockoutCard />
+    <UserActionsCard />
   </div>
 </Admin>
 
