@@ -1,94 +1,33 @@
 ---
 import Admin from '../../layouts/Admin.astro';
+import LoadingState from '../../components/common/LoadingState.astro';
+import ErrorState from '../../components/common/ErrorState.astro';
+import ServiceHeader from '../../components/services/ServiceHeader.astro';
+import ServiceInfoGrid from '../../components/services/ServiceInfoGrid.astro';
+import RedirectUrisCard from '../../components/services/RedirectUrisCard.astro';
+import AuthorizedUsersCard from '../../components/services/AuthorizedUsersCard.astro';
+import ServiceActionsCard from '../../components/services/ServiceActionsCard.astro';
 ---
 <Admin title="サービス詳細 — 0g0 Admin">
-  <div id="loading" style="text-align:center; padding:48px;">
-    <div class="spinner"></div>
-    <p style="color:var(--color-muted); margin-top:12px;">読み込み中...</p>
-  </div>
-  <div id="error" style="display:none; text-align:center; padding:48px;">
-    <p style="color:var(--color-danger);">サービス情報の取得に失敗しました</p>
-    <a href="/services" class="btn" style="margin-top:12px;">← サービス一覧に戻る</a>
-  </div>
+  <LoadingState />
+  <ErrorState message="サービス情報の取得に失敗しました" backHref="/services" backLabel="← サービス一覧に戻る" />
   <div id="content" style="display:none;">
     <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px;">
       <a href="/services" style="color:var(--color-muted); text-decoration:none; font-size:0.9rem;">← 一覧に戻る</a>
     </div>
 
     <!-- 基本情報 -->
-    <div class="card" style="margin-bottom:24px;">
-      <div style="display:flex; align-items:center; gap:16px; padding:20px;">
-        <div style="width:56px; height:56px; border-radius:12px; background:var(--color-surface); display:flex; align-items:center; justify-content:center; font-size:1.5rem;">🔧</div>
-        <div style="flex:1;">
-          <h1 class="page-title" id="service-name" style="margin:0;"></h1>
-          <p style="color:var(--color-muted); margin:4px 0 0; font-size:0.875rem;" id="service-client-id"></p>
-        </div>
-      </div>
-    </div>
-
-    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; margin-bottom:24px;">
-      <div class="card" style="padding:20px;">
-        <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">基本情報</h3>
-        <table style="width:100%; font-size:0.875rem;">
-          <tbody id="info-tbody"></tbody>
-        </table>
-      </div>
-      <div class="card" style="padding:20px;">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-          <h3 style="margin:0; font-size:0.9rem; color:var(--color-muted);">許可スコープ</h3>
-          <button id="btn-edit-scopes" class="btn btn-ghost" style="font-size:0.75rem; padding:2px 8px;">編集</button>
-        </div>
-        <div id="scopes-list"></div>
-        <div id="scopes-edit" style="display:none; margin-top:8px;">
-          <div id="scope-checkboxes" style="display:flex; flex-direction:column; gap:6px;"></div>
-          <div style="display:flex; gap:8px; margin-top:10px;">
-            <button id="btn-save-scopes" class="btn btn-primary" style="font-size:0.8rem; padding:4px 10px;">保存</button>
-            <button id="btn-cancel-scopes" class="btn btn-ghost" style="font-size:0.8rem; padding:4px 10px;">キャンセル</button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <ServiceHeader />
+    <ServiceInfoGrid />
 
     <!-- リダイレクトURI -->
-    <div class="card" style="padding:20px; margin-bottom:24px;">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-        <h3 style="margin:0; font-size:0.9rem; color:var(--color-muted);">リダイレクトURI</h3>
-        <button id="btn-add-uri" class="btn" style="font-size:0.8rem; padding:4px 10px;">+ 追加</button>
-      </div>
-      <div id="add-uri-form" style="display:none; margin-bottom:12px;">
-        <div style="display:flex; gap:8px;">
-          <input id="new-uri-input" type="text" placeholder="https://example.com/callback" style="flex:1;" />
-          <button id="btn-submit-uri" class="btn btn-primary" style="font-size:0.8rem; padding:4px 10px;">追加</button>
-          <button id="btn-cancel-uri" class="btn btn-ghost" style="font-size:0.8rem; padding:4px 10px;">キャンセル</button>
-        </div>
-      </div>
-      <div id="uris-list">読み込み中...</div>
-    </div>
+    <RedirectUrisCard />
 
     <!-- 認可済みユーザー -->
-    <div class="card" style="padding:20px; margin-bottom:24px;">
-      <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">認可済みユーザー</h3>
-      <div id="users-list">読み込み中...</div>
-    </div>
+    <AuthorizedUsersCard />
 
     <!-- 操作 -->
-    <div class="card" style="padding:20px;">
-      <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">操作</h3>
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button id="btn-edit" class="btn" style="font-size:0.85rem;">サービス名を編集</button>
-        <button id="btn-rotate-secret" class="btn" style="font-size:0.85rem;">シークレット再発行</button>
-        <button id="btn-delete" class="btn btn-danger" style="font-size:0.85rem;">サービス削除</button>
-      </div>
-    </div>
-
-    <!-- シークレット表示エリア -->
-    <div id="secret-display" class="card" style="padding:20px; margin-top:16px; display:none;">
-      <div class="alert alert-success" style="margin-bottom:12px;">新しいシークレットが発行されました。この値は一度しか表示されません。</div>
-      <div class="form-group">
-        <label for="new-secret-value">Client Secret</label>
-        <input id="new-secret-value" type="text" readonly />
-      </div>
-    </div>
+    <ServiceActionsCard />
   </div>
 </Admin>
 

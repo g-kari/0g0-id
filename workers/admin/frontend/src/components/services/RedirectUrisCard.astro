@@ -1,0 +1,14 @@
+<div class="card" style="padding:20px; margin-bottom:24px;">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+    <h3 style="margin:0; font-size:0.9rem; color:var(--color-muted);">リダイレクトURI</h3>
+    <button id="btn-add-uri" class="btn" style="font-size:0.8rem; padding:4px 10px;">+ 追加</button>
+  </div>
+  <div id="add-uri-form" style="display:none; margin-bottom:12px;">
+    <div style="display:flex; gap:8px;">
+      <input id="new-uri-input" type="text" placeholder="https://example.com/callback" style="flex:1;" />
+      <button id="btn-submit-uri" class="btn btn-primary" style="font-size:0.8rem; padding:4px 10px;">追加</button>
+      <button id="btn-cancel-uri" class="btn btn-ghost" style="font-size:0.8rem; padding:4px 10px;">キャンセル</button>
+    </div>
+  </div>
+  <div id="uris-list">読み込み中...</div>
+</div>
