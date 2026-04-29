@@ -4,7 +4,6 @@ import {
   countUsers,
   banUserWithRevocation,
   unbanUser,
-  deleteUser,
   updateUserRoleWithRevocation,
   getUserProviders,
   getLoginEventsByUserId,
@@ -13,8 +12,11 @@ import {
   listActiveSessionsByUserId,
   listServicesByOwner,
   listUserConnections,
+  countServicesByOwner,
   revokeUserTokens,
+  revokeAllBffSessionsByUserId,
   deleteMcpSessionsByUser,
+  deleteUser,
   createAdminAuditLog,
   type UserFilter,
 } from "@0g0-id/shared";
@@ -177,7 +179,15 @@ export const deleteUserTool: McpTool = {
     if (isValidationError(validated)) return validated;
     const { userId } = validated;
 
+    const ownedServices = await countServicesByOwner(context.db, userId);
+    if (ownedServices > 0) {
+      return errorResponse(
+        `User owns ${ownedServices} service(s). Transfer ownership before deleting.`,
+      );
+    }
+
     await revokeUserTokens(context.db, userId, "security_event");
+    await revokeAllBffSessionsByUserId(context.db, userId, "security_event");
     await deleteMcpSessionsByUser(context.db, userId);
 
     const deleted = await deleteUser(context.db, userId);
