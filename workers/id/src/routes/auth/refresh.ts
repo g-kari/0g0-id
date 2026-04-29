@@ -38,7 +38,7 @@ export async function handleRefresh(c: Context<{ Bindings: IdpEnv; Variables: Va
     if (validationResult.reason === "TOKEN_ROTATED") {
       return c.json(
         restErrorBody("TOKEN_ROTATED", "Token already rotated, retry with new token"),
-        401,
+        503,
       );
     }
     if (validationResult.reason === "TOKEN_REUSE") {

@@ -902,7 +902,7 @@ describe("POST /auth/refresh", () => {
       method: "POST",
       body: { refresh_token: "recently-rotated-token" },
     });
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(503);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("TOKEN_ROTATED");
     // グレースピリオド内はfamilyを失効させない
