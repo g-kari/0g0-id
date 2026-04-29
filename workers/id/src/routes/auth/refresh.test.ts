@@ -117,7 +117,7 @@ describe("POST /auth/refresh", () => {
   // トークン検証
   // =====================
   describe("トークン検証", () => {
-    it("TOKEN_ROTATED → 401", async () => {
+    it("TOKEN_ROTATED → 503", async () => {
       vi.mocked(parseJsonBody).mockResolvedValue({
         ok: true,
         data: { refresh_token: "rotated-token" },
@@ -128,7 +128,7 @@ describe("POST /auth/refresh", () => {
       });
 
       const res = await makeRequest();
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(503);
       const body = await res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe("TOKEN_ROTATED");
     });
