@@ -7,8 +7,6 @@ import {
   parseJsonBody,
   restErrorBody,
 } from "@0g0-id/shared";
-import { authMiddleware } from "../../middleware/auth";
-import { adminMiddleware } from "../../middleware/admin";
 import { csrfMiddleware } from "../../middleware/csrf";
 import { logAdminAudit, extractErrorMessage } from "../../lib/audit";
 import type { Variables } from "./_shared";
@@ -22,7 +20,7 @@ import {
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
 // PATCH /api/users/:id/role（管理者のみ）
-app.patch("/:id/role", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+app.patch("/:id/role", csrfMiddleware, async (c) => {
   const targetId = c.req.param("id");
   const tokenUser = c.get("user");
 
@@ -71,7 +69,7 @@ app.patch("/:id/role", authMiddleware, adminMiddleware, csrfMiddleware, async (c
 });
 
 // PATCH /api/users/:id/ban — ユーザーを停止（管理者のみ）
-app.patch("/:id/ban", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+app.patch("/:id/ban", csrfMiddleware, async (c) => {
   const targetId = c.req.param("id");
   const tokenUser = c.get("user");
 
@@ -115,7 +113,7 @@ app.patch("/:id/ban", authMiddleware, adminMiddleware, csrfMiddleware, async (c)
 });
 
 // DELETE /api/users/:id/ban — ユーザー停止を解除（管理者のみ）
-app.delete("/:id/ban", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+app.delete("/:id/ban", csrfMiddleware, async (c) => {
   const targetId = c.req.param("id");
 
   const result = await requireTargetUser(c.env.DB, targetId);
@@ -149,7 +147,7 @@ app.delete("/:id/ban", authMiddleware, adminMiddleware, csrfMiddleware, async (c
 });
 
 // DELETE /api/users/:id（管理者のみ）
-app.delete("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+app.delete("/:id", csrfMiddleware, async (c) => {
   const targetId = c.req.param("id");
   const tokenUser = c.get("user");
 
