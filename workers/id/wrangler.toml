@@ -42,7 +42,7 @@ migrations_dir = "../../migrations"
 
 [[kv_namespaces]]
 binding = "LINK_TOKEN_KV"
-id = "placeholder"
+id = "d32e6c76dde24764ab02d4c9202ddb35"
 
 [[unsafe.bindings]]
 name = "RATE_LIMITER_AUTH"
