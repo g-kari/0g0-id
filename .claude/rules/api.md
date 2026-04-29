@@ -161,6 +161,8 @@ https://id.0g0.xyz/auth/login?client_id=<CLIENT_ID>&redirect_to=<登録済みURI
 | /api/users/:id/role | PATCH | JWT+Admin+CSRF | ロール変更 |
 | /api/users/:id/login-history | GET | JWT+Admin | ユーザーログイン履歴 |
 | /api/users/:id/providers | GET | JWT+Admin | ユーザーSNS連携状態 |
+| /api/users/:id/lockout | GET | JWT+Admin | ロックアウト状態取得 |
+| /api/users/:id/lockout | DELETE | JWT+Admin+CSRF | ロックアウト解除 |
 | /api/users/:id/services | GET | JWT+Admin | ユーザー認可済みサービス |
 | /api/users/:id/owned-services | GET | JWT+Admin | ユーザー所有サービス |
 | /api/users/:id/tokens | DELETE | JWT+Admin+CSRF | ユーザー全セッション無効化 |
