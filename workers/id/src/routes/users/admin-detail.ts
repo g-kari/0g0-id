@@ -24,6 +24,36 @@ import {
 
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
+/**
+ * parseDays + requireTargetUser + sinceIso の共通前処理
+ * login-stats / login-trends で重複していたパターンを集約
+ */
+async function parseDaysAndRequireUser(c: {
+  req: { param: (k: string) => string; query: (k: string) => string | undefined };
+  env: { DB: D1Database };
+  json: (body: unknown, status?: number) => Response;
+}): Promise<
+  { ok: true; days: number; sinceIso: string; targetId: string } | { ok: false; response: Response }
+> {
+  const targetId = c.req.param("id");
+  const daysResult = parseDays(c.req.query("days"), { maxDays: 365 });
+  if (daysResult && "error" in daysResult) {
+    return {
+      ok: false,
+      response: c.json(restErrorBody("BAD_REQUEST", daysResult.error.message), 400),
+    };
+  }
+  const days = daysResult?.days ?? 30;
+
+  const result = await requireTargetUser(c.env.DB, targetId);
+  if (!result.ok) {
+    return { ok: false, response: c.json(result.error, result.status) };
+  }
+
+  const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  return { ok: true, days, sinceIso, targetId };
+}
+
 // GET /api/users/:id（管理者のみ）
 app.get("/:id", async (c) => {
   const targetId = c.req.param("id");
@@ -101,32 +131,19 @@ app.get(
 
 // GET /api/users/:id/login-stats — ユーザーのプロバイダー別ログイン統計（管理者のみ）
 app.get("/:id/login-stats", async (c) => {
-  const targetId = c.req.param("id");
-  const daysResult = parseDays(c.req.query("days"), { maxDays: 365 });
-  if (daysResult && "error" in daysResult) {
-    return c.json(restErrorBody("BAD_REQUEST", daysResult.error.message), 400);
-  }
-  const days = daysResult?.days ?? 30;
+  const parsed = await parseDaysAndRequireUser(c);
+  if (!parsed.ok) return parsed.response;
+  const { days, sinceIso, targetId } = parsed;
 
-  const result = await requireTargetUser(c.env.DB, targetId);
-  if (!result.ok) return c.json(result.error, result.status);
-
-  const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   const stats = await getUserLoginProviderStats(c.env.DB, targetId, sinceIso);
   return c.json({ data: stats, days });
 });
 
 // GET /api/users/:id/login-trends — ユーザーの日別ログイントレンド（管理者のみ）
 app.get("/:id/login-trends", async (c) => {
-  const targetId = c.req.param("id");
-  const daysResult = parseDays(c.req.query("days"), { maxDays: 365 });
-  if (daysResult && "error" in daysResult) {
-    return c.json(restErrorBody("BAD_REQUEST", daysResult.error.message), 400);
-  }
-  const days = daysResult?.days ?? 30;
-
-  const result = await requireTargetUser(c.env.DB, targetId);
-  if (!result.ok) return c.json(result.error, result.status);
+  const parsed = await parseDaysAndRequireUser(c);
+  if (!parsed.ok) return parsed.response;
+  const { days, targetId } = parsed;
 
   const trends = await getUserDailyLoginTrends(c.env.DB, targetId, days);
   return c.json({ data: trends, days });
