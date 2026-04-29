@@ -1,6 +1,6 @@
-import type { HonoRequest } from "hono";
 import type { IdpEnv, TokenPayload } from "@0g0-id/shared";
 import { createRateLimitMiddleware } from "@0g0-id/shared";
+import { extractClientIdFromBody } from "../utils/body-parser";
 import { getClientIp } from "../utils/ip";
 import { parseBasicAuth } from "../utils/service-auth";
 
@@ -9,24 +9,6 @@ const isProduction = (env: IdpEnv): boolean => env.IDP_ORIGIN?.startsWith("https
 /** Basic認証ヘッダーから client_id を抽出する。取得できない場合は null を返す */
 function extractClientId(authHeader: string | undefined): string | null {
   return parseBasicAuth(authHeader)?.clientId ?? null;
-}
-
-/** リクエストボディから client_id を抽出する。取得できない場合は null を返す */
-async function extractClientIdFromBody(req: HonoRequest): Promise<string | null> {
-  const contentType = req.header("Content-Type") ?? "";
-  try {
-    if (contentType.includes("application/x-www-form-urlencoded")) {
-      const body = await req.parseBody();
-      const clientId = body["client_id"];
-      return typeof clientId === "string" ? clientId : null;
-    } else if (contentType.includes("application/json")) {
-      const body = await req.json<Record<string, unknown>>();
-      return typeof body["client_id"] === "string" ? (body["client_id"] as string) : null;
-    }
-  } catch {
-    return null;
-  }
-  return null;
 }
 
 export const authRateLimitMiddleware = createRateLimitMiddleware<IdpEnv, { user?: TokenPayload }>({
