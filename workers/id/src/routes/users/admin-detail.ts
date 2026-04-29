@@ -14,8 +14,6 @@ import {
   isValidProvider,
   restErrorBody,
 } from "@0g0-id/shared";
-import { authMiddleware } from "../../middleware/auth";
-import { adminMiddleware } from "../../middleware/admin";
 import type { Variables } from "./_shared";
 import {
   formatAdminUserDetail,
@@ -27,7 +25,7 @@ import {
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
 // GET /api/users/:id（管理者のみ）
-app.get("/:id", authMiddleware, adminMiddleware, async (c) => {
+app.get("/:id", async (c) => {
   const targetId = c.req.param("id");
   const result = await requireTargetUser(c.env.DB, targetId);
   if (!result.ok) return c.json(result.error, result.status);
@@ -35,7 +33,7 @@ app.get("/:id", authMiddleware, adminMiddleware, async (c) => {
 });
 
 // GET /api/users/:id/owned-services — ユーザーが所有するサービス一覧（管理者のみ）
-app.get("/:id/owned-services", authMiddleware, adminMiddleware, async (c) => {
+app.get("/:id/owned-services", async (c) => {
   const targetId = c.req.param("id");
 
   const result = await requireTargetUser(c.env.DB, targetId);
@@ -54,7 +52,7 @@ app.get("/:id/owned-services", authMiddleware, adminMiddleware, async (c) => {
 });
 
 // GET /api/users/:id/services — ユーザーが認可しているサービス一覧（管理者のみ）
-app.get("/:id/services", authMiddleware, adminMiddleware, async (c) => {
+app.get("/:id/services", async (c) => {
   const targetId = c.req.param("id");
 
   const result = await requireTargetUser(c.env.DB, targetId);
@@ -65,7 +63,7 @@ app.get("/:id/services", authMiddleware, adminMiddleware, async (c) => {
 });
 
 // GET /api/users/:id/providers — ユーザーのSNSプロバイダー連携状態（管理者のみ）
-app.get("/:id/providers", authMiddleware, adminMiddleware, async (c) => {
+app.get("/:id/providers", async (c) => {
   const targetId = c.req.param("id");
 
   const result = await requireTargetUser(c.env.DB, targetId);
@@ -78,8 +76,6 @@ app.get("/:id/providers", authMiddleware, adminMiddleware, async (c) => {
 // GET /api/users/:id/login-history（管理者のみ）
 app.get(
   "/:id/login-history",
-  authMiddleware,
-  adminMiddleware,
   paginationMiddleware({ defaultLimit: 20, maxLimit: 100 }),
   async (c) => {
     const targetId = c.req.param("id");
@@ -104,7 +100,7 @@ app.get(
 );
 
 // GET /api/users/:id/login-stats — ユーザーのプロバイダー別ログイン統計（管理者のみ）
-app.get("/:id/login-stats", authMiddleware, adminMiddleware, async (c) => {
+app.get("/:id/login-stats", async (c) => {
   const targetId = c.req.param("id");
   const daysResult = parseDays(c.req.query("days"), { maxDays: 365 });
   if (daysResult && "error" in daysResult) {
@@ -121,7 +117,7 @@ app.get("/:id/login-stats", authMiddleware, adminMiddleware, async (c) => {
 });
 
 // GET /api/users/:id/login-trends — ユーザーの日別ログイントレンド（管理者のみ）
-app.get("/:id/login-trends", authMiddleware, adminMiddleware, async (c) => {
+app.get("/:id/login-trends", async (c) => {
   const targetId = c.req.param("id");
   const daysResult = parseDays(c.req.query("days"), { maxDays: 365 });
   if (daysResult && "error" in daysResult) {
@@ -137,38 +133,32 @@ app.get("/:id/login-trends", authMiddleware, adminMiddleware, async (c) => {
 });
 
 // GET /api/users（管理者のみ）
-app.get(
-  "/",
-  authMiddleware,
-  adminMiddleware,
-  paginationMiddleware({ defaultLimit: 50, maxLimit: 100 }),
-  async (c) => {
-    const { limit, offset } = c.get("pagination");
+app.get("/", paginationMiddleware({ defaultLimit: 50, maxLimit: 100 }), async (c) => {
+  const { limit, offset } = c.get("pagination");
 
-    const filter: UserFilter = {};
-    const emailQuery = c.req.query("email");
-    const roleQuery = c.req.query("role");
-    const nameQuery = c.req.query("name");
-    const bannedQuery = c.req.query("banned");
+  const filter: UserFilter = {};
+  const emailQuery = c.req.query("email");
+  const roleQuery = c.req.query("role");
+  const nameQuery = c.req.query("name");
+  const bannedQuery = c.req.query("banned");
 
-    if (emailQuery) filter.email = emailQuery;
-    if (roleQuery === "user" || roleQuery === "admin") filter.role = roleQuery;
-    if (nameQuery) filter.name = nameQuery;
-    if (bannedQuery === "true") filter.banned = true;
-    else if (bannedQuery === "false") filter.banned = false;
+  if (emailQuery) filter.email = emailQuery;
+  if (roleQuery === "user" || roleQuery === "admin") filter.role = roleQuery;
+  if (nameQuery) filter.name = nameQuery;
+  if (bannedQuery === "true") filter.banned = true;
+  else if (bannedQuery === "false") filter.banned = false;
 
-    let users, total;
-    try {
-      [users, total] = await Promise.all([
-        listUsers(c.env.DB, limit, offset, filter),
-        countUsers(c.env.DB, filter),
-      ]);
-    } catch (err) {
-      usersLogger.error("[users] Failed to fetch users", err);
-      return c.json(restErrorBody("INTERNAL_ERROR", "Failed to fetch users"), 500);
-    }
-    return c.json({ data: users.map(formatAdminUserSummary), total });
-  },
-);
+  let users, total;
+  try {
+    [users, total] = await Promise.all([
+      listUsers(c.env.DB, limit, offset, filter),
+      countUsers(c.env.DB, filter),
+    ]);
+  } catch (err) {
+    usersLogger.error("[users] Failed to fetch users", err);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Failed to fetch users"), 500);
+  }
+  return c.json({ data: users.map(formatAdminUserSummary), total });
+});
 
 export default app;

@@ -1,8 +1,6 @@
 import { Hono } from "hono";
 import type { IdpEnv } from "@0g0-id/shared";
 import { getAccountLockout, clearLockout } from "@0g0-id/shared";
-import { authMiddleware } from "../../middleware/auth";
-import { adminMiddleware } from "../../middleware/admin";
 import { csrfMiddleware } from "../../middleware/csrf";
 import { logAdminAudit } from "../../lib/audit";
 import type { Variables } from "./_shared";
@@ -11,7 +9,7 @@ import { requireTargetUser } from "./_shared";
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
 
 // GET /api/users/:id/lockout — ユーザーのロックアウト状態（管理者のみ）
-app.get("/:id/lockout", authMiddleware, adminMiddleware, async (c) => {
+app.get("/:id/lockout", async (c) => {
   const targetId = c.req.param("id");
 
   const result = await requireTargetUser(c.env.DB, targetId);
@@ -35,7 +33,7 @@ app.get("/:id/lockout", authMiddleware, adminMiddleware, async (c) => {
 });
 
 // DELETE /api/users/:id/lockout — ロックアウト解除（管理者のみ）
-app.delete("/:id/lockout", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+app.delete("/:id/lockout", csrfMiddleware, async (c) => {
   const targetId = c.req.param("id");
 
   const result = await requireTargetUser(c.env.DB, targetId);
