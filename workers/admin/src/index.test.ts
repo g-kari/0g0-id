@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
+vi.mock("./middleware/rate-limit", () => ({
+  adminAuthRateLimitMiddleware: async (_c: unknown, next: () => Promise<void>) => next(),
+  adminApiRateLimitMiddleware: async (_c: unknown, next: () => Promise<void>) => next(),
+}));
+
 const { mockFetchWithAuth, mockProxyResponse } = vi.hoisted(() => ({
   mockFetchWithAuth: vi.fn(),
   mockProxyResponse: vi.fn(),

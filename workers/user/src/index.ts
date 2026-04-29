@@ -1,9 +1,13 @@
 import { Hono } from "hono";
 
-import type { BffEnv } from "@0g0-id/shared";
+import type { BffEnv, RateLimitBinding } from "@0g0-id/shared";
 
 // ASSETS binding: Cloudflare Workers Assets を Service Binding として使用
-type UserEnv = BffEnv & { ASSETS: Fetcher };
+type UserEnv = BffEnv & {
+  ASSETS: Fetcher;
+  RATE_LIMITER_USER_AUTH?: RateLimitBinding;
+  RATE_LIMITER_USER_API?: RateLimitBinding;
+};
 import {
   logger,
   securityHeaders,
@@ -26,6 +30,7 @@ import sessionsRoutes from "./routes/sessions";
 import bffSessionsRoutes from "./routes/bff-sessions";
 import securityRoutes from "./routes/security";
 import deviceRoutes from "./routes/device";
+import { userAuthRateLimitMiddleware, userApiRateLimitMiddleware } from "./middleware/rate-limit";
 
 const appLogger = createLogger("user");
 
@@ -40,6 +45,11 @@ app.use("*", async (c, next) => {
 app.use("*", logger());
 app.use("*", securityHeaders());
 app.use("*", bodyLimitMiddleware());
+
+// 認証エンドポイントへのレートリミット（ログイン・コールバック・ログアウト）
+app.use("/auth/*", userAuthRateLimitMiddleware);
+// APIエンドポイントへのレートリミット
+app.use("/api/*", userApiRateLimitMiddleware);
 
 // ユーザー画面APIへのCORSをユーザー画面自身のドメインのみに制限
 app.use("/api/*", bffCorsMiddleware);

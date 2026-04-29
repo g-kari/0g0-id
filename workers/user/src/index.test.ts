@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
+vi.mock("./middleware/rate-limit", () => ({
+  userAuthRateLimitMiddleware: async (_c: unknown, next: () => Promise<void>) => next(),
+  userApiRateLimitMiddleware: async (_c: unknown, next: () => Promise<void>) => next(),
+}));
+
 vi.mock("./middleware/csrf", () => ({
   userCsrfMiddleware: async (_c: unknown, next: () => Promise<void>) => next(),
 }));
