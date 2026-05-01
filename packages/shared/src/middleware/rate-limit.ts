@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import type { RateLimitBinding } from "../types";
 import { createLogger } from "../lib/logger";
 import { restErrorBody } from "../lib/errors";
+import { getClientIp } from "../lib/ip";
 
 const warnedBindings = new Set<string>();
 
@@ -78,4 +79,37 @@ export function createRateLimitMiddleware<
     }
     await next();
   });
+}
+
+export interface BffRateLimitConfig<E extends object> {
+  authBindingName: string;
+  authGetBinding: (env: E) => RateLimitBinding | undefined;
+  apiBindingName: string;
+  apiGetBinding: (env: E) => RateLimitBinding | undefined;
+  errorMessage?: string;
+}
+
+export function createBffRateLimitMiddlewares<E extends object & { SELF_ORIGIN?: string }>(
+  config: BffRateLimitConfig<E>,
+) {
+  const isProduction = (env: E): boolean => env.SELF_ORIGIN?.startsWith("https://") ?? false;
+  const defaultMessage = config.errorMessage ?? "Too many requests. Please try again later.";
+
+  const authRateLimitMiddleware = createRateLimitMiddleware<E>({
+    bindingName: config.authBindingName,
+    getBinding: config.authGetBinding,
+    getKey: (c) => getClientIp(c.req.raw) ?? "unknown",
+    errorMessage: defaultMessage,
+    isProduction,
+  });
+
+  const apiRateLimitMiddleware = createRateLimitMiddleware<E>({
+    bindingName: config.apiBindingName,
+    getBinding: config.apiGetBinding,
+    getKey: (c) => getClientIp(c.req.raw) ?? "unknown",
+    errorMessage: defaultMessage,
+    isProduction,
+  });
+
+  return { authRateLimitMiddleware, apiRateLimitMiddleware };
 }

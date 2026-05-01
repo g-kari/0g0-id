@@ -14,9 +14,9 @@ import {
   resetFailedAttempts,
   restErrorBody,
   verifyCookie,
+  getClientIp,
 } from "@0g0-id/shared";
 import { type OAuthProvider, PROVIDER_DISPLAY_NAMES, isValidProvider } from "@0g0-id/shared";
-import { getClientIp } from "../../utils/ip";
 import { type ProviderResolution, resolveProvider } from "../../utils/provider-resolution";
 import {
   CALLBACK_PATH,

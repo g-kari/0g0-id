@@ -22,6 +22,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     resetFailedAttempts: vi.fn(),
     verifyCookie: vi.fn(),
     isValidProvider: vi.fn(),
+    getClientIp: vi.fn().mockReturnValue("127.0.0.1"),
   };
 });
 
@@ -34,9 +35,7 @@ vi.mock("hono/cookie", async (importOriginal) => {
   };
 });
 
-vi.mock("../../utils/ip", () => ({
-  getClientIp: vi.fn().mockReturnValue("127.0.0.1"),
-}));
+// getClientIp は @0g0-id/shared のモック内で定義済み
 
 vi.mock("../../utils/provider-resolution", () => ({
   resolveProvider: vi.fn(),
