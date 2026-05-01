@@ -17,6 +17,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     unbanUser: vi.fn(),
     revokeUserTokens: vi.fn(),
     deleteMcpSessionsByUser: vi.fn(),
+    revokeAllBffSessionsByUserId: vi.fn(),
     revokeTokenByIdForUser: vi.fn(),
     revokeBffSessionByIdForUser: vi.fn(),
     listActiveSessionsByUserId: vi.fn(),

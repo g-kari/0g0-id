@@ -3,6 +3,7 @@ import type { IdpEnv } from "@0g0-id/shared";
 import {
   revokeUserTokens,
   deleteMcpSessionsByUser,
+  revokeAllBffSessionsByUserId,
   revokeBffSessionByIdForUser,
   revokeTokenByIdForUser,
   listActiveSessionsByUserId,
@@ -133,6 +134,7 @@ app.delete("/:id/tokens", csrfMiddleware, async (c) => {
   try {
     await revokeUserTokens(c.env.DB, targetId, "admin_action");
     await deleteMcpSessionsByUser(c.env.DB, targetId);
+    await revokeAllBffSessionsByUserId(c.env.DB, targetId, "admin_action");
     await logAdminAudit(c, {
       action: "user.sessions_revoked",
       targetType: "user",
