@@ -15,6 +15,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     createAdminAuditLog: vi.fn(),
     revokeUserTokens: vi.fn(),
     deleteMcpSessionsByUser: vi.fn(),
+    revokeAllBffSessionsByUserId: vi.fn(),
     revokeBffSessionByIdForUser: vi.fn(),
     revokeTokenByIdForUser: vi.fn(),
     listActiveSessionsByUserId: vi.fn(),
@@ -38,6 +39,7 @@ import {
   isAccessTokenRevoked,
   revokeUserTokens,
   deleteMcpSessionsByUser,
+  revokeAllBffSessionsByUserId,
   revokeBffSessionByIdForUser,
   revokeTokenByIdForUser,
   listActiveSessionsByUserId,
@@ -435,6 +437,7 @@ describe("Admin Sessions API", () => {
     it("全セッション無効化成功 → 204 + 監査ログが記録される", async () => {
       vi.mocked(revokeUserTokens).mockResolvedValue(undefined);
       vi.mocked(deleteMcpSessionsByUser).mockResolvedValue(undefined);
+      vi.mocked(revokeAllBffSessionsByUserId).mockResolvedValue(0);
 
       const res = await sendRequest(app, "/api/users/user-001/tokens", {
         method: "DELETE",
@@ -444,6 +447,11 @@ describe("Admin Sessions API", () => {
 
       expect(revokeUserTokens).toHaveBeenCalledWith(expect.anything(), "user-001", "admin_action");
       expect(deleteMcpSessionsByUser).toHaveBeenCalledWith(expect.anything(), "user-001");
+      expect(revokeAllBffSessionsByUserId).toHaveBeenCalledWith(
+        expect.anything(),
+        "user-001",
+        "admin_action",
+      );
       expect(logAdminAudit).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
