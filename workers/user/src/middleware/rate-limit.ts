@@ -1,27 +1,19 @@
-import type { RateLimitBinding } from "@0g0-id/shared";
-import { createRateLimitMiddleware } from "@0g0-id/shared";
-import type { BffEnv } from "@0g0-id/shared";
+import type { BffEnv, RateLimitBinding } from "@0g0-id/shared";
+import { createBffRateLimitMiddlewares } from "@0g0-id/shared";
 
 type UserRateLimitEnv = BffEnv & {
   RATE_LIMITER_USER_AUTH?: RateLimitBinding;
   RATE_LIMITER_USER_API?: RateLimitBinding;
 };
 
-const isProduction = (env: UserRateLimitEnv): boolean =>
-  env.SELF_ORIGIN?.startsWith("https://") ?? false;
-
-export const userAuthRateLimitMiddleware = createRateLimitMiddleware<UserRateLimitEnv>({
-  bindingName: "RATE_LIMITER_USER_AUTH",
-  getBinding: (env) => env.RATE_LIMITER_USER_AUTH,
-  getKey: (c) => c.req.raw.headers.get("cf-connecting-ip") ?? "unknown",
-  errorMessage: "Too many requests. Please try again later.",
-  isProduction,
+const {
+  authRateLimitMiddleware: userAuthRateLimitMiddleware,
+  apiRateLimitMiddleware: userApiRateLimitMiddleware,
+} = createBffRateLimitMiddlewares<UserRateLimitEnv>({
+  authBindingName: "RATE_LIMITER_USER_AUTH",
+  authGetBinding: (env) => env.RATE_LIMITER_USER_AUTH,
+  apiBindingName: "RATE_LIMITER_USER_API",
+  apiGetBinding: (env) => env.RATE_LIMITER_USER_API,
 });
 
-export const userApiRateLimitMiddleware = createRateLimitMiddleware<UserRateLimitEnv>({
-  bindingName: "RATE_LIMITER_USER_API",
-  getBinding: (env) => env.RATE_LIMITER_USER_API,
-  getKey: (c) => c.req.raw.headers.get("cf-connecting-ip") ?? "unknown",
-  errorMessage: "Too many requests. Please try again later.",
-  isProduction,
-});
+export { userAuthRateLimitMiddleware, userApiRateLimitMiddleware };

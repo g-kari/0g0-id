@@ -33,6 +33,7 @@ export * from "./lib/validation";
 export * from "./lib/cookie";
 export * from "./lib/cookie-names";
 export * from "./lib/errors";
+export * from "./lib/ip";
 export * from "./lib/dbsc";
 export * from "./lib/env-flags";
 export * from "./lib/internal-secret-deprecation";

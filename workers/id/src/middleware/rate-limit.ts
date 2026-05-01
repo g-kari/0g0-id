@@ -1,7 +1,6 @@
 import type { IdpEnv, TokenPayload } from "@0g0-id/shared";
-import { createRateLimitMiddleware } from "@0g0-id/shared";
+import { createRateLimitMiddleware, getClientIp } from "@0g0-id/shared";
 import { extractClientIdFromBody } from "../utils/body-parser";
-import { getClientIp } from "../utils/ip";
 import { parseBasicAuth } from "../utils/service-auth";
 
 const isProduction = (env: IdpEnv): boolean => env.IDP_ORIGIN?.startsWith("https://") ?? false;

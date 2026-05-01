@@ -1,7 +1,6 @@
 import type { Context } from "hono";
-import { createAdminAuditLog, createLogger } from "@0g0-id/shared";
+import { createAdminAuditLog, createLogger, getClientIp } from "@0g0-id/shared";
 import type { IdpEnv, TokenPayload } from "@0g0-id/shared";
-import { getClientIp } from "../utils/ip";
 
 /**
  * 管理者監査ログのアクション種別。
