@@ -11,7 +11,6 @@ import {
   insertLoginEvent,
   createLogger,
   isAccountLocked,
-  recordFailedAttempt,
   resetFailedAttempts,
   restErrorBody,
   verifyCookie,
@@ -149,10 +148,13 @@ async function resolveUserAccount(
 
   if (stateData.linkUserId) {
     const linkTargetUser = await findUserById(c.env.DB, stateData.linkUserId);
-    if (!linkTargetUser || linkTargetUser.banned_at !== null) {
-      if (linkTargetUser) {
-        await recordFailedAttempt(c.env.DB, linkTargetUser.id).catch(() => {});
-      }
+    if (!linkTargetUser) {
+      return {
+        ok: false,
+        response: c.json(restErrorBody("NOT_FOUND", "User not found"), 404),
+      };
+    }
+    if (linkTargetUser.banned_at !== null) {
       return {
         ok: false,
         response: c.json(restErrorBody("ACCOUNT_BANNED", "Your account has been suspended"), 403),

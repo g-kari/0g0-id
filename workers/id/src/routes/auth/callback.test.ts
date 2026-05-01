@@ -558,6 +558,38 @@ describe("GET /auth/callback", () => {
   // リンクフロー
   // =====================
   describe("プロバイダーリンクフロー", () => {
+    it("linkUserId あり + ユーザー不在 → 404 NOT_FOUND", async () => {
+      const linkStateData = { ...mockStateData, linkUserId: "link-user-1" };
+
+      vi.mocked(getCookie).mockImplementation((_c, name) => {
+        if (name === "__Host-oauth-state") return "signed-state-cookie";
+        if (name === "__Host-oauth-pkce") return "signed-pkce-cookie";
+        return undefined;
+      });
+      vi.mocked(verifyCookie).mockResolvedValue("pkce-verifier-value");
+      vi.mocked(parseStateFromCookie).mockResolvedValue(linkStateData);
+      vi.mocked(timingSafeEqual).mockReturnValue(true);
+      vi.mocked(isValidProvider).mockReturnValue(true);
+      vi.mocked(validateProviderCredentials).mockReturnValue({ ok: true } as never);
+      vi.mocked(resolveProvider).mockResolvedValue({
+        ok: true,
+        sub: "google-sub-1",
+        upsert: vi.fn(),
+      });
+      vi.mocked(findUserById).mockResolvedValue(null);
+
+      const res = await makeRequest(
+        { code: "auth-code", state: "id-state-123" },
+        {
+          "__Host-oauth-state": "signed-state-cookie",
+          "__Host-oauth-pkce": "signed-pkce-cookie",
+        },
+      );
+      expect(res.status).toBe(404);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe("NOT_FOUND");
+    });
+
     it("linkUserId あり + BAN ユーザー → 403 ACCOUNT_BANNED", async () => {
       const linkStateData = { ...mockStateData, linkUserId: "link-user-1" };
 
@@ -581,8 +613,6 @@ describe("GET /auth/callback", () => {
         id: "link-user-1",
         banned_at: "2024-06-01T00:00:00Z",
       });
-      vi.mocked(recordFailedAttempt).mockResolvedValue(undefined as never);
-
       const res = await makeRequest(
         { code: "auth-code", state: "id-state-123" },
         {
@@ -593,6 +623,7 @@ describe("GET /auth/callback", () => {
       expect(res.status).toBe(403);
       const body = await res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe("ACCOUNT_BANNED");
+      expect(recordFailedAttempt).not.toHaveBeenCalled();
     });
 
     it("linkUserId あり + プロバイダーが既に別ユーザーにリンク → 409 PROVIDER_ALREADY_LINKED", async () => {
