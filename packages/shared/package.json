@@ -17,7 +17,7 @@
     "jose": "^6.2.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260426.1",
+    "@cloudflare/workers-types": "^4.20260430.1",
     "typescript": "^6.0.3",
     "vite-plus": "^0.1.19",
     "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
