@@ -197,6 +197,7 @@ export interface UserConnection {
   service_id: string;
   service_name: string;
   client_id: string;
+  pairwise_sub: string | null;
   first_authorized_at: string;
   last_authorized_at: string;
 }
@@ -211,6 +212,7 @@ export async function listUserConnections(
   const result = await db
     .prepare(
       `SELECT s.id as service_id, s.name as service_name, s.client_id,
+              MAX(rt.pairwise_sub) as pairwise_sub,
               MIN(rt.created_at) as first_authorized_at,
               MAX(rt.created_at) as last_authorized_at
        FROM refresh_tokens rt

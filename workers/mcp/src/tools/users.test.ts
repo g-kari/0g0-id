@@ -663,6 +663,7 @@ describe("getUserAuthorizedServicesTool", () => {
     service_id: "svc-1",
     service_name: "My Service",
     client_id: "client-1",
+    pairwise_sub: "pairwise-sub-1",
     first_authorized_at: "2024-01-01T00:00:00Z",
     last_authorized_at: "2024-06-01T00:00:00Z",
   };

@@ -8,6 +8,7 @@ import SessionsCard from '../../components/users/SessionsCard.astro';
 import BffSessionsCard from '../../components/users/BffSessionsCard.astro';
 import LockoutCard from '../../components/users/LockoutCard.astro';
 import UserActionsCard from '../../components/users/UserActionsCard.astro';
+import ServiceSubsCard from '../../components/users/ServiceSubsCard.astro';
 ---
 <Admin title="ユーザー詳細 — 0g0 Admin">
   <LoadingState />
@@ -18,6 +19,7 @@ import UserActionsCard from '../../components/users/UserActionsCard.astro';
     </div>
     <UserHeader />
     <UserInfoGrid />
+    <ServiceSubsCard />
     <SessionsCard />
     <BffSessionsCard />
     <LockoutCard />
@@ -123,6 +125,49 @@ import UserActionsCard from '../../components/users/UserActionsCard.astro';
           <span style="color:${p.connected ? 'var(--color-success)' : 'var(--color-muted)'};">${p.connected ? '✓ 連携済み' : '未連携'}</span>
         </div>
       `).join('');
+    }
+
+    // サービス連携 / Sub ID
+    const serviceSubsEl = document.getElementById('service-subs-list')!;
+    try {
+      interface UserConnection {
+        service_id: string;
+        service_name: string;
+        client_id: string;
+        pairwise_sub: string | null;
+        first_authorized_at: string;
+        last_authorized_at: string;
+      }
+      const connections = await apiFetch<UserConnection[]>(`/api/users/${userId}/services`);
+      if (connections.length === 0) {
+        serviceSubsEl.innerHTML = '<p style="color:var(--color-muted); font-size:0.875rem;">連携しているサービスはありません</p>';
+      } else {
+        serviceSubsEl.innerHTML = `
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>サービス名</th>
+                  <th>Sub ID (Pairwise)</th>
+                  <th>初回認可</th>
+                  <th>最終認可</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${connections.map((c) => `
+                  <tr>
+                    <td><a href="/services/${escapeHtml(c.service_id)}" style="color:var(--color-accent); text-decoration:underline;">${escapeHtml(c.service_name)}</a></td>
+                    <td style="font-family:monospace; font-size:0.75rem; word-break:break-all;">${c.pairwise_sub ? escapeHtml(c.pairwise_sub) : '<span style="color:var(--color-muted);">—</span>'}</td>
+                    <td style="font-size:0.8rem; color:var(--color-muted);">${formatDate(c.first_authorized_at)}</td>
+                    <td style="font-size:0.8rem; color:var(--color-muted);">${formatDate(c.last_authorized_at)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>`;
+      }
+    } catch {
+      serviceSubsEl.innerHTML = '<p style="color:var(--color-muted); font-size:0.875rem;">サービス連携情報の取得に失敗しました</p>';
     }
 
     // セッション
