@@ -28,10 +28,11 @@ import Admin from '../../layouts/Admin.astro';
   </div>
   <div id="error" class="alert alert-error" style="display:none;" aria-live="polite"></div>
   <div id="table-wrap" class="card" style="padding:0; overflow:hidden; display:none;">
-    <table class="data-table">
+    <div class="table-wrap"><table class="data-table">
       <thead>
         <tr>
           <th>名前</th>
+          <th>Sub ID</th>
           <th>メールアドレス</th>
           <th>ロール</th>
           <th>状態</th>
@@ -40,7 +41,7 @@ import Admin from '../../layouts/Admin.astro';
         </tr>
       </thead>
       <tbody id="user-tbody"></tbody>
-    </table>
+    </table></div>
     <div id="empty-message" style="padding:2rem; text-align:center; color:var(--color-muted); display:none;">ユーザーが見つかりません</div>
   </div>
 </Admin>
@@ -143,6 +144,7 @@ import Admin from '../../layouts/Admin.astro';
           (user) => `
         <tr>
           <td>${user.name ?? '—'}</td>
+          <td style="color:var(--color-muted); font-size:0.75rem; font-family:monospace; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${user.id}">${user.id.slice(0, 8)}…</td>
           <td style="color:var(--color-muted); font-size:0.875rem;">${user.email}</td>
           <td><span class="badge badge-${user.role}">${user.role === 'admin' ? '管理者' : 'ユーザー'}</span></td>
           <td><span class="badge badge-${user.status}">${user.status === 'active' ? 'アクティブ' : 'BAN'}</span></td>

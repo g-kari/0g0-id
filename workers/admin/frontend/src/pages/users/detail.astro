@@ -99,7 +99,7 @@ import UserActionsCard from '../../components/users/UserActionsCard.astro';
     // 基本情報テーブル
     const infoTbody = document.getElementById('info-tbody')!;
     const infoRows = [
-      ['ID', user.id],
+      ['ID (Sub)', user.id],
       ['作成日', formatDate(user.created_at)],
       ['ロール', user.role === 'admin' ? '管理者' : 'ユーザー'],
       ['状態', isBanned ? `BAN (${formatDate(user.banned_at!)})` : 'アクティブ'],
