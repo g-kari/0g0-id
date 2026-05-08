@@ -32,7 +32,7 @@ export async function issueTokenPair(
     {
       iss: env.IDP_ORIGIN,
       sub: user.id,
-      aud: env.IDP_ORIGIN,
+      aud: clientId ?? env.IDP_ORIGIN,
       email: user.email,
       role: user.role,
       scope,

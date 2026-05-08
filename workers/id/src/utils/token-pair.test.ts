@@ -81,7 +81,20 @@ describe("issueTokenPair", () => {
     });
 
     expect(signAccessToken).toHaveBeenCalledWith(
-      expect.objectContaining({ cid: "client-abc" }),
+      expect.objectContaining({ cid: "client-abc", aud: "client-abc" }),
+      expect.any(String),
+      expect.any(String),
+    );
+  });
+
+  it("clientId が指定された場合、aud に clientId がセットされる", async () => {
+    await issueTokenPair(mockDb, mockEnv, mockUser, {
+      serviceId: "service-1",
+      clientId: "client-abc",
+    });
+
+    expect(signAccessToken).toHaveBeenCalledWith(
+      expect.objectContaining({ aud: "client-abc" }),
       expect.any(String),
       expect.any(String),
     );
