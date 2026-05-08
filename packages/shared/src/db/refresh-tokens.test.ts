@@ -210,6 +210,7 @@ describe("listUserConnections", () => {
         service_id: "service-1",
         service_name: "My App",
         client_id: "client-abc",
+        pairwise_sub: "pairwise-sub-abc",
         first_authorized_at: "2024-01-01T00:00:00Z",
         last_authorized_at: "2024-06-01T00:00:00Z",
       },
