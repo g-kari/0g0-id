@@ -50,12 +50,21 @@ import Base from '../layouts/Base.astro';
       return;
     }
     listEl.innerHTML = connections.map(c => `
-      <div class="flex items-center justify-between py-3.5 border-b last:border-b-0" style="border-color: var(--color-border)">
-        <div class="flex-1 min-w-0">
-          <div class="font-semibold text-sm truncate">${escapeHtml(c.service_name)}</div>
-          <div class="text-xs mt-0.5" style="color: var(--color-muted)">連携日: ${formatDate(c.first_authorized_at)}</div>
+      <div class="py-3.5 border-b last:border-b-0" style="border-color: var(--color-border)">
+        <div class="flex items-center justify-between">
+          <div class="flex-1 min-w-0">
+            <div class="font-semibold text-sm truncate">${escapeHtml(c.service_name)}</div>
+            <div class="text-xs mt-0.5" style="color: var(--color-muted)">連携日: ${formatDate(c.first_authorized_at)}</div>
+          </div>
+          <button class="btn btn-danger btn-sm ml-3" data-disconnect="${escapeHtml(c.service_id)}" data-name="${escapeHtml(c.service_name)}">解除</button>
         </div>
-        <button class="btn btn-danger btn-sm ml-3" data-disconnect="${escapeHtml(c.service_id)}" data-name="${escapeHtml(c.service_name)}">解除</button>
+        ${c.pairwise_sub ? `
+        <div class="mt-2 flex items-center gap-2" style="background: var(--color-surface); border-radius: 6px; padding: 6px 10px;">
+          <span class="text-xs" style="color: var(--color-muted); white-space: nowrap;">Sub ID:</span>
+          <code class="text-xs flex-1 min-w-0 truncate" style="font-family: monospace; color: var(--color-text);" title="${escapeHtml(c.pairwise_sub)}">${escapeHtml(c.pairwise_sub)}</code>
+          <button class="btn btn-ghost btn-sm copy-sub" data-sub="${escapeHtml(c.pairwise_sub)}" style="padding: 2px 8px; font-size: 0.7rem;">コピー</button>
+        </div>
+        ` : ''}
       </div>
     `).join('');
     listEl.style.display = '';
@@ -67,6 +76,12 @@ import Base from '../layouts/Base.astro';
   }
 
   listEl.addEventListener('click', async (e) => {
+    const copyBtn = (e.target as HTMLElement).closest('.copy-sub') as HTMLElement | null;
+    if (copyBtn) {
+      await navigator.clipboard.writeText(copyBtn.dataset.sub!);
+      showToast('Sub ID をコピーしました', 'success');
+      return;
+    }
     const btn = (e.target as HTMLElement).closest('[data-disconnect]') as HTMLElement | null;
     if (!btn) return;
     const id = btn.dataset.disconnect!;
