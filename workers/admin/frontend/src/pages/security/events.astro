@@ -16,7 +16,7 @@ import Admin from '../../layouts/Admin.astro';
   <div id="error" class="alert alert-error" style="display:none;" aria-live="polite"></div>
 
   <div id="table-wrap" class="card" style="padding:0; overflow:hidden; display:none;">
-    <table class="data-table">
+    <div class="table-wrap"><table class="data-table">
       <caption class="visually-hidden">直近のログインイベント一覧</caption>
       <thead>
         <tr>
@@ -29,7 +29,7 @@ import Admin from '../../layouts/Admin.astro';
         </tr>
       </thead>
       <tbody id="events-tbody"></tbody>
-    </table>
+    </table></div>
     <div id="empty-message" style="padding:2rem; text-align:center; color:var(--color-muted); display:none;">ログインイベントがありません</div>
   </div>
 

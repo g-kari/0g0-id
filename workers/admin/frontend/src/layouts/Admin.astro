@@ -16,7 +16,11 @@ const links = [
 ---
 <Base title={title}>
   <div class="admin-layout">
-    <aside class="sidebar">
+    <button class="hamburger" id="hamburger" type="button" aria-label="メニューを開く">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+    <aside class="sidebar" id="sidebar">
       <div class="sidebar-logo">
         <span style="font-size:1.25rem; font-weight:700;">🔐 0g0 Admin</span>
       </div>
@@ -44,4 +48,15 @@ const links = [
       <slot />
     </main>
   </div>
+  <script>
+    const hamburger = document.getElementById('hamburger')!;
+    const sidebar = document.getElementById('sidebar')!;
+    const overlay = document.getElementById('sidebar-overlay')!;
+    function toggle() {
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('open');
+    }
+    hamburger.addEventListener('click', toggle);
+    overlay.addEventListener('click', toggle);
+  </script>
 </Base>

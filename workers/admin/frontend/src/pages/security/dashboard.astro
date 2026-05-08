@@ -30,7 +30,7 @@ import Admin from '../../layouts/Admin.astro';
     </div>
     <div id="suspicious-empty" style="display:none; color:var(--color-muted); padding:1rem; text-align:center;">該当なし</div>
     <div id="suspicious-wrap" style="display:none; overflow:hidden;">
-      <table class="data-table">
+      <div class="table-wrap"><table class="data-table">
         <caption class="visually-hidden">疑わしい多国間ログイン一覧</caption>
         <thead>
           <tr>
@@ -41,7 +41,7 @@ import Admin from '../../layouts/Admin.astro';
           </tr>
         </thead>
         <tbody id="suspicious-tbody"></tbody>
-      </table>
+      </table></div>
     </div>
   </section>
 
@@ -53,7 +53,7 @@ import Admin from '../../layouts/Admin.astro';
     </div>
     <div id="ip-empty" style="display:none; color:var(--color-muted); padding:1rem; text-align:center;">データがありません</div>
     <div id="ip-wrap" style="display:none; overflow:hidden;">
-      <table class="data-table">
+      <div class="table-wrap"><table class="data-table">
         <caption class="visually-hidden">IP別ログイン集計</caption>
         <thead>
           <tr>
@@ -63,7 +63,7 @@ import Admin from '../../layouts/Admin.astro';
           </tr>
         </thead>
         <tbody id="ip-tbody"></tbody>
-      </table>
+      </table></div>
     </div>
   </section>
 
@@ -75,7 +75,7 @@ import Admin from '../../layouts/Admin.astro';
     </div>
     <div id="ua-empty" style="display:none; color:var(--color-muted); padding:1rem; text-align:center;">データがありません</div>
     <div id="ua-wrap" style="display:none; overflow:hidden;">
-      <table class="data-table">
+      <div class="table-wrap"><table class="data-table">
         <caption class="visually-hidden">User-Agent別ログイン集計</caption>
         <thead>
           <tr>
@@ -84,7 +84,7 @@ import Admin from '../../layouts/Admin.astro';
           </tr>
         </thead>
         <tbody id="ua-tbody"></tbody>
-      </table>
+      </table></div>
     </div>
   </section>
 </Admin>

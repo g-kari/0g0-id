@@ -344,4 +344,95 @@
     font-size: 0.875rem;
     margin-top: 4px;
   }
+
+  /* Table responsive wrapper */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Hamburger button (mobile only) */
+  .hamburger {
+    display: none;
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 60;
+    width: 40px;
+    height: 40px;
+    background: #2d1a1a;
+    border: none;
+    border-radius: var(--radius-sm);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    cursor: pointer;
+  }
+
+  .hamburger span {
+    display: block;
+    width: 20px;
+    height: 2px;
+    background: white;
+    border-radius: 1px;
+    transition: var(--transition);
+  }
+
+  /* Sidebar overlay (mobile only) */
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 39;
+  }
+
+  .sidebar-overlay.open {
+    display: block;
+  }
+}
+
+@layer utilities {
+  @media (max-width: 767px) {
+    .hamburger {
+      display: flex;
+    }
+
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      z-index: 40;
+      transform: translateX(-100%);
+      transition: transform 0.3s var(--ease);
+    }
+
+    .sidebar.open {
+      transform: translateX(0);
+    }
+
+    .main-content {
+      padding: 1rem;
+      padding-top: 4rem;
+    }
+
+    .page-title {
+      font-size: 1.25rem;
+    }
+
+    .card {
+      padding: 1rem;
+    }
+
+    .modal {
+      max-width: 100%;
+      margin: 0.5rem;
+    }
+
+    .data-table {
+      min-width: 600px;
+    }
+  }
 }
