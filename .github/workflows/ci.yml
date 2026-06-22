@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: チェックアウト
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Vite+ セットアップ
         run: |
@@ -59,7 +59,7 @@ jobs:
 
     steps:
       - name: チェックアウト
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Node.js セットアップ
         uses: actions/setup-node@v6
