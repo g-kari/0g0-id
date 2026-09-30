@@ -119,6 +119,18 @@ CI の `check` / `audit` ジョブでは、依存インストール前にルー�
   `vp: command not found` を回避しました
 - アプリの依存バージョン・lockfile・認証処理・デプロイ設定に変更はありません
 
+#### 依存更新記録（2026-09-30）
+
+- Vite+ と core/test の root override を `0.1.24` に固定し、npm で重複する
+  workspace の直接 `vite` / `vitest` alias を削除しました。テストの import は
+  `vite-plus/test` に統一します
+- Hono を `4.13.5`、既存の Vite peer を `8.0.16` に更新し、互換 range 内で
+  PostCSS `8.5.18` / Nanoid `3.3.18` を固定しました。toolchain 更新時は
+  Vite+ と core/test を同じリリースにそろえ、宣言された npm で clean install を確認します
+- root の Vite+ / Hono / Vite / Nanoid の既知 advisory を修正します。Miniflare 由来の
+  Sharp / Undici / ws、別 lockfile の Astro frontend には high / critical が残るため、
+  audit の閾値を維持し、draft のまま残存依存への対応と最終 CI を確認します
+
 ---
 
 ## 3. 新規 API 追加時の整備手順

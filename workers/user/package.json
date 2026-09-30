@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@0g0-id/shared": "*",
-    "hono": "^4.12.15"
+    "hono": "4.13.5"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.33.2",
@@ -22,9 +22,7 @@
     "happy-dom": "^20.9.0",
     "tsx": "^4.19.2",
     "typescript": "^6.0.3",
-    "vite": "npm:@voidzero-dev/vite-plus-core@latest",
-    "vite-plus": "^0.1.19",
-    "vitest": "npm:@voidzero-dev/vite-plus-test@latest",
+    "vite-plus": "0.1.24",
     "wrangler": "^4.85.0"
   }
 }
