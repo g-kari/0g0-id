@@ -103,7 +103,17 @@ cd workers/admin/frontend && npm run build
 - `vp check` — lint + format + typecheck
 - `vp test run` — 全テスト
 
+CI の `check` / `audit` ジョブでは、依存インストール前にルート `package.json` の
+`packageManager` で指定された npm をセットアップします。Node.js に同梱された npm の
+バージョンだけでは、コミット済み lockfile と異なる依存解決になる場合があるためです。
+
 ローカルで通っても CI で fail する場合があるため、PR 作成後は CI 結果も確認してください。
+
+#### CI 変更記録（2026-09-30）
+
+- `check` / `audit` の npm を `packageManager` の指定に統一し、frontend の clean install が
+  `Missing: typescript@5.9.3 from lock file` で停止する問題を修正しました
+- アプリの依存バージョン・lockfile・認証処理・デプロイ設定に変更はありません
 
 ---
 

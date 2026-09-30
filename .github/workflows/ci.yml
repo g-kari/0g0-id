@@ -26,6 +26,11 @@ jobs:
           node-version: "22"
           cache: "npm"
 
+      - name: packageManager に合わせて npm をセットアップ
+        run: |
+          npm install --global "$(node -p 'require("./package.json").packageManager')"
+          npm --version
+
       - name: 依存パッケージインストール（ルートワークスペース）
         run: npm ci
 
@@ -66,6 +71,11 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
+
+      - name: packageManager に合わせて npm をセットアップ
+        run: |
+          npm install --global "$(node -p 'require("./package.json").packageManager')"
+          npm --version
 
       - name: 依存パッケージインストール（ルートワークスペース）
         run: npm ci
