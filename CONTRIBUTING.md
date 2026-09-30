@@ -106,6 +106,8 @@ cd workers/admin/frontend && npm run build
 CI の `check` / `audit` ジョブでは、依存インストール前にルート `package.json` の
 `packageManager` で指定された npm をセットアップします。Node.js に同梱された npm の
 バージョンだけでは、コミット済み lockfile と異なる依存解決になる場合があるためです。
+`check` / `test` はインストール済みの `./node_modules/.bin/vp` を使用し、グローバル CLI の
+配置先やバージョンに依存しません。
 
 ローカルで通っても CI で fail する場合があるため、PR 作成後は CI 結果も確認してください。
 
@@ -113,6 +115,8 @@ CI の `check` / `audit` ジョブでは、依存インストール前にルー�
 
 - `check` / `audit` の npm を `packageManager` の指定に統一し、frontend の clean install が
   `Missing: typescript@5.9.3 from lock file` で停止する問題を修正しました
+- `check` / `test` は lockfile の Vite+ を直接使用し、グローバル CLI の配置先変更による
+  `vp: command not found` を回避しました
 - アプリの依存バージョン・lockfile・認証処理・デプロイ設定に変更はありません
 
 ---

@@ -45,10 +45,10 @@ jobs:
         working-directory: workers/admin/frontend
 
       - name: check（lint + fmt + typecheck）
-        run: vp check
+        run: ./node_modules/.bin/vp check
 
       - name: テスト実行
-        run: vp test run
+        run: ./node_modules/.bin/vp test run
 
       - name: フロントエンドビルド検証（user）
         run: npm run build
