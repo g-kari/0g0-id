@@ -145,6 +145,29 @@ CI の `check` / `audit` ジョブでは、依存インストール前にルー�
   frontend の high / critical を解消しても moderate が残り、root の Miniflare / Sharp /
   Undici / ws の high は別対応が必要です。audit 閾値を維持し、draft のまま最終 CI を確認します
 
+#### Cloudflare 開発依存更新記録（2026-10-01）
+
+- 4 Worker の `@cloudflare/vite-plugin` を `1.62.1`、Wrangler を `4.143.1` に固定します。
+  既知の Sharp / Undici / ws advisory をすべて修正する最小の公式 stable 親リリースです。
+  親が指定する Miniflare `5.20260926.1-alpha`、Sharp `0.35.4`、Undici `7.29.1`、
+  ws `8.21.0` と workerd `1.20260926.1` を使用し、親の固定依存を越える override は追加しません。
+- Miniflare 5 の alpha 表記は今後の設定 API 変更に備えた上流方針です。直接 Miniflare を使う場合は
+  persistence / config / fetch mock 等の破壊的変更がありますが、本リポジトリは公式親の
+  v4 設定変換を使います。既存の個人ローカル状態の移行は実行せず、使い捨て状態で検証します。
+  Wrangler / Miniflare の Node 要件は `22.0.0` 以上で、既存 frontend の `22.19.0` 要件を維持します。
+- Node 22 の scripts 有効 frozen install、通常 check / 全 3369 テスト、4 Worker bundle、
+  両 frontend の各 8 ページ build、4 Worker の upload なし dry-run と Miniflare の
+  HTTP / stream / WebSocket / D1 / KV / service binding / PNG・AVIF / 再起動を確認します。
+  通常の Vite dev 起動は、このクラウド環境の `uv_interface_addresses` 制限により旧依存・候補とも
+  停止しました。上記検証は通常 dev 起動や実ブラウザ操作、本番認証 smoke の合格を意味しません。
+- root audit は high / critical 0 になっても moderate / low が残ります。audit 閾値は変更せず、
+  最終 exact-head CI、独立レビューと未検証項目の判断が完了するまで draft / unmerged を維持します。
+
+上流根拠: [Wrangler 4.143.1](https://github.com/cloudflare/workers-sdk/releases/tag/wrangler%404.143.1)、
+[Vite plugin 1.62.1](https://github.com/cloudflare/workers-sdk/releases/tag/%40cloudflare%2Fvite-plugin%401.62.1)、
+[Miniflare 設定変換](https://github.com/cloudflare/workers-sdk/pull/14994)、
+[alpha 表記の維持理由](https://github.com/cloudflare/workers-sdk/pull/15551)。
+
 ---
 
 ## 3. 新規 API 追加時の整備手順
