@@ -131,6 +131,20 @@ CI の `check` / `audit` ジョブでは、依存インストール前にルー�
   Sharp / Undici / ws、別 lockfile の Astro frontend には high / critical が残るため、
   audit の閾値を維持し、draft のまま残存依存への対応と最終 CI を確認します
 
+#### Astro frontend 依存更新記録（2026-10-01）
+
+- user / admin の Astro を最低修正版 `7.2.8` に固定し、必要な transitive 依存を
+  Vite `8.0.16`、PostCSS `8.5.18`、Nanoid `3.3.18`、devalue `5.8.1`、
+  js-yaml `4.3.2`、smol-toml `1.7.1`、SVGO `4.1.0`、Sharp `0.35.4` に限定しました
+- 固定した frontend 依存は Node.js `22.19.0` 以上が必要です（Astro 7 自体は `22.12.0`、
+  unifont 経由の Undici `8.11.2` は `22.19.0`）。Rust compiler と JSX whitespace の変更を伴うため、
+  両 frontend の scripts 有効 clean install、各 8 ページ static build、
+  元の DOM / 操作要素 / script の比較と、root の通常チェック・全テストを確認します
+- shared Astro config に `compressHTML: true` を明示し、従来の HTML whitespace を維持します。
+  frontend source、認証処理、Worker 設定、root の固定依存は変更しません。
+  frontend の high / critical を解消しても moderate が残り、root の Miniflare / Sharp /
+  Undici / ws の high は別対応が必要です。audit 閾値を維持し、draft のまま最終 CI を確認します
+
 ---
 
 ## 3. 新規 API 追加時の整備手順
