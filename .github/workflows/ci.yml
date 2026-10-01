@@ -58,6 +58,12 @@ jobs:
         run: npm run build
         working-directory: workers/admin/frontend
 
+      - name: Cloudflare 実アプリ統合スモーク（ローカル・使い捨て状態）
+        timeout-minutes: 8
+        run: |
+          ./node_modules/.bin/vp exec tsx scripts/ci-app-smoke.ts --self-test
+          ./node_modules/.bin/vp exec tsx scripts/ci-app-smoke.ts
+
   audit:
     name: npm audit（脆弱性チェック）
     runs-on: ubuntu-latest
