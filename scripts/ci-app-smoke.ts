@@ -20,7 +20,7 @@ import {
 } from "node:fs/promises";
 import http from "node:http";
 import https from "node:https";
-import { syncBuiltinESMExports } from "node:module";
+import { createRequire, syncBuiltinESMExports } from "node:module";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -157,6 +157,27 @@ function outboundGuard(entry: string): Plugin {
       return guardWorkerSource(code);
     },
   };
+}
+/** Wrangler's unexpected-config-field warning also performs an npm version
+ * lookup. Its bundled update-check cache avoids that ancillary request for one
+ * hour. Seed only this disposable process's cache with its installed version;
+ * this is an offline fixture, not a claim about the npm registry's latest tag.
+ * Config warnings/validation and every network rejection remain enabled.
+ */
+async function prepareOfflineWranglerUpdateCache(state: string): Promise<void> {
+  const installed = JSON.parse(
+    await readFile(createRequire(import.meta.url).resolve("wrangler/package.json"), "utf8"),
+  ) as { name: string; version: string };
+  assert.equal(installed.name, "wrangler");
+  assert.match(installed.version, /^\d+\.\d+\.\d+(?:[-+].*)?$/);
+  const directory = process.env.TMPDIR;
+  assert.ok(directory && path.resolve(directory).startsWith(`${state}${path.sep}`));
+  const cache = path.join(directory, "update-check");
+  await mkdir(cache, { recursive: true });
+  await writeFile(
+    path.join(cache, "wrangler-latest.json"),
+    JSON.stringify({ latest: installed.version, lastUpdate: Date.now() }),
+  );
 }
 function ok(label: string): void {
   assert.equal(denied, 0, "Node outbound request attempted");
@@ -594,6 +615,7 @@ async function runViteChild(): Promise<void> {
   process.env.XDG_CONFIG_HOME = path.join(state, "config", worker, mode);
   process.env.TMPDIR = path.join(state, "tmp", worker, mode);
   await mkdir(process.env.TMPDIR, { recursive: true });
+  await prepareOfflineWranglerUpdateCache(state);
   installNetworkGuard(state);
   const { createServer, createBuilder, createLogger } = await import("vite-plus");
   const logger = createLogger();
@@ -701,6 +723,7 @@ async function main(): Promise<void> {
       )
         delete process.env[key];
     await mkdir(process.env.TMPDIR, { recursive: true });
+    await prepareOfflineWranglerUpdateCache(state);
     installNetworkGuard(state);
     const { generateKeyPair, exportPKCS8, exportSPKI } = await import("jose");
     const keys = await generateKeyPair("ES256", { extractable: true });
