@@ -386,6 +386,7 @@ type ViteChild = {
   worker: (typeof workers)[number];
   mode: "dev" | "build";
   closing: boolean;
+  closeComplete: boolean;
 };
 /** Cloudflare's plugin keeps module-global dev state. Each real Vite project
  * must run in its own process, as the repository's separate dev commands do.
@@ -409,7 +410,7 @@ async function startViteChild(
       stdio: ["ignore", "pipe", "pipe", "ipc"],
     },
   );
-  const managed: ViteChild = { child, worker, mode, closing: false };
+  const managed: ViteChild = { child, worker, mode, closing: false, closeComplete: false };
   children.push(managed);
   for (const [stream, output] of [
     [child.stdout, process.stdout],
@@ -432,6 +433,10 @@ async function startViteChild(
         console.error(`[app-smoke] ${worker} ${mode} subprocess rejected egress`);
         if ("diagnostic" in message && typeof message.diagnostic === "string")
           console.error(message.diagnostic);
+      }
+      if (message.type === "closed" && "worker" in message && message.worker === worker) {
+        if (managed.closing && mode === "dev") managed.closeComplete = true;
+        else childFailure = new Error(`${worker} ${mode} sent an unexpected close acknowledgement`);
       }
       if (message.type === "ready" && "worker" in message && message.worker === worker) {
         ready = true;
@@ -476,6 +481,10 @@ async function stopViteChildren(children: ViteChild[]): Promise<void> {
           throw new Error(
             `${managed.worker} Vite process failed before cleanup (${child.exitCode ?? child.signalCode})`,
           );
+        if (managed.mode === "dev" && !managed.closeComplete)
+          throw new Error(
+            `${managed.worker} Vite process exited without native-close acknowledgement`,
+          );
         return;
       }
       await new Promise<void>((resolve, reject) => {
@@ -492,35 +501,80 @@ async function stopViteChildren(children: ViteChild[]): Promise<void> {
           clearTimeout(terminate);
           clearTimeout(kill);
           if (forced)
-            reject(new Error(`${managed.worker} Vite shutdown required forced termination`));
+            reject(
+              new Error(
+                `${managed.worker} Vite shutdown required forced termination (native close acknowledged: ${managed.closeComplete})`,
+              ),
+            );
           else if (code !== 0 || signal !== null)
             reject(new Error(`${managed.worker} Vite shutdown failed (${code ?? signal})`));
+          else if (managed.mode === "dev" && !managed.closeComplete)
+            reject(
+              new Error(
+                `${managed.worker} Vite shutdown exited without native-close acknowledgement`,
+              ),
+            );
           else resolve();
         });
         if (child.connected)
           child.send({ type: "close" }, (error) => {
-            if (error) child.kill("SIGTERM");
+            if (error) {
+              forced = true;
+              child.kill("SIGTERM");
+            }
           });
-        else child.kill("SIGTERM");
+        else {
+          forced = true;
+          child.kill("SIGTERM");
+        }
       });
     }),
   );
   const failures = results.filter((result) => result.status === "rejected");
-  if (failures.length)
+  if (failures.length) {
+    for (const failure of failures)
+      console.error("[app-smoke] Vite cleanup failure", failure.reason);
     throw new AggregateError(
       failures.map((result) => result.reason),
       "Vite subprocess cleanup failed",
     );
+  }
+}
+/** Vite's CLI awaits server.close(), then exits explicitly. An IPC acknowledgement
+ * proves the native close resolved before exit; retained tool handles must not
+ * turn a completed close into a natural-event-loop-drain timeout. Native close
+ * failures, blocked requests, missing acknowledgements and forced kills fail.
+ */
+async function finishDevChild(worker: string): Promise<never> {
+  assert.equal(denied, 0, "Child outbound request attempted during native close");
+  assert.equal(process.exitCode ?? 0, 0, "Child failed before native-close acknowledgement");
+  assert.ok(process.connected, "Native close requires its parent IPC acknowledgement");
+  await new Promise<void>((resolve, reject) =>
+    process.send?.({ type: "closed", worker }, (error) => (error ? reject(error) : resolve())),
+  );
+  await Promise.all(
+    [process.stdout, process.stderr].map(
+      (stream) =>
+        new Promise<void>((resolve, reject) =>
+          stream.write("", (error) => (error ? reject(error) : resolve())),
+        ),
+    ),
+  );
+  process.disconnect();
+  process.exit(0);
 }
 /** Transport-only controls; never start a Vite server or mock an app response. */
 async function runProcessProbe(): Promise<void> {
   assert.ok(process.connected, "Internal process probe requires its parent IPC channel");
   const worker = process.argv[process.argv.indexOf("--process-probe") + 1];
   let failOnClose = false;
+  let omitAcknowledgement = false;
+  let ignoreClose = false;
   await new Promise<void>((resolve) => {
     process.on("message", (message: unknown) => {
       if (!message || typeof message !== "object" || !("type" in message)) return;
       if (message.type === "close") {
+        if (ignoreClose) return;
         if (failOnClose) process.exitCode = 1;
         resolve();
       }
@@ -535,6 +589,16 @@ async function runProcessProbe(): Promise<void> {
         failOnClose = true;
         process.send?.({ type: "probe-close-armed" });
       }
+      if (message.type === "probe-close-without-ack" || message.type === "probe-force-close") {
+        omitAcknowledgement = message.type === "probe-close-without-ack";
+        ignoreClose = message.type === "probe-force-close";
+        process.send?.({ type: "probe-close-armed" });
+      }
+      if (message.type === "probe-retain-handle") {
+        // A pure transport fixture retains a timer after its simulated close.
+        setInterval(() => {}, 60_000);
+        process.send?.({ type: "probe-close-armed" });
+      }
       if (message.type === "probe-fail") {
         process.exitCode = 9;
         resolve();
@@ -544,15 +608,19 @@ async function runProcessProbe(): Promise<void> {
     process.once("SIGTERM", resolve);
     process.send?.({ type: "ready", worker });
   });
-  if (process.connected) process.disconnect();
+  if (omitAcknowledgement || process.exitCode) {
+    if (process.connected) process.disconnect();
+    return;
+  }
+  await finishDevChild(worker);
 }
 async function processSelfTest(state: string): Promise<void> {
   const root = path.join(state, "checkout");
   const children: ViteChild[] = [];
-  for (const worker of ["id", "user", "admin"] as const)
+  for (const worker of workers)
     await mkdir(path.join(root, "workers", worker), { recursive: true });
   try {
-    for (const worker of ["id", "user", "admin"] as const)
+    for (const worker of [...workers, "mcp"] as const)
       await startViteChild(
         "dev",
         worker,
@@ -584,23 +652,45 @@ async function processSelfTest(state: string): Promise<void> {
     );
     children[1].child.send({ type: "probe-close-fail" });
     await armed;
+    for (const [index, type] of [
+      [2, "probe-retain-handle"],
+      [3, "probe-close-without-ack"],
+      [4, "probe-force-close"],
+    ] as const) {
+      const prepared = new Promise<void>((resolve) =>
+        children[index].child.once("message", () => resolve()),
+      );
+      children[index].child.send({ type });
+      await prepared;
+    }
   } finally {
     await assert.rejects(stopViteChildren(children), (error: unknown) => {
       assert.ok(error instanceof AggregateError);
       assert.equal(
         error.errors.length,
-        2,
-        "Already-failed and failed-shutdown probes must both be rejected",
+        4,
+        "Failed exit, failed shutdown, missing acknowledgement and forced termination must all be rejected",
       );
+      assert.ok(
+        error.errors.some((failure) =>
+          /without native-close acknowledgement/.test(String(failure)),
+        ),
+      );
+      assert.ok(error.errors.some((failure) => /forced termination/.test(String(failure))));
       return true;
     });
     assert.equal(children[2].child.exitCode, 0, "Normal shutdown control must exit successfully");
+    assert.equal(
+      children[2].closeComplete,
+      true,
+      "Success requires the close acknowledgement even with a retained handle",
+    );
     // Reset intentional negative controls only in this transport self-test.
     workerDenied = false;
     childFailure = undefined;
   }
   ok(
-    "separate subprocess identities, ready/blocked/failure IPC, shutdown error rejection and successful close (no Vite/app started)",
+    "separate subprocesses, guard/error IPC, acknowledged close with retained handle, missing-ack and forced-termination rejection (no Vite/app started)",
   );
 }
 async function runViteChild(): Promise<void> {
@@ -670,9 +760,11 @@ async function runViteChild(): Promise<void> {
     process.send?.({ type: "ready", worker });
     await stop;
   } finally {
+    console.log(`[app-smoke] ${worker} dev awaiting native server.close()`);
     await server?.close();
-    if (process.connected) process.disconnect();
+    console.log(`[app-smoke] ${worker} dev native server.close() resolved`);
   }
+  await finishDevChild(worker);
 }
 async function completeCleanup(
   failures: unknown[],
@@ -900,9 +992,6 @@ async function main(): Promise<void> {
     await applicationCases(harness, env);
     workerDenied ||= JSON.stringify(harness.getLogs()).includes(marker);
     ok("no unexpected Node/Worker external request attempted");
-    console.log(
-      `[app-smoke] ${checks} checks passed; disposable local runtime only; asset fixtures do not prove production rollout`,
-    );
   } catch (error) {
     failures.push(error);
   } finally {
@@ -923,6 +1012,9 @@ async function main(): Promise<void> {
       },
     ]);
   }
+  console.log(
+    `[app-smoke] ${checks} checks and native-close acknowledgements passed; disposable local runtime only; asset fixtures do not prove production rollout`,
+  );
 }
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 type FixtureUser = { id: string; email: string; name: string; role: "user" | "admin" };
