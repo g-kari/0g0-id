@@ -10,6 +10,8 @@ jobs:
   check:
     name: lint・fmt・型チェック・テスト
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: チェックアウト
@@ -57,6 +59,25 @@ jobs:
       - name: フロントエンドビルド検証（admin）
         run: npm run build
         working-directory: workers/admin/frontend
+
+      - name: プロフィール復旧 UI（合成データ・外部通信遮断）
+        timeout-minutes: 5
+        run: |
+          tools="$(mktemp -d)"
+          npm install --prefix "$tools" --no-package-lock --ignore-scripts @playwright/test@1.57.0
+          "$tools/node_modules/.bin/playwright" install --with-deps chromium
+          PROFILE_RECOVERY_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
+            PROFILE_RECOVERY_REPORT_DIR="$RUNNER_TEMP/profile-recovery-ui" \
+            node scripts/profile-recovery-browser-smoke.mjs
+
+      - name: プロフィール復旧 UI の検証記録
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: profile-recovery-ui
+          path: ${{ runner.temp }}/profile-recovery-ui
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: Cloudflare 実アプリ統合スモーク（ローカル・使い捨て状態）
         timeout-minutes: 8
