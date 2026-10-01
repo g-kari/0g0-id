@@ -46,9 +46,12 @@ let checks = 0;
 let childFailure: Error | undefined;
 const childModeIndex = process.argv.indexOf("--vite-worker");
 const processProbe = process.argv.includes("--process-probe");
-function blockedChildRequest(): void {
+function blockedChildRequest(error?: Error): void {
   if ((childModeIndex >= 0 || processProbe) && process.connected)
-    process.send?.({ type: "blocked-egress" });
+    process.send?.({
+      type: "blocked-egress",
+      diagnostic: error?.stack ?? "Worker guard marker observed by Vite logger",
+    });
 }
 
 function loopback(host: string): boolean {
@@ -56,8 +59,9 @@ function loopback(host: string): boolean {
 }
 function block(destination: string): never {
   denied++;
-  blockedChildRequest();
-  throw new Error(`${marker}: ${destination}`);
+  const error = new Error(`${marker}: ${destination}`);
+  blockedChildRequest(error);
+  throw error;
 }
 function allowUrl(input: string | URL): void {
   const url = new URL(input);
@@ -83,7 +87,7 @@ function installNetworkGuard(stateRoot: string): void {
         const options = arg as { hostname?: string; host?: string; socketPath?: string };
         if (options.socketPath) {
           if (!path.resolve(options.socketPath).startsWith(`${stateRoot}${path.sep}`))
-            block("non-fixture Unix socket");
+            block(`non-fixture Unix socket: ${path.resolve(options.socketPath)}`);
         } else if (!loopback(options.hostname ?? options.host ?? "localhost"))
           block(options.hostname ?? options.host ?? "unknown");
       }
@@ -112,14 +116,14 @@ function installNetworkGuard(stateRoot: string): void {
         const first = values[0];
         if (typeof first === "string") {
           if (!path.resolve(first).startsWith(`${stateRoot}${path.sep}`))
-            block("non-fixture Unix socket");
+            block(`non-fixture Unix socket: ${path.resolve(first)}`);
         } else if (typeof first === "number") {
           if (typeof values[1] === "string" && !loopback(values[1])) block(values[1]);
         } else if (first !== null && typeof first === "object") {
           const options = first as { host?: string; path?: string };
           if (options.path) {
             if (!path.resolve(options.path).startsWith(`${stateRoot}${path.sep}`))
-              block("non-fixture Unix socket");
+              block(`non-fixture Unix socket: ${path.resolve(options.path)}`);
           } else if (!loopback(options.host ?? "localhost")) block(options.host ?? "unknown");
         } else block("unrecognized TCP destination");
         return Reflect.apply(target, receiver, args) as net.Socket;
@@ -309,6 +313,28 @@ async function selfTest(state: string, pure = false): Promise<void> {
   for (const url of ["http://127.0.0.1:8951", "http://localhost:8952", "http://[::1]:8953"])
     allowUrl(url);
   await processSelfTest(state);
+  const originalFailure = new Error("original smoke failure");
+  const cleanupFailure = new Error("cleanup failure");
+  let lastCleanupRan = false;
+  await assert.rejects(
+    completeCleanup(
+      [originalFailure],
+      [
+        () => {
+          throw cleanupFailure;
+        },
+        () => {
+          lastCleanupRan = true;
+        },
+      ],
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof AggregateError);
+      assert.deepEqual(error.errors, [originalFailure, cleanupFailure]);
+      return true;
+    },
+  );
+  assert.equal(lastCleanupRan, true, "Cleanup must continue after an earlier cleanup error");
   if (pure) {
     ok(
       "pure Node/Worker guards, argument forwarding, loopback classification and exact session-cookie assertions (no server started)",
@@ -380,7 +406,12 @@ async function startViteChild(
     );
     child.on("message", (message: unknown) => {
       if (!message || typeof message !== "object" || !("type" in message)) return;
-      if (message.type === "blocked-egress") workerDenied = true;
+      if (message.type === "blocked-egress") {
+        workerDenied = true;
+        console.error(`[app-smoke] ${worker} ${mode} subprocess rejected egress`);
+        if ("diagnostic" in message && typeof message.diagnostic === "string")
+          console.error(message.diagnostic);
+      }
       if (message.type === "ready" && "worker" in message && message.worker === worker) {
         ready = true;
         if (mode === "dev") {
@@ -516,11 +547,12 @@ async function processSelfTest(state: string): Promise<void> {
       children[1].child.pid,
       "Each Vite project requires a distinct process",
     );
-    const blocked = new Promise<void>((resolve) =>
-      children[1].child.once("message", () => resolve()),
-    );
+    const blocked = new Promise<unknown>((resolve) => children[1].child.once("message", resolve));
     children[1].child.send({ type: "probe-block" });
-    await blocked;
+    const diagnostic = (await blocked) as { type: string; diagnostic: string };
+    assert.equal(diagnostic.type, "blocked-egress");
+    assert.match(diagnostic.diagnostic, /CI_SMOKE_BLOCKED_EGRESS: intentional pure process probe/);
+    assert.match(diagnostic.diagnostic, /at block/);
     assert.equal(workerDenied, true, "Caught child rejection must reach parent");
     const exited = new Promise<void>((resolve) => children[0].child.once("exit", () => resolve()));
     children[0].child.send({ type: "probe-fail" });
@@ -620,11 +652,24 @@ async function runViteChild(): Promise<void> {
     if (process.connected) process.disconnect();
   }
 }
+async function completeCleanup(
+  failures: unknown[],
+  operations: (() => void | Promise<void>)[],
+): Promise<void> {
+  for (const operation of operations)
+    try {
+      await operation();
+    } catch (error) {
+      failures.push(error);
+    }
+  if (failures.length) throw new AggregateError(failures, "Application smoke or cleanup failed");
+}
 async function main(): Promise<void> {
   const state = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? tmpdir(), "0g0-app-smoke-"));
   const children: ViteChild[] = [];
   let harness: TestHarness | undefined;
   const oldCwd = process.cwd();
+  const failures: unknown[] = [];
   const timer = setTimeout(() => {
     console.error("[app-smoke] exceeded six-minute deadline");
     process.exit(1);
@@ -835,21 +880,25 @@ async function main(): Promise<void> {
     console.log(
       `[app-smoke] ${checks} checks passed; disposable local runtime only; asset fixtures do not prove production rollout`,
     );
+  } catch (error) {
+    failures.push(error);
   } finally {
-    process.chdir(oldCwd);
-    try {
-      await harness?.close();
-    } finally {
-      try {
-        await stopViteChildren(children);
-      } finally {
-        await rm(state, { recursive: true, force: true });
-        clearTimeout(timer);
-      }
-      assert.equal(denied, 0, "Node outbound request attempted during cleanup");
-      assert.equal(workerDenied, false, "Worker/subprocess outbound request attempted");
-      assert.equal(childFailure, undefined, "Vite subprocess failed");
-    }
+    // Preserve the application/guard error while still completing every cleanup
+    // operation. A cleanup assertion must not replace the original diagnostic.
+    await completeCleanup(failures, [
+      () => process.chdir(oldCwd),
+      async () => {
+        await harness?.close();
+      },
+      () => stopViteChildren(children),
+      () => rm(state, { recursive: true, force: true }),
+      () => clearTimeout(timer),
+      () => {
+        assert.equal(denied, 0, "Node outbound request attempted during cleanup");
+        assert.equal(workerDenied, false, "Worker/subprocess outbound request attempted");
+        assert.equal(childFailure, undefined, "Vite subprocess failed");
+      },
+    ]);
   }
 }
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
