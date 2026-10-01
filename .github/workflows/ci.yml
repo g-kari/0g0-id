@@ -26,6 +26,11 @@ jobs:
           node-version: "22"
           cache: "npm"
 
+      - name: packageManager に合わせて npm をセットアップ
+        run: |
+          npm install --global "$(node -p 'require("./package.json").packageManager')"
+          npm --version
+
       - name: 依存パッケージインストール（ルートワークスペース）
         run: npm ci
 
@@ -40,10 +45,10 @@ jobs:
         working-directory: workers/admin/frontend
 
       - name: check（lint + fmt + typecheck）
-        run: vp check
+        run: ./node_modules/.bin/vp check
 
       - name: テスト実行
-        run: vp test run
+        run: ./node_modules/.bin/vp test run
 
       - name: フロントエンドビルド検証（user）
         run: npm run build
@@ -52,6 +57,12 @@ jobs:
       - name: フロントエンドビルド検証（admin）
         run: npm run build
         working-directory: workers/admin/frontend
+
+      - name: Cloudflare 実アプリ統合スモーク（ローカル・使い捨て状態）
+        timeout-minutes: 8
+        run: |
+          ./node_modules/.bin/vp exec tsx scripts/ci-app-smoke.ts --self-test
+          ./node_modules/.bin/vp exec tsx scripts/ci-app-smoke.ts
 
   audit:
     name: npm audit（脆弱性チェック）
@@ -66,6 +77,11 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
+
+      - name: packageManager に合わせて npm をセットアップ
+        run: |
+          npm install --global "$(node -p 'require("./package.json").packageManager')"
+          npm --version
 
       - name: 依存パッケージインストール（ルートワークスペース）
         run: npm ci

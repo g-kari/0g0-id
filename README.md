@@ -51,7 +51,7 @@ mcp.0g0.xyz   — MCP Worker（Claude Code連携）
 
 ## 動作要件
 
-- **Node.js**: v20.x 以上（LTS 推奨）
+- **Node.js**: v22.19.0 以上（Astro 7 frontend の固定依存を含む要件。CI は v22.x）
 - **npm**: v11.x 以上（`packageManager` フィールドで `npm@11.12.1` に固定）
 
 ## セットアップ

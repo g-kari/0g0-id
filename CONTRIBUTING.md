@@ -103,7 +103,70 @@ cd workers/admin/frontend && npm run build
 - `vp check` — lint + format + typecheck
 - `vp test run` — 全テスト
 
+CI の `check` / `audit` ジョブでは、依存インストール前にルート `package.json` の
+`packageManager` で指定された npm をセットアップします。Node.js に同梱された npm の
+バージョンだけでは、コミット済み lockfile と異なる依存解決になる場合があるためです。
+`check` / `test` はインストール済みの `./node_modules/.bin/vp` を使用し、グローバル CLI の
+配置先やバージョンに依存しません。
+
 ローカルで通っても CI で fail する場合があるため、PR 作成後は CI 結果も確認してください。
+
+#### CI 変更記録（2026-09-30）
+
+- `check` / `audit` の npm を `packageManager` の指定に統一し、frontend の clean install が
+  `Missing: typescript@5.9.3 from lock file` で停止する問題を修正しました
+- `check` / `test` は lockfile の Vite+ を直接使用し、グローバル CLI の配置先変更による
+  `vp: command not found` を回避しました
+- アプリの依存バージョン・lockfile・認証処理・デプロイ設定に変更はありません
+
+#### 依存更新記録（2026-09-30）
+
+- Vite+ と core/test の root override を `0.1.24` に固定し、npm で重複する
+  workspace の直接 `vite` / `vitest` alias を削除しました。テストの import は
+  `vite-plus/test` に統一します
+- Hono を `4.13.5`、既存の Vite peer を `8.0.16` に更新し、互換 range 内で
+  PostCSS `8.5.18` / Nanoid `3.3.18` を固定しました。toolchain 更新時は
+  Vite+ と core/test を同じリリースにそろえ、宣言された npm で clean install を確認します
+- root の Vite+ / Hono / Vite / Nanoid の既知 advisory を修正します。Miniflare 由来の
+  Sharp / Undici / ws、別 lockfile の Astro frontend には high / critical が残るため、
+  audit の閾値を維持し、draft のまま残存依存への対応と最終 CI を確認します
+
+#### Astro frontend 依存更新記録（2026-10-01）
+
+- user / admin の Astro を最低修正版 `7.2.8` に固定し、必要な transitive 依存を
+  Vite `8.0.16`、PostCSS `8.5.18`、Nanoid `3.3.18`、devalue `5.8.1`、
+  js-yaml `4.3.2`、smol-toml `1.7.1`、SVGO `4.1.0`、Sharp `0.35.4` に限定しました
+- 固定した frontend 依存は Node.js `22.19.0` 以上が必要です（Astro 7 自体は `22.12.0`、
+  unifont 経由の Undici `8.11.2` は `22.19.0`）。Rust compiler と JSX whitespace の変更を伴うため、
+  両 frontend の scripts 有効 clean install、各 8 ページ static build、
+  元の DOM / 操作要素 / script の比較と、root の通常チェック・全テストを確認します
+- shared Astro config に `compressHTML: true` を明示し、従来の HTML whitespace を維持します。
+  frontend source、認証処理、Worker 設定、root の固定依存は変更しません。
+  frontend の high / critical を解消しても moderate が残り、root の Miniflare / Sharp /
+  Undici / ws の high は別対応が必要です。audit 閾値を維持し、draft のまま最終 CI を確認します
+
+#### Cloudflare 開発依存更新記録（2026-10-01）
+
+- 4 Worker の `@cloudflare/vite-plugin` を `1.62.1`、Wrangler を `4.143.1` に固定します。
+  既知の Sharp / Undici / ws advisory をすべて修正する最小の公式 stable 親リリースです。
+  親が指定する Miniflare `5.20260926.1-alpha`、Sharp `0.35.4`、Undici `7.29.1`、
+  ws `8.21.0` と workerd `1.20260926.1` を使用し、親の固定依存を越える override は追加しません。
+- Miniflare 5 の alpha 表記は今後の設定 API 変更に備えた上流方針です。直接 Miniflare を使う場合は
+  persistence / config / fetch mock 等の破壊的変更がありますが、本リポジトリは公式親の
+  v4 設定変換を使います。既存の個人ローカル状態の移行は実行せず、使い捨て状態で検証します。
+  Wrangler / Miniflare の Node 要件は `22.0.0` 以上で、既存 frontend の `22.19.0` 要件を維持します。
+- Node 22 の scripts 有効 frozen install、通常 check / 全 3369 テスト、4 Worker bundle、
+  両 frontend の各 8 ページ build、4 Worker の upload なし dry-run と Miniflare の
+  HTTP / stream / WebSocket / D1 / KV / service binding / PNG・AVIF / 再起動を確認します。
+  通常の Vite dev 起動は、このクラウド環境の `uv_interface_addresses` 制限により旧依存・候補とも
+  停止しました。上記検証は通常 dev 起動や実ブラウザ操作、本番認証 smoke の合格を意味しません。
+- root audit は high / critical 0 になっても moderate / low が残ります。audit 閾値は変更せず、
+  最終 exact-head CI、独立レビューと未検証項目の判断が完了するまで draft / unmerged を維持します。
+
+上流根拠: [Wrangler 4.143.1](https://github.com/cloudflare/workers-sdk/releases/tag/wrangler%404.143.1)、
+[Vite plugin 1.62.1](https://github.com/cloudflare/workers-sdk/releases/tag/%40cloudflare%2Fvite-plugin%401.62.1)、
+[Miniflare 設定変換](https://github.com/cloudflare/workers-sdk/pull/14994)、
+[alpha 表記の維持理由](https://github.com/cloudflare/workers-sdk/pull/15551)。
 
 ---
 
