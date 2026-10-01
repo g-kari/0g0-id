@@ -5,6 +5,7 @@
  * production asset rollout (the generated id config currently omits assets).
  */
 import assert from "node:assert/strict";
+import { fork, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   cp,
@@ -42,12 +43,20 @@ const marker = "CI_SMOKE_BLOCKED_EGRESS";
 let denied = 0;
 let workerDenied = false;
 let checks = 0;
+let childFailure: Error | undefined;
+const childModeIndex = process.argv.indexOf("--vite-worker");
+const processProbe = process.argv.includes("--process-probe");
+function blockedChildRequest(): void {
+  if ((childModeIndex >= 0 || processProbe) && process.connected)
+    process.send?.({ type: "blocked-egress" });
+}
 
 function loopback(host: string): boolean {
   return ["127.0.0.1", "::1", "[::1]", "localhost"].includes(host.toLowerCase());
 }
 function block(destination: string): never {
   denied++;
+  blockedChildRequest();
   throw new Error(`${marker}: ${destination}`);
 }
 function allowUrl(input: string | URL): void {
@@ -148,6 +157,7 @@ function outboundGuard(entry: string): Plugin {
 function ok(label: string): void {
   assert.equal(denied, 0, "Node outbound request attempted");
   assert.equal(workerDenied, false, "Worker outbound request attempted");
+  assert.equal(childFailure, undefined, "Vite subprocess failed");
   console.log(`[app-smoke] PASS ${++checks}: ${label}`);
 }
 async function response(url: string, status = 200): Promise<Response> {
@@ -298,6 +308,7 @@ async function selfTest(state: string, pure = false): Promise<void> {
   denied = 0;
   for (const url of ["http://127.0.0.1:8951", "http://localhost:8952", "http://[::1]:8953"])
     allowUrl(url);
+  await processSelfTest(state);
   if (pure) {
     ok(
       "pure Node/Worker guards, argument forwarding, loopback classification and exact session-cookie assertions (no server started)",
@@ -323,9 +334,295 @@ async function selfTest(state: string, pure = false): Promise<void> {
   }
 }
 
+type ViteChild = {
+  child: ChildProcess;
+  worker: (typeof workers)[number];
+  mode: "dev" | "build";
+  closing: boolean;
+};
+/** Cloudflare's plugin keeps module-global dev state. Each real Vite project
+ * must run in its own process, as the repository's separate dev commands do.
+ */
+async function startViteChild(
+  mode: "dev" | "build",
+  worker: (typeof workers)[number],
+  root: string,
+  state: string,
+  publicDir: string,
+  children: ViteChild[],
+  probe = false,
+): Promise<void> {
+  const child = fork(
+    fileURLToPath(import.meta.url),
+    probe ? ["--process-probe", worker] : ["--vite-worker", mode, worker, root, state, publicDir],
+    {
+      cwd: path.join(root, "workers", worker),
+      env: process.env,
+      execArgv: process.execArgv,
+      stdio: ["ignore", "pipe", "pipe", "ipc"],
+    },
+  );
+  const managed: ViteChild = { child, worker, mode, closing: false };
+  children.push(managed);
+  for (const [stream, output] of [
+    [child.stdout, process.stdout],
+    [child.stderr, process.stderr],
+  ] as const)
+    stream?.on("data", (chunk: Buffer) => {
+      output.write(chunk);
+      if (chunk.toString().includes(marker)) workerDenied = true;
+    });
+  await new Promise<void>((resolve, reject) => {
+    let ready = false;
+    const timer = setTimeout(
+      () => reject(new Error(`${worker} ${mode} subprocess did not become ready in time`)),
+      mode === "dev" ? 30_000 : 90_000,
+    );
+    child.on("message", (message: unknown) => {
+      if (!message || typeof message !== "object" || !("type" in message)) return;
+      if (message.type === "blocked-egress") workerDenied = true;
+      if (message.type === "ready" && "worker" in message && message.worker === worker) {
+        ready = true;
+        if (mode === "dev") {
+          clearTimeout(timer);
+          resolve();
+        }
+      }
+    });
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      childFailure = error;
+      reject(error);
+    });
+    child.once("exit", (code, signal) => {
+      if (!managed.closing && (mode === "dev" || code !== 0)) {
+        const error = new Error(
+          `${worker} ${mode} subprocess exited unexpectedly (${code ?? signal})`,
+        );
+        childFailure = error;
+        clearTimeout(timer);
+        reject(error);
+      }
+    });
+    child.once("close", (code) => {
+      clearTimeout(timer);
+      if (mode === "build") {
+        if (code === 0 && ready) resolve();
+        else reject(new Error(`${worker} build subprocess did not complete successfully`));
+      } else if (!ready && !managed.closing)
+        reject(new Error(`${worker} dev subprocess closed before readiness`));
+    });
+  });
+}
+async function stopViteChildren(children: ViteChild[]): Promise<void> {
+  const results = await Promise.allSettled(
+    children.map(async (managed) => {
+      managed.closing = true;
+      const { child } = managed;
+      if (child.exitCode !== null || child.signalCode !== null) {
+        if (child.exitCode !== 0 || child.signalCode !== null)
+          throw new Error(
+            `${managed.worker} Vite process failed before cleanup (${child.exitCode ?? child.signalCode})`,
+          );
+        return;
+      }
+      await new Promise<void>((resolve, reject) => {
+        let forced = false;
+        const terminate = setTimeout(() => {
+          forced = true;
+          child.kill("SIGTERM");
+        }, 5_000);
+        const kill = setTimeout(() => {
+          forced = true;
+          child.kill("SIGKILL");
+        }, 10_000);
+        child.once("close", (code, signal) => {
+          clearTimeout(terminate);
+          clearTimeout(kill);
+          if (forced)
+            reject(new Error(`${managed.worker} Vite shutdown required forced termination`));
+          else if (code !== 0 || signal !== null)
+            reject(new Error(`${managed.worker} Vite shutdown failed (${code ?? signal})`));
+          else resolve();
+        });
+        if (child.connected)
+          child.send({ type: "close" }, (error) => {
+            if (error) child.kill("SIGTERM");
+          });
+        else child.kill("SIGTERM");
+      });
+    }),
+  );
+  const failures = results.filter((result) => result.status === "rejected");
+  if (failures.length)
+    throw new AggregateError(
+      failures.map((result) => result.reason),
+      "Vite subprocess cleanup failed",
+    );
+}
+/** Transport-only controls; never start a Vite server or mock an app response. */
+async function runProcessProbe(): Promise<void> {
+  assert.ok(process.connected, "Internal process probe requires its parent IPC channel");
+  const worker = process.argv[process.argv.indexOf("--process-probe") + 1];
+  let failOnClose = false;
+  await new Promise<void>((resolve) => {
+    process.on("message", (message: unknown) => {
+      if (!message || typeof message !== "object" || !("type" in message)) return;
+      if (message.type === "close") {
+        if (failOnClose) process.exitCode = 1;
+        resolve();
+      }
+      if (message.type === "probe-block") {
+        try {
+          block("intentional pure process probe");
+        } catch {
+          /* Verify caught rejection still reaches parent. */
+        }
+      }
+      if (message.type === "probe-close-fail") {
+        failOnClose = true;
+        process.send?.({ type: "probe-close-armed" });
+      }
+      if (message.type === "probe-fail") {
+        process.exitCode = 9;
+        resolve();
+      }
+    });
+    process.once("disconnect", resolve);
+    process.once("SIGTERM", resolve);
+    process.send?.({ type: "ready", worker });
+  });
+  if (process.connected) process.disconnect();
+}
+async function processSelfTest(state: string): Promise<void> {
+  const root = path.join(state, "checkout");
+  const children: ViteChild[] = [];
+  for (const worker of ["id", "user", "admin"] as const)
+    await mkdir(path.join(root, "workers", worker), { recursive: true });
+  try {
+    for (const worker of ["id", "user", "admin"] as const)
+      await startViteChild(
+        "dev",
+        worker,
+        root,
+        state,
+        path.join(state, "public", worker),
+        children,
+        true,
+      );
+    assert.ok(children[0].child.pid && children[1].child.pid);
+    assert.notEqual(
+      children[0].child.pid,
+      children[1].child.pid,
+      "Each Vite project requires a distinct process",
+    );
+    const blocked = new Promise<void>((resolve) =>
+      children[1].child.once("message", () => resolve()),
+    );
+    children[1].child.send({ type: "probe-block" });
+    await blocked;
+    assert.equal(workerDenied, true, "Caught child rejection must reach parent");
+    const exited = new Promise<void>((resolve) => children[0].child.once("exit", () => resolve()));
+    children[0].child.send({ type: "probe-fail" });
+    await exited;
+    assert.ok(childFailure, "Unexpected child exit must fail parent controls");
+    const armed = new Promise<void>((resolve) =>
+      children[1].child.once("message", () => resolve()),
+    );
+    children[1].child.send({ type: "probe-close-fail" });
+    await armed;
+  } finally {
+    await assert.rejects(stopViteChildren(children), (error: unknown) => {
+      assert.ok(error instanceof AggregateError);
+      assert.equal(
+        error.errors.length,
+        2,
+        "Already-failed and failed-shutdown probes must both be rejected",
+      );
+      return true;
+    });
+    assert.equal(children[2].child.exitCode, 0, "Normal shutdown control must exit successfully");
+    // Reset intentional negative controls only in this transport self-test.
+    workerDenied = false;
+    childFailure = undefined;
+  }
+  ok(
+    "separate subprocess identities, ready/blocked/failure IPC, shutdown error rejection and successful close (no Vite/app started)",
+  );
+}
+async function runViteChild(): Promise<void> {
+  const [mode, candidateWorker, root, state, publicDir] = process.argv.slice(childModeIndex + 1);
+  assert.ok(mode === "dev" || mode === "build");
+  assert.ok(workers.includes(candidateWorker as (typeof workers)[number]));
+  const worker = candidateWorker as (typeof workers)[number];
+  assert.ok(path.isAbsolute(state) && path.basename(state).startsWith("0g0-app-smoke-"));
+  assert.equal(root, path.join(state, "checkout"));
+  assert.equal(publicDir, path.join(state, "public", worker));
+  process.env.HOME = path.join(state, "home", worker, mode);
+  process.env.XDG_CONFIG_HOME = path.join(state, "config", worker, mode);
+  process.env.TMPDIR = path.join(state, "tmp", worker, mode);
+  await mkdir(process.env.TMPDIR, { recursive: true });
+  installNetworkGuard(state);
+  const { createServer, createBuilder, createLogger } = await import("vite-plus");
+  const logger = createLogger();
+  for (const level of ["error", "warn", "info"] as const) {
+    const original = logger[level].bind(logger);
+    logger[level] = (message, options) => {
+      if (message.includes(marker)) blockedChildRequest();
+      original(message, options);
+    };
+  }
+  const workerRoot = path.join(root, "workers", worker);
+  const config = {
+    root: workerRoot,
+    configFile: path.join(workerRoot, "vite.config.ts"),
+    publicDir,
+    cacheDir: path.join(state, "vite-cache", worker, mode),
+    customLogger: logger,
+    plugins: [outboundGuard(path.join(workerRoot, "src/index.ts"))],
+  };
+  if (mode === "build") {
+    // The plugin config supplies a multi-environment buildApp. Legacy build()
+    // builds only the client environment and cannot validate Worker bundles.
+    const builder = await createBuilder(config);
+    await builder.buildApp();
+    await new Promise<void>((resolve, reject) =>
+      process.send?.({ type: "ready", worker }, (error) => (error ? reject(error) : resolve())),
+    );
+    process.disconnect();
+    return;
+  }
+  let server: ViteDevServer | undefined;
+  try {
+    server = await createServer({
+      ...config,
+      server: {
+        host: "127.0.0.1",
+        port: Number(new URL(origins[worker]).port),
+        strictPort: true,
+        open: false,
+      },
+    });
+    await server.listen();
+    const stop = new Promise<void>((resolve) => {
+      process.on("message", (message: unknown) => {
+        if (message && typeof message === "object" && "type" in message && message.type === "close")
+          resolve();
+      });
+      process.once("disconnect", resolve);
+      process.once("SIGTERM", resolve);
+      process.once("SIGINT", resolve);
+    });
+    process.send?.({ type: "ready", worker });
+    await stop;
+  } finally {
+    await server?.close();
+    if (process.connected) process.disconnect();
+  }
+}
 async function main(): Promise<void> {
   const state = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? tmpdir(), "0g0-app-smoke-"));
-  const servers: ViteDevServer[] = [];
+  const children: ViteChild[] = [];
   let harness: TestHarness | undefined;
   const oldCwd = process.cwd();
   const timer = setTimeout(() => {
@@ -432,35 +729,8 @@ async function main(): Promise<void> {
       });
     }
     await mkdir(publicDirs.mcp, { recursive: true });
-    const { createServer, build, createLogger } = await import("vite-plus");
-    const logger = createLogger();
-    for (const level of ["error", "warn", "info"] as const) {
-      const original = logger[level].bind(logger);
-      logger[level] = (message, options) => {
-        if (message.includes(marker)) workerDenied = true;
-        original(message, options);
-      };
-    }
-    for (const worker of workers) {
-      const workerRoot = path.join(root, "workers", worker);
-      process.chdir(workerRoot);
-      const server = await createServer({
-        root: workerRoot,
-        configFile: path.join(workerRoot, "vite.config.ts"),
-        publicDir: publicDirs[worker],
-        cacheDir: path.join(state, "vite-cache", worker),
-        customLogger: logger,
-        plugins: [outboundGuard(path.join(workerRoot, "src/index.ts"))],
-        server: {
-          host: "127.0.0.1",
-          port: Number(new URL(origins[worker]).port),
-          strictPort: true,
-          open: false,
-        },
-      });
-      servers.push(server);
-      await server.listen();
-    }
+    for (const worker of workers)
+      await startViteChild("dev", worker, root, state, publicDirs[worker], children);
     await health(`${origins.id}/api/health`, "id");
     await health(`${origins.user}/api/health`, "user");
     await health(`${origins.admin}/api/health`, "admin", 401);
@@ -512,18 +782,8 @@ async function main(): Promise<void> {
     assert.ok(limited, "real id auth rate-limit binding must enforce configured limit");
     assert.ok(limited.headers.get("retry-after"));
     ok("actual development auth rate limiter returns 429/Retry-After");
-    for (const worker of workers) {
-      const workerRoot = path.join(root, "workers", worker);
-      process.chdir(workerRoot);
-      await build({
-        root: workerRoot,
-        configFile: path.join(workerRoot, "vite.config.ts"),
-        publicDir: publicDirs[worker],
-        cacheDir: path.join(state, "vite-cache", worker),
-        customLogger: logger,
-        plugins: [outboundGuard(path.join(workerRoot, "src/index.ts"))],
-      });
-    }
+    for (const worker of workers)
+      await startViteChild("build", worker, root, state, publicDirs[worker], children);
     const { createTestHarness } = await import("wrangler");
     const inputs = [];
     for (const worker of workers) {
@@ -580,9 +840,15 @@ async function main(): Promise<void> {
     try {
       await harness?.close();
     } finally {
-      await Promise.allSettled(servers.map((server) => server.close()));
-      await rm(state, { recursive: true, force: true });
-      clearTimeout(timer);
+      try {
+        await stopViteChildren(children);
+      } finally {
+        await rm(state, { recursive: true, force: true });
+        clearTimeout(timer);
+      }
+      assert.equal(denied, 0, "Node outbound request attempted during cleanup");
+      assert.equal(workerDenied, false, "Worker/subprocess outbound request attempted");
+      assert.equal(childFailure, undefined, "Vite subprocess failed");
     }
   }
 }
@@ -1065,7 +1331,10 @@ async function scheduledCleanup(
     );
   ok("actual scheduled handler awaits all six cleanup operations and preserves live/grace rows");
 }
-void main().catch((error) => {
-  console.error("[app-smoke] FAILED", error);
-  process.exitCode = 1;
-});
+void (processProbe ? runProcessProbe() : childModeIndex >= 0 ? runViteChild() : main()).catch(
+  (error) => {
+    console.error("[app-smoke] FAILED", error);
+    process.exitCode = 1;
+    if ((childModeIndex >= 0 || processProbe) && process.connected) process.disconnect();
+  },
+);
