@@ -28,3 +28,19 @@ Playwright `1.57.0` で 320px / 1280px の表示と操作を確認します。
 初回成功、通信・HTTP エラー、連打、キーボード再試行、復旧後のナビゲーション、
 既存の 401 リダイレクトを検証し、結果と画面を `profile-recovery-ui` artifact に保存します。
 Playwright は CI の一時ディレクトリにのみインストールし、アプリの依存には追加しません。
+
+## CI audit のリリース阻害への対応
+
+2026-10-01 の audit で、既存の devalue `5.8.1` に high の advisory が報告されました。
+user / admin frontend の override と lockfile の devalue だけを、公式修正版 `5.9.3` に更新します。
+Astro `7.2.8` が指定する `^5.8.1` の範囲内で、他の依存や Node 要件、API、認証処理は変更しません。
+audit の閾値は維持します。
+
+本リポジトリは静的 Astro 出力を使い、devalue の直接呼び出しやコンテンツローダー、
+Astro Actions / SSR セッションはありません。本番プロフィール入力から当該処理への
+攻撃経路は確認していませんが、脆弱な依存を残してリリースすることは避けます。
+繰り返し文字列の出力増幅、非文字列の null-prototype キー、通常のシリアライズを
+小さな合成入力で比較し、audit・全テスト・両 frontend ビルド・最終コミットの CI を確認します。
+
+根拠: [high advisory](https://github.com/advisories/GHSA-mcm9-63f2-9j32)、
+[公式 5.9.3 リリース](https://github.com/sveltejs/devalue/releases/tag/v5.9.3)。
