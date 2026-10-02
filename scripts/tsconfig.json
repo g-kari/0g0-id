@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node", "@cloudflare/workers-types"],
+    "allowImportingTsExtensions": true,
+    "typeRoots": ["../node_modules/@types", "../node_modules", "../workers/id/node_modules"]
+  },
+  "include": ["generate-api-reference.ts", "generate-api-reference.test.ts"]
+}

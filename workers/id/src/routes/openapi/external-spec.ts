@@ -96,6 +96,14 @@ Authorization: Basic <Base64(client_id:client_secret)>
       },
     },
     schemas: {
+      OAuthError: {
+        type: "object",
+        properties: {
+          error: { type: "string", description: "OAuth 2.0 エラーコード" },
+          error_description: { type: "string", description: "エラーの説明" },
+        },
+        required: ["error", "error_description"],
+      },
       ExternalUser: {
         type: "object",
         description: "スコープに応じたユーザー情報（内部IDの代わりにペアワイズsubを返す）",
