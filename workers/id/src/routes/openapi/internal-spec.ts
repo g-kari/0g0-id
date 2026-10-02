@@ -1,3 +1,5 @@
+import { ALL_PROVIDERS } from "@0g0-id/shared";
+
 // IdP 内部向け全API OpenAPI 仕様
 // API 変更時はこのファイルの paths / components.schemas を更新すること
 
@@ -43,9 +45,11 @@ export const INTERNAL_OPENAPI = {
         properties: {
           id: { type: "string" },
           user_id: { type: "string" },
-          provider: { type: "string", enum: ["google", "line", "twitch", "github", "x"] },
+          provider: { type: "string", enum: ALL_PROVIDERS },
           ip_address: { type: "string", nullable: true },
           user_agent: { type: "string", nullable: true },
+          country: { type: "string", nullable: true },
+          success: { type: "integer", enum: [0, 1] },
           created_at: { type: "string", format: "date-time" },
         },
         required: ["id", "user_id", "provider", "created_at"],
@@ -477,7 +481,7 @@ export const INTERNAL_OPENAPI = {
                         properties: {
                           provider: {
                             type: "string",
-                            enum: ["google", "line", "twitch", "github", "x"],
+                            enum: ALL_PROVIDERS,
                           },
                           connected: { type: "boolean" },
                         },
@@ -505,7 +509,7 @@ export const INTERNAL_OPENAPI = {
             name: "provider",
             in: "path",
             required: true,
-            schema: { type: "string", enum: ["google", "line", "twitch", "github", "x"] },
+            schema: { type: "string", enum: ALL_PROVIDERS },
             description: "SNSプロバイダー名",
           },
         ],
@@ -683,7 +687,7 @@ export const INTERNAL_OPENAPI = {
                         properties: {
                           provider: {
                             type: "string",
-                            enum: ["google", "line", "twitch", "github", "x"],
+                            enum: ALL_PROVIDERS,
                           },
                           connected: { type: "boolean" },
                         },
@@ -1569,6 +1573,89 @@ export const INTERNAL_OPENAPI = {
           },
           "401": { description: "UNAUTHORIZED" },
           "403": { description: "FORBIDDEN — 管理者権限なし" },
+        },
+      },
+    },
+    "/api/metrics/recent-events": {
+      get: {
+        tags: ["管理者 API"],
+        summary: "ログインイベント調査（複合フィルター・ページング）",
+        description:
+          "全条件を AND 結合。期間はリクエスト時刻からの UTC 経過時間で下限を含む。フィルター未指定は全件。重複・未知のキー・空の明示値・2048文字超のクエリーは400。created_at DESC, id DESC 順。",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "user_id",
+            in: "query",
+            schema: { type: "string", pattern: "^[A-Za-z0-9_-]{1,128}$" },
+            description: "ユーザーID完全一致",
+          },
+          {
+            name: "country",
+            in: "query",
+            schema: { type: "string", pattern: "^(?:[A-Z]{2}|unknown)$" },
+            description: "国コード。unknown は国未取得（NULL）",
+          },
+          {
+            name: "provider",
+            in: "query",
+            schema: { type: "string", enum: ALL_PROVIDERS },
+          },
+          {
+            name: "period",
+            in: "query",
+            schema: { type: "string", enum: ["all", "24h", "7d", "30d"], default: "all" },
+          },
+          {
+            name: "limit",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 50 },
+          },
+          {
+            name: "offset",
+            in: "query",
+            schema: { type: "integer", minimum: 0, maximum: 9007199254740991, default: 0 },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "同じ条件で絞り込んだイベントと総件数",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["data", "meta"],
+                  properties: {
+                    data: { type: "array", items: { $ref: "#/components/schemas/LoginEvent" } },
+                    meta: {
+                      type: "object",
+                      required: ["limit", "offset", "total"],
+                      properties: {
+                        limit: { type: "integer" },
+                        offset: { type: "integer" },
+                        total: { type: "integer" },
+                        applied_filters: {
+                          type: "object",
+                          description: "フィルター指定時のみ。画面は要求条件と照合する。",
+                          required: ["user_id", "country", "provider", "period"],
+                          properties: {
+                            user_id: { type: "string", nullable: true },
+                            country: { type: "string", nullable: true },
+                            provider: { type: "string", nullable: true },
+                            period: { type: "string", enum: ["all", "24h", "7d", "30d"] },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "400": { description: "INVALID_PARAMETER — 検索条件不正" },
+          "401": { description: "UNAUTHORIZED" },
+          "403": { description: "FORBIDDEN — 管理者権限なし" },
+          "500": { description: "INTERNAL_ERROR" },
         },
       },
     },

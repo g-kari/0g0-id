@@ -431,3 +431,9 @@ X-BFF-Origin: https://user.0g0.xyz
 代表コード: `UNAUTHORIZED` / `FORBIDDEN` / `BAD_REQUEST` / `NOT_FOUND` / `CONFLICT` / `TOO_MANY_REQUESTS` / `TOKEN_ROTATED` / `INTERNAL_SERVER_ERROR`。
 
 OAuth 2.0 標準エンドポイント（`/auth/authorize` / `/api/token` 等）のみ RFC 6749 形式の `{ error, error_description }` を返す。
+
+## 管理者ログインイベントの絞り込み
+
+`GET /api/metrics/recent-events` は `user_id` / `country` / `provider` / `period` の
+複合条件と `limit` / `offset` を受け付けます。Bearer 認証と管理者権限が必要です。
+仕様・制限・期間境界は [ログインイベントの絞り込み](./login-event-filters.md#api) を参照。

@@ -148,3 +148,14 @@ Chrome は発行された nonce を `jti` クレームに含めた proof JWT を
 ## エラーフォーマット
 
 id Worker と同一の `{ error: { code, message } }` 形式。ミドルウェア由来の代表コード: `UNAUTHORIZED`（セッションなし）、`FORBIDDEN`（非 admin）、`BAD_REQUEST`（UUID 形式不正）、`INVALID_PARAMETER`（数値パラメータ範囲外）、`INTERNAL_ERROR`。
+
+## ログインイベントの調査（`/api/security-trends/recent-events`）
+
+`GET /api/security-trends/recent-events` → IdP `/api/metrics/recent-events`。
+`user_id`（完全一致・1〜128文字の英数字/`_`/`-`）、`country`（大文字2文字または `unknown`）、
+`provider`（google/line/twitch/github/x）、`period`（all/24h/7d/30d）を AND で組み合わせます。
+`limit` は1〜100（既定50）、`offset` は0以上の安全な整数（既定0）。
+一覧と総件数は同じ条件で、フィルターなしは従来どおり全件です。
+不正値・空の明示値・重複・未知のキー・2048文字超のクエリーは400。
+レスポンスは `{ data, meta: { limit, offset, total } }`、認証・管理者権限は従来どおりです。
+操作と検証の詳細は [ログインイベントの絞り込み](./login-event-filters.md) を参照。

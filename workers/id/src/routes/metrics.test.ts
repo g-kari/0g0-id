@@ -2,11 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
 
 vi.mock("@0g0-id/shared", async (importOriginal) => {
-  const { restErrorBody, REST_ERROR_CODES } =
+  const { restErrorBody, REST_ERROR_CODES, parseLoginEventQuery, loginEventFilters } =
     await importOriginal<typeof import("@0g0-id/shared")>();
   return {
     restErrorBody,
     REST_ERROR_CODES,
+    parseLoginEventQuery,
+    loginEventFilters,
     createLogger: vi
       .fn()
       .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -1245,7 +1247,12 @@ describe("GET /api/metrics/recent-events", () => {
     }>();
     expect(body.data).toHaveLength(1);
     expect(body.meta).toEqual({ limit: 50, offset: 0, total: 1 });
-    expect(vi.mocked(getRecentLoginEvents)).toHaveBeenCalledWith(mockEnv.DB, 50, 0);
+    expect(vi.mocked(getRecentLoginEvents)).toHaveBeenCalledWith(mockEnv.DB, 50, 0, {
+      userId: undefined,
+      country: undefined,
+      provider: undefined,
+      sinceIso: undefined,
+    });
   });
 
   it("offset が負数（非数値扱い）の場合 400 INVALID_PARAMETER を返す", async () => {
@@ -1260,6 +1267,85 @@ describe("GET /api/metrics/recent-events", () => {
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("INVALID_PARAMETER");
+    expect(getRecentLoginEvents).not.toHaveBeenCalled();
+  });
+  it("forwards combined filters and an exact request-time UTC cutoff", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getRecentLoginEvents).mockResolvedValue({ events: [], total: 0 });
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      const res = await app.request(
+        makeRequest(
+          "/api/metrics/recent-events?user_id=user-1&country=unknown&provider=github&period=24h&offset=50",
+          "admin-token",
+        ),
+        undefined,
+        mockEnv,
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({
+        meta: {
+          applied_filters: {
+            user_id: "user-1",
+            country: "unknown",
+            provider: "github",
+            period: "24h",
+          },
+        },
+      });
+      expect(getRecentLoginEvents).toHaveBeenCalledWith(mockEnv.DB, 50, 50, {
+        userId: "user-1",
+        country: "unknown",
+        provider: "github",
+        sinceIso: new Date(now - 86400000).toISOString(),
+      });
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+  it.each([
+    "country=bad",
+    "provider=bad",
+    "period=bad",
+    "user_id=",
+    "country=JP&country=US",
+    "offset=9007199254740992",
+    `user_id=${"a".repeat(129)}`,
+    "user=typo",
+  ])("rejects invalid filters before database reads: %s", async (query) => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    const res = await app.request(
+      makeRequest(`/api/metrics/recent-events?${query}`, "admin-token"),
+      undefined,
+      mockEnv,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: { code: "INVALID_PARAMETER" } });
+    expect(getRecentLoginEvents).not.toHaveBeenCalled();
+  });
+  it("preserves 401 without a token even for invalid filters", async () => {
+    const res = await app.request(
+      makeRequest("/api/metrics/recent-events?country=bad"),
+      undefined,
+      mockEnv,
+    );
+    expect(res.status).toBe(401);
+    expect(getRecentLoginEvents).not.toHaveBeenCalled();
+  });
+  it("preserves non-admin 403 with valid filters", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue({
+      id: "regular-user-id",
+      role: "user",
+      banned_at: null,
+    } as any);
+    const res = await app.request(
+      makeRequest("/api/metrics/recent-events?country=JP", "user-token"),
+      undefined,
+      mockEnv,
+    );
+    expect(res.status).toBe(403);
     expect(getRecentLoginEvents).not.toHaveBeenCalled();
   });
 });

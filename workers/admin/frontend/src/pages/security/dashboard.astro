@@ -251,7 +251,7 @@ import Admin from '../../layouts/Admin.astro';
           <td style="font-family:monospace; font-size:0.8rem;">${escapeHtml(row.user_id)}</td>
           <td>${row.country_count}</td>
           <td>${escapeHtml(row.countries)}</td>
-          <td><a href="/users/${encodeURIComponent(row.user_id)}" class="btn btn-ghost" style="padding:4px 10px; font-size:0.8rem;">詳細</a></td>
+          <td><a href="/users/${escapeHtml(encodeURIComponent(row.user_id))}" class="btn btn-ghost" style="padding:4px 10px; font-size:0.8rem;">詳細</a> <a href="/security/events?user_id=${escapeHtml(encodeURIComponent(row.user_id))}&amp;period=24h" class="btn btn-ghost" style="padding:4px 10px; font-size:0.8rem;">ログインを調べる</a></td>
         </tr>
       `,
         )
