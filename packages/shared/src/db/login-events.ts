@@ -1,5 +1,6 @@
 import type { LoginEvent } from "../types";
 import { daysAgoIso } from "./helpers";
+import type { LoginEventFilters } from "../lib/login-event-filters";
 
 export async function insertLoginEvent(
   db: D1Database,
@@ -357,13 +358,40 @@ export async function getRecentLoginEvents(
   db: D1Database,
   limit: number = 50,
   offset: number = 0,
+  filters: LoginEventFilters = {},
 ): Promise<{ events: LoginEvent[]; total: number }> {
+  const clauses: string[] = [];
+  const values: string[] = [];
+  if (filters.userId !== undefined) {
+    clauses.push("user_id = ?");
+    values.push(filters.userId);
+  }
+  if (filters.country === "unknown") {
+    clauses.push("country IS NULL");
+  } else if (filters.country !== undefined) {
+    clauses.push("country = ?");
+    values.push(filters.country);
+  }
+  if (filters.provider !== undefined) {
+    clauses.push("provider = ?");
+    values.push(filters.provider);
+  }
+  if (filters.sinceIso !== undefined) {
+    // Existing rows use both SQLite datetime('now') and ISO timestamps.
+    // julianday compares the same UTC instants, including subsecond boundaries.
+    clauses.push("julianday(created_at) >= julianday(?)");
+    values.push(filters.sinceIso);
+  }
+  const where = clauses.length ? ` WHERE ${clauses.join(" AND ")}` : "";
+  const count = db.prepare(`SELECT COUNT(*) as count FROM login_events${where}`);
   const [eventsResult, countResult] = await Promise.all([
     db
-      .prepare("SELECT * FROM login_events ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?")
-      .bind(limit, offset)
+      .prepare(
+        `SELECT * FROM login_events${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+      )
+      .bind(...values, limit, offset)
       .all<LoginEvent>(),
-    db.prepare("SELECT COUNT(*) as count FROM login_events").first<{ count: number }>(),
+    (values.length ? count.bind(...values) : count).first<{ count: number }>(),
   ]);
   return {
     events: eventsResult.results,

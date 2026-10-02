@@ -21,6 +21,7 @@ export * from "./lib/id-preflight";
 export * from "./lib/pagination";
 export * from "./lib/logger";
 export * from "./lib/providers";
+export * from "./lib/login-event-filters";
 export * from "./lib/parse-body";
 export * from "./middleware/body-limit";
 export * from "./middleware/rate-limit";

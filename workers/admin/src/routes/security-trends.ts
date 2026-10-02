@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import {
   fetchWithAuth,
   parseDays,
+  parseLoginEventQuery,
   proxyResponse,
   REST_ERROR_CODES,
   COOKIE_NAMES,
@@ -37,36 +38,6 @@ function applyLimit(url: URL, limitRaw: string | undefined): Response | undefine
     );
   }
   url.searchParams.set("limit", String(limit));
-  return undefined;
-}
-
-// offset の共通バリデーション（0以上の整数）
-function applyOffset(url: URL, offsetRaw: string | undefined): Response | undefined {
-  if (offsetRaw === undefined) return undefined;
-  if (!/^\d+$/.test(offsetRaw)) {
-    return Response.json(
-      {
-        error: {
-          code: REST_ERROR_CODES.INVALID_PARAMETER,
-          message: "offset must be a non-negative integer",
-        },
-      },
-      { status: 400 },
-    );
-  }
-  const offset = parseInt(offsetRaw, 10);
-  if (offset < 0) {
-    return Response.json(
-      {
-        error: {
-          code: REST_ERROR_CODES.INVALID_PARAMETER,
-          message: "offset must be a non-negative integer",
-        },
-      },
-      { status: 400 },
-    );
-  }
-  url.searchParams.set("offset", String(offset));
   return undefined;
 }
 
@@ -113,10 +84,15 @@ app.get("/user-agent-stats", async (c) => {
 // GET /api/security-trends/recent-events?limit=50&offset=0 — 全ユーザーの直近ログインイベント一覧
 app.get("/recent-events", async (c) => {
   const url = new URL(`${c.env.IDP_ORIGIN}/api/metrics/recent-events`);
-  const limitErr = applyLimit(url, c.req.query("limit"));
-  if (limitErr) return limitErr;
-  const offsetErr = applyOffset(url, c.req.query("offset"));
-  if (offsetErr) return offsetErr;
+  const params = new URL(c.req.url).searchParams;
+  const query = parseLoginEventQuery(params);
+  if ("error" in query) {
+    return c.json(
+      { error: { code: REST_ERROR_CODES.INVALID_PARAMETER, message: query.error } },
+      400,
+    );
+  }
+  url.search = params.toString();
 
   const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
   return proxyResponse(res);
