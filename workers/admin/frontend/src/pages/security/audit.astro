@@ -1,0 +1,196 @@
+---
+import Admin from '../../layouts/Admin.astro';
+---
+<Admin title="管理者監査ログ — 0g0 Admin">
+  <div class="page-header audit-header">
+    <div><h1 class="page-title">管理者監査ログ</h1><p id="audit-summary" class="page-subtitle" aria-live="polite">読み込み中...</p></div>
+    <a href="/security/dashboard" class="btn btn-ghost">← セキュリティ概況に戻る</a>
+  </div>
+
+  <form id="filter-form" class="card audit-filters" aria-label="監査ログの絞り込み">
+    <div class="filter-fields">
+      <label>操作者ID<input id="filter-admin" name="admin_user_id" class="form-input" type="text" maxlength="36" placeholder="完全一致のUUID" autocomplete="off" /></label>
+      <label>対象ID<input id="filter-target" name="target_id" class="form-input" type="text" maxlength="36" placeholder="完全一致のUUID" autocomplete="off" /></label>
+      <label>操作<input id="filter-action" name="action" class="form-input" type="text" maxlength="128" list="action-options" placeholder="例: user.ban" autocomplete="off" /></label>
+      <datalist id="action-options"></datalist>
+    </div>
+    <p class="filter-help">すべての条件を組み合わせ、完全一致で検索します。空欄は条件なしです</p>
+    <div class="filter-actions"><button type="submit" class="btn btn-primary">絞り込む</button><button id="reset-filters" type="button" class="btn">リセット</button></div>
+  </form>
+  <p class="audit-note">結果は記録された成功・失敗です。詳細JSONは表示しません。削除済みの対象は詳細を開けない場合があります</p>
+
+  <div id="loading" style="display:flex; justify-content:center; padding:3rem;" role="status" aria-label="監査ログを読み込み中"><div class="spinner"></div></div>
+  <div id="error" class="alert alert-error" style="display:none;" role="alert"><p id="error-message"></p><button id="retry-btn" type="button" class="btn">再読み込み</button></div>
+  <div id="table-wrap" class="card" style="padding:0; overflow:hidden; display:none;">
+    <div class="table-wrap" tabindex="0" role="region" aria-label="監査ログ一覧（横スクロールできます）">
+      <table class="data-table"><caption class="visually-hidden">管理者操作の監査ログ</caption><thead><tr><th scope="col">日時</th><th scope="col">操作者ID</th><th scope="col">操作</th><th scope="col">対象種別 / ID</th><th scope="col">記録結果</th></tr></thead><tbody id="audit-tbody"></tbody></table>
+    </div>
+    <div id="empty-message" style="padding:2rem; text-align:center; color:var(--color-muted); display:none;">条件に一致する監査ログがありません</div>
+  </div>
+  <div id="pagination" style="display:none; gap:8px; align-items:center; justify-content:space-between; margin-top:16px;">
+    <button id="prev-btn" type="button" class="btn" disabled>← 前へ</button><div id="page-info" style="color:var(--color-muted); font-size:0.875rem;"></div><button id="next-btn" type="button" class="btn" disabled>次へ →</button>
+  </div>
+</Admin>
+
+<style>
+  .audit-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+  .audit-filters { padding: 20px; margin-bottom: 12px; }
+  .filter-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .filter-fields label { display: grid; gap: 6px; min-width: 0; font-size: 0.875rem; }
+  .filter-fields input { width: 100%; min-width: 0; }
+  .filter-help, .audit-note { color: var(--color-muted); font-size: 0.8rem; margin: 12px 0; }
+  .filter-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  #pagination { flex-wrap: wrap; }
+  .table-wrap { max-width: 100%; }
+  .table-wrap:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+  @media (max-width: 900px) { .filter-fields { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 480px) { .audit-filters { padding: 16px; } }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); border: 0; }
+</style>
+
+<script>
+  import { formatDatetime } from '../../lib/api';
+  import { AUDIT_ACTIONS, AUDIT_PAGE_SIZE, auditQueryParams, auditTargetHref, parseAuditQuery, readAuditPage, type AuditQuery, type AuditRow } from '../../lib/audit-log-view';
+
+  const form = document.getElementById('filter-form') as HTMLFormElement;
+  const adminInput = document.getElementById('filter-admin') as HTMLInputElement;
+  const targetInput = document.getElementById('filter-target') as HTMLInputElement;
+  const actionInput = document.getElementById('filter-action') as HTMLInputElement;
+  const summary = document.getElementById('audit-summary')!;
+  const loading = document.getElementById('loading')!;
+  const error = document.getElementById('error')!;
+  const errorMessage = document.getElementById('error-message')!;
+  const retry = document.getElementById('retry-btn') as HTMLButtonElement;
+  const table = document.getElementById('table-wrap')!;
+  const tbody = document.getElementById('audit-tbody')!;
+  const empty = document.getElementById('empty-message')!;
+  const pagination = document.getElementById('pagination')!;
+  const prev = document.getElementById('prev-btn') as HTMLButtonElement;
+  const next = document.getElementById('next-btn') as HTMLButtonElement;
+  const pageInfo = document.getElementById('page-info')!;
+  let sequence = 0;
+  let active: AbortController | undefined;
+  let pending = false;
+  // A failed form remains the active investigation; retry cannot broaden it to an old URL.
+  let invalidParams: URLSearchParams | undefined;
+
+  document.getElementById('action-options')!.replaceChildren(...AUDIT_ACTIONS.map((action) => {
+    const option = document.createElement('option'); option.value = action; return option;
+  }));
+
+  function showError(message: string): void {
+    summary.textContent = '監査ログを表示できませんでした';
+    errorMessage.textContent = message;
+    error.style.display = '';
+  }
+  function clearView(): void {
+    error.style.display = 'none'; table.style.display = 'none'; pagination.style.display = 'none';
+    tbody.replaceChildren(); prev.disabled = true; next.disabled = true;
+  }
+  function formParams(): URLSearchParams {
+    const params = new URLSearchParams();
+    if (adminInput.value.trim()) params.set('admin_user_id', adminInput.value.trim());
+    if (targetInput.value.trim()) params.set('target_id', targetInput.value.trim());
+    if (actionInput.value.trim()) params.set('action', actionInput.value.trim());
+    return params;
+  }
+  function syncForm(params: URLSearchParams): void {
+    adminInput.value = params.get('admin_user_id') ?? '';
+    targetInput.value = params.get('target_id') ?? '';
+    actionInput.value = params.get('action') ?? '';
+  }
+  function navigate(query: AuditQuery, replace = false): void {
+    invalidParams = undefined;
+    const params = auditQueryParams(query);
+    const url = `${window.location.pathname}${params.size ? `?${params}` : ''}`;
+    if (!replace && pending && url === `${window.location.pathname}${window.location.search}`) return;
+    if (replace) window.history.replaceState(null, '', url);
+    else if (url !== `${window.location.pathname}${window.location.search}`) window.history.pushState(null, '', url);
+    void load();
+  }
+  function idCell(id: string, type: string): HTMLTableCellElement {
+    const cell = document.createElement('td');
+    cell.style.fontFamily = 'monospace'; cell.style.fontSize = '0.8rem';
+    const href = auditTargetHref(type, id);
+    if (href) { const a = document.createElement('a'); a.href = href; a.textContent = id; cell.append(a); }
+    else cell.textContent = id;
+    return cell;
+  }
+  function renderRows(rows: AuditRow[]): void {
+    const fragment = document.createDocumentFragment();
+    for (const row of rows) {
+      const tr = document.createElement('tr');
+      const date = document.createElement('td'); date.style.whiteSpace = 'nowrap';
+      date.textContent = row.createdAt ? formatDatetime(row.createdAt) : '日時不明';
+      const action = document.createElement('td'); action.textContent = row.action;
+      const target = idCell(row.targetId, row.targetType);
+      const label = document.createElement('div'); label.textContent = row.targetType === 'user' ? 'ユーザー' : row.targetType === 'service' ? 'サービス' : 'その他';
+      target.prepend(label);
+      const status = document.createElement('td'); status.style.whiteSpace = 'nowrap';
+      status.textContent = row.status === 'success' ? '成功' : row.status === 'failure' ? '失敗' : '不明';
+      if (row.status !== 'unknown') status.style.color = row.status === 'success' ? 'var(--color-success)' : 'var(--color-danger)';
+      tr.append(date, idCell(row.adminUserId, 'user'), action, target, status); fragment.append(tr);
+    }
+    tbody.replaceChildren(fragment);
+  }
+  async function load(): Promise<void> {
+    const id = ++sequence;
+    pending = true;
+    active?.abort(); active = new AbortController();
+    retry.disabled = true; clearView(); loading.style.display = 'flex'; summary.textContent = '読み込み中...';
+    const params = invalidParams ?? new URLSearchParams(window.location.search);
+    if (!invalidParams) syncForm(params);
+    const query = parseAuditQuery(params);
+    if ('error' in query) {
+      showError(`${query.error}。条件を入力し直すかリセットしてください`);
+      loading.style.display = 'none'; retry.disabled = false; pending = false; return;
+    }
+    const apiParams = auditQueryParams(query);
+    apiParams.set('limit', String(AUDIT_PAGE_SIZE)); apiParams.set('offset', String(query.offset));
+    try {
+      const res = await fetch(`/api/audit-logs?${apiParams}`, { credentials: 'same-origin', signal: active.signal });
+      if (id !== sequence) return;
+      if (res.status === 401) { window.location.href = '/'; return; }
+      if (!res.ok) {
+        showError(res.status === 403 ? '管理者権限を確認できません。再ログインして権限を確認してください' : res.status === 400 ? '検索条件を受け付けられませんでした。条件を確認してください' : '監査ログの取得に失敗しました。しばらくしてから再読み込みしてください');
+        return;
+      }
+      const body: unknown = await res.json();
+      if (id !== sequence) return;
+      const { rows, total } = readAuditPage(body, query);
+      if (query.offset > 0 && query.offset >= total) {
+        navigate({ ...query, offset: Math.max(0, Math.floor((total - 1) / AUDIT_PAGE_SIZE) * AUDIT_PAGE_SIZE) }, true); return;
+      }
+      renderRows(rows);
+      const start = total === 0 ? 0 : query.offset + 1;
+      summary.textContent = `${total.toLocaleString()} 件中 ${start.toLocaleString()} - ${(query.offset + rows.length).toLocaleString()} 件を表示`;
+      empty.style.display = rows.length === 0 ? '' : 'none'; table.style.display = '';
+      pageInfo.textContent = `${Math.floor(query.offset / AUDIT_PAGE_SIZE) + 1} / ${Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE))} ページ`;
+      prev.disabled = query.offset === 0; next.disabled = query.offset + AUDIT_PAGE_SIZE >= total; pagination.style.display = 'flex';
+    } catch {
+      if (id !== sequence) return;
+      showError('監査ログを安全に表示できませんでした。しばらくしてから再読み込みしてください');
+    } finally {
+      if (id === sequence) { loading.style.display = 'none'; retry.disabled = false; pending = false; }
+    }
+  }
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const params = formParams();
+    const query = parseAuditQuery(params);
+    if ('error' in query) { invalidParams = params; void load(); return; }
+    navigate(query);
+  });
+  document.getElementById('reset-filters')!.addEventListener('click', () => navigate({ offset: 0 }));
+  retry.addEventListener('click', () => { if (!retry.disabled) void load(); });
+  prev.addEventListener('click', () => {
+    const query = parseAuditQuery(new URLSearchParams(window.location.search));
+    if (!prev.disabled && !('error' in query)) navigate({ ...query, offset: Math.max(0, query.offset - AUDIT_PAGE_SIZE) });
+  });
+  next.addEventListener('click', () => {
+    const query = parseAuditQuery(new URLSearchParams(window.location.search));
+    if (!next.disabled && !('error' in query)) navigate({ ...query, offset: query.offset + AUDIT_PAGE_SIZE });
+  });
+  window.addEventListener('popstate', () => { invalidParams = undefined; void load(); });
+  void load();
+</script>
