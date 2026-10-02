@@ -49,6 +49,9 @@ jobs:
       - name: check（lint + fmt + typecheck）
         run: ./node_modules/.bin/vp check
 
+      - name: IdP API リファレンス同期確認（読み取り専用）
+        run: ./node_modules/.bin/vp run docs:api:check
+
       - name: テスト実行
         run: ./node_modules/.bin/vp test run
 

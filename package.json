@@ -18,7 +18,9 @@
     "deploy:mcp": "npm run deploy -w workers/mcp",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "prepare": "vp config"
+    "prepare": "vp config",
+    "docs:api:generate": "node --import tsx scripts/generate-api-reference.ts --generate",
+    "docs:api:check": "node --import tsx scripts/generate-api-reference.ts --check"
   },
   "devDependencies": {
     "vite-plus": "0.1.24"
