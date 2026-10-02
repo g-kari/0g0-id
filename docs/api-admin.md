@@ -4,6 +4,8 @@
 **役割**: 管理者向け BFF（サービス管理 / ユーザー管理 / メトリクス / 監査ログ） + Astro SPA 配信
 **ソース**: `workers/admin/src/index.ts` および `workers/admin/src/routes/*.ts`
 
+> Method/Path テーブルは `vp run docs:api:check` で、実際に登録された Hono ルートと双方向照合します。DBSC 登録/更新とフォールバックも対象です。[検査範囲・更新手順](./api-reference-generation.md#bff-の手書き-api-一覧の同期確認)
+
 ## 認証・セキュリティ
 
 - **セッション Cookie**: `__Host-admin-session`（HS256 署名、`access_token` / `refresh_token` / `user` を含む）
@@ -118,6 +120,8 @@ Chrome は発行された nonce を `jti` クレームに含めた proof JWT を
 | DELETE | `/api/users/:id/tokens/:tokenId`         | 同左                            | 個別セッション失効                                                                                                  |
 | GET    | `/api/users/:id/bff-sessions`            | `/api/users/:id/bff-sessions`   | BFF セッション一覧（DBSC バインド状態 `has_device_key` 含む）                                                       |
 | DELETE | `/api/users/:id/bff-sessions/:sessionId` | 同左                            | 単一 BFF セッション失効（管理者強制ログアウト・DBSC 端末バインド済みも対象・refresh_token は別途 `/tokens` で失効） |
+| GET    | `/api/users/:id/lockout`                 | 同左                            | ロックアウト状態取得                                                                                                |
+| DELETE | `/api/users/:id/lockout`                 | 同左                            | ロックアウト解除                                                                                                    |
 
 ## メトリクス（`/api/metrics/*`）
 
@@ -130,6 +134,15 @@ Chrome は発行された nonce を `jti` クレームに含めた proof JWT を
 | GET    | `/api/metrics/user-registrations` | 同左           | 日別新規ユーザー登録数（`days`）                        |
 | GET    | `/api/metrics/active-users`       | 同左           | DAU / WAU / MAU                                         |
 | GET    | `/api/metrics/active-users/daily` | 同左           | 日別アクティブユーザー（`days`）                        |
+| GET    | `/api/metrics/dbsc-bindings`      | 同左           | アクティブ BFF セッションの DBSC 端末バインド集計       |
+
+## ログイン傾向（`/api/security-trends/*`）
+
+| Method | Path                                    | 転送先 (id)                     | 用途                                                                                                                             |
+| ------ | --------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/security-trends/ip-stats`         | `/api/metrics/ip-stats`         | IP別ログイン統計（`days` 1〜365 / `limit` 1〜100）                                                                               |
+| GET    | `/api/security-trends/user-agent-stats` | `/api/metrics/user-agent-stats` | User-Agent別ログイン統計（`days` 1〜365 / `limit` 1〜100）                                                                       |
+| GET    | `/api/security-trends/recent-events`    | `/api/metrics/recent-events`    | ログインイベント一覧（`limit` / `offset` / `user_id` / `country` / `provider` / `period`）。詳細は下記「ログインイベントの調査」 |
 
 ## 監査ログ（`/api/audit-logs`）
 
