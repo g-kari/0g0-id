@@ -60,7 +60,7 @@ jobs:
         run: npm run build
         working-directory: workers/admin/frontend
 
-      - name: プロフィール復旧・ログインイベント UI（合成データ・外部通信遮断）
+      - name: プロフィール復旧・セキュリティ UI（合成データ・外部通信遮断）
         timeout-minutes: 5
         run: |
           tools="$(mktemp -d)"
@@ -72,6 +72,9 @@ jobs:
           SECURITY_EVENTS_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
             SECURITY_EVENTS_REPORT_DIR="$RUNNER_TEMP/security-events-ui" \
             node scripts/security-events-browser-smoke.mjs
+          AUDIT_LOGS_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
+            AUDIT_LOGS_REPORT_DIR="$RUNNER_TEMP/audit-logs-ui" \
+            node scripts/audit-logs-browser-smoke.mjs
 
       - name: プロフィール復旧 UI の検証記録
         if: always()
@@ -88,6 +91,15 @@ jobs:
         with:
           name: security-events-ui
           path: ${{ runner.temp }}/security-events-ui
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: 管理者監査ログ UI の検証記録
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-logs-ui
+          path: ${{ runner.temp }}/audit-logs-ui
           retention-days: 7
           if-no-files-found: warn
 
