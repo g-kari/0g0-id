@@ -20,7 +20,7 @@
     "test": "npm run test --workspaces --if-present",
     "prepare": "vp config",
     "docs:api:generate": "node --import tsx scripts/generate-api-reference.ts --generate",
-    "docs:api:check": "node --import tsx scripts/generate-api-reference.ts --check"
+    "docs:api:check": "node --import tsx scripts/generate-api-reference.ts --check && node --import tsx scripts/check-bff-api-docs.ts --check"
   },
   "devDependencies": {
     "vite-plus": "0.1.24"
