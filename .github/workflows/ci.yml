@@ -72,6 +72,9 @@ jobs:
           PROFILE_RECOVERY_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
             PROFILE_RECOVERY_REPORT_DIR="$RUNNER_TEMP/profile-recovery-ui" \
             node scripts/profile-recovery-browser-smoke.mjs
+          LOGIN_HISTORY_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
+            LOGIN_HISTORY_REPORT_DIR="$RUNNER_TEMP/login-history-ui" \
+            node scripts/login-history-browser-smoke.mjs
           SECURITY_EVENTS_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
             SECURITY_EVENTS_REPORT_DIR="$RUNNER_TEMP/security-events-ui" \
             node scripts/security-events-browser-smoke.mjs
@@ -85,6 +88,15 @@ jobs:
         with:
           name: profile-recovery-ui
           path: ${{ runner.temp }}/profile-recovery-ui
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: ログイン履歴復旧 UI の検証記録
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: login-history-ui
+          path: ${{ runner.temp }}/login-history-ui
           retention-days: 7
           if-no-files-found: warn
 
