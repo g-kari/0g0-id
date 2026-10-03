@@ -10,6 +10,7 @@ interface LoginHistoryLoadOptions<T> {
   loadMoreWrap: HTMLElement;
   loadMoreButton: HTMLButtonElement;
   providerFilter: HTMLSelectElement;
+  lifecycle?: EventTarget;
   load: (provider: string, offset: number, signal: AbortSignal) => Promise<T[]>;
   render: (events: readonly T[]) => void;
 }
@@ -27,6 +28,7 @@ export function createLoginHistoryLoader<T>(
   let accumulated: T[] = [];
   let hasMore = true;
   let failedReset: boolean | undefined;
+  let requestedProvider: string | undefined;
 
   async function loadPage(reset: boolean, isRetry = false, supersede = false): Promise<void> {
     if (pending && !supersede) return;
@@ -60,9 +62,14 @@ export function createLoginHistoryLoader<T>(
     }
 
     const provider = options.providerFilter.value;
+    requestedProvider = provider;
     try {
       const events = await options.load(provider, offset, request.signal);
       if (id !== requestId) return;
+      if (provider !== options.providerFilter.value) {
+        void loadPage(true, false, true);
+        return;
+      }
       if (!Array.isArray(events)) throw new Error("Invalid login history response");
       const nextEvents = accumulated.concat(events);
       // Commit the new offset only after the complete page renders successfully.
@@ -80,6 +87,10 @@ export function createLoginHistoryLoader<T>(
       options.loadMoreWrap.style.display = hasMore ? "" : "none";
     } catch {
       if (id !== requestId) return;
+      if (provider !== options.providerFilter.value) {
+        void loadPage(true, false, true);
+        return;
+      }
       failedReset = reset;
       options.errorMessage.textContent = reset
         ? "ログイン履歴の取得に失敗しました。もう一度読み込んでください。"
@@ -118,6 +129,15 @@ export function createLoginHistoryLoader<T>(
   });
   options.retryButton.addEventListener("click", () => {
     if (failedReset !== undefined) void loadPage(failedReset, true);
+  });
+  // Back/Forward can restore a select value after scripts start, without a change event.
+  (options.lifecycle ?? window).addEventListener("pageshow", () => {
+    // Persisted form state may be restored after pageshow during history traversal.
+    setTimeout(() => {
+      if (requestedProvider !== undefined && options.providerFilter.value !== requestedProvider) {
+        void loadPage(true, false, true);
+      }
+    }, 0);
   });
   return () => loadPage(true);
 }

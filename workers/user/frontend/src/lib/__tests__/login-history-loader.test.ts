@@ -38,6 +38,7 @@ describe("login history recovery and latest-filter pagination", () => {
   let loading: HTMLElement;
   let empty: HTMLElement;
   let moreWrap: HTMLElement;
+  let lifecycle: EventTarget;
   let render: ReturnType<typeof vi.fn<(rows: readonly Event[]) => void>>;
 
   beforeEach(() => {
@@ -63,6 +64,7 @@ describe("login history recovery and latest-filter pagination", () => {
     render = vi.fn<(rows: readonly Event[]) => void>().mockImplementation((rows) => {
       list.textContent = rows.map((row) => row.id).join(",");
     });
+    lifecycle = new EventTarget();
     start = createLoginHistoryLoader({
       loading,
       results,
@@ -75,6 +77,7 @@ describe("login history recovery and latest-filter pagination", () => {
       loadMoreWrap: moreWrap,
       loadMoreButton: more,
       providerFilter: provider,
+      lifecycle,
       load,
       render,
     });
@@ -305,5 +308,49 @@ describe("login history recovery and latest-filter pagination", () => {
     expect(load.mock.calls.map((call) => call[1])).toEqual([0, 50, 50]);
     expect(list.textContent).not.toContain("bad");
     expect(list.textContent).toContain("valid");
+  });
+  it("reconciles a browser-restored provider without a change event", async () => {
+    await start();
+    load.mockResolvedValueOnce(events("github", 1));
+    lifecycle.dispatchEvent(new globalThis.Event("pageshow"));
+    // Chromium may restore form state after pageshow, within the same traversal task.
+    provider.value = "github";
+    await vi.waitFor(() => expect(summary.textContent).toContain("github の履歴を 1 件"));
+    expect(list.textContent).toBe("github-0");
+    expect(load.mock.calls.map((call) => [call[0], call[1]])).toEqual([
+      ["", 0],
+      ["github", 0],
+    ]);
+    lifecycle.dispatchEvent(new globalThis.Event("pageshow"));
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("supersedes a pending initial request when browser restoration changes the provider", async () => {
+    const first = deferred();
+    load.mockReturnValueOnce(first.promise).mockResolvedValueOnce(events("line", 1));
+    const initial = start();
+    lifecycle.dispatchEvent(new globalThis.Event("pageshow"));
+    provider.value = "line";
+    await vi.waitFor(() => expect(list.textContent).toBe("line-0"));
+    expect(load.mock.calls[0][2].aborted).toBe(true);
+    first.resolve(events("old"));
+    await initial;
+    expect(list.textContent).toBe("line-0");
+    expect(summary.textContent).toContain("line の履歴を 1 件");
+    expect(error.style.display).toBe("none");
+  });
+
+  it("checks the visible provider before committing a response and avoids unchanged restoration duplicates", async () => {
+    const first = deferred();
+    load.mockReturnValueOnce(first.promise).mockResolvedValueOnce(events("x", 1));
+    const initial = start();
+    lifecycle.dispatchEvent(new globalThis.Event("pageshow"));
+    expect(load).toHaveBeenCalledOnce();
+    provider.value = "x";
+    first.resolve(events("old"));
+    await initial;
+    await vi.waitFor(() => expect(list.textContent).toBe("x-0"));
+    expect(load.mock.calls[1].slice(0, 2)).toEqual(["x", 0]);
+    expect(summary.textContent).toContain("x の履歴を 1 件");
   });
 });
