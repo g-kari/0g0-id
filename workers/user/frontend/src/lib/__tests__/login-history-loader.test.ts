@@ -101,6 +101,8 @@ describe("login history recovery and latest-filter pagination", () => {
     expect(summary.getAttribute("role")).toBe("status");
     expect(summary.tabIndex).toBe(-1);
     expect(retry.type).toBe("button");
+    expect(retry.classList.contains("btn-primary")).toBe(true);
+    expect(summary.getAttribute("style")).toContain("var(--color-text)");
     expect(more.type).toBe("button");
     expect(document.querySelector('label[for="provider-filter"]')).not.toBeNull();
     expect(document.querySelector('a[href="/profile"]')).not.toBeNull();
