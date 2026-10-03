@@ -190,7 +190,7 @@ async function main() {
           await page.screenshot({ path: path.join(reportDir, `error-${viewport.width}.png`) });
           await retry.press("Enter");
           await expect(page.locator("#history-results")).toHaveAttribute("aria-busy", "true");
-          await expect(retry).toBeDisabled();
+          await expect(page.locator("#retry-btn")).toBeDisabled();
           await page.evaluate(() => {
             document.getElementById("retry-btn").dispatchEvent(new MouseEvent("click"));
             document.getElementById("retry-btn").dispatchEvent(new MouseEvent("click"));
