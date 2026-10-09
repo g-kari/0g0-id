@@ -100,6 +100,11 @@ npx wrangler secret put JWT_PUBLIC_KEY       # public.pem の内容
 npx wrangler secret put BOOTSTRAP_ADMIN_EMAIL
 ```
 
+> ⚠️ 初回管理者で管理画面への新しいログインと管理者専用一覧の読み取りを確認したら、
+> `BOOTSTRAP_ADMIN_EMAIL` を削除してください。既存の管理者ロールは DB に保持されます。
+> 削除の前提条件・即時デプロイへの注意・再投入の防止は
+> [初回管理者の作成後](docs/environment-variables.md#初回管理者の作成後) を参照してください。
+
 ### 6. フロントエンドビルド
 
 ```bash

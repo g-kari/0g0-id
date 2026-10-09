@@ -68,7 +68,11 @@ echo "admin@0g0.xyz" | npx wrangler secret put BOOTSTRAP_ADMIN_EMAIL
 | `GOOGLE_CLIENT_SECRET`  | Google OAuth 2.0 クライアントシークレット | 同上                                                      |
 | `JWT_PRIVATE_KEY`       | ES256 署名用秘密鍵（PEM）                 | `private.pem`                                             |
 | `JWT_PUBLIC_KEY`        | ES256 検証用公開鍵（PEM）                 | `public.pem`                                              |
-| `BOOTSTRAP_ADMIN_EMAIL` | 初回管理者として登録するメールアドレス    | 任意                                                      |
+| `BOOTSTRAP_ADMIN_EMAIL` | 初回管理者作成用（確認後に削除）          | 初回のみ                                                  |
+
+> ⚠️ 初回管理者で管理画面へ新しくログインし、管理者専用一覧を読み取れることを確認したら、
+> `BOOTSTRAP_ADMIN_EMAIL` を削除してください。削除は Worker の新バージョンを即時デプロイするため、
+> [前提条件・対象環境・再投入防止の手順](./environment-variables.md#初回管理者の作成後) を先に確認してください。
 
 ### Google Cloud Console での設定
 
