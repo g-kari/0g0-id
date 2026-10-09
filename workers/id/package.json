@@ -14,18 +14,18 @@
   },
   "dependencies": {
     "@0g0-id/shared": "*",
-    "hono": "4.13.5",
+    "hono": "4.13.13",
     "jose": "^6.2.3",
     "tldts": "^7.0.28",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.62.1",
+    "@cloudflare/vite-plugin": "1.63.1",
     "@cloudflare/workers-types": "^4.20260426.1",
     "@types/node": "^22.10.0",
     "tsx": "^4.19.2",
     "typescript": "^6.0.3",
     "vite-plus": "0.1.24",
-    "wrangler": "4.143.1"
+    "wrangler": "4.149.0"
   }
 }
