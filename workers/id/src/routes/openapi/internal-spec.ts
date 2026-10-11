@@ -1,3 +1,10 @@
+import {
+  STANDARD_TOKEN_OPERATION,
+  DEVICE_CODE_OPERATION,
+  DEVICE_VERIFY_OPERATION,
+  USERINFO_GET_OPERATION,
+  USERINFO_POST_OPERATION,
+} from "./standard-protocol-spec";
 import { ALL_PROVIDERS } from "@0g0-id/shared";
 
 // IdP 内部向け全API OpenAPI 仕様
@@ -181,6 +188,9 @@ export const INTERNAL_OPENAPI = {
     },
   },
   paths: {
+    "/api/token": { post: STANDARD_TOKEN_OPERATION },
+    "/api/device/code": { post: DEVICE_CODE_OPERATION },
+    "/api/device/verify": { post: DEVICE_VERIFY_OPERATION },
     "/api/admin/audit-logs": {
       get: {
         tags: ["管理者 API"],
@@ -1803,76 +1813,8 @@ export const INTERNAL_OPENAPI = {
         },
       },
     },
-    "/api/userinfo": {
-      get: {
-        tags: ["OIDC"],
-        summary: "UserInfo エンドポイント",
-        description:
-          "OIDC Core 1.0 Section 5.3 準拠のUserInfoエンドポイント。\n\n" +
-          "アクセストークンのスコープに応じたクレームを返す。\n\n" +
-          "- `scope` なし（BFFセッション）: 全クレームを返す\n" +
-          "- `profile` スコープ: `name`, `picture`\n" +
-          "- `email` スコープ: `email`, `email_verified`\n" +
-          "- `phone` スコープ: `phone_number`\n" +
-          "- `address` スコープ: `address`",
-        security: [{ BearerAuth: [] }],
-        responses: {
-          "200": {
-            description: "スコープに応じたユーザークレーム",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    sub: {
-                      type: "string",
-                      description: "ユーザー識別子（サービストークンはペアワイズsub）",
-                    },
-                    name: { type: "string", description: "表示名（profileスコープ）" },
-                    picture: {
-                      type: "string",
-                      nullable: true,
-                      description: "プロフィール画像URL（profileスコープ）",
-                    },
-                    email: { type: "string", description: "メールアドレス（emailスコープ）" },
-                    email_verified: {
-                      type: "boolean",
-                      description: "メール認証済みフラグ（emailスコープ）",
-                    },
-                    phone_number: {
-                      type: "string",
-                      nullable: true,
-                      description: "電話番号（phoneスコープ）",
-                    },
-                    address: {
-                      type: "object",
-                      nullable: true,
-                      description: "住所（addressスコープ）",
-                      properties: { formatted: { type: "string" } },
-                    },
-                    updated_at: { type: "integer", description: "最終更新日時（Unix timestamp）" },
-                  },
-                  required: ["sub", "updated_at"],
-                },
-                examples: {
-                  full: {
-                    value: {
-                      sub: "user_abc123",
-                      name: "山田 太郎",
-                      picture: "https://example.com/photo.jpg",
-                      email: "taro@example.com",
-                      email_verified: true,
-                      updated_at: 1735689600,
-                    },
-                  },
-                },
-              },
-            },
-          },
-          "401": { description: "UNAUTHORIZED — トークン無効または期限切れ" },
-        },
-      },
-    },
+    "/api/userinfo": { get: USERINFO_GET_OPERATION, post: USERINFO_POST_OPERATION },
+
     "/api/metrics": {
       get: {
         tags: ["管理者 API"],

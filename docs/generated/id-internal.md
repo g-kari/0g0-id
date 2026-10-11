@@ -121,17 +121,10 @@ OIDC プロバイダーメタデータ
 
 ### GET /api/userinfo
 
-UserInfo エンドポイント
+UserInfo（既存GET/POST共通ハンドラー）
 
-OIDC Core 1.0 Section 5.3 準拠のUserInfoエンドポイント。
-
-アクセストークンのスコープに応じたクレームを返す。
-
-- `scope` なし（BFFセッション）: 全クレームを返す
-- `profile` スコープ: `name`, `picture`
-- `email` スコープ: `email`, `email_verified`
-- `phone` スコープ: `phone_number`
-- `address` スコープ: `address`
+Authorization: Bearerヘッダーのみ。POSTの本文を読まず、本文access_tokenは認証に使わない。現在の共通認証はES256署名、iss=IDP_ORIGIN、aud=IDP_ORIGIN、期限/失効を検証する。標準service tokenはaud=client_idで発行されるため、そのままこのaudience検証を通るとは保証しない。
+認証を通ったtokenにcidがあればサービス固有pairwise sub、cidがなければ内部ユーザーIDを返す。scope未指定/空ならname/picture/email/email_verifiedを返す。profileはname/picture、emailはemail/email_verified、phoneは非nullのphone_number、addressは非nullの{formatted}。phone/address未保持時はキーを省略する。sub/updated_atは常に含む。data包み・role・provider IDsは返さない。
 
 **認証**: BearerAuth
 
@@ -139,26 +132,198 @@ OIDC Core 1.0 Section 5.3 準拠のUserInfoエンドポイント。
 
 #### 200
 
-スコープに応じたユーザークレーム
+スコープに応じたflatなユーザークレーム。
 
 **Content-Type**: application/json
 
 | フィールド | 必須 | 型 | 制約・既定値 | 説明 |
 | --- | --- | --- | --- | --- |
 | $ |  | object |  |  |
-| address |  | object ∪ null |  | 住所（addressスコープ） |
-| address.formatted |  | string |  |  |
-| email |  | string |  | メールアドレス（emailスコープ） |
-| email_verified |  | boolean |  | メール認証済みフラグ（emailスコープ） |
-| name |  | string |  | 表示名（profileスコープ） |
-| phone_number |  | string ∪ null |  | 電話番号（phoneスコープ） |
-| picture |  | string ∪ null |  | プロフィール画像URL（profileスコープ） |
-| sub | ✓ | string |  | ユーザー識別子（サービストークンはペアワイズsub） |
-| updated_at | ✓ | integer |  | 最終更新日時（Unix timestamp） |
+| address |  | object |  | address scopeかつ非nullの場合のみ。 |
+| address.formatted | ✓ | string |  |  |
+| email |  | string |  |  |
+| email_verified |  | boolean |  |  |
+| name |  | string |  |  |
+| phone_number |  | string |  | phone scopeかつ非nullの場合のみ。 |
+| picture |  | string ∪ null |  |  |
+| sub | ✓ | string |  | cidの有無でpairwise/internalを選ぶ。 |
+| updated_at | ✓ | integer |  | Unix秒。 |
 
 #### 401
 
-UNAUTHORIZED — トークン無効または期限切れ
+認証middlewareのREST UNAUTHORIZED、または不存在/停止ユーザーのOAuth invalid_token。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | anyOf |  |  |
+| $ (anyOf 1) |  | object |  |  |
+| $ (anyOf 1).error | ✓ | string |  | OAuthエラーコード。説明を省略する応答もある。 |
+| $ (anyOf 1).error_description |  | string |  |  |
+| $ (anyOf 2) |  | object (#/components/schemas/Error) |  |  |
+| $ (anyOf 2).error |  | object |  |  |
+| $ (anyOf 2).error.code | ✓ | string |  |  |
+| $ (anyOf 2).error.message | ✓ | string |  |  |
+
+#### 413
+
+共通body制限（64KiB）: PAYLOAD_TOO_LARGE。REST形式。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+#### 429
+
+共通レート制限: TOO_MANY_REQUESTS。デバイスのslow_down（400）とは別。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+#### 500
+
+ユーザー取得のOAuth server_error、または共通RESTエラー。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | anyOf |  |  |
+| $ (anyOf 1) |  | object |  |  |
+| $ (anyOf 1).error | ✓ | string |  | OAuthエラーコード。説明を省略する応答もある。 |
+| $ (anyOf 1).error_description |  | string |  |  |
+| $ (anyOf 2) |  | object (#/components/schemas/Error) |  |  |
+| $ (anyOf 2).error |  | object |  |  |
+| $ (anyOf 2).error.code | ✓ | string |  |  |
+| $ (anyOf 2).error.message | ✓ | string |  |  |
+
+#### 503
+
+本番レート制限binding未設定: SERVICE_UNAVAILABLE。REST形式。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+### POST /api/userinfo
+
+UserInfo（POST、本文のtokenは使わない）
+
+Authorization: Bearerヘッダーのみ。POSTの本文を読まず、本文access_tokenは認証に使わない。現在の共通認証はES256署名、iss=IDP_ORIGIN、aud=IDP_ORIGIN、期限/失効を検証する。標準service tokenはaud=client_idで発行されるため、そのままこのaudience検証を通るとは保証しない。
+認証を通ったtokenにcidがあればサービス固有pairwise sub、cidがなければ内部ユーザーIDを返す。scope未指定/空ならname/picture/email/email_verifiedを返す。profileはname/picture、emailはemail/email_verified、phoneは非nullのphone_number、addressは非nullの{formatted}。phone/address未保持時はキーを省略する。sub/updated_atは常に含む。data包み・role・provider IDsは返さない。
+
+**認証**: BearerAuth
+
+**レスポンス**
+
+#### 200
+
+スコープに応じたflatなユーザークレーム。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| address |  | object |  | address scopeかつ非nullの場合のみ。 |
+| address.formatted | ✓ | string |  |  |
+| email |  | string |  |  |
+| email_verified |  | boolean |  |  |
+| name |  | string |  |  |
+| phone_number |  | string |  | phone scopeかつ非nullの場合のみ。 |
+| picture |  | string ∪ null |  |  |
+| sub | ✓ | string |  | cidの有無でpairwise/internalを選ぶ。 |
+| updated_at | ✓ | integer |  | Unix秒。 |
+
+#### 401
+
+認証middlewareのREST UNAUTHORIZED、または不存在/停止ユーザーのOAuth invalid_token。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | anyOf |  |  |
+| $ (anyOf 1) |  | object |  |  |
+| $ (anyOf 1).error | ✓ | string |  | OAuthエラーコード。説明を省略する応答もある。 |
+| $ (anyOf 1).error_description |  | string |  |  |
+| $ (anyOf 2) |  | object (#/components/schemas/Error) |  |  |
+| $ (anyOf 2).error |  | object |  |  |
+| $ (anyOf 2).error.code | ✓ | string |  |  |
+| $ (anyOf 2).error.message | ✓ | string |  |  |
+
+#### 413
+
+共通body制限（64KiB）: PAYLOAD_TOO_LARGE。REST形式。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+#### 429
+
+共通レート制限: TOO_MANY_REQUESTS。デバイスのslow_down（400）とは別。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+#### 500
+
+ユーザー取得のOAuth server_error、または共通RESTエラー。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | anyOf |  |  |
+| $ (anyOf 1) |  | object |  |  |
+| $ (anyOf 1).error | ✓ | string |  | OAuthエラーコード。説明を省略する応答もある。 |
+| $ (anyOf 1).error_description |  | string |  |  |
+| $ (anyOf 2) |  | object (#/components/schemas/Error) |  |  |
+| $ (anyOf 2).error |  | object |  |  |
+| $ (anyOf 2).error.code | ✓ | string |  |  |
+| $ (anyOf 2).error.message | ✓ | string |  |  |
+
+#### 503
+
+本番レート制限binding未設定: SERVICE_UNAVAILABLE。REST形式。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
 
 ## サービス管理 API (管理者)
 
@@ -1915,6 +2080,425 @@ FORBIDDEN — 管理者権限なし
 INTERNAL_ERROR
 
 ## 認証フロー
+
+### POST /api/device/code
+
+デバイス認可の開始
+
+本文client_idで登録済みサービスの存在を確認する。Basic/Bearer/client_secretは要求しない。発行コードだけでは認可は成立せず、別のユーザー承認が必要。取得後はPOST /api/tokenの完全なdevice grant文字列でポーリングする。IPレート制限を適用する。
+
+**認証**: 不要（仕様上）
+
+**リクエスト本文**: 必須
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| client_id | ✓ | string |  | 登録済みサービスを本文で識別。Basic/client_secretでは認証しない。 |
+| scope |  | string |  | 省略/空はopenid。明示したscopeは許可された値へ絞り、openidは常に許可。残りが空ならinvalid_scope。 |
+
+**Content-Type**: application/x-www-form-urlencoded
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| client_id | ✓ | string |  | 登録済みサービスを本文で識別。Basic/client_secretでは認証しない。 |
+| scope |  | string |  | 省略/空はopenid。明示したscopeは許可された値へ絞り、openidは常に許可。残りが空ならinvalid_scope。 |
+
+**レスポンス**
+
+#### 200
+
+デバイス認可コード（10分）とポーリング間隔（5秒）。data包みなし。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| device_code | ✓ | string | minLength: 64; maxLength: 64 |  |
+| expires_in | ✓ | integer | enum: [600] |  |
+| interval | ✓ | integer | enum: [5] |  |
+| user_code | ✓ | string | pattern: ^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}$ |  |
+| verification_uri | ✓ | string | format: uri | USER_ORIGIN + /device。 |
+| verification_uri_complete | ✓ | string | format: uri | verification_uri + ?code=&lt;表示user_code&gt;。 |
+
+#### 400
+
+invalid_request（形式/Content-Type/本文）、invalid_scope。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | string |  | OAuthエラーコード。説明を省略する応答もある。 |
+| error_description |  | string |  |  |
+
+#### 401
+
+invalid_client（client_id未登録）。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | string |  | OAuthエラーコード。説明を省略する応答もある。 |
+| error_description |  | string |  |  |
+
+#### 413
+
+共通body制限（64KiB）: PAYLOAD_TOO_LARGE。REST形式。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+#### 429
+
+共通レート制限: TOO_MANY_REQUESTS。デバイスのslow_down（400）とは別。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+#### 500
+
+OAuth server_error、または共通RESTエラー。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | anyOf |  |  |
+| $ (anyOf 1) |  | object |  |  |
+| $ (anyOf 1).error | ✓ | string |  | OAuthエラーコード。説明を省略する応答もある。 |
+| $ (anyOf 1).error_description |  | string |  |  |
+| $ (anyOf 2) |  | object (#/components/schemas/Error) |  |  |
+| $ (anyOf 2).error |  | object |  |  |
+| $ (anyOf 2).error.code | ✓ | string |  |  |
+| $ (anyOf 2).error.message | ✓ | string |  |  |
+
+#### 503
+
+本番レート制限binding未設定: SERVICE_UNAVAILABLE。REST形式。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+### POST /api/device/verify
+
+ユーザーによるデバイス認可の確認・承認・拒否
+
+Bearer認証後、cid付きservice tokenと停止済み/不存在ユーザーを拒否する。BFFトークンは現在のiss/aud=IDP_ORIGIN検証と失効チェックを満たす必要がある。管理者/サービス所有者に限定する追加チェックはない。codeを保持する認証済みユーザーのsubで承認する。
+JSON本文を読む（Content-Typeの明示検査はない）。user_codeは空白/ハイフン除去・大文字化後、所定文字集合8文字を要求。actionを省略または空にすると情報取得のみ。approve/denyを指定すると認可状態を変更する。Origin/CSRFやInternalSecretがこのIdPルートに付くとは主張しない。
+
+**認証**: BearerAuth
+
+**リクエスト本文**: 必須
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| action |  | string | enum: ["approve", "deny", ""] | 省略/空は情報だけ。 |
+| user_code | ✓ | string |  | 例のXXXX-XXXX形式。正規化後8文字。 |
+
+**レスポンス**
+
+#### 200
+
+情報取得、承認、拒否のいずれか。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | oneOf |  |  |
+| $ (oneOf 1) |  | object |  |  |
+| $ (oneOf 1).data | ✓ | object |  |  |
+| $ (oneOf 1).data.scopes | ✓ | array&lt;string&gt; |  |  |
+| $ (oneOf 1).data.scopes[] |  | string |  |  |
+| $ (oneOf 1).data.service_name | ✓ | string |  |  |
+| $ (oneOf 2) |  | object |  |  |
+| $ (oneOf 2).status | ✓ | string | enum: ["approved"] |  |
+| $ (oneOf 3) |  | object |  |  |
+| $ (oneOf 3).status | ✓ | string | enum: ["denied"] |  |
+
+#### 400
+
+BAD_REQUEST/CODE_EXPIRED/CODE_ALREADY_USED。REST形式。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+#### 401
+
+UNAUTHORIZED（Bearer/JWT/失効/ユーザー確認）。REST形式。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+#### 403
+
+FORBIDDEN（cid付きservice token）。REST形式。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+#### 404
+
+INVALID_CODE（コードが存在しない）。REST形式。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+#### 413
+
+共通body制限（64KiB）: PAYLOAD_TOO_LARGE。REST形式。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+#### 429
+
+共通レート制限: TOO_MANY_REQUESTS。デバイスのslow_down（400）とは別。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+#### 500
+
+REST INTERNAL_ERROR/MISCONFIGURATION、または既存catchの{error:INTERNAL_ERROR}。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | anyOf |  |  |
+| $ (anyOf 1) |  | object (#/components/schemas/Error) |  |  |
+| $ (anyOf 1).error |  | object |  |  |
+| $ (anyOf 1).error.code | ✓ | string |  |  |
+| $ (anyOf 1).error.message | ✓ | string |  |  |
+| $ (anyOf 2) |  | object |  |  |
+| $ (anyOf 2).error | ✓ | string | enum: ["INTERNAL_ERROR"] |  |
+
+#### 503
+
+本番レート制限binding未設定: SERVICE_UNAVAILABLE。REST形式。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+### POST /api/token
+
+標準OAuthトークン交換・更新・デバイスのポーリング
+
+既存POST /api/token。application/x-www-form-urlencodedのみ。JSONは受け付けない。
+
+authorization_code/refresh_token: client_secret_hashのあるサービスはclient_secret_basicで認証する。secretのない公開クライアントは本文client_idで識別する。本文client_secretは認証に使わない。
+device_code: 本文client_idと保存済みコードのサービス一致を確認し、Basic/client_secretは認証に使わない。
+
+公開クライアントのauthorization_codeはPKCE必須。保存コードにchallengeがあるconfidential clientにもverifierが必要。redirect_uriは正規化後に照合する（localhost/127.0.0.1とloopbackポートの比較に特例あり）。
+authorization_code/device_codeは保存済みスコープを現在の許可スコープと照合する。refreshは保存済みスコープをそのまま再利用し、legacy未保存時だけ現在の許可スコープ/openidへfallbackする。本文scopeは使わない。
+deviceの未承認はauthorization_pending、早すぎるポーリングはslow_down（400/Retry-After:10）。refreshのローテーション競合もinvalid_grant（400）であり、BFF /auth/refreshの503ではない。
+発行service tokenのaudienceはclient_id。現在のUserInfo認証はIDP_ORIGINをaudienceに要求するため、互換性は別途確認が必要。
+
+**認証**: BasicAuth OR 不要（仕様上）
+
+**リクエスト本文**: 必須
+
+**Content-Type**: application/x-www-form-urlencoded
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | oneOf |  |  |
+| $ (oneOf 1) |  | object |  |  |
+| $ (oneOf 1).client_id |  | string |  | 登録済みclient_id。公開クライアントとdevice_codeは必須。Basic認証時は省略可だが指定値は認証したclientと一致必須。 |
+| $ (oneOf 1).code | ✓ | string |  | 未使用・未期限切れの認可コード。 |
+| $ (oneOf 1).code_verifier |  | string | minLength: 43; maxLength: 128; pattern: ^[A-Za-z0-9._~-]+$ | 公開クライアント、または保存コードにPKCE challengeがある場合は必須（S256）。 |
+| $ (oneOf 1).grant_type | ✓ | string | enum: ["authorization_code"] |  |
+| $ (oneOf 1).redirect_uri | ✓ | string | format: uri |  |
+| $ (oneOf 2) |  | object |  |  |
+| $ (oneOf 2).client_id |  | string |  | 登録済みclient_id。公開クライアントとdevice_codeは必須。Basic認証時は省略可だが指定値は認証したclientと一致必須。 |
+| $ (oneOf 2).grant_type | ✓ | string | enum: ["refresh_token"] |  |
+| $ (oneOf 2).refresh_token | ✓ | string |  |  |
+| $ (oneOf 3) |  | object |  |  |
+| $ (oneOf 3).client_id | ✓ | string |  | コードを発行したサービスのclient_id。Basicでは代用しない。 |
+| $ (oneOf 3).device_code | ✓ | string |  |  |
+| $ (oneOf 3).grant_type | ✓ | string | enum: ["urn:ietf:params:oauth:grant-type:device_code"] |  |
+
+**レスポンス**
+
+#### 200
+
+data包みなしのトークン応答。refreshにid_tokenは含まない。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| access_token | ✓ | string |  |  |
+| expires_in | ✓ | integer | enum: [900] |  |
+| id_token |  | string |  | authorization_code/device_codeでopenidスコープがある場合のみ。refreshでは返さない。 |
+| refresh_token | ✓ | string |  | 30日。有効な交換でローテーションする。 |
+| scope |  | string |  | 有効スコープが空でない場合に含む。 |
+| token_type | ✓ | string | enum: ["Bearer"] |  |
+
+#### 400
+
+invalid_request/unsupported_grant_type/invalid_grant/invalid_scope/expired_token/access_denied/authorization_pending/slow_down。error_descriptionは省略可。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | string |  | OAuthエラーコード。説明を省略する応答もある。 |
+| error_description |  | string |  |  |
+
+#### 401
+
+invalid_client。authorization_code/refreshの認証失敗にはBasic challenge。device_codeには付けない。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | string |  | OAuthエラーコード。説明を省略する応答もある。 |
+| error_description |  | string |  |  |
+
+#### 403
+
+refresh/deviceで停止済みユーザー: access_denied。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | string |  | OAuthエラーコード。説明を省略する応答もある。 |
+| error_description |  | string |  |  |
+
+#### 413
+
+共通body制限（64KiB）: PAYLOAD_TOO_LARGE。REST形式。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+#### 429
+
+共通レート制限: TOO_MANY_REQUESTS。デバイスのslow_down（400）とは別。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+#### 500
+
+OAuth server_error、または共通REST MISCONFIGURATION/INTERNAL_ERROR。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | anyOf |  |  |
+| $ (anyOf 1) |  | object |  |  |
+| $ (anyOf 1).error | ✓ | string |  | OAuthエラーコード。説明を省略する応答もある。 |
+| $ (anyOf 1).error_description |  | string |  |  |
+| $ (anyOf 2) |  | object (#/components/schemas/Error) |  |  |
+| $ (anyOf 2).error |  | object |  |  |
+| $ (anyOf 2).error.code | ✓ | string |  |  |
+| $ (anyOf 2).error.message | ✓ | string |  |  |
+
+#### 503
+
+本番レート制限binding未設定: SERVICE_UNAVAILABLE。REST形式。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
 
 ### GET /auth/callback
 

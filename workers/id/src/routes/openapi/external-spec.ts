@@ -1,3 +1,10 @@
+import {
+  STANDARD_TOKEN_OPERATION,
+  DEVICE_CODE_OPERATION,
+  DEVICE_VERIFY_OPERATION,
+  USERINFO_GET_OPERATION,
+  USERINFO_POST_OPERATION,
+} from "./standard-protocol-spec";
 // 外部連携サービス向け OpenAPI 仕様
 // 外部公開API 変更時はこのファイルの paths / components.schemas を更新すること
 
@@ -138,6 +145,9 @@ Authorization: Basic <Base64(client_id:client_secret)>
     },
   },
   paths: {
+    "/api/token": { post: STANDARD_TOKEN_OPERATION },
+    "/api/device/code": { post: DEVICE_CODE_OPERATION },
+    "/api/device/verify": { post: DEVICE_VERIFY_OPERATION },
     "/auth/authorize": {
       get: {
         tags: ["認証フロー"],
@@ -828,84 +838,8 @@ Authorization: Basic <Base64(client_id:client_secret)>
         },
       },
     },
-    "/api/userinfo": {
-      get: {
-        tags: ["OIDC"],
-        summary: "UserInfo エンドポイント（OIDC Core 1.0）",
-        description:
-          "OIDC Core 1.0 Section 5.3 準拠のUserInfoエンドポイント。\n\n" +
-          "アクセストークンに付与されたスコープに応じたユーザークレームを返す。\n\n" +
-          "| スコープ | 返却クレーム |\n" +
-          "|---------|------------|\n" +
-          "| `profile` | `name`, `picture` |\n" +
-          "| `email` | `email`, `email_verified` |\n" +
-          "| `phone` | `phone_number` |\n" +
-          "| `address` | `address` |\n\n" +
-          "`sub` は常にサービス固有のペアワイズ識別子。",
-        security: [{ BearerAuth: [] }],
-        responses: {
-          "200": {
-            description: "スコープに応じたユーザークレーム",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    sub: { type: "string", description: "ペアワイズユーザー識別子" },
-                    name: { type: "string", description: "表示名（profileスコープ）" },
-                    picture: {
-                      type: "string",
-                      nullable: true,
-                      description: "プロフィール画像URL（profileスコープ）",
-                    },
-                    email: { type: "string", description: "メールアドレス（emailスコープ）" },
-                    email_verified: {
-                      type: "boolean",
-                      description: "メール認証済み（emailスコープ）",
-                    },
-                    phone_number: {
-                      type: "string",
-                      nullable: true,
-                      description: "電話番号（phoneスコープ）",
-                    },
-                    address: {
-                      type: "object",
-                      nullable: true,
-                      description: "住所（addressスコープ）",
-                      properties: { formatted: { type: "string" } },
-                    },
-                    updated_at: { type: "integer", description: "最終更新日時（Unix timestamp）" },
-                  },
-                  required: ["sub", "updated_at"],
-                },
-                example: {
-                  sub: "pairwise_abc123",
-                  name: "山田 太郎",
-                  picture: "https://example.com/photo.jpg",
-                  email: "taro@example.com",
-                  email_verified: true,
-                  updated_at: 1735689600,
-                },
-              },
-            },
-          },
-          "401": {
-            description: "UNAUTHORIZED — アクセストークン無効・期限切れ",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    error: { type: "string", example: "invalid_token" },
-                    error_description: { type: "string", example: "User not found" },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
+    "/api/userinfo": { get: USERINFO_GET_OPERATION, post: USERINFO_POST_OPERATION },
+
     "/api/token/revoke": {
       post: {
         tags: ["トークン失効"],
