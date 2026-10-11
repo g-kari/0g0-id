@@ -49,7 +49,7 @@ export const EXTERNAL_OPENAPI = {
     │                                    │
     │  7. ユーザーデータ取得（External API）│
     │──────────────────────────────────>│
-    │  GET /api/external/users/:id       │
+    │  GET /api/external/users/:sub      │
     │  Authorization: Basic <cred>       │
     │                                    │
     │  8. スコープに応じたユーザーデータ     │
@@ -438,7 +438,8 @@ Authorization: Basic <Base64(client_id:client_secret)>
                           properties: {
                             id: {
                               type: "string",
-                              description: "0g0 ID 内部ユーザーID（External API で使用）",
+                              description:
+                                "0g0 ID 内部ユーザーID（External API の検索にはペアワイズ sub を使用）",
                             },
                             email: { type: "string" },
                             name: { type: "string" },
@@ -752,23 +753,22 @@ Authorization: Basic <Base64(client_id:client_secret)>
         },
       },
     },
-    "/api/external/users/{id}": {
+    "/api/external/users/{sub}": {
       get: {
         tags: ["ユーザーデータ取得"],
-        summary: "IDによるユーザー取得",
+        summary: "ペアワイズ sub によるユーザー取得",
         description:
-          "指定したユーザーIDで完全一致検索を行い、ユーザー情報を返す。\n\n" +
-          "セキュリティのため、このサービスを認可していないユーザーのIDを指定した場合も 404 を返す（IDOR防止）。\n\n" +
-          "**注意**: このエンドポイントで指定する `id` は 0g0 ID の内部ユーザーID。ペアワイズ `sub` ではない。\n" +
-          "内部ユーザーIDは `/auth/exchange` または `/auth/refresh` のレスポンスから取得できる。",
+          "認証したサービスに固有のペアワイズ `sub`（64桁の16進文字列）で完全一致検索を行い、ユーザー情報を返す。\n\n" +
+          "同じサービスの `/api/external/users` 一覧で返された `sub` を指定する。内部ユーザーIDは検索に使わない。\n\n" +
+          "不正な形式は 400、一致する認可済みユーザーがいない場合・ユーザーが存在しない場合・BAN済みの場合は 404 を返す。",
         security: [{ BasicAuth: [] }],
         parameters: [
           {
-            name: "id",
+            name: "sub",
             in: "path",
             required: true,
-            schema: { type: "string" },
-            description: "0g0 ID 内部ユーザーID",
+            schema: { type: "string", minLength: 64, maxLength: 64, pattern: "^[0-9a-fA-F]{64}$" },
+            description: "認証したサービス固有のペアワイズ sub（64桁の16進文字列）",
           },
         ],
         responses: {
@@ -791,6 +791,15 @@ Authorization: Basic <Base64(client_id:client_secret)>
               },
             },
           },
+          "400": {
+            description: "sub が64桁の16進文字列ではない",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                example: { error: { code: "BAD_REQUEST", message: "Invalid sub format" } },
+              },
+            },
+          },
           "401": {
             description: "認証失敗",
             content: {
@@ -800,7 +809,7 @@ Authorization: Basic <Base64(client_id:client_secret)>
             },
           },
           "404": {
-            description: "ユーザーが存在しない、またはこのサービスを未認可",
+            description: "一致する認可済みユーザーがいない、ユーザーが存在しない、またはBAN済み",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/Error" },

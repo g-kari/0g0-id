@@ -50,7 +50,7 @@
     │                                    │
     │  7. ユーザーデータ取得（External API）│
     │──────────────────────────────────>│
-    │  GET /api/external/users/:id       │
+    │  GET /api/external/users/:sub      │
     │  Authorization: Basic <cred>       │
     │                                    │
     │  8. スコープに応じたユーザーデータ     │
@@ -446,16 +446,15 @@ UNAUTHORIZED — Basic 認証失敗
 | error.code | ✓ | string |  |  |
 | error.message | ✓ | string |  |  |
 
-### GET /api/external/users/{id}
+### GET /api/external/users/{sub}
 
-IDによるユーザー取得
+ペアワイズ sub によるユーザー取得
 
-指定したユーザーIDで完全一致検索を行い、ユーザー情報を返す。
+認証したサービスに固有のペアワイズ `sub`（64桁の16進文字列）で完全一致検索を行い、ユーザー情報を返す。
 
-セキュリティのため、このサービスを認可していないユーザーのIDを指定した場合も 404 を返す（IDOR防止）。
+同じサービスの `/api/external/users` 一覧で返された `sub` を指定する。内部ユーザーIDは検索に使わない。
 
-**注意**: このエンドポイントで指定する `id` は 0g0 ID の内部ユーザーID。ペアワイズ `sub` ではない。
-内部ユーザーIDは `/auth/exchange` または `/auth/refresh` のレスポンスから取得できる。
+不正な形式は 400、一致する認可済みユーザーがいない場合・ユーザーが存在しない場合・BAN済みの場合は 404 を返す。
 
 **認証**: BasicAuth
 
@@ -463,7 +462,7 @@ IDによるユーザー取得
 
 | 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
 | --- | --- | --- | --- | --- | --- |
-| id | path | ✓ | string |  | 0g0 ID 内部ユーザーID |
+| sub | path | ✓ | string | minLength: 64; maxLength: 64; pattern: ^[0-9a-fA-F]{64}$ | 認証したサービス固有のペアワイズ sub（64桁の16進文字列） |
 
 **レスポンス**
 
@@ -485,6 +484,19 @@ IDによるユーザー取得
 | data.picture |  | string ∪ null |  | プロフィール画像URL（profileスコープ） |
 | data.sub | ✓ | string |  | サービス固有のユーザー識別子（ペアワイズ） |
 
+#### 400
+
+sub が64桁の16進文字列ではない
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
 #### 401
 
 認証失敗
@@ -500,7 +512,7 @@ IDによるユーザー取得
 
 #### 404
 
-ユーザーが存在しない、またはこのサービスを未認可
+一致する認可済みユーザーがいない、ユーザーが存在しない、またはBAN済み
 
 **Content-Type**: application/json
 
@@ -632,7 +644,7 @@ TOO_MANY_REQUESTS — レートリミット超過
 | data.token_type |  | string |  |  |
 | data.user |  | object |  |  |
 | data.user.email |  | string |  |  |
-| data.user.id |  | string |  | 0g0 ID 内部ユーザーID（External API で使用） |
+| data.user.id |  | string |  | 0g0 ID 内部ユーザーID（External API の検索にはペアワイズ sub を使用） |
 | data.user.name |  | string |  |  |
 | data.user.picture |  | string ∪ null |  |  |
 | data.user.role |  | string | enum: ["user", "admin"] |  |

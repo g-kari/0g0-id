@@ -30,6 +30,8 @@ import {
 } from "@0g0-id/shared";
 
 import externalRoutes from "./external";
+import { EXTERNAL_OPENAPI } from "./openapi/external-spec";
+import { INTERNAL_OPENAPI } from "./openapi/internal-spec";
 
 const mockFindUserById = vi.mocked(findUserById);
 const mockFindUserIdByPairwiseSub = vi.mocked(findUserIdByPairwiseSub);
@@ -56,7 +58,7 @@ function basicAuth(clientId: string, clientSecret: string): string {
   return `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
 }
 
-// テストヘルパー: /api/external/users/:id へのリクエストを生成
+// テストヘルパー: /api/external/users/:sub へのリクエストを生成
 function makeRequest(userId: string, auth?: string, headers?: Record<string, string>): Request {
   return new Request(`${baseUrl}/api/external/users/${userId}`, {
     headers: { ...(auth ? { Authorization: auth } : {}), ...headers },
@@ -136,6 +138,89 @@ describe("GET /api/external/users/:sub", () => {
     mockFindUserById.mockResolvedValue(mockUser);
     // ペアワイズsubによるユーザーID逆引き
     mockFindUserIdByPairwiseSub.mockResolvedValue("user-1");
+  });
+
+  describe.each([
+    ["内部仕様", INTERNAL_OPENAPI],
+    ["外部仕様", EXTERNAL_OPENAPI],
+  ] as const)("%s の外部ユーザー検索契約", (_name, spec) => {
+    const operation = spec.paths["/api/external/users/{sub}"].get;
+    const parameter = operation.parameters[0];
+    const pattern = new RegExp(parameter.schema.pattern);
+
+    it("登録済みルートと必須pairwise sub・Basic認証要件が一致する", () => {
+      expect(app.routes).toContainEqual(
+        expect.objectContaining({ method: "GET", path: "/api/external/users/:sub" }),
+      );
+      expect(spec.paths).not.toHaveProperty("/api/external/users/{id}");
+      expect(operation.security).toEqual([{ BasicAuth: [] }]);
+      expect(parameter).toMatchObject({ name: "sub", in: "path", required: true });
+      expect(parameter.schema).toMatchObject({ type: "string", minLength: 64, maxLength: 64 });
+      expect(operation.description).toContain("ペアワイズ");
+      expect(operation.description).toContain("内部ユーザーIDは検索に使わない");
+    });
+
+    it("仕様の形式を満たすsubでサービス固有の検索を実行する", async () => {
+      expect(pattern.test(PAIRWISE_SUB)).toBe(true);
+      const response = await requestExternalUser(app, PAIRWISE_SUB);
+      expect(response.status).toBe(200);
+      expect(mockFindUserIdByPairwiseSub).toHaveBeenCalledWith(
+        mockEnv.DB,
+        mockService.id,
+        PAIRWISE_SUB,
+      );
+      expect(mockFindUserById).toHaveBeenCalledWith(mockEnv.DB, "user-1");
+    });
+
+    it("大文字hexは形式を満たすが変換せず検索し、未登録なら404を返す", async () => {
+      const uppercaseSub = PAIRWISE_SUB.toUpperCase();
+      expect(pattern.test(uppercaseSub)).toBe(true);
+      mockFindUserIdByPairwiseSub.mockResolvedValue(null);
+      const response = await requestExternalUser(app, uppercaseSub);
+      expect(response.status).toBe(404);
+      expect(mockFindUserIdByPairwiseSub).toHaveBeenCalledWith(
+        mockEnv.DB,
+        mockService.id,
+        uppercaseSub,
+      );
+      expect(mockFindUserById).not.toHaveBeenCalled();
+      expect(await response.json()).toEqual(
+        operation.responses["404"].content["application/json"].example,
+      );
+    });
+
+    it.each(["user-1", "a".repeat(63), "a".repeat(65), "g".repeat(64)])(
+      "内部ID/不正subの仕様と実400が一致しユーザー検索しない: %s",
+      async (sub) => {
+        expect(pattern.test(sub)).toBe(false);
+        const response = await requestExternalUser(app, sub);
+        expect(response.status).toBe(400);
+        const documented = operation.responses["400"].content["application/json"];
+        expect(documented.schema.$ref).toBe("#/components/schemas/Error");
+        expect(await response.json()).toEqual(documented.example);
+        expect(spec.components.schemas.Error.properties.error.required).toEqual([
+          "code",
+          "message",
+        ]);
+        expect(mockFindUserIdByPairwiseSub).not.toHaveBeenCalled();
+        expect(mockFindUserById).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(["未認可", "不存在", "BAN済み"])(
+      "%sを区別せず仕様どおり404を返す",
+      async (condition) => {
+        if (condition === "未認可") mockFindUserIdByPairwiseSub.mockResolvedValue(null);
+        if (condition === "不存在") mockFindUserById.mockResolvedValue(null);
+        if (condition === "BAN済み")
+          mockFindUserById.mockResolvedValue({ ...mockUser, banned_at: "2026-01-01T00:00:00Z" });
+        const response = await requestExternalUser(app, PAIRWISE_SUB);
+        expect(response.status).toBe(404);
+        const documented = operation.responses["404"].content["application/json"];
+        expect(documented.schema.$ref).toBe("#/components/schemas/Error");
+        expect(await response.json()).toEqual(documented.example);
+      },
+    );
   });
 
   describe("認証", () => {
