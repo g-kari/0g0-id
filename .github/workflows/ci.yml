@@ -72,6 +72,9 @@ jobs:
           PROFILE_RECOVERY_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
             PROFILE_RECOVERY_REPORT_DIR="$RUNNER_TEMP/profile-recovery-ui" \
             node scripts/profile-recovery-browser-smoke.mjs
+          PROVIDERS_RECOVERY_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
+            PROVIDERS_RECOVERY_REPORT_DIR="$RUNNER_TEMP/providers-recovery-ui" \
+            node scripts/providers-recovery-browser-smoke.mjs
           LOGIN_HISTORY_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
             LOGIN_HISTORY_REPORT_DIR="$RUNNER_TEMP/login-history-ui" \
             node scripts/login-history-browser-smoke.mjs
@@ -100,6 +103,15 @@ jobs:
         with:
           name: login-history-ui
           path: ${{ runner.temp }}/login-history-ui
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: SNS 連携復旧 UI の検証記録
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: providers-recovery-ui
+          path: ${{ runner.temp }}/providers-recovery-ui
           retention-days: 7
           if-no-files-found: warn
 

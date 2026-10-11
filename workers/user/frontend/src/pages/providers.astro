@@ -2,26 +2,34 @@
 import Base from '../layouts/Base.astro';
 ---
 <Base title="SNS連携 — 0g0 ID">
-  <div id="loading" class="min-h-screen p-4" style="background:var(--color-surface);">
-    <div style="max-width:480px; margin:0 auto; display:flex; justify-content:center; padding:3rem;">
-      <div class="spinner"></div>
-    </div>
-  </div>
-  <div id="content" style="display:none">
+  <div id="content">
     <div class="min-h-screen p-4" style="background:var(--color-surface);">
       <div style="max-width:480px; margin:0 auto; display:flex; flex-direction:column; gap:1.5rem; padding:2rem 0;">
         <div style="display:flex; align-items:center; gap:0.75rem;">
           <a href="/profile" class="btn btn-ghost btn-sm">← プロフィール</a>
         </div>
         <div>
-          <h1 style="font-size:1.5rem; font-weight:700;">SNS連携</h1>
+          <h1 id="providers-heading" tabindex="-1" style="font-size:1.5rem; font-weight:700;">SNS連携</h1>
           <p style="color:var(--color-muted); font-size:0.875rem; margin-top:4px;">
             複数のSNSアカウントを同一IDに連携できます
           </p>
         </div>
-        <div id="provider-list" class="card" style="padding:0; overflow:hidden; display:flex; flex-direction:column; gap:0;"></div>
-        <div id="warning" class="alert alert-error" style="font-size:0.8125rem; display:none">
-          連携中のプロバイダーが1つしかないため、解除できません。先に別のプロバイダーを連携してください。
+        <div id="providers-state" aria-busy="true">
+          <div id="loading" role="status" class="flex items-center justify-center gap-2 py-8">
+            <span class="spinner" aria-hidden="true"></span>
+            <span>SNS連携を読み込み中...</span>
+          </div>
+          <div id="providers-error" class="card flex flex-col gap-4" style="display:none">
+            <p id="providers-error-message" role="alert" style="overflow-wrap:anywhere;"></p>
+            <p class="text-sm">通信状況を確認して、もう一度お試しください。</p>
+            <button id="providers-retry-btn" type="button" class="btn btn-primary">もう一度読み込む</button>
+          </div>
+          <div id="provider-content" style="display:none">
+            <div id="provider-list" class="card" style="padding:0; overflow:hidden; display:flex; flex-direction:column; gap:0;"></div>
+            <div id="warning" class="alert alert-error" style="font-size:0.8125rem; display:none">
+              連携中のプロバイダーが1つしかないため、解除できません。先に別のプロバイダーを連携してください。
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -31,6 +39,7 @@ import Base from '../layouts/Base.astro';
 <script>
   import { apiFetch } from '../lib/api';
   import { showToast } from '../lib/toast';
+  import { createProvidersLoader } from '../lib/providers-loader';
   import type { ProviderStatus } from '@0g0-id/api-types';
 
   type OAuthProvider = ProviderStatus['provider'];
@@ -48,7 +57,7 @@ import Base from '../layouts/Base.astro';
   };
 
   const loadingEl = document.getElementById('loading')!;
-  const contentEl = document.getElementById('content')!;
+  const contentEl = document.getElementById('provider-content')!;
   const providerList = document.getElementById('provider-list')!;
   const warningEl = document.getElementById('warning')!;
 
@@ -97,13 +106,18 @@ import Base from '../layouts/Base.astro';
     render();
   });
 
-  try {
-    statuses = await apiFetch<ProviderStatus[]>('/api/providers');
-    loadingEl.style.display = 'none';
-    render();
-    contentEl.style.display = '';
-  } catch (err) {
-    loadingEl.style.display = 'none';
-    showToast(err instanceof Error ? err.message : 'プロバイダー一覧の取得に失敗しました', 'error');
-  }
+  const loadProviders = createProvidersLoader({
+    loading: loadingEl,
+    content: contentEl,
+    error: document.getElementById('providers-error')!,
+    errorMessage: document.getElementById('providers-error-message')!,
+    retryButton: document.getElementById('providers-retry-btn') as HTMLButtonElement,
+    region: document.getElementById('providers-state')!,
+    focusAfterRetry: document.getElementById('providers-heading')!,
+    load: async () => {
+      statuses = await apiFetch<ProviderStatus[]>('/api/providers');
+      render();
+    },
+  });
+  await loadProviders();
 </script>
