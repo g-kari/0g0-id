@@ -26,8 +26,9 @@ challengeがあればverifierが必要です。verifierは43〜128文字で、�
 refresh tokenの期限は30日で、`offline_access`を要求しなくても発行します。
 有効scopeが空でなければscopeを含みます。認可コード/デバイス交換ではopenidがあると
 `id_token`を含みます。refreshでは`id_token`を返しません。
-認可コード/デバイスは保存scopeを現在の許可scopeと照合し、refreshは保存scopeを再利用します。
-legacy未保存scopeだけ現在の許可scope/openidへfallbackします。交換本文scopeは使いません。
+認可コード/デバイスは保存scopeを現在の許可scopeと照合し、保存値がnull/空ならopenidのみへfallbackします。
+refreshは保存scopeを再利用し、legacy未保存（null/undefined）のときだけ現在の許可scope、
+許可scopeが空ならopenidへfallbackします。交換本文scopeは使いません。
 
 デバイス未承認は400 `authorization_pending`、早すぎるポーリングは400 `slow_down`と
 Retry-After: 10です。期限切れは400 `expired_token`、拒否は400 `access_denied`。
@@ -39,16 +40,21 @@ refreshのローテーション競合は400 `invalid_grant`で、BFFの/auth/ref
 ## POST /api/device/code と /api/device/verify
 
 /codeはformまたはJSONの本文`client_id`で登録済みサービスを識別します。
-Basic/Bearer/`client_secret`は要求しません。未知clientは401 `invalid_client`。
+Basic/Bearer/`client_secret`は要求せず、Basicがあっても認証に使いません。未知clientは401 `invalid_client`。
 scope省略/空はopenid、明示scopeは現在の許可値へ絞ります。openidは常に許可されますが、
 明示した別scopeへ自動追加されません。絞った結果が空なら400 `invalid_scope`です。
+JSONはobjectの文字列フィールドを送ってください。現実装ではJSON nullと、truthyな非文字列scopeは
+共通REST 500 `INTERNAL_ERROR`になります。配列/文字列/数値/boolのJSON本文は`client_id`不足の400、
+パース不能なJSONも400 `invalid_request`です。この既知の入力境界は今回の文書変更で修正しません。
+/codeは入力検査より先に期限切れコードのbest-effort cleanupを開始します。
 
 200はflatな`device_code`（64文字）、`user_code`（XXXX-XXXX）、`verification_uri`、
 `verification_uri_complete`、`expires_in`=600、interval=5の6項目です。
 `verification_uri`は`USER_ORIGIN` + /device、completeは?code=<表示`user_code`>を付けます。
 ポーリング先は/api/tokenです。/api/device/tokenというルートはありません。
 
-/verifyはBearer署名・issuer/audience・失効を検査し、cid付きservice tokenを403で拒否します。
+/verifyはBFFの認証済みユーザー向け操作で、外部service tokenでは利用できません。
+Bearer署名・issuer/audience・失効を検査し、cid付きservice tokenを403で拒否します。
 ユーザー不存在/停止は401です。BFFのX-BFF-Session-Idを指定した場合は有効sessionも確認します。
 追加の管理者/サービス所有者限定やOrigin/CSRFチェックはこのIdPルートにありません。
 有効な`user_code`を保持する認証済みユーザーのsubで承認します。
@@ -58,6 +64,7 @@ scope省略/空はopenid、明示scopeは現在の許可値へ絞ります。ope
 8文字を要求します。action省略/空は情報取得のみ、approve/denyは状態変更です。
 200の情報取得はdata:{`service_name`,scopes}、承認/拒否はstatus:approved/deniedです。
 400 `BAD_REQUEST`/`CODE_EXPIRED`/`CODE_ALREADY_USED`、404 `INVALID_CODE`はREST形式です。
+404には期限切れ後にcleanupで削除済みのコードも含みます。期限切れレコードが残っていれば400 `CODE_EXPIRED`です。
 既存のcatchには500 {error:"`INTERNAL_ERROR`"}というflat応答もあります。
 
 ## GET/POST /api/userinfo と現状の制約

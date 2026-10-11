@@ -2085,7 +2085,7 @@ INTERNAL_ERROR
 
 デバイス認可の開始
 
-本文client_idで登録済みサービスの存在を確認する。Basic/Bearer/client_secretは要求しない。発行コードだけでは認可は成立せず、別のユーザー承認が必要。取得後はPOST /api/tokenの完全なdevice grant文字列でポーリングする。IPレート制限を適用する。
+本文client_idで登録済みサービスの存在を確認する。Basic/Bearer/client_secretは要求せず、Basicがあっても認証に使わない。発行コードだけでは認可は成立せず、別のユーザー承認が必要。取得後はPOST /api/tokenの完全なdevice grant文字列でポーリングする。IPレート制限を適用する。JSONはobjectの文字列フィールドを送る。現実装はJSON nullまたはtruthyな非文字列scopeを検証前に参照し、共通REST INTERNAL_ERROR（500）になる既知の入力境界がある。
 
 **認証**: 不要（仕様上）
 
@@ -2177,7 +2177,7 @@ invalid_client（client_id未登録）。
 
 #### 500
 
-OAuth server_error、または共通RESTエラー。
+OAuth server_error、または共通RESTエラー。JSON null/truthyな非文字列scopeでも既存のINTERNAL_ERRORになる。
 
 **Content-Type**: application/json
 
@@ -2209,7 +2209,7 @@ OAuth server_error、または共通RESTエラー。
 
 ユーザーによるデバイス認可の確認・承認・拒否
 
-Bearer認証後、cid付きservice tokenと停止済み/不存在ユーザーを拒否する。BFFトークンは現在のiss/aud=IDP_ORIGIN検証と失効チェックを満たす必要がある。管理者/サービス所有者に限定する追加チェックはない。codeを保持する認証済みユーザーのsubで承認する。
+BFFの認証済みユーザー向け操作であり、外部service tokenでは利用できない。Bearer認証後、cid付きservice tokenと停止済み/不存在ユーザーを拒否する。BFFトークンは現在のiss/aud=IDP_ORIGIN検証と失効チェックを満たす必要がある。管理者/サービス所有者に限定する追加チェックはない。codeを保持する認証済みユーザーのsubで承認する。
 JSON本文を読む（Content-Typeの明示検査はない）。user_codeは空白/ハイフン除去・大文字化後、所定文字集合8文字を要求。actionを省略または空にすると情報取得のみ。approve/denyを指定すると認可状態を変更する。Origin/CSRFやInternalSecretがこのIdPルートに付くとは主張しない。
 
 **認証**: BearerAuth
@@ -2286,7 +2286,7 @@ FORBIDDEN（cid付きservice token）。REST形式。
 
 #### 404
 
-INVALID_CODE（コードが存在しない）。REST形式。
+INVALID_CODE（コードが存在しない、または期限切れ後のcleanupで削除済み）。残存する期限切れコードは400 CODE_EXPIRED。REST形式。
 
 **Content-Type**: application/json
 
@@ -2362,7 +2362,7 @@ authorization_code/refresh_token: client_secret_hashのあるサービスはclie
 device_code: 本文client_idと保存済みコードのサービス一致を確認し、Basic/client_secretは認証に使わない。
 
 公開クライアントのauthorization_codeはPKCE必須。保存コードにchallengeがあるconfidential clientにもverifierが必要。redirect_uriは正規化後に照合する（localhost/127.0.0.1とloopbackポートの比較に特例あり）。
-authorization_code/device_codeは保存済みスコープを現在の許可スコープと照合する。refreshは保存済みスコープをそのまま再利用し、legacy未保存時だけ現在の許可スコープ/openidへfallbackする。本文scopeは使わない。
+authorization_code/device_codeは保存済みスコープを現在の許可スコープと照合し、null/空の保存値はopenidのみへfallbackする。refreshは保存済みスコープをそのまま再利用し、legacy未保存時だけ現在の許可スコープ/openidへfallbackする。本文scopeは使わない。
 deviceの未承認はauthorization_pending、早すぎるポーリングはslow_down（400/Retry-After:10）。refreshのローテーション競合もinvalid_grant（400）であり、BFF /auth/refreshの503ではない。
 発行service tokenのaudienceはclient_id。現在のUserInfo認証はIDP_ORIGINをaudienceに要求するため、互換性は別途確認が必要。
 
