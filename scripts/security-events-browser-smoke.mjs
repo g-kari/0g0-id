@@ -19,6 +19,41 @@ assert.equal(playwrightVersion, "1.57.0", "Use the CI-pinned browser test toolch
 const staticRoot = path.resolve("workers/admin/dist/client");
 const reportDir = path.resolve(process.env.SECURITY_EVENTS_REPORT_DIR || "security-events-ui");
 const eventsPath = "/api/security-trends/recent-events";
+const dashboardPanels = [
+  {
+    key: "trends",
+    path: "/api/metrics/login-trends",
+    query: { days: "30" },
+    label: "日別ログイン推移",
+  },
+  {
+    key: "suspicious",
+    path: "/api/metrics/suspicious-logins",
+    query: { hours: "24", min_countries: "2" },
+    label: "疑わしい多国間ログイン",
+  },
+  {
+    key: "ip",
+    path: "/api/security-trends/ip-stats",
+    query: { days: "7", limit: "20" },
+    label: "IP別ログイン集計",
+  },
+  {
+    key: "ua",
+    path: "/api/security-trends/user-agent-stats",
+    query: { days: "7", limit: "20" },
+    label: "User-Agent別ログイン集計",
+  },
+];
+const dashboardData = {
+  trends: [
+    { date: "2026-10-01", count: 0 },
+    { date: "2026-10-02", count: 7 },
+  ],
+  suspicious: [{ user_id: "synthetic-match", country_count: 2, countries: "JP,US" }],
+  ip: [{ ip_address: "192.0.2.10", count: 7, last_seen: "2026-10-02T12:00:00Z" }],
+  ua: [{ user_agent: "Synthetic browser", count: 7 }],
+};
 const viewports = [
   { width: 320, height: 740 },
   { width: 390, height: 844 },
@@ -247,29 +282,36 @@ async function main() {
           requestFailures.push({ url: request.url(), error: request.failure()?.errorText });
         }
       });
-      await context.addInitScript(({ ignoreFirstAbort }) => {
-        window.__syntheticXss = 0;
-        window.__syntheticAborts = [];
-        const nativeFetch = window.fetch.bind(window);
-        let firstEventsRead = true;
-        window.fetch = (input, init) => {
-          const requestUrl =
-            typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-          init?.signal?.addEventListener("abort", () => window.__syntheticAborts.push(requestUrl), {
-            once: true,
-          });
-          if (
-            ignoreFirstAbort &&
-            firstEventsRead &&
-            requestUrl.startsWith("/api/security-trends/recent-events?")
-          ) {
-            firstEventsRead = false;
-            // Simulate a response that completes despite cancellation to verify the sequence guard.
-            return nativeFetch(input, { ...init, signal: undefined });
-          }
-          return nativeFetch(input, init);
-        };
-      }, options);
+      await context.addInitScript(
+        ({ ignoreFirstAbort }) => {
+          window.__syntheticXss = 0;
+          window.__syntheticAborts = [];
+          const nativeFetch = window.fetch.bind(window);
+          let firstEventsRead = true;
+          window.fetch = (input, init) => {
+            const requestUrl =
+              typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+            init?.signal?.addEventListener(
+              "abort",
+              () => window.__syntheticAborts.push(requestUrl),
+              {
+                once: true,
+              },
+            );
+            if (
+              ignoreFirstAbort &&
+              firstEventsRead &&
+              requestUrl.startsWith("/api/security-trends/recent-events?")
+            ) {
+              firstEventsRead = false;
+              // Simulate a response that completes despite cancellation to verify the sequence guard.
+              return nativeFetch(input, { ...init, signal: undefined });
+            }
+            return nativeFetch(input, init);
+          };
+        },
+        { ignoreFirstAbort: options.ignoreFirstAbort },
+      );
       await context.route("**/*", async (route) => {
         const request = route.request();
         const url = new URL(request.url());
@@ -288,6 +330,21 @@ async function main() {
           calls.push(call);
           if (url.pathname === eventsPath) {
             await respond(route, url, calls.filter((entry) => entry.path === eventsPath).length);
+          } else if (
+            options.dashboardResponse &&
+            dashboardPanels.some((panel) => panel.path === url.pathname)
+          ) {
+            const panel = dashboardPanels.find((entry) => entry.path === url.pathname);
+            assert.deepEqual(
+              call.query,
+              panel.query,
+              "Dashboard reads must retain exact bounded query parameters.",
+            );
+            await options.dashboardResponse(
+              route,
+              panel,
+              calls.filter((entry) => entry.path === panel.path).length,
+            );
           } else if (url.pathname === "/api/metrics/suspicious-logins") {
             await route.fulfill({
               json: {
@@ -877,6 +934,224 @@ async function main() {
         },
       );
     }
+    for (const viewport of viewports) {
+      const gates = Object.fromEntries(dashboardPanels.map(({ key }) => [key, deferred()]));
+      await scenario(
+        "Every failed dashboard panel retries independently, rejects double activation and restores keyboard focus",
+        viewport,
+        defaultResponse,
+        async (page, calls, origin) => {
+          try {
+            await page.goto(`${origin}/security/dashboard`);
+            for (const { key } of dashboardPanels) {
+              await expect(page.locator(`#${key}-failure`)).toBeVisible();
+              await expect(page.locator(`#${key}-retry`)).toBeEnabled();
+              await expect(page.locator(`#${key}-loading`)).toBeHidden();
+            }
+            await expect(page.locator("#trends-error")).toHaveText(malicious);
+            await expect(page.locator("#trends-error img")).toHaveCount(0);
+            assert.equal(
+              await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+              true,
+              "Visible error messages and recovery controls must fit the viewport.",
+            );
+            await page.screenshot({
+              path: path.join(reportDir, `dashboard-errors-${viewport.width}.png`),
+              fullPage: true,
+            });
+            for (const [index, panel] of dashboardPanels.entries()) {
+              const { key, path: apiPath } = panel;
+              const retry = page.locator(`#${key}-retry`);
+              await retry.focus();
+              await retry.press("Enter");
+              await expect(page.locator(`#${key}-loading`)).toBeVisible();
+              await expect(retry).toBeDisabled();
+              await expect(
+                page.locator(`section[aria-labelledby="${key}-heading"]`),
+              ).toHaveAttribute("aria-busy", "true");
+              assert.equal(
+                await page.evaluate(
+                  () => document.documentElement.scrollWidth <= window.innerWidth,
+                ),
+                true,
+                "Pending recovery controls must fit the viewport.",
+              );
+              await page.evaluate((id) => {
+                const button = document.getElementById(id);
+                button.dispatchEvent(new MouseEvent("click"));
+                button.dispatchEvent(new MouseEvent("click"));
+              }, `${key}-retry`);
+              await expect.poll(() => calls.filter((call) => call.path === apiPath).length).toBe(2);
+              gates[key].resolve();
+              await expect(page.locator(`#${key}-error`)).toHaveText("Synthetic retry failure");
+              await expect(retry).toBeEnabled();
+              await expect(retry).toBeFocused();
+              await retry.press("Space");
+              await expect(page.locator(`#${key}-failure`)).toBeHidden();
+              await expect(page.locator(`#${key}-heading`)).toBeFocused();
+              await expect(page.locator(`#${key}-status`)).toHaveText("データを再取得しました");
+              await expect(
+                page.locator(`section[aria-labelledby="${key}-heading"]`),
+              ).toHaveAttribute("aria-busy", "false");
+              await expect(
+                page.locator(key === "trends" ? "#trends-chart svg" : `#${key}-tbody tr`),
+              ).toHaveCount(1);
+              assert.equal(calls.filter((call) => call.path === apiPath).length, 3);
+              for (const healthy of dashboardPanels.slice(0, index + 1)) {
+                assert.equal(
+                  calls.filter((call) => call.path === healthy.path).length,
+                  3,
+                  "Recovering another panel must not refetch healthy panels.",
+                );
+                await expect(
+                  page.locator(healthy.key === "trends" ? "#trends-chart" : `#${healthy.key}-wrap`),
+                ).toBeVisible();
+              }
+              for (const failed of dashboardPanels.slice(index + 1)) {
+                await expect(page.locator("#error")).toContainText(failed.label);
+                await expect(page.locator(`#${failed.key}-failure`)).toBeVisible();
+              }
+            }
+            await expect(page.locator("#error")).toBeHidden();
+            assert.equal(calls.length, 12);
+            assert.equal(
+              await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+              true,
+              "Recovery controls must fit the viewport.",
+            );
+            await page.screenshot({
+              path: path.join(reportDir, `dashboard-recovered-${viewport.width}.png`),
+              fullPage: true,
+            });
+          } finally {
+            for (const gate of Object.values(gates)) gate.resolve();
+          }
+        },
+        {
+          dashboardResponse: async (route, panel, n) => {
+            if (n === 1)
+              await route.fulfill({
+                status: 503,
+                json: {
+                  error: {
+                    message: panel.key === "trends" ? malicious : "Synthetic initial failure",
+                  },
+                },
+              });
+            else if (n === 2) {
+              await gates[panel.key].promise;
+              await route.fulfill({
+                status: 500,
+                json: { error: { message: "Synthetic retry failure" } },
+              });
+            } else await route.fulfill({ json: { data: dashboardData[panel.key] } });
+          },
+        },
+      );
+
+      const emptyGate = deferred();
+      await scenario(
+        "HTTP and transport failures recover to empty results without hiding other errors or stealing moved focus",
+        viewport,
+        defaultResponse,
+        async (page, calls, origin) => {
+          try {
+            await page.goto(`${origin}/security/dashboard`);
+            await expect(page.locator("#trends-failure")).toBeVisible();
+            await expect(page.locator("#ip-failure")).toBeVisible();
+            await expect(page.locator("#suspicious-wrap")).toBeVisible();
+            await expect(page.locator("#ua-wrap")).toBeVisible();
+            await page.locator("#trends-retry").press("Enter");
+            await expect(page.locator("#trends-retry")).toBeDisabled();
+            await page.locator("#ip-retry").focus();
+            emptyGate.resolve();
+            await expect(page.locator("#trends-empty")).toBeVisible();
+            await expect(page.locator("#trends-empty")).toHaveText("データがありません");
+            await expect(page.locator("#trends-failure")).toBeHidden();
+            await expect(page.locator("#error")).toContainText("IP別ログイン集計");
+            await expect(page.locator("#error")).not.toContainText("日別ログイン推移");
+            await expect(page.locator("#ip-retry")).toBeFocused();
+            await page.locator("#ip-retry").press("Space");
+            await expect(page.locator("#ip-empty")).toBeVisible();
+            await expect(page.locator("#ip-empty")).toHaveText("データがありません");
+            await expect(page.locator("#ip-failure")).toBeHidden();
+            await expect(page.locator("#ip-heading")).toBeFocused();
+            await expect(page.locator("#error")).toBeHidden();
+            for (const panel of dashboardPanels)
+              assert.equal(
+                calls.filter((call) => call.path === panel.path).length,
+                ["trends", "ip"].includes(panel.key) ? 2 : 1,
+              );
+            assert.equal(calls.length, 6);
+            await expect(page.locator("#suspicious-wrap")).toBeVisible();
+            await expect(page.locator("#ua-wrap")).toBeVisible();
+          } finally {
+            emptyGate.resolve();
+          }
+        },
+        {
+          dashboardResponse: async (route, panel, n) => {
+            if (n === 1 && panel.key === "trends")
+              await route.fulfill({
+                status: 503,
+                json: { error: { message: "Synthetic HTTP failure" } },
+              });
+            else if (n === 1 && panel.key === "ip") await route.abort("failed");
+            else if (n === 2 && panel.key === "trends") {
+              await emptyGate.promise;
+              await route.fulfill({ json: { data: [] } });
+            } else await route.fulfill({ json: { data: n === 2 ? [] : dashboardData[panel.key] } });
+          },
+        },
+      );
+
+      const initialGate = deferred();
+      await scenario(
+        "Healthy initial panels stay usable while one pending read completes without moving focus",
+        viewport,
+        defaultResponse,
+        async (page, calls, origin) => {
+          try {
+            await page.goto(`${origin}/security/dashboard`, { waitUntil: "domcontentloaded" });
+            await expect(page.locator("#trends-chart svg")).toHaveCount(1);
+            await expect(page.locator("#suspicious-wrap")).toBeVisible();
+            await expect(page.locator("#ip-wrap")).toBeVisible();
+            await expect(page.locator("#ua-loading")).toBeVisible();
+            const auditLink = page.locator('a[href="/security/audit"]');
+            await auditLink.focus();
+            initialGate.resolve();
+            await expect(page.locator("#ua-wrap")).toBeVisible();
+            await expect(auditLink).toBeFocused();
+            await expect(page.locator("#error")).toBeHidden();
+            for (const { key } of dashboardPanels)
+              await expect(page.locator(`#${key}-failure`)).toBeHidden();
+            for (const panel of dashboardPanels)
+              assert.equal(calls.filter((call) => call.path === panel.path).length, 1);
+            const coordinates = await page
+              .locator("#trends-chart circle")
+              .evaluateAll((dots) =>
+                dots.map((dot) => [Number(dot.getAttribute("cx")), Number(dot.getAttribute("cy"))]),
+              );
+            assert.equal(coordinates.length, 2);
+            assert(coordinates.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y)));
+            assert.equal(calls.length, 4);
+          } finally {
+            initialGate.resolve();
+          }
+        },
+        {
+          dashboardResponse: async (route, panel) => {
+            if (panel.key === "ua") await initialGate.promise;
+            await route.fulfill({ json: { data: dashboardData[panel.key] } });
+          },
+        },
+      );
+    }
+    assert.equal(
+      report.cases.length,
+      32,
+      "All 23 existing and 9 dashboard recovery cases must run.",
+    );
     report.status = "passed";
   } catch (err) {
     report.status = "failed";
