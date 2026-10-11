@@ -1523,11 +1523,11 @@ JWK Set
 
 UNAUTHORIZED
 
-### GET /api/external/users/{id}
+### GET /api/external/users/{sub}
 
-IDによるユーザー取得
+ペアワイズ sub によるユーザー取得
 
-指定したIDのユーザーを完全一致で取得する。IDOR防止のため、そのサービスを認可済みのユーザーのみ返す。
+認証したサービスに固有のペアワイズ sub（64桁の16進文字列）で完全一致検索する。同じサービスの /api/external/users 一覧で返された sub を使い、内部ユーザーIDは検索に使わない。認可済みでBANされていないユーザーのみ返す。
 
 **認証**: BasicAuth
 
@@ -1535,7 +1535,7 @@ IDによるユーザー取得
 
 | 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
 | --- | --- | --- | --- | --- | --- |
-| id | path | ✓ | string |  | ユーザーID |
+| sub | path | ✓ | string | minLength: 64; maxLength: 64; pattern: ^[0-9a-fA-F]{64}$ | 認証したサービス固有のペアワイズ sub（64桁の16進文字列） |
 
 **レスポンス**
 
@@ -1543,13 +1543,35 @@ IDによるユーザー取得
 
 ユーザー情報（ペアワイズsub含む）
 
+#### 400
+
+sub が64桁の16進文字列ではない
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
 #### 401
 
 UNAUTHORIZED
 
 #### 404
 
-NOT_FOUND — 未認可または存在しないユーザー
+NOT_FOUND — 未認可、存在しない、またはBAN済みのユーザー
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
 
 ## 管理者 API
 

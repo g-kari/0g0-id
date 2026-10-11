@@ -1763,26 +1763,43 @@ export const INTERNAL_OPENAPI = {
         },
       },
     },
-    "/api/external/users/{id}": {
+    "/api/external/users/{sub}": {
       get: {
         tags: ["外部サービス向け API"],
-        summary: "IDによるユーザー取得",
+        summary: "ペアワイズ sub によるユーザー取得",
         description:
-          "指定したIDのユーザーを完全一致で取得する。IDOR防止のため、そのサービスを認可済みのユーザーのみ返す。",
+          "認証したサービスに固有のペアワイズ sub（64桁の16進文字列）で完全一致検索する。同じサービスの /api/external/users 一覧で返された sub を使い、内部ユーザーIDは検索に使わない。認可済みでBANされていないユーザーのみ返す。",
         security: [{ BasicAuth: [] }],
         parameters: [
           {
-            name: "id",
+            name: "sub",
             in: "path",
             required: true,
-            schema: { type: "string" },
-            description: "ユーザーID",
+            schema: { type: "string", minLength: 64, maxLength: 64, pattern: "^[0-9a-fA-F]{64}$" },
+            description: "認証したサービス固有のペアワイズ sub（64桁の16進文字列）",
           },
         ],
         responses: {
           "200": { description: "ユーザー情報（ペアワイズsub含む）" },
+          "400": {
+            description: "sub が64桁の16進文字列ではない",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                example: { error: { code: "BAD_REQUEST", message: "Invalid sub format" } },
+              },
+            },
+          },
           "401": { description: "UNAUTHORIZED" },
-          "404": { description: "NOT_FOUND — 未認可または存在しないユーザー" },
+          "404": {
+            description: "NOT_FOUND — 未認可、存在しない、またはBAN済みのユーザー",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                example: { error: { code: "NOT_FOUND", message: "User not found" } },
+              },
+            },
+          },
         },
       },
     },
