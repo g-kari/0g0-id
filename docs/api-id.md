@@ -44,26 +44,38 @@
 
 ## 1. 標準 OAuth 2.0 / OIDC（外部向け・外部サービス公開）
 
-| Method | Path                                      | 認証       | 説明                                                                                                      |
-| ------ | ----------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------- |
-| GET    | `/auth/authorize`                         | —          | RFC 6749 / OIDC Core 1.0 準拠の認可エンドポイント。PKCE (S256) 必須。                                     |
-| POST   | `/api/token`                              | BasicAuth  | `authorization_code` / `refresh_token` / `device_code` の grant_type を受ける標準トークンエンドポイント。 |
-| GET    | `/.well-known/openid-configuration`       | —          | OIDC Discovery メタデータ（24h キャッシュ可）。                                                           |
-| GET    | `/.well-known/oauth-authorization-server` | —          | RFC 8414 メタデータ（MCP クライアント向け）。                                                             |
-| GET    | `/.well-known/jwks.json`                  | —          | JWT 署名検証用の JWK Set（ES256 公開鍵、1h キャッシュ可）。                                               |
-| GET    | `/api/userinfo`                           | BearerAuth | OIDC UserInfo（スコープに応じたクレーム）。                                                               |
-| POST   | `/api/token/introspect`                   | BasicAuth  | RFC 7662 トークンイントロスペクション。                                                                   |
-| POST   | `/api/token/revoke`                       | BasicAuth  | RFC 7009 トークン失効。                                                                                   |
-| POST   | `/api/device/code`                        | BasicAuth  | OAuth Device Authorization Grant（RFC 8628）開始。                                                        |
-| POST   | `/api/device/token`                       | BasicAuth  | Device grant でのトークン取得。                                                                           |
-| POST   | `/api/device/verify`                      | BearerAuth | デバイスコード承認/拒否（BFF 用）。                                                                       |
+| Method | Path                                      | 認証          | 説明                                                                           |
+| ------ | ----------------------------------------- | ------------- | ------------------------------------------------------------------------------ |
+| GET    | `/auth/authorize`                         | —             | RFC 6749 / OIDC Core 1.0 準拠の認可エンドポイント。PKCE (S256) 必須。          |
+| POST   | `/api/token`                              | grant別       | formのみ。認可コード/更新はBasicまたは公開client_id、デバイスは本文client_id。 |
+| GET    | `/.well-known/openid-configuration`       | —             | OIDC Discovery メタデータ（24h キャッシュ可）。                                |
+| GET    | `/.well-known/oauth-authorization-server` | —             | RFC 8414 メタデータ（MCP クライアント向け）。                                  |
+| GET    | `/.well-known/jwks.json`                  | —             | JWT 署名検証用の JWK Set（ES256 公開鍵、1h キャッシュ可）。                    |
+| GET    | `/api/userinfo`                           | BearerAuth    | スコープに応じたflatなUserInfo。現在のaudience制限は下記参照。                 |
+| POST   | `/api/userinfo`                           | BearerAuth    | GETと同じ。本文access_tokenは認証に使わない。                                  |
+| POST   | `/api/token/introspect`                   | BasicAuth     | RFC 7662 トークンイントロスペクション。                                        |
+| POST   | `/api/token/revoke`                       | BasicAuth     | RFC 7009 トークン失効。                                                        |
+| POST   | `/api/device/code`                        | 本文client_id | form/JSONで登録済みサービスを識別。Basic/client_secretは認証に使わない。       |
+| POST   | `/api/device/verify`                      | BearerAuth    | デバイスコード承認/拒否（BFF 用）。                                            |
+
+標準トークン・UserInfo・デバイスの入力/エラー/認証条件は
+[標準プロトコルの実装契約](./standard-protocol-contracts.md)にまとめています。
+デバイスのポーリング先は `/api/token` で、grant_typeは
+`urn:ietf:params:oauth:grant-type:device_code` です。`/api/device/token` は登録されていません。
+
+現在、標準サービス用access tokenは `aud=client_id` で発行されますが、
+UserInfoの認証middlewareは `aud=IDP_ORIGIN` を要求します。通常のサービス用tokenが
+そのままUserInfoを通るとは保証しません。この既存の制約は今回変更していません。
 
 ### POST `/api/device/verify` 詳細
 
 BFF がユーザーの代わりにデバイスコードを承認または拒否するためのエンドポイント。
-RFC 8628 標準仕様の `/api/device/code`・`/api/device/token` とは異なる独自エンドポイント。
+外部サービス用トークンでは利用できません。
+デバイス認可開始の `/api/device/code`・標準トークン交換の `/api/token` とは異なる独自エンドポイント。
 
-**認証**: Bearer トークン（アクセストークン）
+**認証**: Bearerトークン。現在の署名・issuer/audience・失効検証を満たし、cid付きサービストークンでないこと。
+認証後のユーザーが存在し、停止済みでないことも確認する。
+追加の管理者/サービス所有者限定やOrigin/CSRF検証がこのIdPルートにあるとは主張しない。
 **ミドルウェア**: `authMiddleware` + `rejectServiceTokenMiddleware` + `rejectBannedUserMiddleware` + レートリミット（2 重）
 
 #### リクエストボディ
@@ -102,13 +114,13 @@ RFC 8628 標準仕様の `/api/device/code`・`/api/device/token` とは異な�
 
 #### エラーコード
 
-| コード              | HTTP | 説明                                      |
-| ------------------- | ---- | ----------------------------------------- |
-| `BAD_REQUEST`       | 400  | `user_code` 必須、形式不正、`action` 不正 |
-| `INVALID_CODE`      | 404  | コード不存在または期限切れ                |
-| `CODE_EXPIRED`      | 400  | デバイスコード有効期限切れ                |
-| `CODE_ALREADY_USED` | 400  | 既に承認/拒否済み                         |
-| `INTERNAL_ERROR`    | 500  | サーバー側エラー                          |
+| コード              | HTTP | 説明                                                |
+| ------------------- | ---- | --------------------------------------------------- |
+| `BAD_REQUEST`       | 400  | `user_code` 必須、形式不正、`action` 不正           |
+| `INVALID_CODE`      | 404  | コード不存在（期限切れ後のcleanupで削除済みも含む） |
+| `CODE_EXPIRED`      | 400  | デバイスコード有効期限切れ                          |
+| `CODE_ALREADY_USED` | 400  | 既に承認/拒否済み                                   |
+| `INTERNAL_ERROR`    | 500  | サーバー側エラー                                    |
 
 ## 2. 独自認証フロー（BFF / 外部サービス両対応）
 

@@ -20,6 +20,7 @@ import {
   syncApiReferences,
 } from "./generate-api-reference";
 import type { OpenApiSpec } from "../workers/id/src/routes/openapi/markdown";
+import { STANDARD_TOKEN_OPERATION } from "../workers/id/src/routes/openapi/standard-protocol-spec";
 
 const roots: string[] = [];
 function root(): string {
@@ -48,6 +49,21 @@ const synthetic: OpenApiSpec = {
 };
 
 describe("offline API reference generator", () => {
+  it("preserves identifiers and actual PKCE characters after Markdown formatting", (): void => {
+    const document = readFileSync(
+      new URL("../docs/standard-protocol-contracts.md", import.meta.url),
+      "utf8",
+    );
+    const verifier =
+      STANDARD_TOKEN_OPERATION.requestBody.content["application/x-www-form-urlencoded"].schema
+        .oneOf[0].properties.code_verifier;
+    if (!verifier) throw new Error("Missing PKCE schema");
+    expect(document).toContain("`client_id`");
+    expect(document).toContain("`" + verifier.pattern + "`");
+    expect(document).toContain(`${verifier.minLength}〜${verifier.maxLength}文字`);
+    expect(document).not.toContain("client*id");
+    expect(document).not.toContain("-.*~");
+  });
   it("generates deterministic bytes and check writes nothing, including on missing/manual-edited outputs", () => {
     const path = root();
     const references = renderApiReferences(synthetic, synthetic);
