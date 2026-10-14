@@ -49,8 +49,18 @@ describe("issueTokenPair", () => {
     );
   });
 
+  it.each([
+    { serviceId: "service-1" },
+    { serviceId: "service-1", clientId: "" },
+    { serviceId: null, clientId: "client-abc" },
+  ])("不正なservice/client結合は発行やDB保存前に拒否: %j", async (options) => {
+    await expect(issueTokenPair(mockDb, mockEnv, mockUser, options)).rejects.toThrow();
+    expect(signAccessToken).not.toHaveBeenCalled();
+    expect(createRefreshToken).not.toHaveBeenCalled();
+  });
+
   it("accessToken と refreshToken を返す", async () => {
-    const result = await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: "service-1" });
+    const result = await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: null });
 
     expect(result.accessToken).toBe("mock-access-token");
     expect(result.refreshToken).toBe("mock-refresh-token");
@@ -102,7 +112,7 @@ describe("issueTokenPair", () => {
 
   it("scope が指定された場合は signAccessToken に渡す", async () => {
     await issueTokenPair(mockDb, mockEnv, mockUser, {
-      serviceId: "service-1",
+      serviceId: null,
       scope: "openid profile",
     });
 
@@ -129,8 +139,8 @@ describe("issueTokenPair", () => {
     );
   });
 
-  it("clientId がない場合は pairwiseSub が null になる", async () => {
-    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: "service-1" });
+  it("BFF tokenでは pairwiseSub が null になる", async () => {
+    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: null });
 
     expect(createRefreshToken).toHaveBeenCalledWith(
       mockDb,
@@ -139,7 +149,7 @@ describe("issueTokenPair", () => {
   });
 
   it("familyId が指定されていない場合は crypto.randomUUID() で生成する", async () => {
-    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: "service-1" });
+    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: null });
 
     expect(createRefreshToken).toHaveBeenCalledWith(
       mockDb,
@@ -149,7 +159,7 @@ describe("issueTokenPair", () => {
 
   it("familyId が指定された場合はそれを使う", async () => {
     await issueTokenPair(mockDb, mockEnv, mockUser, {
-      serviceId: "service-1",
+      serviceId: null,
       familyId: "existing-family",
     });
 
@@ -169,7 +179,7 @@ describe("issueTokenPair", () => {
   });
 
   it("scope が未指定の場合 createRefreshToken に scope: null を渡す", async () => {
-    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: "service-1" });
+    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: null });
 
     expect(createRefreshToken).toHaveBeenCalledWith(
       mockDb,
@@ -179,7 +189,7 @@ describe("issueTokenPair", () => {
 
   it("scope が指定された場合 createRefreshToken にそれを渡す", async () => {
     await issueTokenPair(mockDb, mockEnv, mockUser, {
-      serviceId: "service-1",
+      serviceId: null,
       scope: "openid email",
     });
 
@@ -193,7 +203,7 @@ describe("issueTokenPair", () => {
     const now = Date.now();
     vi.spyOn(Date, "now").mockReturnValue(now);
 
-    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: "service-1" });
+    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: null });
 
     const expectedExpiresAt = new Date(now + REFRESH_TOKEN_TTL_MS).toISOString();
     expect(createRefreshToken).toHaveBeenCalledWith(
@@ -206,7 +216,7 @@ describe("issueTokenPair", () => {
     vi.mocked(generateToken).mockReturnValue("plain-refresh-token");
     vi.mocked(sha256).mockResolvedValue("hashed-refresh-token");
 
-    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: "service-1" });
+    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: null });
 
     expect(sha256).toHaveBeenCalledWith("plain-refresh-token");
     expect(createRefreshToken).toHaveBeenCalledWith(

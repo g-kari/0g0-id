@@ -11,6 +11,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     sha256: vi.fn(),
     findUserById: vi.fn(),
     findServiceById: vi.fn(),
+    generatePairwiseSub: vi.fn(),
     createLogger: vi
       .fn()
       .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -30,7 +31,14 @@ vi.mock("../../utils/refresh-token-rotation", () => ({
   issueTokenPairWithRecovery: vi.fn(),
 }));
 
-import { parseJsonBody, sha256, findUserById, findServiceById } from "@0g0-id/shared";
+import {
+  parseJsonBody,
+  sha256,
+  findUserById,
+  findServiceById,
+  generatePairwiseSub,
+} from "@0g0-id/shared";
+import { resolveEffectiveScope } from "../../utils/scopes";
 import {
   validateAndRevokeRefreshToken,
   issueTokenPairWithRecovery,
@@ -251,6 +259,49 @@ describe("POST /auth/refresh", () => {
       const body = await res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe("INVALID_TOKEN");
     });
+  });
+
+  describe("RP refresh keeps the legacy user.id pairwise and profile-free", () => {
+    for (const scope of [null, "", "openid profile email"]) {
+      it(`stored scope=${String(scope)} cannot expose user fields`, async () => {
+        vi.mocked(parseJsonBody).mockResolvedValue({
+          ok: true,
+          data: { refresh_token: "synthetic-refresh-token" },
+        } as never);
+        vi.mocked(validateAndRevokeRefreshToken).mockResolvedValue({
+          ok: true,
+          storedToken: { ...mockStoredToken, service_id: "svc-1", scope },
+        });
+        vi.mocked(findUserById).mockResolvedValue(mockUser);
+        vi.mocked(findServiceById).mockResolvedValue({
+          id: "svc-1",
+          name: "Synthetic client",
+          client_id: "synthetic-client",
+          client_secret_hash: "synthetic-hash",
+          allowed_scopes: '["profile","email","phone","address"]',
+          owner_user_id: mockUser.id,
+          created_at: mockUser.created_at,
+          updated_at: mockUser.updated_at,
+        });
+        vi.mocked(resolveEffectiveScope).mockReturnValue("openid");
+        vi.mocked(generatePairwiseSub).mockResolvedValue("b".repeat(64));
+        vi.mocked(issueTokenPairWithRecovery).mockResolvedValue({
+          ok: true,
+          accessToken: "synthetic-at",
+          refreshToken: "synthetic-rt",
+        });
+        const res = await makeRequest();
+        expect(res.status).toBe(200);
+        const body = await res.json<{ data: { user: Record<string, unknown> } }>();
+        expect(body.data.user).toEqual({ id: "b".repeat(64) });
+        expect(generatePairwiseSub).toHaveBeenCalledWith("synthetic-client", mockUser.id, mockEnv.PAIRWISE_SALT);
+        expect(issueTokenPairWithRecovery).toHaveBeenCalledWith(
+          mockEnv.DB, mockEnv, mockUser,
+          expect.objectContaining({ scope: scope || "openid" }),
+          mockStoredToken.id, "hashed-token", expect.anything(), "handleRefresh",
+        );
+      });
+    }
   });
 
   // =====================

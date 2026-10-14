@@ -297,10 +297,10 @@ describe("GET /api/external/users/:sub", () => {
       expect(res.status).toBe(200);
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data.sub).toBe(PAIRWISE_SUB);
-      expect(body.data.name).toBe("Test User");
-      expect(body.data.email).toBe("test@example.com");
-      expect(body.data.email_verified).toBe(true);
-      expect(body.data.picture).toBe("https://example.com/pic.jpg");
+      expect(body.data.name).toBeUndefined();
+      expect(body.data.email).toBeUndefined();
+      expect(body.data.email_verified).toBeUndefined();
+      expect(body.data.picture).toBeUndefined();
     });
 
     it("ペアワイズsubが一致してもfindUserByIdがnull → 404を返す", async () => {
@@ -328,15 +328,15 @@ describe("GET /api/external/users/:sub", () => {
       expect(body.data).not.toHaveProperty("address");
     });
 
-    it("全スコープ許可の場合 → phone/addressも返す", async () => {
+    it("全スコープ許可でも本人同意なし → 個人情報を返さない", async () => {
       mockFindServiceByClientId.mockResolvedValue({
         ...mockService,
         allowed_scopes: JSON.stringify(["profile", "email", "phone", "address"]),
       });
       const res = await requestExternalUser(app, PAIRWISE_SUB);
       const body = await res.json<{ data: Record<string, unknown> }>();
-      expect(body.data.phone).toBe("090-0000-0000");
-      expect(body.data.address).toBe("Tokyo");
+      expect(body.data.phone).toBeUndefined();
+      expect(body.data.address).toBeUndefined();
     });
 
     it("profileスコープなし → name/pictureを含まない", async () => {
@@ -348,7 +348,7 @@ describe("GET /api/external/users/:sub", () => {
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data).not.toHaveProperty("name");
       expect(body.data).not.toHaveProperty("picture");
-      expect(body.data.email).toBe("test@example.com");
+      expect(body.data.email).toBeUndefined();
     });
 
     it("常にsubフィールドは返す", async () => {
@@ -445,8 +445,8 @@ describe("GET /api/external/users", () => {
       }>();
       expect(body.data).toHaveLength(1);
       expect(body.data[0].sub).toBe(PAIRWISE_SUB);
-      expect(body.data[0].name).toBe("Test User");
-      expect(body.data[0].email).toBe("test@example.com");
+      expect(body.data[0].name).toBeUndefined();
+      expect(body.data[0].email).toBeUndefined();
     });
 
     it("metaフィールドにtotal/limit/offsetを含む", async () => {
@@ -545,90 +545,28 @@ describe("GET /api/external/users", () => {
     });
   });
 
-  describe("検索フィルタリング", () => {
-    it("nameクエリでlistUsersAuthorizedForServiceにfilterを渡す", async () => {
-      const res = await requestExternalUserList(app, { name: "Test" });
-      expect(res.status).toBe(200);
-      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
-        expect.anything(),
-        "service-1",
-        50,
-        0,
-        expect.objectContaining({ name: "Test" }),
-      );
-      expect(mockCountUsersAuthorizedForService).toHaveBeenCalledWith(
-        expect.anything(),
-        "service-1",
-        expect.objectContaining({ name: "Test" }),
-      );
-    });
-
-    it("emailクエリでlistUsersAuthorizedForServiceにfilterを渡す", async () => {
-      const res = await requestExternalUserList(app, { email: "test@example.com" });
-      expect(res.status).toBe(200);
-      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
-        expect.anything(),
-        "service-1",
-        50,
-        0,
-        expect.objectContaining({ email: "test@example.com" }),
-      );
-      expect(mockCountUsersAuthorizedForService).toHaveBeenCalledWith(
-        expect.anything(),
-        "service-1",
-        expect.objectContaining({ email: "test@example.com" }),
-      );
-    });
-
-    it("nameとemailを同時に指定できる", async () => {
-      const res = await requestExternalUserList(app, { name: "Test", email: "test@example.com" });
-      expect(res.status).toBe(200);
-      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
-        expect.anything(),
-        "service-1",
-        50,
-        0,
-        expect.objectContaining({ name: "Test", email: "test@example.com" }),
-      );
-    });
-
-    it("profileスコープなしでnameフィルターを使用すると403", async () => {
-      mockFindServiceByClientId.mockResolvedValue({
-        ...mockService,
-        allowed_scopes: JSON.stringify(["email"]),
+  describe("個人情報による検索は本人同意まで禁止", () => {
+    for (const query of [
+      { name: "Synthetic Name" },
+      { email: "synthetic@example.invalid" },
+      { name: "Synthetic Name", email: "synthetic@example.invalid" },
+      { name: "" },
+      { email: "" },
+    ]) {
+      it(`設定にscopeがあっても検索を拒否: ${JSON.stringify(query)}`, async () => {
+        const res = await requestExternalUserList(app, query);
+        expect(res.status).toBe(403);
+        expect(mockListUsersAuthorizedForService).not.toHaveBeenCalled();
+        expect(mockCountUsersAuthorizedForService).not.toHaveBeenCalled();
       });
-      const res = await requestExternalUserList(app, { name: "Test" });
-      expect(res.status).toBe(403);
-      const body = await res.json<{ error: { code: string } }>();
-      expect(body.error.code).toBe("FORBIDDEN");
-    });
+    }
 
-    it("emailスコープなしでemailフィルターを使用すると403", async () => {
-      mockFindServiceByClientId.mockResolvedValue({
-        ...mockService,
-        allowed_scopes: JSON.stringify(["profile"]),
-      });
-      const res = await requestExternalUserList(app, { email: "test@example.com" });
-      expect(res.status).toBe(403);
-      const body = await res.json<{ error: { code: string } }>();
-      expect(body.error.code).toBe("FORBIDDEN");
-    });
-
-    it("フィルターなしの場合は従来どおり動作する", async () => {
+    it("フィルターなしは既存paginationと認可済ユーザー範囲を保つ", async () => {
       const res = await requestExternalUserList(app);
       expect(res.status).toBe(200);
-      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
-        expect.anything(),
-        "service-1",
-        50,
-        0,
-        {},
-      );
-      expect(mockCountUsersAuthorizedForService).toHaveBeenCalledWith(
-        expect.anything(),
-        "service-1",
-        {},
-      );
+      const body = await res.json<{ data: Record<string, unknown>[] }>();
+      expect(body.data).toEqual([{ sub: PAIRWISE_SUB }]);
+      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(mockEnv.DB, "service-1", 50, 0, {});
     });
   });
 });

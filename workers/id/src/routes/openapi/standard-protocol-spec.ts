@@ -57,9 +57,11 @@ export const STANDARD_TOKEN_OPERATION = {
     "公開クライアントのauthorization_codeはPKCE必須。保存コードにchallengeがあるconfidential clientにもverifierが必要。" +
     "redirect_uriは正規化後に照合する（localhost/127.0.0.1とloopbackポートの比較に特例あり）。\n" +
     "authorization_code/device_codeは保存済みスコープを現在の許可スコープと照合し、null/空の保存値はopenidのみへfallbackする。" +
-    "refreshは保存済みスコープをそのまま再利用し、legacy未保存時だけ現在の許可スコープ/openidへfallbackする。本文scopeは使わない。\n" +
+    "refreshは保存済みスコープをそのまま再利用し、legacy未保存/空のときはopenidのみへfallbackする。本文scopeは使わない。\n" +
     "deviceの未承認はauthorization_pending、早すぎるポーリングはslow_down（400/Retry-After:10）。" +
     "refreshのローテーション競合もinvalid_grant（400）であり、BFF /auth/refreshの503ではない。\n" +
+    "IDトークンはpairwise subと認証用メタデータのみで、プロフィールや上流providerのamrを含めない。" +
+    "service access tokenはemail/roleを含めないが、subは既存互換性のため内部UUIDを保持する。" +
     "発行service tokenのaudienceはclient_id。現在のUserInfo認証はIDP_ORIGINをaudienceに要求するため、互換性は別途確認が必要。",
   security: [{ BasicAuth: [] }, {}],
   requestBody: {
@@ -343,34 +345,50 @@ export const USERINFO_GET_OPERATION = {
     "Authorization: Bearerヘッダーのみ。POSTの本文を読まず、本文access_tokenは認証に使わない。" +
     "現在の共通認証はES256署名、iss=IDP_ORIGIN、aud=IDP_ORIGIN、期限/失効を検証する。" +
     "標準service tokenはaud=client_idで発行されるため、そのままこのaudience検証を通るとは保証しない。\n" +
-    "認証を通ったtokenにcidがあればサービス固有pairwise sub、cidがなければ内部ユーザーIDを返す。" +
-    "scope未指定/空ならname/picture/email/email_verifiedを返す。" +
-    "profileはname/picture、emailはemail/email_verified、phoneは非nullのphone_number、addressは非nullの{formatted}。" +
-    "phone/address未保持時はキーを省略する。sub/updated_atは常に含む。data包み・role・provider IDsは返さない。",
+    "認証を通ったtokenにcidがあれば、scopeに関係なくサービス固有pairwise subのみを返す。" +
+    "scope要求やservice設定だけでは項目提供への本人同意とみなさない。\n" +
+    "cidのないBFF tokenは既存互換性のため内部ユーザーIDとupdated_atを返す。" +
+    "BFFのみscope未指定/空ならname/picture/email/email_verifiedを返す。" +
+    "BFFのprofileはname/picture、emailはemail/email_verified、phoneは非nullのphone_number、addressは非nullの{formatted}。" +
+    "BFFのphone/address未保持時はキーを省略する。data包み・role・provider IDsは返さない。",
   security: [{ BearerAuth: [] }],
   responses: {
     "200": {
-      description: "スコープに応じたflatなユーザークレーム。",
+      description: "RPはsubのみ。BFFは既存のスコープに応じたflatなユーザークレーム。",
       content: {
         "application/json": {
           schema: {
-            type: "object",
-            properties: {
-              sub: { type: "string", description: "cidの有無でpairwise/internalを選ぶ。" },
-              updated_at: { type: "integer", description: "Unix秒。" },
-              name: { type: "string" },
-              picture: { type: ["string", "null"] },
-              email: { type: "string" },
-              email_verified: { type: "boolean" },
-              phone_number: { type: "string", description: "phone scopeかつ非nullの場合のみ。" },
-              address: {
+            oneOf: [
+              {
                 type: "object",
-                properties: { formatted: { type: "string" } },
-                required: ["formatted"],
-                description: "address scopeかつ非nullの場合のみ。",
+                properties: {
+                  sub: { type: "string", description: "サービス固有のpairwise sub。" },
+                },
+                required: ["sub"],
+                additionalProperties: false,
+                description: "cid付きRP応答はsubのみ。",
               },
-            },
-            required: ["sub", "updated_at"],
+              {
+                type: "object",
+                properties: {
+                  sub: { type: "string", description: "cidの有無でpairwise/internalを選ぶ。" },
+                  updated_at: { type: "integer", description: "Unix秒。" },
+                  name: { type: "string" },
+                  picture: { type: ["string", "null"] },
+                  email: { type: "string" },
+                  email_verified: { type: "boolean" },
+                  phone_number: { type: "string", description: "phone scopeかつ非nullの場合のみ。" },
+                  address: {
+                    type: "object",
+                    properties: { formatted: { type: "string" } },
+                    required: ["formatted"],
+                    description: "address scopeかつ非nullの場合のみ。",
+                  },
+                },
+                required: ["sub", "updated_at"],
+                description: "cidなしBFF応答の既存プロフィール契約。",
+              },
+            ],
           },
         },
       },

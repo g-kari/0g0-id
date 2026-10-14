@@ -113,9 +113,9 @@ describe("signIdToken", () => {
     expect(payload.iss).toBe("https://id.0g0.xyz");
     expect(payload.sub).toBe("user-id-123");
     expect(payload.aud).toBe("https://id.0g0.xyz");
-    expect(payload.email).toBe("test@example.com");
-    expect(payload.name).toBe("Test User");
-    expect(payload.picture).toBe("https://example.com/pic.jpg");
+    expect(payload.email).toBeUndefined();
+    expect(payload.name).toBeUndefined();
+    expect(payload.picture).toBeUndefined();
     expect(typeof payload.auth_time).toBe("number");
     expect(typeof payload.jti).toBe("string");
   });

@@ -185,7 +185,7 @@ describe("standard protocol documentation matches existing contracts", () => {
           .$ref,
       ).toBe("#/components/schemas/Error");
     });
-    it(`${name}: GET/POST UserInfo share scoped flat claims and audience caveat`, (): void => {
+    it(`${name}: GET/POST UserInfo document RP sub-only, BFF compatibility and audience caveat`, (): void => {
       const get = spec.paths["/api/userinfo"].get;
       const post = spec.paths["/api/userinfo"].post;
       expect(post.responses).toBe(get.responses);
@@ -193,10 +193,12 @@ describe("standard protocol documentation matches existing contracts", () => {
       expect(post).not.toHaveProperty("requestBody");
       expect(post.description).toContain("aud=IDP_ORIGIN");
       expect(post.description).toContain("aud=client_id");
-      expect(post.responses["200"].content["application/json"].schema.required).toEqual([
-        "sub",
-        "updated_at",
-      ]);
+      const schemas = post.responses["200"].content["application/json"].schema.oneOf;
+      expect(schemas[0].required).toEqual(["sub"]);
+      expect(schemas[0]).toHaveProperty("additionalProperties", false);
+      expect(schemas[1].required).toEqual(["sub", "updated_at"]);
+      expect(post.description).toContain("pairwise subのみ");
+      expect(schemas[1].description).toContain("BFF");
     });
   }
   it("actual token route refuses JSON and abbreviated/unknown grants", async (): Promise<void> => {

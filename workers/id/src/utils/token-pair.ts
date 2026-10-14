@@ -27,6 +27,9 @@ export async function issueTokenPair(
   options: { serviceId: string | null; clientId?: string; familyId?: string; scope?: string },
 ): Promise<{ accessToken: string; refreshToken: string }> {
   const { serviceId, clientId, familyId = crypto.randomUUID(), scope } = options;
+  if ((serviceId !== null) !== (clientId !== undefined) || clientId === "") {
+    throw new Error("Service tokens require a matching serviceId and clientId");
+  }
 
   const accessToken = await signAccessToken(
     {
@@ -109,12 +112,9 @@ export async function issueIdToken(
       iss: env.IDP_ORIGIN,
       sub: pairwiseSub,
       aud: service.client_id,
-      email: user.email,
-      name: user.name,
-      picture: user.picture,
       authTime,
       nonce: options?.nonce,
-      amr: options?.amr,
+      // Do not disclose the upstream provider to an RP by default.
     },
     env.JWT_PRIVATE_KEY,
     env.JWT_PUBLIC_KEY,

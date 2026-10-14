@@ -15,10 +15,6 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
   };
 });
 
-vi.mock("../../utils/scopes", () => ({
-  parseAllowedScopes: vi.fn(),
-}));
-
 vi.mock("../../utils/token-pair", () => ({
   buildTokenResponse: vi.fn(),
 }));
@@ -41,7 +37,6 @@ vi.mock("./utils", async (importOriginal) => {
 });
 
 import { sha256, findRefreshTokenByHash, findUserById } from "@0g0-id/shared";
-import { parseAllowedScopes } from "../../utils/scopes";
 import { buildTokenResponse } from "../../utils/token-pair";
 import { attemptUnrevokeToken } from "../../utils/token-recovery";
 import {
@@ -359,7 +354,7 @@ describe("handleRefreshTokenGrant", () => {
       expect(body.scope).toBe("openid profile email");
     });
 
-    it("storedToken.scope が null → parseAllowedScopes で fallback", async () => {
+    it.each([null, ""])("storedToken.scope が %s → openidだけ、service設定へ拡大しない", async (scope) => {
       vi.mocked(resolveOAuthClient).mockResolvedValue({
         ok: true,
         service: mockService,
@@ -367,10 +362,9 @@ describe("handleRefreshTokenGrant", () => {
       });
       vi.mocked(validateAndRevokeRefreshToken).mockResolvedValue({
         ok: true,
-        storedToken: { ...mockStoredToken, scope: null },
+        storedToken: { ...mockStoredToken, scope },
       });
       vi.mocked(findUserById).mockResolvedValue(mockUser);
-      vi.mocked(parseAllowedScopes).mockReturnValue(["openid", "profile"]);
       vi.mocked(issueTokenPairWithRecovery).mockResolvedValue({
         ok: true,
         accessToken: "at",
@@ -381,14 +375,23 @@ describe("handleRefreshTokenGrant", () => {
         token_type: "Bearer",
         expires_in: 900,
         refresh_token: "rt",
-        scope: "openid profile",
+        scope: "openid",
       });
 
       const c = createMockContext("Basic dGVzdDp0ZXN0");
       const res = await handleRefreshTokenGrant(c, { refresh_token: "test-rt" });
 
       expect(res.status).toBe(200);
-      expect(parseAllowedScopes).toHaveBeenCalledWith(mockService.allowed_scopes);
+      expect(issueTokenPairWithRecovery).toHaveBeenCalledWith(
+        mockEnv.DB,
+        mockEnv,
+        mockUser,
+        expect.objectContaining({ scope: "openid" }),
+        expect.any(String),
+        expect.any(String),
+        expect.anything(),
+        "handleRefreshTokenGrant",
+      );
     });
   });
 

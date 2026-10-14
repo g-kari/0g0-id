@@ -51,8 +51,9 @@ export async function signAccessToken(
   const jti = crypto.randomUUID();
 
   return new SignJWT({
-    email: payload.email,
-    role: payload.role,
+    // RP tokens never carry profile data or the IdP administration role.
+    // BFF tokens remain unchanged while their session contract is migrated separately.
+    ...(payload.cid === undefined ? { email: payload.email, role: payload.role } : {}),
     ...(payload.scope !== undefined ? { scope: payload.scope } : {}),
     ...(payload.cid !== undefined ? { cid: payload.cid } : {}),
   })
@@ -75,9 +76,12 @@ export async function signIdToken(
     iss: string;
     sub: string;
     aud: string;
-    email: string;
-    name: string;
-    picture: string | null;
+    /** @deprecated Accepted for source compatibility; never emitted in an ID token. */
+    email?: string;
+    /** @deprecated Accepted for source compatibility; never emitted in an ID token. */
+    name?: string;
+    /** @deprecated Accepted for source compatibility; never emitted in an ID token. */
+    picture?: string | null;
     authTime: number;
     nonce?: string;
     /** RFC 8176: 認証方式リスト（例: ["google"], ["github"]） */
@@ -90,9 +94,7 @@ export async function signIdToken(
   const jti = crypto.randomUUID();
 
   const builder = new SignJWT({
-    email: payload.email,
-    name: payload.name,
-    ...(payload.picture !== null ? { picture: payload.picture } : {}),
+    // Scope requests are not end-user consent. Keep identity assertions profile-free.
     auth_time: payload.authTime,
     ...(payload.nonce !== undefined ? { nonce: payload.nonce } : {}),
     ...(payload.amr !== undefined ? { amr: payload.amr } : {}),

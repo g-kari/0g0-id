@@ -358,7 +358,7 @@ describe("POST /api/token/introspect", () => {
     expect(body.active).toBe(false);
   });
 
-  it("有効なトークン → ユーザー情報を含む { active: true } を返す", async () => {
+  it("有効なトークン → プロフィールなしの { active: true } を返す", async () => {
     const res = await sendRequest(app, "/api/token/introspect", {
       body: { token: "valid-token" },
       authHeader: makeBasicAuth("test-client-id", "secret"),
@@ -369,17 +369,17 @@ describe("POST /api/token/introspect", () => {
       sub: string;
       exp: number;
       scope: string;
-      name: string;
-      email: string;
+      name?: never;
+      email?: never;
     }>();
     expect(body.active).toBe(true);
     expect(body.sub).toBe("pairwise-sub-hash"); // generatePairwiseSub(client_id, user_id) ペアワイズsub
     expect(body.scope).toBe("profile email");
-    expect(body.name).toBe("Test User");
-    expect(body.email).toBe("test@example.com");
+    expect(body.name).toBeUndefined();
+    expect(body.email).toBeUndefined();
   });
 
-  it("profileスコープのみ → name/pictureを返すがemailは返さない", async () => {
+  it("profileスコープのみでもプロフィールを返さない", async () => {
     // リフレッシュトークンのscopeがintrospectのクレーム決定に使われる（サービスのallowed_scopesではない）
     vi.mocked(findRefreshTokenByHash).mockResolvedValue({
       ...mockRefreshToken,
@@ -392,11 +392,11 @@ describe("POST /api/token/introspect", () => {
     expect(res.status).toBe(200);
     const body = await res.json<Record<string, unknown>>();
     expect(body.active).toBe(true);
-    expect(body.name).toBe("Test User");
+    expect(body.name).toBeUndefined();
     expect(body.email).toBeUndefined();
   });
 
-  it("emailスコープのみ → emailを返すがnameは返さない", async () => {
+  it("emailスコープのみでもプロフィールを返さない", async () => {
     // リフレッシュトークンのscopeがintrospectのクレーム決定に使われる（サービスのallowed_scopesではない）
     vi.mocked(findRefreshTokenByHash).mockResolvedValue({
       ...mockRefreshToken,
@@ -409,7 +409,7 @@ describe("POST /api/token/introspect", () => {
     expect(res.status).toBe(200);
     const body = await res.json<Record<string, unknown>>();
     expect(body.active).toBe(true);
-    expect(body.email).toBe("test@example.com");
+    expect(body.email).toBeUndefined();
     expect(body.name).toBeUndefined();
   });
 
@@ -441,7 +441,7 @@ describe("POST /api/token/introspect", () => {
     cid: "test-client-id",
   };
 
-  it("有効なJWTアクセストークン → { active: true } とユーザー情報を返す", async () => {
+  it("有効なJWTアクセストークン → プロフィールなしの { active: true } を返す", async () => {
     vi.mocked(findRefreshTokenByHash).mockResolvedValue(null);
     vi.mocked(verifyAccessToken).mockResolvedValue(mockJwtPayload);
     const res = await sendRequest(app, "/api/token/introspect", {
@@ -452,9 +452,9 @@ describe("POST /api/token/introspect", () => {
     const body = await res.json<Record<string, unknown>>();
     expect(body.active).toBe(true);
     expect(body.token_type).toBe("access_token");
-    expect(body.name).toBe("Test User");
-    expect(body.email).toBe("test@example.com");
-    expect(body.email_verified).toBe(true);
+    expect(body.name).toBeUndefined();
+    expect(body.email).toBeUndefined();
+    expect(body.email_verified).toBeUndefined();
   });
 
   it("JWTのcidが異なるサービス → { active: false }（サービス間トークン流用防止）", async () => {
@@ -533,7 +533,7 @@ describe("POST /api/token/introspect", () => {
     expect(body.active).toBe(false);
   });
 
-  it("JWTイントロスペクション: profileスコープのみ → name/pictureを返すがemailは返さない", async () => {
+  it("JWTイントロスペクション: profileスコープのみでもプロフィールを返さない", async () => {
     vi.mocked(findServiceByClientId).mockResolvedValue({
       ...mockService,
       allowed_scopes: JSON.stringify(["profile"]),
@@ -547,7 +547,7 @@ describe("POST /api/token/introspect", () => {
     expect(res.status).toBe(200);
     const body = await res.json<Record<string, unknown>>();
     expect(body.active).toBe(true);
-    expect(body.name).toBe("Test User");
+    expect(body.name).toBeUndefined();
     expect(body.email).toBeUndefined();
   });
 
@@ -576,10 +576,10 @@ describe("POST /api/token/introspect", () => {
       authHeader: makeBasicAuth("test-client-id", "secret"),
     });
     expect(res.status).toBe(200);
-    const body = await res.json<{ active: boolean; name: string; email: string }>();
+    const body = await res.json<{ active: boolean; name?: never; email?: never }>();
     expect(body.active).toBe(true);
-    expect(body.name).toBe("Test User");
-    expect(body.email).toBe("test@example.com");
+    expect(body.name).toBeUndefined();
+    expect(body.email).toBeUndefined();
   });
 
   it("form-encoded: tokenが未指定 → { active: false } + 400", async () => {
@@ -1816,7 +1816,7 @@ describe("POST /api/token/ — refresh_token grant", () => {
     expect(body.scope).toBe("profile email");
   });
 
-  it("スコープがnull（古いトークン）→ サービスのallowed_scopesが引き継がれる", async () => {
+  it("スコープがnull（古いトークン）→ openidのみで更新される", async () => {
     vi.mocked(findAndRevokeRefreshToken).mockResolvedValue({
       ...mockRefreshToken,
       scope: null,
@@ -1831,8 +1831,8 @@ describe("POST /api/token/ — refresh_token grant", () => {
     });
     expect(res.status).toBe(200);
     const body = await res.json<{ scope: string }>();
-    // allowed_scopes = ["profile", "email"] → "profile email" が引き継がれる（"openid" のみにならない）
-    expect(body.scope).toBe("profile email");
+    // Missing stored scopes are not user consent to all configured profile scopes.
+    expect(body.scope).toBe("openid");
   });
 
   it("issueTokenPairが例外をスロー → { error: server_error } + 500", async () => {
