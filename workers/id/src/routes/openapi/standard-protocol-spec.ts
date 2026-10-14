@@ -377,7 +377,10 @@ export const USERINFO_GET_OPERATION = {
                   picture: { type: ["string", "null"] },
                   email: { type: "string" },
                   email_verified: { type: "boolean" },
-                  phone_number: { type: "string", description: "phone scopeかつ非nullの場合のみ。" },
+                  phone_number: {
+                    type: "string",
+                    description: "phone scopeかつ非nullの場合のみ。",
+                  },
                   address: {
                     type: "object",
                     properties: { formatted: { type: "string" } },

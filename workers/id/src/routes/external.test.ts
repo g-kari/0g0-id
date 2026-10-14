@@ -566,7 +566,13 @@ describe("GET /api/external/users", () => {
       expect(res.status).toBe(200);
       const body = await res.json<{ data: Record<string, unknown>[] }>();
       expect(body.data).toEqual([{ sub: PAIRWISE_SUB }]);
-      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(mockEnv.DB, "service-1", 50, 0, {});
+      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
+        mockEnv.DB,
+        "service-1",
+        50,
+        0,
+        {},
+      );
     });
   });
 });

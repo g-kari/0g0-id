@@ -587,7 +587,6 @@ Authorization: Basic <Base64(client_id:client_secret)>
                     },
                     exp: { type: "integer", description: "有効期限（Unix timestamp）" },
                     scope: { type: "string", description: "許可スコープ（スペース区切り）" },
-
                   },
                   required: ["active"],
                 },

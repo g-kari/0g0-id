@@ -294,11 +294,20 @@ describe("POST /auth/refresh", () => {
         expect(res.status).toBe(200);
         const body = await res.json<{ data: { user: Record<string, unknown> } }>();
         expect(body.data.user).toEqual({ id: "b".repeat(64) });
-        expect(generatePairwiseSub).toHaveBeenCalledWith("synthetic-client", mockUser.id, mockEnv.PAIRWISE_SALT);
+        expect(generatePairwiseSub).toHaveBeenCalledWith(
+          "synthetic-client",
+          mockUser.id,
+          mockEnv.PAIRWISE_SALT,
+        );
         expect(issueTokenPairWithRecovery).toHaveBeenCalledWith(
-          mockEnv.DB, mockEnv, mockUser,
+          mockEnv.DB,
+          mockEnv,
+          mockUser,
           expect.objectContaining({ scope: scope || "openid" }),
-          mockStoredToken.id, "hashed-token", expect.anything(), "handleRefresh",
+          mockStoredToken.id,
+          "hashed-token",
+          expect.anything(),
+          "handleRefresh",
         );
       });
     }

@@ -294,9 +294,15 @@ describe("GET /api/userinfo", () => {
   });
 
   describe("RP profile disclosure is fail-closed", () => {
-    for (const scope of [undefined, "", "openid", "openid profile email phone address", "invalid"]) {
+    for (const scope of [
+      undefined,
+      "",
+      "openid",
+      "openid profile email phone address",
+      "invalid",
+    ]) {
       for (const method of ["GET", "POST"] as const) {
-        it(`${method} cid token with scope=${String(scope)} returns only pairwise sub`, async () => {
+        it(`${method} RP scope=${String(scope)} is sub-only`, async () => {
           vi.mocked(verifyAccessToken).mockResolvedValue({
             ...mockTokenPayload,
             cid: "synthetic-client",

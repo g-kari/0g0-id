@@ -354,7 +354,7 @@ describe("handleRefreshTokenGrant", () => {
       expect(body.scope).toBe("openid profile email");
     });
 
-    it.each([null, ""])("storedToken.scope が %s → openidだけ、service設定へ拡大しない", async (scope) => {
+    it.each([null, ""])("scope=%s falls back to openid without widening", async (scope) => {
       vi.mocked(resolveOAuthClient).mockResolvedValue({
         ok: true,
         service: mockService,

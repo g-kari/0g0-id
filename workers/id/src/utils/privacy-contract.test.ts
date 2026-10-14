@@ -60,13 +60,29 @@ const env = {
 } as IdpEnv;
 
 const profileFields = [
-  "email", "email_verified", "name", "picture", "phone", "phone_number",
-  "address", "role", "google_sub", "line_sub", "twitch_sub", "github_sub", "x_sub",
+  "email",
+  "email_verified",
+  "name",
+  "picture",
+  "phone",
+  "phone_number",
+  "address",
+  "role",
+  "google_sub",
+  "line_sub",
+  "twitch_sub",
+  "github_sub",
+  "x_sub",
 ];
 
 function assertNoProfile(claims: Record<string, unknown>): void {
   for (const field of profileFields) expect(claims).not.toHaveProperty(field);
-  for (const value of [syntheticUser.email, syntheticUser.name, syntheticUser.phone, syntheticUser.address]) {
+  for (const value of [
+    syntheticUser.email,
+    syntheticUser.name,
+    syntheticUser.phone,
+    syntheticUser.address,
+  ]) {
     expect(Object.values(claims)).not.toContain(value);
   }
 }
@@ -95,7 +111,9 @@ describe("RP privacy contract with synthetic data and real ES256/JWKS", () => {
       expect(payload.nonce).toBe("synthetic-nonce");
       expect(payload.amr).toBeUndefined();
       expect(protectedHeader.alg).toBe("ES256");
-      expect(payload.sub).toBe(await generatePairwiseSub(service.client_id, syntheticUser.id, env.PAIRWISE_SALT));
+      expect(payload.sub).toBe(
+        await generatePairwiseSub(service.client_id, syntheticUser.id, env.PAIRWISE_SALT),
+      );
       await expect(verify(token!, "synthetic-client-b")).rejects.toThrow();
     });
   }
@@ -112,10 +130,12 @@ describe("RP privacy contract with synthetic data and real ES256/JWKS", () => {
     expect(av.payload.sub).not.toBe(syntheticUser.id);
   });
 
-  it("service access token omits profile and admin role while retaining the deferred internal-sub contract", async () => {
+  it("RP access token omits profile and keeps the known UUID residual", async () => {
     vi.mocked(createRefreshToken).mockClear();
     const pair = await issueTokenPair(env.DB, env, syntheticUser, {
-      serviceId: "synthetic-service-a", clientId: "synthetic-client-a", scope: "openid",
+      serviceId: "synthetic-service-a",
+      clientId: "synthetic-client-a",
+      scope: "openid",
     });
     const { payload } = await verify(pair.accessToken, "synthetic-client-a");
     assertNoProfile(payload);
@@ -125,42 +145,81 @@ describe("RP privacy contract with synthetic data and real ES256/JWKS", () => {
     expect(createRefreshToken).toHaveBeenCalledWith(
       env.DB,
       expect.objectContaining({
-        pairwiseSub: await generatePairwiseSub("synthetic-client-a", syntheticUser.id, env.PAIRWISE_SALT),
+        pairwiseSub: await generatePairwiseSub(
+          "synthetic-client-a",
+          syntheticUser.id,
+          env.PAIRWISE_SALT,
+        ),
       }),
     );
   });
 
   it("a serviceId without clientId cannot silently issue a BFF-shaped token", async () => {
     vi.mocked(createRefreshToken).mockClear();
-    await expect(issueTokenPair(env.DB, env, syntheticUser, { serviceId: "synthetic-service-a" })).rejects.toThrow();
-    await expect(issueTokenPair(env.DB, env, syntheticUser, { serviceId: null, clientId: "synthetic-client-a" })).rejects.toThrow();
-    await expect(issueTokenPair(env.DB, env, syntheticUser, { serviceId: "synthetic-service-a", clientId: "" })).rejects.toThrow();
+    await expect(
+      issueTokenPair(env.DB, env, syntheticUser, { serviceId: "synthetic-service-a" }),
+    ).rejects.toThrow();
+    await expect(
+      issueTokenPair(env.DB, env, syntheticUser, {
+        serviceId: null,
+        clientId: "synthetic-client-a",
+      }),
+    ).rejects.toThrow();
+    await expect(
+      issueTokenPair(env.DB, env, syntheticUser, {
+        serviceId: "synthetic-service-a",
+        clientId: "",
+      }),
+    ).rejects.toThrow();
     expect(createRefreshToken).not.toHaveBeenCalled();
   });
 
   it("direct ID signer cannot reintroduce legacy profile parameters", async () => {
-    const token = await signIdToken({
-      iss: env.IDP_ORIGIN, aud: "synthetic-client-a", sub: "b".repeat(64),
-      email: syntheticUser.email, name: syntheticUser.name, picture: syntheticUser.picture,
-      authTime: 1_700_000_000,
-    }, TEST_PRIVATE_KEY, TEST_PUBLIC_KEY);
+    const token = await signIdToken(
+      {
+        iss: env.IDP_ORIGIN,
+        aud: "synthetic-client-a",
+        sub: "b".repeat(64),
+        email: syntheticUser.email,
+        name: syntheticUser.name,
+        picture: syntheticUser.picture,
+        authTime: 1_700_000_000,
+      },
+      TEST_PRIVATE_KEY,
+      TEST_PUBLIC_KEY,
+    );
     assertNoProfile((await verify(token, "synthetic-client-a")).payload);
   });
 
   it("direct RP access signer suppresses profile/admin role even with profile scopes", async () => {
-    const token = await signAccessToken({
-      iss: env.IDP_ORIGIN, aud: "synthetic-client-a", sub: syntheticUser.id,
-      email: syntheticUser.email, role: syntheticUser.role,
-      cid: "synthetic-client-a", scope: "openid profile email phone address",
-    }, TEST_PRIVATE_KEY, TEST_PUBLIC_KEY);
+    const token = await signAccessToken(
+      {
+        iss: env.IDP_ORIGIN,
+        aud: "synthetic-client-a",
+        sub: syntheticUser.id,
+        email: syntheticUser.email,
+        role: syntheticUser.role,
+        cid: "synthetic-client-a",
+        scope: "openid profile email phone address",
+      },
+      TEST_PRIVATE_KEY,
+      TEST_PUBLIC_KEY,
+    );
     assertNoProfile((await verify(token, "synthetic-client-a")).payload);
   });
 
   it("BFF access-token profile/role contract is preserved for the separate migration", async () => {
-    const token = await signAccessToken({
-      iss: env.IDP_ORIGIN, aud: env.IDP_ORIGIN, sub: syntheticUser.id,
-      email: syntheticUser.email, role: syntheticUser.role,
-    }, TEST_PRIVATE_KEY, TEST_PUBLIC_KEY);
+    const token = await signAccessToken(
+      {
+        iss: env.IDP_ORIGIN,
+        aud: env.IDP_ORIGIN,
+        sub: syntheticUser.id,
+        email: syntheticUser.email,
+        role: syntheticUser.role,
+      },
+      TEST_PRIVATE_KEY,
+      TEST_PUBLIC_KEY,
+    );
     const { payload } = await verify(token, env.IDP_ORIGIN);
     expect(payload.email).toBe(syntheticUser.email);
     expect(payload.role).toBe("admin");
@@ -171,7 +230,7 @@ describe("RP privacy contract with synthetic data and real ES256/JWKS", () => {
     expect(createLegacyRelyingPartyUser("b".repeat(64))).toEqual({ id: "b".repeat(64) });
   });
 
-  it.todo("coordinated follow-up: RP access-token sub must become pairwise without breaking UserInfo/introspection/revocation");
-  it.todo("coordinated follow-up: real service audience token must succeed in UserInfo/introspection with strict issuer/audience checks");
-  it.todo("coordinated follow-up: minimize storage, BFF profiles, MCP, runtime logs and old backups");
+  it.todo("deferred: pairwise RP access sub with coordinated subject/revocation migration");
+  it.todo("deferred: strict RP audience-compatible UserInfo and introspection");
+  it.todo("deferred: storage/BFF/MCP/log/backup minimization");
 });
