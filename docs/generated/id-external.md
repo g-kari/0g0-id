@@ -70,16 +70,14 @@ Authorization: Basic <Base64(client_id:client_secret)>
 プライバシー保護のため、External API が返す `sub` はサービスごとに固有の不透明な識別子です。
 同じユーザーでも異なるサービスには異なる `sub` が返ります。内部ユーザーIDは公開されません。
 
-## 利用可能なスコープ
+## 個人情報の提供方針
 
-| スコープ | 取得できる情報 |
-|---------|-------------|
-| `profile` | name, picture |
-| `email` | email, email_verified |
-| `phone` | phone |
-| `address` | address |
+外部サービスへのプロフィール提供は既定で無効です。External API / UserInfo はサービス固有の `sub` のみを返します。
+`profile` / `email` / `phone` / `address` の要求や管理者設定は、項目・送信先・目的への本人同意の代わりになりません。
+項目提供の同意機構は未実装であり、name/email検索も403で拒否します。
 
-スコープは管理者がサービス登録時に設定します。
+標準IDトークンもプロフィールを含めません。service access tokenはemail/roleを含めませんが、既存互換性のため内部UUIDのsubが残ります。
+この残存はアプリ間相関の懸念であり、識別子移行を含む追加対応が必要です。
 
 必須は各オブジェクト内での必須項目です。省略可能な親の子項目は、親がある場合に適用されます。
 
@@ -227,7 +225,8 @@ OIDC プロバイダーメタデータ
 UserInfo（既存GET/POST共通ハンドラー）
 
 Authorization: Bearerヘッダーのみ。POSTの本文を読まず、本文access_tokenは認証に使わない。現在の共通認証はES256署名、iss=IDP_ORIGIN、aud=IDP_ORIGIN、期限/失効を検証する。標準service tokenはaud=client_idで発行されるため、そのままこのaudience検証を通るとは保証しない。
-認証を通ったtokenにcidがあればサービス固有pairwise sub、cidがなければ内部ユーザーIDを返す。scope未指定/空ならname/picture/email/email_verifiedを返す。profileはname/picture、emailはemail/email_verified、phoneは非nullのphone_number、addressは非nullの{formatted}。phone/address未保持時はキーを省略する。sub/updated_atは常に含む。data包み・role・provider IDsは返さない。
+認証を通ったtokenにcidがあれば、scopeに関係なくサービス固有pairwise subのみを返す。scope要求やservice設定だけでは項目提供への本人同意とみなさない。
+cidのないBFF tokenは既存互換性のため内部ユーザーIDとupdated_atを返す。BFFのみscope未指定/空ならname/picture/email/email_verifiedを返す。BFFのprofileはname/picture、emailはemail/email_verified、phoneは非nullのphone_number、addressは非nullの{formatted}。BFFのphone/address未保持時はキーを省略する。data包み・role・provider IDsは返さない。
 
 **認証**: BearerAuth
 
@@ -235,22 +234,25 @@ Authorization: Bearerヘッダーのみ。POSTの本文を読まず、本文acce
 
 #### 200
 
-スコープに応じたflatなユーザークレーム。
+RPはsubのみ。BFFは既存のスコープに応じたflatなユーザークレーム。
 
 **Content-Type**: application/json
 
 | フィールド | 必須 | 型 | 制約・既定値 | 説明 |
 | --- | --- | --- | --- | --- |
-| $ |  | object |  |  |
-| address |  | object |  | address scopeかつ非nullの場合のみ。 |
-| address.formatted | ✓ | string |  |  |
-| email |  | string |  |  |
-| email_verified |  | boolean |  |  |
-| name |  | string |  |  |
-| phone_number |  | string |  | phone scopeかつ非nullの場合のみ。 |
-| picture |  | string ∪ null |  |  |
-| sub | ✓ | string |  | cidの有無でpairwise/internalを選ぶ。 |
-| updated_at | ✓ | integer |  | Unix秒。 |
+| $ |  | oneOf |  |  |
+| $ (oneOf 1) |  | object | additionalProperties: false | cid付きRP応答はsubのみ。 |
+| $ (oneOf 1).sub | ✓ | string |  | サービス固有のpairwise sub。 |
+| $ (oneOf 2) |  | object |  | cidなしBFF応答の既存プロフィール契約。 |
+| $ (oneOf 2).address |  | object |  | address scopeかつ非nullの場合のみ。 |
+| $ (oneOf 2).address.formatted | ✓ | string |  |  |
+| $ (oneOf 2).email |  | string |  |  |
+| $ (oneOf 2).email_verified |  | boolean |  |  |
+| $ (oneOf 2).name |  | string |  |  |
+| $ (oneOf 2).phone_number |  | string |  | phone scopeかつ非nullの場合のみ。 |
+| $ (oneOf 2).picture |  | string ∪ null |  |  |
+| $ (oneOf 2).sub | ✓ | string |  | cidの有無でpairwise/internalを選ぶ。 |
+| $ (oneOf 2).updated_at | ✓ | integer |  | Unix秒。 |
 
 #### 401
 
@@ -330,7 +332,8 @@ Authorization: Bearerヘッダーのみ。POSTの本文を読まず、本文acce
 UserInfo（POST、本文のtokenは使わない）
 
 Authorization: Bearerヘッダーのみ。POSTの本文を読まず、本文access_tokenは認証に使わない。現在の共通認証はES256署名、iss=IDP_ORIGIN、aud=IDP_ORIGIN、期限/失効を検証する。標準service tokenはaud=client_idで発行されるため、そのままこのaudience検証を通るとは保証しない。
-認証を通ったtokenにcidがあればサービス固有pairwise sub、cidがなければ内部ユーザーIDを返す。scope未指定/空ならname/picture/email/email_verifiedを返す。profileはname/picture、emailはemail/email_verified、phoneは非nullのphone_number、addressは非nullの{formatted}。phone/address未保持時はキーを省略する。sub/updated_atは常に含む。data包み・role・provider IDsは返さない。
+認証を通ったtokenにcidがあれば、scopeに関係なくサービス固有pairwise subのみを返す。scope要求やservice設定だけでは項目提供への本人同意とみなさない。
+cidのないBFF tokenは既存互換性のため内部ユーザーIDとupdated_atを返す。BFFのみscope未指定/空ならname/picture/email/email_verifiedを返す。BFFのprofileはname/picture、emailはemail/email_verified、phoneは非nullのphone_number、addressは非nullの{formatted}。BFFのphone/address未保持時はキーを省略する。data包み・role・provider IDsは返さない。
 
 **認証**: BearerAuth
 
@@ -338,22 +341,25 @@ Authorization: Bearerヘッダーのみ。POSTの本文を読まず、本文acce
 
 #### 200
 
-スコープに応じたflatなユーザークレーム。
+RPはsubのみ。BFFは既存のスコープに応じたflatなユーザークレーム。
 
 **Content-Type**: application/json
 
 | フィールド | 必須 | 型 | 制約・既定値 | 説明 |
 | --- | --- | --- | --- | --- |
-| $ |  | object |  |  |
-| address |  | object |  | address scopeかつ非nullの場合のみ。 |
-| address.formatted | ✓ | string |  |  |
-| email |  | string |  |  |
-| email_verified |  | boolean |  |  |
-| name |  | string |  |  |
-| phone_number |  | string |  | phone scopeかつ非nullの場合のみ。 |
-| picture |  | string ∪ null |  |  |
-| sub | ✓ | string |  | cidの有無でpairwise/internalを選ぶ。 |
-| updated_at | ✓ | integer |  | Unix秒。 |
+| $ |  | oneOf |  |  |
+| $ (oneOf 1) |  | object | additionalProperties: false | cid付きRP応答はsubのみ。 |
+| $ (oneOf 1).sub | ✓ | string |  | サービス固有のpairwise sub。 |
+| $ (oneOf 2) |  | object |  | cidなしBFF応答の既存プロフィール契約。 |
+| $ (oneOf 2).address |  | object |  | address scopeかつ非nullの場合のみ。 |
+| $ (oneOf 2).address.formatted | ✓ | string |  |  |
+| $ (oneOf 2).email |  | string |  |  |
+| $ (oneOf 2).email_verified |  | boolean |  |  |
+| $ (oneOf 2).name |  | string |  |  |
+| $ (oneOf 2).phone_number |  | string |  | phone scopeかつ非nullの場合のみ。 |
+| $ (oneOf 2).picture |  | string ∪ null |  |  |
+| $ (oneOf 2).sub | ✓ | string |  | cidの有無でpairwise/internalを選ぶ。 |
+| $ (oneOf 2).updated_at | ✓ | integer |  | Unix秒。 |
 
 #### 401
 
@@ -482,7 +488,7 @@ UNAUTHORIZED — Basic認証失敗
 
 RFC 7662 準拠のトークンイントロスペクションエンドポイント。
 
-リフレッシュトークンが有効かどうかを確認し、有効な場合はユーザー情報を返す。
+トークンの有効性とpairwise sub・トークンメタデータを返す。プロフィールはscopeに関係なく返さない。
 
 認証には Basic 認証（`client_id:client_secret`）を使用する。
 
@@ -511,13 +517,7 @@ RFC 7662 準拠のトークンイントロスペクションエンドポイン�
 | --- | --- | --- | --- | --- |
 | $ |  | object |  |  |
 | active | ✓ | boolean |  | トークンが有効かどうか |
-| address |  | string ∪ null |  | 住所（addressスコープ） |
-| email |  | string |  | メールアドレス（emailスコープ） |
-| email_verified |  | boolean |  | メール認証済みフラグ（emailスコープ） |
 | exp |  | integer |  | 有効期限（Unix timestamp） |
-| name |  | string |  | 表示名（profileスコープ） |
-| phone |  | string ∪ null |  | 電話番号（phoneスコープ） |
-| picture |  | string ∪ null |  | プロフィール画像URL（profileスコープ） |
 | scope |  | string |  | 許可スコープ（スペース区切り） |
 | sub |  | string |  | ペアワイズユーザー識別子（active: true のみ） |
 
@@ -538,7 +538,7 @@ UNAUTHORIZED — Basic 認証失敗
 このサービスを認可したユーザーの一覧を返す。
 
 返却される `sub` はサービス固有のペアワイズ識別子。
-許可されたスコープに応じたフィールドのみ返す。
+scopeに関係なくsubのみ返す。name/email検索は本人同意機構がないため、空文字を含め403で拒否する。
 
 **認証**: BasicAuth
 
@@ -561,13 +561,7 @@ UNAUTHORIZED — Basic 認証失敗
 | --- | --- | --- | --- | --- |
 | $ |  | object |  |  |
 | data |  | array&lt;object (#/components/schemas/ExternalUser)&gt; |  |  |
-| data[] |  | object (#/components/schemas/ExternalUser) |  | スコープに応じたユーザー情報（内部IDの代わりにペアワイズsubを返す） |
-| data[].address |  | string ∪ null |  | 住所（addressスコープ） |
-| data[].email |  | string |  | メールアドレス（emailスコープ） |
-| data[].email_verified |  | boolean |  | メール認証済みフラグ（emailスコープ） |
-| data[].name |  | string |  | 表示名（profileスコープ） |
-| data[].phone |  | string ∪ null |  | 電話番号（phoneスコープ） |
-| data[].picture |  | string ∪ null |  | プロフィール画像URL（profileスコープ） |
+| data[] |  | object (#/components/schemas/ExternalUser) | additionalProperties: false | プロフィールを含まないサービス固有のペアワイズ識別子。 |
 | data[].sub | ✓ | string |  | サービス固有のユーザー識別子（ペアワイズ） |
 | meta |  | object |  |  |
 | meta.limit |  | integer |  |  |
@@ -577,6 +571,19 @@ UNAUTHORIZED — Basic 認証失敗
 #### 401
 
 認証失敗（client_id または client_secret が不正）
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+#### 403
+
+name/email検索はプロフィール項目への本人同意が未実装のため拒否。
 
 **Content-Type**: application/json
 
@@ -629,13 +636,7 @@ UNAUTHORIZED — Basic 認証失敗
 | フィールド | 必須 | 型 | 制約・既定値 | 説明 |
 | --- | --- | --- | --- | --- |
 | $ |  | object |  |  |
-| data |  | object (#/components/schemas/ExternalUser) |  | スコープに応じたユーザー情報（内部IDの代わりにペアワイズsubを返す） |
-| data.address |  | string ∪ null |  | 住所（addressスコープ） |
-| data.email |  | string |  | メールアドレス（emailスコープ） |
-| data.email_verified |  | boolean |  | メール認証済みフラグ（emailスコープ） |
-| data.name |  | string |  | 表示名（profileスコープ） |
-| data.phone |  | string ∪ null |  | 電話番号（phoneスコープ） |
-| data.picture |  | string ∪ null |  | プロフィール画像URL（profileスコープ） |
+| data |  | object (#/components/schemas/ExternalUser) | additionalProperties: false | プロフィールを含まないサービス固有のペアワイズ識別子。 |
 | data.sub | ✓ | string |  | サービス固有のユーザー識別子（ペアワイズ） |
 
 #### 400
@@ -973,9 +974,9 @@ authorization_code/refresh_token: client_secret_hashのあるサービスはclie
 device_code: 本文client_idと保存済みコードのサービス一致を確認し、Basic/client_secretは認証に使わない。
 
 公開クライアントのauthorization_codeはPKCE必須。保存コードにchallengeがあるconfidential clientにもverifierが必要。redirect_uriは正規化後に照合する（localhost/127.0.0.1とloopbackポートの比較に特例あり）。
-authorization_code/device_codeは保存済みスコープを現在の許可スコープと照合し、null/空の保存値はopenidのみへfallbackする。refreshは保存済みスコープをそのまま再利用し、legacy未保存時だけ現在の許可スコープ/openidへfallbackする。本文scopeは使わない。
+authorization_code/device_codeは保存済みスコープを現在の許可スコープと照合し、null/空の保存値はopenidのみへfallbackする。refreshは保存済みスコープをそのまま再利用し、legacy未保存/空のときはopenidのみへfallbackする。本文scopeは使わない。
 deviceの未承認はauthorization_pending、早すぎるポーリングはslow_down（400/Retry-After:10）。refreshのローテーション競合もinvalid_grant（400）であり、BFF /auth/refreshの503ではない。
-発行service tokenのaudienceはclient_id。現在のUserInfo認証はIDP_ORIGINをaudienceに要求するため、互換性は別途確認が必要。
+IDトークンはpairwise subと認証用メタデータのみで、プロフィールや上流providerのamrを含めない。service access tokenはemail/roleを含めないが、subは既存互換性のため内部UUIDを保持する。発行service tokenのaudienceはclient_id。現在のUserInfo認証はIDP_ORIGINをaudienceに要求するため、互換性は別途確認が必要。
 
 **認証**: BasicAuth OR 不要（仕様上）
 
@@ -1185,6 +1186,7 @@ TOO_MANY_REQUESTS — レートリミット超過
 **認証**: `Authorization: Basic <Base64(client_id:client_secret)>` ヘッダーが必須。
 
 **PKCE**: `/auth/login` に `code_challenge` を渡した場合（PKCE使用時）は `code_verifier` も必須。
+外部サービスのdata.userは{id: pairwise sub}のみ。ID tokenもプロフィールを含まない。BFF JSON契約は別の内部API仕様を参照。
 
 **認証**: BasicAuth
 
@@ -1215,12 +1217,8 @@ TOO_MANY_REQUESTS — レートリミット超過
 | data.expires_in |  | integer |  | アクセストークン有効期限（秒） |
 | data.refresh_token |  | string |  | リフレッシュトークン（有効期限30日） |
 | data.token_type |  | string |  |  |
-| data.user |  | object |  |  |
-| data.user.email |  | string |  |  |
-| data.user.id |  | string |  | 0g0 ID 内部ユーザーID（External API の検索にはペアワイズ sub を使用） |
-| data.user.name |  | string |  |  |
-| data.user.picture |  | string ∪ null |  |  |
-| data.user.role |  | string | enum: ["user", "admin"] |  |
+| data.user |  | object (#/components/schemas/LegacyExternalUser) | additionalProperties: false | 旧exchange/refresh応答。idの値はサービス固有pairwise sub。 |
+| data.user.id | ✓ | string |  | 内部UUIDではなくサービス固有pairwise sub。 |
 
 #### 400
 
@@ -1342,6 +1340,7 @@ FORBIDDEN — Authorization ヘッダーなし
 同じリフレッシュトークンを2回使った場合（再使用検出）、そのファミリー全体が失効する（セキュリティ機能）。
 
 **認証**: `Authorization: Basic <Base64(client_id:client_secret)>` ヘッダーが必須。
+サービスのdata.userは{id: pairwise sub}のみ。未保存/空のlegacy scopeはopenidのみへfallbackする。
 
 **認証**: BasicAuth
 
@@ -1370,6 +1369,8 @@ FORBIDDEN — Authorization ヘッダーなし
 | data.expires_in |  | integer |  |  |
 | data.refresh_token |  | string |  | 新しいリフレッシュトークン（旧トークンは無効） |
 | data.token_type |  | string |  |  |
+| data.user |  | object (#/components/schemas/LegacyExternalUser) | additionalProperties: false | 旧exchange/refresh応答。idの値はサービス固有pairwise sub。 |
+| data.user.id | ✓ | string |  | 内部UUIDではなくサービス固有pairwise sub。 |
 
 #### 401
 
@@ -1394,14 +1395,15 @@ FORBIDDEN — Authorization ヘッダーなし
 
 | フィールド | 必須 | 型 | 制約・既定値 | 説明 |
 | --- | --- | --- | --- | --- |
-| $ |  | object |  | スコープに応じたユーザー情報（内部IDの代わりにペアワイズsubを返す） |
-| address |  | string ∪ null |  | 住所（addressスコープ） |
-| email |  | string |  | メールアドレス（emailスコープ） |
-| email_verified |  | boolean |  | メール認証済みフラグ（emailスコープ） |
-| name |  | string |  | 表示名（profileスコープ） |
-| phone |  | string ∪ null |  | 電話番号（phoneスコープ） |
-| picture |  | string ∪ null |  | プロフィール画像URL（profileスコープ） |
+| $ |  | object | additionalProperties: false | プロフィールを含まないサービス固有のペアワイズ識別子。 |
 | sub | ✓ | string |  | サービス固有のユーザー識別子（ペアワイズ） |
+
+### LegacyExternalUser
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object | additionalProperties: false | 旧exchange/refresh応答。idの値はサービス固有pairwise sub。 |
+| id | ✓ | string |  | 内部UUIDではなくサービス固有pairwise sub。 |
 
 ### OAuthError
 

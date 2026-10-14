@@ -1,7 +1,9 @@
 # 標準トークン・UserInfo・デバイスの実装契約
 
-2026-10-11時点のIdPハンドラーを説明する資料です。仕様は内部/外部の両OpenAPIと
-[生成リファレンス](./api-reference-generation.md)へ反映します。
+2026-10-14の個人情報最小化候補を含むIdPハンドラーの契約です。仕様は内部/外部の両OpenAPIと
+[生成リファレンス](./api-reference-generation.md)へ反映しています。検証結果と未完了項目は
+[PR #303](https://github.com/g-kari/0g0-id/pull/303)で管理します。
+外部アプリの必須profile/旧refresh識別子の確認は[RP移行メモ](./rp-profile-minimization-migration.md)を参照してください。
 規格への完全適合や本番クライアントとの接続成功を保証する資料ではありません。
 
 ## POST /api/token
@@ -27,8 +29,12 @@ refresh tokenの期限は30日で、`offline_access`を要求しなくても発�
 有効scopeが空でなければscopeを含みます。認可コード/デバイス交換ではopenidがあると
 `id_token`を含みます。refreshでは`id_token`を返しません。
 認可コード/デバイスは保存scopeを現在の許可scopeと照合し、保存値がnull/空ならopenidのみへfallbackします。
-refreshは保存scopeを再利用し、legacy未保存（null/undefined）のときだけ現在の許可scope、
-許可scopeが空ならopenidへfallbackします。交換本文scopeは使いません。
+refreshは保存scopeを再利用し、legacy未保存/空のときはopenidのみへfallbackします。
+サービスの許可scopeすべてへ自動拡大しません。交換本文scopeは使いません。
+
+IDトークンはプロフィールや上流providerのamrを含めません。service access tokenからも
+email/IdP roleを省きますが、subには既存互換性のため内部UUIDが残ります。
+この残存はアプリ間相関の懸念であり、subject解決や失効経路を含む別の移行が必要です。
 
 デバイス未承認は400 `authorization_pending`、早すぎるポーリングは400 `slow_down`と
 Retry-After: 10です。期限切れは400 `expired_token`、拒否は400 `access_denied`。
@@ -76,8 +82,12 @@ POST本文は読み取らず、本文`access_token`では認証しません。
 したがって通常のservice tokenをそのままUserInfoへ渡せるとは保証できません。
 この既存のaudience制約を文書化し、認証ポリシーは変更しません。
 
-認証を通ったtokenにcidがあればpairwise sub、cidがなければ内部ユーザーIDです。
-常時subと`updated_at`（Unix秒）、scopeに応じて次のflatクレームを返します。
+認証を通ったtokenにcidがあれば、scopeに関係なくサービス固有のpairwise subのみを返します。
+`updated_at`、email/name/picture/phone/address等は返しません。scope要求や管理者設定は
+項目・送信先・目的に対する本人同意の代わりになりません。
+
+cidのないBFF tokenは既存互換性のため内部ユーザーIDと`updated_at`（Unix秒）を返し、
+BFFに限りscopeに応じて次のflatクレームを含みます。
 
 | scope     | クレーム                                            |
 | --------- | --------------------------------------------------- |
@@ -101,8 +111,12 @@ IdPの共通body上限64KiBは413 `PAYLOAD_TOO_LARGE`。
 本番の必須limiter binding未設定は503 `SERVICE_UNAVAILABLE`。
 deviceの`slow_down`（400/Retry-After:10）と区別してください。
 
-今回のリリースは4操作の仕様追加、既存UserInfo GET説明の訂正、手書き/生成資料と
-合成回帰の同期のみです。実行時ハンドラー、認証/権限、データ、依存、CI設定は変更しません。
-合成データ・一時鍵・fake D1/limiterで確認するため、実アカウント/本番D1/実クライアント
-接続の証明にはなりません。残るユーザー管理、metrics、DBSC等の未記載操作とその他契約は
+2026-10-14候補は外部向けprofile-egressと旧scope fallbackの変更です。署名/issuer/audienceの
+認証境界を弱めず、pairwise salt/アルゴリズムとBFF access/data.userの既存契約を維持します。
+vp check/test、API文書generator、exact-head CIと正式reviewの結果を上記PRで確認してください。
+本資料だけで候補の検証完了やmaster/本番への反映を判断しないでください。
+合成fixtureは既存の公開test鍵とfake D1を用い、実アカウント/本番D1/実クライアント接続の
+証明にはなりません。storage/provider/BFF/MCP/log/backupの最小化と必要保持暗号化は残っています。
+既発行token/clientコピーのPII削除も行っていません。pairwise subは仮名識別子で匿名ではなく、
+JWT署名は暗号化ではありません。候補全体をprivacy方針の達成として扱いません。残るユーザー管理、metrics、DBSC等の未記載操作とその他契約は
 Issue #257の継続範囲です。この限定変更でIssue全体を閉じません。

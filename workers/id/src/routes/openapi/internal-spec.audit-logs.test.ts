@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { Hono } from "hono";
-import type { AdminAuditLog, AuditLogStats, TokenPayload, User } from "@0g0-id/shared";
+import type { AdminAuditLog, AuditLogStats, BffAccessTokenPayload, User } from "@0g0-id/shared";
 
 vi.mock("@0g0-id/shared", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@0g0-id/shared")>();
@@ -34,7 +34,7 @@ const listMedia = list.responses["200"].content["application/json"];
 const statsMedia = stats.responses["200"].content["application/json"];
 const log: AdminAuditLog = { ...listMedia.example.data[0], status: "success" };
 const statistics: AuditLogStats = statsMedia.example.data;
-const token: TokenPayload = {
+const token: BffAccessTokenPayload = {
   iss: "https://id.example.test",
   sub: log.admin_user_id,
   aud: "https://id.example.test",

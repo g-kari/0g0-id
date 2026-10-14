@@ -76,16 +76,14 @@ Authorization: Basic <Base64(client_id:client_secret)>
 プライバシー保護のため、External API が返す \`sub\` はサービスごとに固有の不透明な識別子です。
 同じユーザーでも異なるサービスには異なる \`sub\` が返ります。内部ユーザーIDは公開されません。
 
-## 利用可能なスコープ
+## 個人情報の提供方針
 
-| スコープ | 取得できる情報 |
-|---------|-------------|
-| \`profile\` | name, picture |
-| \`email\` | email, email_verified |
-| \`phone\` | phone |
-| \`address\` | address |
+外部サービスへのプロフィール提供は既定で無効です。External API / UserInfo はサービス固有の \`sub\` のみを返します。
+\`profile\` / \`email\` / \`phone\` / \`address\` の要求や管理者設定は、項目・送信先・目的への本人同意の代わりになりません。
+項目提供の同意機構は未実装であり、name/email検索も403で拒否します。
 
-スコープは管理者がサービス登録時に設定します。`,
+標準IDトークンもプロフィールを含めません。service access tokenはemail/roleを含めませんが、既存互換性のため内部UUIDのsubが残ります。
+この残存はアプリ間相関の懸念であり、識別子移行を含む追加対応が必要です。`,
   },
   servers: [{ url: "https://id.0g0.xyz", description: "本番環境" }],
   components: {
@@ -113,21 +111,21 @@ Authorization: Basic <Base64(client_id:client_secret)>
       },
       ExternalUser: {
         type: "object",
-        description: "スコープに応じたユーザー情報（内部IDの代わりにペアワイズsubを返す）",
+        description: "プロフィールを含まないサービス固有のペアワイズ識別子。",
         properties: {
           sub: { type: "string", description: "サービス固有のユーザー識別子（ペアワイズ）" },
-          name: { type: "string", description: "表示名（profileスコープ）" },
-          picture: {
-            type: "string",
-            nullable: true,
-            description: "プロフィール画像URL（profileスコープ）",
-          },
-          email: { type: "string", description: "メールアドレス（emailスコープ）" },
-          email_verified: { type: "boolean", description: "メール認証済みフラグ（emailスコープ）" },
-          phone: { type: "string", nullable: true, description: "電話番号（phoneスコープ）" },
-          address: { type: "string", nullable: true, description: "住所（addressスコープ）" },
         },
         required: ["sub"],
+        additionalProperties: false,
+      },
+      LegacyExternalUser: {
+        type: "object",
+        description: "旧exchange/refresh応答。idの値はサービス固有pairwise sub。",
+        properties: {
+          id: { type: "string", description: "内部UUIDではなくサービス固有pairwise sub。" },
+        },
+        required: ["id"],
+        additionalProperties: false,
       },
       Error: {
         type: "object",
@@ -377,7 +375,8 @@ Authorization: Basic <Base64(client_id:client_secret)>
           "このエンドポイントはサーバーサイドから呼び出すこと（コードは1回しか使えない）。\n\n" +
           "`redirect_to` には `/auth/login` に渡したのと同じコールバックURLを指定する。\n\n" +
           "**認証**: `Authorization: Basic <Base64(client_id:client_secret)>` ヘッダーが必須。\n\n" +
-          "**PKCE**: `/auth/login` に `code_challenge` を渡した場合（PKCE使用時）は `code_verifier` も必須。",
+          "**PKCE**: `/auth/login` に `code_challenge` を渡した場合（PKCE使用時）は `code_verifier` も必須。\n" +
+          "外部サービスのdata.userは{id: pairwise sub}のみ。ID tokenもプロフィールを含まない。BFF JSON契約は別の内部API仕様を参照。",
         security: [{ BasicAuth: [] }],
         requestBody: {
           required: true,
@@ -443,20 +442,7 @@ Authorization: Basic <Base64(client_id:client_secret)>
                           example: 900,
                           description: "アクセストークン有効期限（秒）",
                         },
-                        user: {
-                          type: "object",
-                          properties: {
-                            id: {
-                              type: "string",
-                              description:
-                                "0g0 ID 内部ユーザーID（External API の検索にはペアワイズ sub を使用）",
-                            },
-                            email: { type: "string" },
-                            name: { type: "string" },
-                            picture: { type: "string", nullable: true },
-                            role: { type: "string", enum: ["user", "admin"] },
-                          },
-                        },
+                        user: { $ref: "#/components/schemas/LegacyExternalUser" },
                       },
                     },
                   },
@@ -482,7 +468,8 @@ Authorization: Basic <Base64(client_id:client_secret)>
           "リフレッシュトークンを使って新しいアクセストークンとリフレッシュトークンを発行する（トークンローテーション）。\n\n" +
           "⚠️ **旧リフレッシュトークンは即時無効化される**。必ず新しいリフレッシュトークンを保存すること。\n\n" +
           "同じリフレッシュトークンを2回使った場合（再使用検出）、そのファミリー全体が失効する（セキュリティ機能）。\n\n" +
-          "**認証**: `Authorization: Basic <Base64(client_id:client_secret)>` ヘッダーが必須。",
+          "**認証**: `Authorization: Basic <Base64(client_id:client_secret)>` ヘッダーが必須。\n" +
+          "サービスのdata.userは{id: pairwise sub}のみ。未保存/空のlegacy scopeはopenidのみへfallbackする。",
         security: [{ BasicAuth: [] }],
         requestBody: {
           required: true,
@@ -516,6 +503,7 @@ Authorization: Basic <Base64(client_id:client_secret)>
                         },
                         token_type: { type: "string", example: "Bearer" },
                         expires_in: { type: "integer", example: 900 },
+                        user: { $ref: "#/components/schemas/LegacyExternalUser" },
                       },
                     },
                   },
@@ -565,7 +553,7 @@ Authorization: Basic <Base64(client_id:client_secret)>
         summary: "リフレッシュトークンの有効性確認",
         description:
           "RFC 7662 準拠のトークンイントロスペクションエンドポイント。\n\n" +
-          "リフレッシュトークンが有効かどうかを確認し、有効な場合はユーザー情報を返す。\n\n" +
+          "トークンの有効性とpairwise sub・トークンメタデータを返す。プロフィールはscopeに関係なく返さない。\n\n" +
           "認証には Basic 認証（`client_id:client_secret`）を使用する。\n\n" +
           "自サービス向けに発行されたトークンのみ照会可能（他サービスのトークンは `active: false`）。",
         security: [{ BasicAuth: [] }],
@@ -599,27 +587,6 @@ Authorization: Basic <Base64(client_id:client_secret)>
                     },
                     exp: { type: "integer", description: "有効期限（Unix timestamp）" },
                     scope: { type: "string", description: "許可スコープ（スペース区切り）" },
-                    name: { type: "string", description: "表示名（profileスコープ）" },
-                    picture: {
-                      type: "string",
-                      nullable: true,
-                      description: "プロフィール画像URL（profileスコープ）",
-                    },
-                    email: { type: "string", description: "メールアドレス（emailスコープ）" },
-                    email_verified: {
-                      type: "boolean",
-                      description: "メール認証済みフラグ（emailスコープ）",
-                    },
-                    phone: {
-                      type: "string",
-                      nullable: true,
-                      description: "電話番号（phoneスコープ）",
-                    },
-                    address: {
-                      type: "string",
-                      nullable: true,
-                      description: "住所（addressスコープ）",
-                    },
                   },
                   required: ["active"],
                 },
@@ -630,9 +597,6 @@ Authorization: Basic <Base64(client_id:client_secret)>
                       sub: "a1b2c3...",
                       exp: 1735689600,
                       scope: "profile email",
-                      name: "山田 太郎",
-                      email: "taro@example.com",
-                      email_verified: true,
                     },
                   },
                   invalid: { value: { active: false } },
@@ -691,7 +655,7 @@ Authorization: Basic <Base64(client_id:client_secret)>
         description:
           "このサービスを認可したユーザーの一覧を返す。\n\n" +
           "返却される `sub` はサービス固有のペアワイズ識別子。\n" +
-          "許可されたスコープに応じたフィールドのみ返す。",
+          "scopeに関係なくsubのみ返す。name/email検索は本人同意機構がないため、空文字を含め403で拒否する。",
         security: [{ BasicAuth: [] }],
         parameters: [
           {
@@ -733,9 +697,6 @@ Authorization: Basic <Base64(client_id:client_secret)>
                   data: [
                     {
                       sub: "a1b2c3...",
-                      name: "山田 太郎",
-                      email: "taro@example.com",
-                      email_verified: true,
                     },
                   ],
                   meta: { total: 1, limit: 50, offset: 0 },
@@ -751,6 +712,10 @@ Authorization: Basic <Base64(client_id:client_secret)>
                 example: { error: { code: "UNAUTHORIZED", message: "Invalid client credentials" } },
               },
             },
+          },
+          "403": {
+            description: "name/email検索はプロフィール項目への本人同意が未実装のため拒否。",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
           },
           "500": {
             description: "サーバー内部エラー",
@@ -793,9 +758,6 @@ Authorization: Basic <Base64(client_id:client_secret)>
                 example: {
                   data: {
                     sub: "a1b2c3...",
-                    name: "山田 太郎",
-                    email: "taro@example.com",
-                    email_verified: true,
                   },
                 },
               },
