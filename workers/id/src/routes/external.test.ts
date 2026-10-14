@@ -546,13 +546,14 @@ describe("GET /api/external/users", () => {
   });
 
   describe("個人情報による検索は本人同意まで禁止", () => {
-    for (const query of [
+    const forbiddenQueries: Record<string, string>[] = [
       { name: "Synthetic Name" },
       { email: "synthetic@example.invalid" },
       { name: "Synthetic Name", email: "synthetic@example.invalid" },
       { name: "" },
       { email: "" },
-    ]) {
+    ];
+    for (const query of forbiddenQueries) {
       it(`設定にscopeがあっても検索を拒否: ${JSON.stringify(query)}`, async () => {
         const res = await requestExternalUserList(app, query);
         expect(res.status).toBe(403);

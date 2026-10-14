@@ -1,7 +1,8 @@
 # 標準トークン・UserInfo・デバイスの実装契約
 
-2026-10-14の個人情報最小化候補を含むIdPハンドラーの契約です。候補の実行検証と生成文書の再生成は未完了です。仕様は内部/外部の両OpenAPIと
-[生成リファレンス](./api-reference-generation.md)へ反映します。
+2026-10-14の個人情報最小化候補を含むIdPハンドラーの契約です。仕様は内部/外部の両OpenAPIと
+[生成リファレンス](./api-reference-generation.md)へ反映しています。検証結果と未完了項目は
+[PR #303](https://github.com/g-kari/0g0-id/pull/303)で管理します。
 規格への完全適合や本番クライアントとの接続成功を保証する資料ではありません。
 
 ## POST /api/token
@@ -111,7 +112,8 @@ deviceの`slow_down`（400/Retry-After:10）と区別してください。
 
 2026-10-14候補は外部向けprofile-egressと旧scope fallbackの変更です。署名/issuer/audienceの
 認証境界を弱めず、pairwise salt/アルゴリズムとBFF access/data.userの既存契約を維持します。
-必要なvp check/test、API文書generator、exact-head CIと正式reviewはまだ完了していません。
+vp check/test、API文書generator、exact-head CIと正式reviewの結果を上記PRで確認してください。
+本資料だけで候補の検証完了やmaster/本番への反映を判断しないでください。
 合成fixtureは既存の公開test鍵とfake D1を用い、実アカウント/本番D1/実クライアント接続の
 証明にはなりません。storage/provider/BFF/MCP/log/backupの最小化と必要保持暗号化は残っています。
 既発行token/clientコピーのPII削除も行っていません。pairwise subは仮名識別子で匿名ではなく、

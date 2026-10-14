@@ -124,7 +124,8 @@ OIDC プロバイダーメタデータ
 UserInfo（既存GET/POST共通ハンドラー）
 
 Authorization: Bearerヘッダーのみ。POSTの本文を読まず、本文access_tokenは認証に使わない。現在の共通認証はES256署名、iss=IDP_ORIGIN、aud=IDP_ORIGIN、期限/失効を検証する。標準service tokenはaud=client_idで発行されるため、そのままこのaudience検証を通るとは保証しない。
-認証を通ったtokenにcidがあればサービス固有pairwise sub、cidがなければ内部ユーザーIDを返す。scope未指定/空ならname/picture/email/email_verifiedを返す。profileはname/picture、emailはemail/email_verified、phoneは非nullのphone_number、addressは非nullの{formatted}。phone/address未保持時はキーを省略する。sub/updated_atは常に含む。data包み・role・provider IDsは返さない。
+認証を通ったtokenにcidがあれば、scopeに関係なくサービス固有pairwise subのみを返す。scope要求やservice設定だけでは項目提供への本人同意とみなさない。
+cidのないBFF tokenは既存互換性のため内部ユーザーIDとupdated_atを返す。BFFのみscope未指定/空ならname/picture/email/email_verifiedを返す。BFFのprofileはname/picture、emailはemail/email_verified、phoneは非nullのphone_number、addressは非nullの{formatted}。BFFのphone/address未保持時はキーを省略する。data包み・role・provider IDsは返さない。
 
 **認証**: BearerAuth
 
@@ -132,22 +133,25 @@ Authorization: Bearerヘッダーのみ。POSTの本文を読まず、本文acce
 
 #### 200
 
-スコープに応じたflatなユーザークレーム。
+RPはsubのみ。BFFは既存のスコープに応じたflatなユーザークレーム。
 
 **Content-Type**: application/json
 
 | フィールド | 必須 | 型 | 制約・既定値 | 説明 |
 | --- | --- | --- | --- | --- |
-| $ |  | object |  |  |
-| address |  | object |  | address scopeかつ非nullの場合のみ。 |
-| address.formatted | ✓ | string |  |  |
-| email |  | string |  |  |
-| email_verified |  | boolean |  |  |
-| name |  | string |  |  |
-| phone_number |  | string |  | phone scopeかつ非nullの場合のみ。 |
-| picture |  | string ∪ null |  |  |
-| sub | ✓ | string |  | cidの有無でpairwise/internalを選ぶ。 |
-| updated_at | ✓ | integer |  | Unix秒。 |
+| $ |  | oneOf |  |  |
+| $ (oneOf 1) |  | object | additionalProperties: false | cid付きRP応答はsubのみ。 |
+| $ (oneOf 1).sub | ✓ | string |  | サービス固有のpairwise sub。 |
+| $ (oneOf 2) |  | object |  | cidなしBFF応答の既存プロフィール契約。 |
+| $ (oneOf 2).address |  | object |  | address scopeかつ非nullの場合のみ。 |
+| $ (oneOf 2).address.formatted | ✓ | string |  |  |
+| $ (oneOf 2).email |  | string |  |  |
+| $ (oneOf 2).email_verified |  | boolean |  |  |
+| $ (oneOf 2).name |  | string |  |  |
+| $ (oneOf 2).phone_number |  | string |  | phone scopeかつ非nullの場合のみ。 |
+| $ (oneOf 2).picture |  | string ∪ null |  |  |
+| $ (oneOf 2).sub | ✓ | string |  | cidの有無でpairwise/internalを選ぶ。 |
+| $ (oneOf 2).updated_at | ✓ | integer |  | Unix秒。 |
 
 #### 401
 
@@ -227,7 +231,8 @@ Authorization: Bearerヘッダーのみ。POSTの本文を読まず、本文acce
 UserInfo（POST、本文のtokenは使わない）
 
 Authorization: Bearerヘッダーのみ。POSTの本文を読まず、本文access_tokenは認証に使わない。現在の共通認証はES256署名、iss=IDP_ORIGIN、aud=IDP_ORIGIN、期限/失効を検証する。標準service tokenはaud=client_idで発行されるため、そのままこのaudience検証を通るとは保証しない。
-認証を通ったtokenにcidがあればサービス固有pairwise sub、cidがなければ内部ユーザーIDを返す。scope未指定/空ならname/picture/email/email_verifiedを返す。profileはname/picture、emailはemail/email_verified、phoneは非nullのphone_number、addressは非nullの{formatted}。phone/address未保持時はキーを省略する。sub/updated_atは常に含む。data包み・role・provider IDsは返さない。
+認証を通ったtokenにcidがあれば、scopeに関係なくサービス固有pairwise subのみを返す。scope要求やservice設定だけでは項目提供への本人同意とみなさない。
+cidのないBFF tokenは既存互換性のため内部ユーザーIDとupdated_atを返す。BFFのみscope未指定/空ならname/picture/email/email_verifiedを返す。BFFのprofileはname/picture、emailはemail/email_verified、phoneは非nullのphone_number、addressは非nullの{formatted}。BFFのphone/address未保持時はキーを省略する。data包み・role・provider IDsは返さない。
 
 **認証**: BearerAuth
 
@@ -235,22 +240,25 @@ Authorization: Bearerヘッダーのみ。POSTの本文を読まず、本文acce
 
 #### 200
 
-スコープに応じたflatなユーザークレーム。
+RPはsubのみ。BFFは既存のスコープに応じたflatなユーザークレーム。
 
 **Content-Type**: application/json
 
 | フィールド | 必須 | 型 | 制約・既定値 | 説明 |
 | --- | --- | --- | --- | --- |
-| $ |  | object |  |  |
-| address |  | object |  | address scopeかつ非nullの場合のみ。 |
-| address.formatted | ✓ | string |  |  |
-| email |  | string |  |  |
-| email_verified |  | boolean |  |  |
-| name |  | string |  |  |
-| phone_number |  | string |  | phone scopeかつ非nullの場合のみ。 |
-| picture |  | string ∪ null |  |  |
-| sub | ✓ | string |  | cidの有無でpairwise/internalを選ぶ。 |
-| updated_at | ✓ | integer |  | Unix秒。 |
+| $ |  | oneOf |  |  |
+| $ (oneOf 1) |  | object | additionalProperties: false | cid付きRP応答はsubのみ。 |
+| $ (oneOf 1).sub | ✓ | string |  | サービス固有のpairwise sub。 |
+| $ (oneOf 2) |  | object |  | cidなしBFF応答の既存プロフィール契約。 |
+| $ (oneOf 2).address |  | object |  | address scopeかつ非nullの場合のみ。 |
+| $ (oneOf 2).address.formatted | ✓ | string |  |  |
+| $ (oneOf 2).email |  | string |  |  |
+| $ (oneOf 2).email_verified |  | boolean |  |  |
+| $ (oneOf 2).name |  | string |  |  |
+| $ (oneOf 2).phone_number |  | string |  | phone scopeかつ非nullの場合のみ。 |
+| $ (oneOf 2).picture |  | string ∪ null |  |  |
+| $ (oneOf 2).sub | ✓ | string |  | cidの有無でpairwise/internalを選ぶ。 |
+| $ (oneOf 2).updated_at | ✓ | integer |  | Unix秒。 |
 
 #### 401
 
@@ -2362,9 +2370,9 @@ authorization_code/refresh_token: client_secret_hashのあるサービスはclie
 device_code: 本文client_idと保存済みコードのサービス一致を確認し、Basic/client_secretは認証に使わない。
 
 公開クライアントのauthorization_codeはPKCE必須。保存コードにchallengeがあるconfidential clientにもverifierが必要。redirect_uriは正規化後に照合する（localhost/127.0.0.1とloopbackポートの比較に特例あり）。
-authorization_code/device_codeは保存済みスコープを現在の許可スコープと照合し、null/空の保存値はopenidのみへfallbackする。refreshは保存済みスコープをそのまま再利用し、legacy未保存時だけ現在の許可スコープ/openidへfallbackする。本文scopeは使わない。
+authorization_code/device_codeは保存済みスコープを現在の許可スコープと照合し、null/空の保存値はopenidのみへfallbackする。refreshは保存済みスコープをそのまま再利用し、legacy未保存/空のときはopenidのみへfallbackする。本文scopeは使わない。
 deviceの未承認はauthorization_pending、早すぎるポーリングはslow_down（400/Retry-After:10）。refreshのローテーション競合もinvalid_grant（400）であり、BFF /auth/refreshの503ではない。
-発行service tokenのaudienceはclient_id。現在のUserInfo認証はIDP_ORIGINをaudienceに要求するため、互換性は別途確認が必要。
+IDトークンはpairwise subと認証用メタデータのみで、プロフィールや上流providerのamrを含めない。service access tokenはemail/roleを含めないが、subは既存互換性のため内部UUIDを保持する。発行service tokenのaudienceはclient_id。現在のUserInfo認証はIDP_ORIGINをaudienceに要求するため、互換性は別途確認が必要。
 
 **認証**: BasicAuth OR 不要（仕様上）
 

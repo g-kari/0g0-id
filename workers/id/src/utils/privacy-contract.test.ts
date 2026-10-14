@@ -120,7 +120,12 @@ describe("RP privacy contract with synthetic data and real ES256/JWKS", () => {
 
   it("pairwise values stay stable for the same client and differ across clients", async () => {
     const a = await issueIdToken(env, syntheticUser, { client_id: "synthetic-client-a" }, "openid");
-    const again = await issueIdToken(env, syntheticUser, { client_id: "synthetic-client-a" }, "openid");
+    const again = await issueIdToken(
+      env,
+      syntheticUser,
+      { client_id: "synthetic-client-a" },
+      "openid",
+    );
     const b = await issueIdToken(env, syntheticUser, { client_id: "synthetic-client-b" }, "openid");
     const av = await verify(a!, "synthetic-client-a");
     const aav = await verify(again!, "synthetic-client-a");
