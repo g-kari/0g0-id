@@ -179,6 +179,51 @@ describe("verifyAccessToken", () => {
     expect(payload.role).toBe("user");
   });
 
+  it("RPはprofile入力なしで発行・検証でき、kidは保護ヘッダーにのみ残る", async () => {
+    const token = await signAccessToken(
+      {
+        iss: basePayload.iss,
+        sub: basePayload.sub,
+        aud: "synthetic-client",
+        cid: "synthetic-client",
+      },
+      TEST_PRIVATE_KEY,
+      TEST_PUBLIC_KEY,
+    );
+    const payload = await verifyAccessToken(
+      token,
+      TEST_PUBLIC_KEY,
+      "synthetic-client",
+      basePayload.iss,
+    );
+    expect(payload.cid).toBe("synthetic-client");
+    expect(payload).not.toHaveProperty("email");
+    expect(payload).not.toHaveProperty("role");
+    expect(payload).not.toHaveProperty("kid");
+    const header = JSON.parse(decodeBase64Url(token.split(".")[0]));
+    expect(header.alg).toBe("ES256");
+    expect(header.kid).toMatch(/^[0-9a-f]{16}$/);
+    await expect(
+      verifyAccessToken(token, TEST_PUBLIC_KEY, "other-client", basePayload.iss),
+    ).rejects.toThrow();
+  });
+
+  it("旧RP入力に残るprofileは署名時に出力しない", async () => {
+    const token = await signAccessToken(
+      { ...basePayload, aud: "synthetic-client", cid: "synthetic-client" },
+      TEST_PRIVATE_KEY,
+      TEST_PUBLIC_KEY,
+    );
+    const payload = await verifyAccessToken(
+      token,
+      TEST_PUBLIC_KEY,
+      "synthetic-client",
+      basePayload.iss,
+    );
+    expect(payload).not.toHaveProperty("email");
+    expect(payload).not.toHaveProperty("role");
+  });
+
   it("不正なトークンは例外を投げる", async () => {
     await expect(
       verifyAccessToken(

@@ -95,6 +95,9 @@ describe("issueTokenPair", () => {
       expect.any(String),
       expect.any(String),
     );
+    const input = vi.mocked(signAccessToken).mock.calls[0][0];
+    expect(input).not.toHaveProperty("email");
+    expect(input).not.toHaveProperty("role");
   });
 
   it("clientId が指定された場合、aud に clientId がセットされる", async () => {

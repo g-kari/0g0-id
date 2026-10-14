@@ -3,6 +3,7 @@
 2026-10-14の個人情報最小化候補を含むIdPハンドラーの契約です。仕様は内部/外部の両OpenAPIと
 [生成リファレンス](./api-reference-generation.md)へ反映しています。検証結果と未完了項目は
 [PR #303](https://github.com/g-kari/0g0-id/pull/303)で管理します。
+外部アプリの必須profile/旧refresh識別子の確認は[RP移行メモ](./rp-profile-minimization-migration.md)を参照してください。
 規格への完全適合や本番クライアントとの接続成功を保証する資料ではありません。
 
 ## POST /api/token

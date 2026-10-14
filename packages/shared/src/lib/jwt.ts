@@ -1,5 +1,5 @@
 import { SignJWT, jwtVerify, exportJWK, importPKCS8, importSPKI } from "jose";
-import type { TokenPayload } from "../types";
+import type { AccessTokenInput, TokenPayload } from "../types";
 
 export interface JWTKeys {
   privateKey: CryptoKey;
@@ -43,7 +43,7 @@ export async function getJWTKeys(privateKeyPem: string, publicKeyPem: string): P
 }
 
 export async function signAccessToken(
-  payload: Omit<TokenPayload, "exp" | "iat" | "jti" | "kid">,
+  payload: AccessTokenInput,
   privateKeyPem: string,
   publicKeyPem: string,
 ): Promise<string> {

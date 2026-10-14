@@ -6,7 +6,7 @@ import {
   signIdToken,
   createRefreshToken,
 } from "@0g0-id/shared";
-import type { IdpEnv, User } from "@0g0-id/shared";
+import type { AccessTokenInput, IdpEnv, User } from "@0g0-id/shared";
 
 /** リフレッシュトークンの有効期限（30日） */
 export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -31,16 +31,26 @@ export async function issueTokenPair(
     throw new Error("Service tokens require a matching serviceId and clientId");
   }
 
+  const accessTokenInput: AccessTokenInput =
+    clientId === undefined
+      ? {
+          iss: env.IDP_ORIGIN,
+          sub: user.id,
+          aud: env.IDP_ORIGIN,
+          email: user.email,
+          role: user.role,
+          scope,
+          cid: undefined,
+        }
+      : {
+          iss: env.IDP_ORIGIN,
+          sub: user.id,
+          aud: clientId,
+          scope,
+          cid: clientId,
+        };
   const accessToken = await signAccessToken(
-    {
-      iss: env.IDP_ORIGIN,
-      sub: user.id,
-      aud: clientId ?? env.IDP_ORIGIN,
-      email: user.email,
-      role: user.role,
-      scope,
-      cid: clientId,
-    },
+    accessTokenInput,
     env.JWT_PRIVATE_KEY,
     env.JWT_PUBLIC_KEY,
   );

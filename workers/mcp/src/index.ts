@@ -1,13 +1,14 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { createLogger } from "@0g0-id/shared";
-import type { TokenPayload, RateLimitBinding } from "@0g0-id/shared";
+import type { RateLimitBinding } from "@0g0-id/shared";
 import { McpServer, createMcpRoutes, type McpContext } from "./mcp";
 import wellKnownRoutes from "./routes/well-known";
 import {
   mcpAuthMiddleware,
   mcpAdminMiddleware,
   mcpRejectBannedUserMiddleware,
+  type McpTokenPayload,
 } from "./middleware/auth";
 import { mcpRateLimitMiddleware } from "./middleware/rate-limit";
 import {
@@ -58,7 +59,7 @@ type Env = {
   };
   Variables: {
     mcpContext: McpContext;
-    user: TokenPayload;
+    user: McpTokenPayload;
   };
 };
 
