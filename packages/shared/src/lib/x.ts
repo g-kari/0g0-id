@@ -79,8 +79,8 @@ export async function exchangeXCode(params: {
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    logger.error(`X token exchange failed (${response.status})`, error);
+    // Provider error bodies can contain personal data or echoed credentials.
+    logger.error("X token exchange failed", { status: response.status });
     throw new Error("X token exchange failed");
   }
 

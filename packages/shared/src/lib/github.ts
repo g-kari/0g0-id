@@ -78,15 +78,15 @@ export async function exchangeGithubCode(params: {
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    logger.error(`GitHub token exchange failed (${response.status})`, error);
+    // Provider error bodies can contain personal data or echoed credentials.
+    logger.error("GitHub token exchange failed", { status: response.status });
     throw new Error("GitHub token exchange failed");
   }
 
   try {
     const data = (await response.json()) as GithubTokenResponse & { error?: string };
     if (data.error) {
-      logger.error("GitHub token exchange failed", data.error);
+      logger.error("GitHub token exchange failed", { status: response.status });
       throw new Error("GitHub token exchange failed");
     }
     return data;

@@ -75,8 +75,8 @@ export async function exchangeLineCode(params: {
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    logger.error(`LINE token exchange failed (${response.status})`, error);
+    // Provider error bodies can contain personal data or echoed credentials.
+    logger.error("LINE token exchange failed", { status: response.status });
     throw new Error("LINE token exchange failed");
   }
 
