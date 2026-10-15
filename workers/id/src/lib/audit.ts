@@ -83,9 +83,10 @@ export async function logAdminAudit<E extends AuditEnv>(
 }
 
 /**
- * エラーオブジェクトから監査ログ詳細に含めるエラーメッセージを抽出する。
+ * 例外値を参照せず、監査ログ詳細には固定の診断情報のみを返す。
+ * message / stack / cause 等に含まれ得る個人情報や認証情報を保存しない。
  * details に `{ error: extractErrorMessage(err) }` の形で混ぜる用途。
  */
-export function extractErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Unknown error";
+export function extractErrorMessage(_err: unknown): string {
+  return "Unknown error";
 }
