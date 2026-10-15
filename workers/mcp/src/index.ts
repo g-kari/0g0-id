@@ -158,8 +158,9 @@ app.use("/mcp/*", async (c, next): Promise<void> => {
 // MCPルートをマウント
 app.route("/mcp", createMcpRoutes(mcpServer));
 
-app.onError((err, c): Response => {
-  appLogger.error("Unhandled error", err);
+app.onError((_err, c): Response => {
+  // 例外には個人情報やtokenが含まれ得るため、固定イベントだけを記録する。
+  appLogger.error("Unhandled error");
   return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
 });
 
