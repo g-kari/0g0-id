@@ -42,6 +42,7 @@ function oauthError(
 /**
  * OAuthプロバイダー共通のコード交換・ユーザー情報取得処理。
  * 各 resolve*Provider 関数の try/catch ボイラープレートを集約する。
+ * 例外値には個人情報や認証情報が含まれ得るため、ログは既定のprovider/stageのみ。
  */
 async function exchangeAndFetchUserInfo<TTokenResponse extends { access_token: string }, TUserInfo>(
   c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
@@ -56,16 +57,16 @@ async function exchangeAndFetchUserInfo<TTokenResponse extends { access_token: s
   let tokens: TTokenResponse;
   try {
     tokens = await exchangeFn();
-  } catch (err) {
-    providerLogger.error(`[oauth-${providerKey}] Failed to exchange code`, err);
+  } catch {
+    providerLogger.error(`[oauth-${providerKey}] Failed to exchange code`);
     return oauthError(c, `Failed to exchange ${displayName} code`);
   }
 
   let userInfo: TUserInfo;
   try {
     userInfo = await fetchFn(tokens.access_token);
-  } catch (err) {
-    providerLogger.error(`[oauth-${providerKey}] Failed to fetch user info`, err);
+  } catch {
+    providerLogger.error(`[oauth-${providerKey}] Failed to fetch user info`);
     return oauthError(c, `Failed to fetch ${displayName} user info`);
   }
 
@@ -232,8 +233,8 @@ export async function resolveProvider(
       let email: string | null;
       try {
         email = await fetchGithubPrimaryEmail(tokenResponse.access_token);
-      } catch (err) {
-        providerLogger.error("[oauth-github] Failed to fetch primary email", err);
+      } catch {
+        providerLogger.error("[oauth-github] Failed to fetch primary email");
         return oauthError(c, "Failed to fetch GitHub email");
       }
       const { email: finalEmail, isPlaceholderEmail } = makePlaceholderEmail(
