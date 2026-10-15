@@ -148,9 +148,9 @@ describe("logAdminAudit", () => {
 });
 
 describe("extractErrorMessage", () => {
-  it("Error オブジェクト → message を返す", () => {
+  it("Error オブジェクト → 固定の診断情報を返す", () => {
     const err = new Error("something went wrong");
-    expect(extractErrorMessage(err)).toBe("something went wrong");
+    expect(extractErrorMessage(err)).toBe("Unknown error");
   });
 
   it("非Error → 'Unknown error' を返す", () => {
