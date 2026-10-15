@@ -49,7 +49,7 @@ const auditLogger = createLogger("audit");
  *
  * - `adminUserId` は `c.get("user").sub`（JWT の sub）から自動抽出。
  * - `ipAddress` は `CF-Connecting-IP` ヘッダから自動抽出。
- * - 記録失敗は握り潰して `logger.error` に記録する（例外を上位に伝播させない）。
+ * - 記録失敗は握り潰し、固定イベントのみ記録する（例外や対象情報はログへ渡さない）。
  *   → 呼び出し側は try/catch を書かずに `await logAdminAudit(c, {...})` するだけで良い。
  *
  * @param c Hono Context（`c.get("user")` で TokenPayload が取得可能なこと）
@@ -71,14 +71,8 @@ export async function logAdminAudit<E extends AuditEnv>(
       ipAddress,
       status: input.status ?? "success",
     });
-  } catch (err) {
-    auditLogger.error("Failed to create admin audit log", {
-      err,
-      action: input.action,
-      targetType: input.targetType,
-      targetId: input.targetId,
-      status: input.status ?? "success",
-    });
+  } catch {
+    auditLogger.error("Failed to create admin audit log");
   }
 }
 
