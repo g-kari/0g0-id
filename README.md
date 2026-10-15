@@ -49,6 +49,12 @@ mcp.0g0.xyz   — MCP Worker（Claude Code連携）
 | DBSC                 | Device Bound Session Credentials（端末公開鍵バインド + チャレンジ・レスポンス） |
 | 管理者権限           | DB ロールベース + 初回ブートストラップ                                          |
 
+## ログのプライバシー
+
+共有 logger は任意の例外・extra を出力せず、固定イベントと検証済みの HTTP / cleanup
+metadata だけを記録します。動的メッセージや他のログは対象外です。
+互換性への影響と残る制限は [Error log privacy](docs/error-logging-privacy.md) を参照してください。
+
 ## 動作要件
 
 - **Node.js**: v22.19.0 以上（Astro 7 frontend の固定依存を含む要件。CI は v22.x）

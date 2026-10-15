@@ -275,6 +275,65 @@ describe("scheduled handler", () => {
   });
 });
 
+describe("scheduled handler の実 logger metadata 統合", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function runCleanup(counts: [number, number, number]): Promise<void> {
+    vi.mocked(cleanupExpiredAuthCodes).mockResolvedValue(counts[0]);
+    vi.mocked(cleanupExpiredRevokedAccessTokens).mockResolvedValue(counts[1]);
+    vi.mocked(deleteExpiredRefreshTokens).mockResolvedValue(counts[2]);
+    const waitUntil = vi.fn();
+    await worker.scheduled(
+      {} as ScheduledEvent,
+      mockEnv as unknown as IdpEnv,
+      { waitUntil } as unknown as ExecutionContext,
+    );
+    expect(waitUntil).toHaveBeenCalledOnce();
+    await waitUntil.mock.calls[0][0];
+  }
+
+  function entries(): unknown[] {
+    return vi.mocked(console.log).mock.calls.map(([line]) => JSON.parse(line as string) as unknown);
+  }
+
+  const messages = [
+    "認可コードクリーンアップ完了",
+    "デバイスコードクリーンアップ完了",
+    "MCPセッションクリーンアップ完了",
+    "失効アクセストークンクリーンアップ完了",
+    "期限切れリフレッシュトークンクリーンアップ完了",
+    "DBSCチャレンジクリーンアップ完了",
+  ];
+
+  it("全3箇所のaggregate countと固定イベントを保つ", async () => {
+    await runCleanup([0, 3, Number.MAX_SAFE_INTEGER]);
+    expect(entries()).toEqual(
+      messages.map((msg, index) => ({
+        level: "info",
+        ctx: "id",
+        msg,
+        ...(index === 0
+          ? { data: { deletedCount: 0 } }
+          : index === 3
+            ? { data: { deletedCount: 3 } }
+            : index === 4
+              ? { data: { deletedCount: Number.MAX_SAFE_INTEGER } }
+              : {}),
+      })),
+    );
+  });
+
+  it("不正なcountを変換・出力せずcleanup完了イベントを保つ", async () => {
+    await runCleanup([-1, NaN, "synthetic-private-count" as unknown as number]);
+    expect(entries()).toEqual(messages.map((msg) => ({ level: "info", ctx: "id", msg })));
+  });
+});
+
 describe("onError の実 logger 統合 privacy 回帰", () => {
   const canary = "synthetic-only@example.invalid token=SYNTHETIC-ONLY-TOKEN";
 

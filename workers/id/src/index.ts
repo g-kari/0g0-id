@@ -6,6 +6,7 @@ import {
   securityHeaders,
   bodyLimitMiddleware,
   createLogger,
+  deletedCountMetadata,
   cleanupExpiredAuthCodes,
   deleteExpiredDeviceCodes,
   cleanupExpiredMcpSessions,
@@ -85,7 +86,7 @@ export default {
     ctx.waitUntil(
       (async () => {
         const deleted = await cleanupExpiredAuthCodes(env.DB);
-        appLogger.info("認可コードクリーンアップ完了", { deletedCount: deleted });
+        appLogger.info("認可コードクリーンアップ完了", deletedCountMetadata(deleted));
 
         await deleteExpiredDeviceCodes(env.DB);
         appLogger.info("デバイスコードクリーンアップ完了");
@@ -94,12 +95,16 @@ export default {
         appLogger.info("MCPセッションクリーンアップ完了");
 
         const revokedDeleted = await cleanupExpiredRevokedAccessTokens(env.DB);
-        appLogger.info("失効アクセストークンクリーンアップ完了", { deletedCount: revokedDeleted });
+        appLogger.info(
+          "失効アクセストークンクリーンアップ完了",
+          deletedCountMetadata(revokedDeleted),
+        );
 
         const refreshDeleted = await deleteExpiredRefreshTokens(env.DB);
-        appLogger.info("期限切れリフレッシュトークンクリーンアップ完了", {
-          deletedCount: refreshDeleted,
-        });
+        appLogger.info(
+          "期限切れリフレッシュトークンクリーンアップ完了",
+          deletedCountMetadata(refreshDeleted),
+        );
 
         await cleanupStaleDbscChallenges(env.DB);
         appLogger.info("DBSCチャレンジクリーンアップ完了");

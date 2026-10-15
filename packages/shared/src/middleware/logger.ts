@@ -1,6 +1,6 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { routePath } from "hono/route";
-import { createLogger } from "../lib/logger";
+import { createLogger, httpRequestMetadata } from "../lib/logger";
 
 const HTTP_METHODS = new Set([
   "GET",
@@ -46,12 +46,15 @@ export const logger = (): MiddlewareHandler => {
     const { method } = c.req.raw;
     await next();
     const elapsed = Date.now() - start;
-    httpLogger.info("request", {
-      // 独自method文字列もrequest由来なので、標準method以外は固定分類する。
-      method: HTTP_METHODS.has(method) ? method : "[other]",
-      path: requestLogPath(c),
-      status: c.res.status,
-      elapsed_ms: elapsed,
-    });
+    httpLogger.info(
+      "request",
+      httpRequestMetadata(
+        // 独自method文字列もrequest由来なので、標準method以外は固定分類する。
+        HTTP_METHODS.has(method) ? method : "[other]",
+        requestLogPath(c),
+        c.res.status,
+        elapsed,
+      ),
+    );
   };
 };

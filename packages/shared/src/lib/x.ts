@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { fetchWithRetry } from "./fetch-retry";
-import { createLogger } from "./logger";
+import { createLogger, httpStatusMetadata } from "./logger";
 
 const logger = createLogger("oauth-x");
 
@@ -80,7 +80,7 @@ export async function exchangeXCode(params: {
 
   if (!response.ok) {
     // Provider error bodies can contain personal data or echoed credentials.
-    logger.error("X token exchange failed", { status: response.status });
+    logger.error("X token exchange failed", httpStatusMetadata(response.status));
     throw new Error("X token exchange failed");
   }
 
