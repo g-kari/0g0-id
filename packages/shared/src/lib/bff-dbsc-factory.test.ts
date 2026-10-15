@@ -13,7 +13,8 @@ vi.mock("./dbsc", () => ({
   verifyDbscRegistrationJwt: vi.fn(),
   buildSecureSessionChallengeHeader: vi.fn(),
 }));
-vi.mock("./logger", () => ({
+vi.mock("./logger", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./logger")>()),
   createLogger: vi.fn(() => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() })),
 }));
 vi.mock("./internal-secret-deprecation", () => ({

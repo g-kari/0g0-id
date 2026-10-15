@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { fetchWithRetry } from "./fetch-retry";
-import { createLogger } from "./logger";
+import { createLogger, httpStatusMetadata } from "./logger";
 
 const logger = createLogger("oauth-github");
 
@@ -79,14 +79,14 @@ export async function exchangeGithubCode(params: {
 
   if (!response.ok) {
     // Provider error bodies can contain personal data or echoed credentials.
-    logger.error("GitHub token exchange failed", { status: response.status });
+    logger.error("GitHub token exchange failed", httpStatusMetadata(response.status));
     throw new Error("GitHub token exchange failed");
   }
 
   try {
     const data = (await response.json()) as GithubTokenResponse & { error?: string };
     if (data.error) {
-      logger.error("GitHub token exchange failed", { status: response.status });
+      logger.error("GitHub token exchange failed", httpStatusMetadata(response.status));
       throw new Error("GitHub token exchange failed");
     }
     return data;
