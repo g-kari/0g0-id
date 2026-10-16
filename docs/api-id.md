@@ -397,11 +397,20 @@ X-BFF-Origin: https://user.0g0.xyz
 
 ## 4. サービス API（`/api/services/*`・管理者）
 
+`GET /api/services/:id/owner-sub` はサービスの現在の `owner_user_id` を解決し、
+`generatePairwiseSub(service.client_id, owner.id, PAIRWISE_SALT)` と同じ値を返します。
+`{ data: { service_id, client_id, owner_user_id, sub } }` の最小レスポンスで、
+`Cache-Control: no-store` を付与します。認可前でも取得でき、DB更新・トークン発行は行いません。
+任意の user/client を指定できず、クエリは 400、サービス/所有者未存在は 404、
+算出/DB障害は詳細を含まない固定の 500 です。通常の管理者認証、失効・BAN確認を適用します。
+salt 未設定時も既存ヘルパーの互換動作を維持し、salt の変更や初回所有者の自動設定は行いません。
+
 | Method | Path                                     | 用途                                               |
 | ------ | ---------------------------------------- | -------------------------------------------------- |
 | GET    | `/api/services`                          | サービス一覧                                       |
 | POST   | `/api/services`                          | サービス新規作成（client_id / client_secret 発行） |
 | GET    | `/api/services/:id`                      | サービス詳細                                       |
+| GET    | `/api/services/:id/owner-sub`            | 初回連携前のオーナー Pairwise Sub ID 取得          |
 | PATCH  | `/api/services/:id`                      | サービス更新（name / allowed_scopes 等）           |
 | DELETE | `/api/services/:id`                      | サービス削除                                       |
 | POST   | `/api/services/:id/rotate-secret`        | client_secret ローテーション                       |
