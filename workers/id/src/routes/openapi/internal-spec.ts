@@ -170,6 +170,17 @@ export const INTERNAL_OPENAPI = {
           created_at: { type: "string", format: "date-time" },
         },
       },
+      ServiceOwnerSub: {
+        type: "object",
+        additionalProperties: false,
+        required: ["service_id", "client_id", "owner_user_id", "sub"],
+        properties: {
+          service_id: { type: "string", format: "uuid" },
+          client_id: { type: "string" },
+          owner_user_id: { type: "string", format: "uuid" },
+          sub: { type: "string", pattern: "^[a-f0-9]{64}$" },
+        },
+      },
       TokenPair: {
         type: "object",
         properties: {
@@ -1306,6 +1317,40 @@ export const INTERNAL_OPENAPI = {
           "401": { description: "UNAUTHORIZED" },
           "403": { description: "FORBIDDEN — 管理者権限なし、またはオリジン不正" },
           "404": { description: "NOT_FOUND — サービス未存在" },
+        },
+      },
+    },
+    "/api/services/{id}/owner-sub": {
+      get: {
+        tags: ["サービス管理 API (管理者)"],
+        summary: "サービスオーナーの Pairwise Sub ID 取得",
+        description:
+          "管理者専用。現在の service.owner_user_id をサーバーで解決し、既存の generatePairwiseSub(client_id, owner.id, PAIRWISE_SALT) で算出する。" +
+          "初回認可・アクティブなリフレッシュトークンは不要。クエリは受け付けず、リクエストボディも参照しない。任意の user/client は指定できない。" +
+          "DB更新・トークン発行・連携作成は行わない。値は所有者・client_id・salt の変更で変わる。",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        ],
+        responses: {
+          "200": {
+            description: "現在のオーナーに限定した識別子",
+            headers: { "Cache-Control": { schema: { type: "string", const: "no-store" } } },
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["data"],
+                  properties: { data: { $ref: "#/components/schemas/ServiceOwnerSub" } },
+                },
+              },
+            },
+          },
+          "400": { description: "BAD_REQUEST — 不正なサービスUUIDまたはクエリ指定" },
+          "401": { description: "UNAUTHORIZED — 未認証・失効・BAN・管理者未存在" },
+          "403": { description: "FORBIDDEN — 管理者権限なし" },
+          "404": { description: "NOT_FOUND — サービスまたは現在のオーナーが未存在" },
+          "500": { description: "INTERNAL_ERROR — 詳細や識別子を含まない固定エラー" },
         },
       },
     },

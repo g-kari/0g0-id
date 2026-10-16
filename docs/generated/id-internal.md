@@ -596,6 +596,57 @@ FORBIDDEN — 管理者権限なし、またはオリジン不正
 
 NOT_FOUND — サービスまたは移譲先ユーザーが未存在
 
+### GET /api/services/{id}/owner-sub
+
+サービスオーナーの Pairwise Sub ID 取得
+
+管理者専用。現在の service.owner_user_id をサーバーで解決し、既存の generatePairwiseSub(client_id, owner.id, PAIRWISE_SALT) で算出する。初回認可・アクティブなリフレッシュトークンは不要。クエリは受け付けず、リクエストボディも参照しない。任意の user/client は指定できない。DB更新・トークン発行・連携作成は行わない。値は所有者・client_id・salt の変更で変わる。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| id | path | ✓ | string | format: uuid |  |
+
+**レスポンス**
+
+#### 200
+
+現在のオーナーに限定した識別子
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | object (#/components/schemas/ServiceOwnerSub) | additionalProperties: false |  |
+| data.client_id | ✓ | string |  |  |
+| data.owner_user_id | ✓ | string | format: uuid |  |
+| data.service_id | ✓ | string | format: uuid |  |
+| data.sub | ✓ | string | pattern: ^[a-f0-9]{64}$ |  |
+
+#### 400
+
+BAD_REQUEST — 不正なサービスUUIDまたはクエリ指定
+
+#### 401
+
+UNAUTHORIZED — 未認証・失効・BAN・管理者未存在
+
+#### 403
+
+FORBIDDEN — 管理者権限なし
+
+#### 404
+
+NOT_FOUND — サービスまたは現在のオーナーが未存在
+
+#### 500
+
+INTERNAL_ERROR — 詳細や識別子を含まない固定エラー
+
 ### GET /api/services/{id}/redirect-uris
 
 リダイレクトURI一覧取得
@@ -2771,6 +2822,16 @@ UNAUTHORIZED — トークン無効/再使用検出
 | created_at |  | string | format: date-time |  |
 | id |  | string |  |  |
 | name |  | string |  |  |
+
+### ServiceOwnerSub
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object | additionalProperties: false |  |
+| client_id | ✓ | string |  |  |
+| owner_user_id | ✓ | string | format: uuid |  |
+| service_id | ✓ | string | format: uuid |  |
+| sub | ✓ | string | pattern: ^[a-f0-9]{64}$ |  |
 
 ### TokenPair
 

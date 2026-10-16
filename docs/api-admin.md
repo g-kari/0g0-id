@@ -84,11 +84,19 @@ Chrome は発行された nonce を `jti` クレームに含めた proof JWT を
 
 ## サービス管理（`/api/services/*`）
 
+`GET /api/services/:id/owner-sub` は現在のサービス所有者に限定した読み取り専用APIです。
+サービス詳細の基本情報にある「確認」で取得し、明示的な「コピー」でクリップボードへ移します。
+初回連携やアクティブなトークンは不要で、連携・トークンの作成も行いません。
+レスポンスは `{ data: { service_id, client_id, owner_user_id, sub } }`、`Cache-Control: no-store`。
+user/client などのクエリ指定は 400 で拒否します。所有者・Client ID・salt が変わると値も変わります。
+取得失敗は基本情報と独立して表示し、コピー失敗時は手動選択を案内します。
+
 | Method | Path                                     | 転送先 (id)                       | 用途                                               |
 | ------ | ---------------------------------------- | --------------------------------- | -------------------------------------------------- |
 | GET    | `/api/services`                          | `/api/services`                   | サービス一覧（`limit` / `offset` / `name`）        |
 | POST   | `/api/services`                          | `/api/services`                   | サービス新規作成（client_id / client_secret 発行） |
 | GET    | `/api/services/:id`                      | `/api/services/:id`               | サービス詳細                                       |
+| GET    | `/api/services/:id/owner-sub`            | 同左                              | 初回連携前のオーナー Pairwise Sub ID 取得          |
 | PATCH  | `/api/services/:id`                      | `/api/services/:id`               | 名称 / allowed_scopes 更新                         |
 | DELETE | `/api/services/:id`                      | `/api/services/:id`               | サービス削除                                       |
 | POST   | `/api/services/:id/rotate-secret`        | `/api/services/:id/rotate-secret` | client_secret 再発行                               |
