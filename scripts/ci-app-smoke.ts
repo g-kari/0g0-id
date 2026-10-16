@@ -29,6 +29,7 @@ import { runInNewContext } from "node:vm";
 import type { Plugin, ViteDevServer } from "vite-plus";
 import type { TestHarness, WorkerHandle } from "wrangler";
 import type { IdpEnv } from "../packages/shared/src/types";
+import { generatePairwiseSub } from "../packages/shared/src/lib/crypto";
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const workers = ["id", "user", "admin", "mcp"] as const;
@@ -1097,6 +1098,7 @@ async function applicationCases(harness: TestHarness, env: IdpEnv): Promise<void
   }
   ok("unauthenticated APIs and missing/wrong internal secrets remain rejected");
   const sessionIds: string[] = [];
+  let adminCookie: string | undefined;
   for (const [workerName, fixture, success] of [
     ["user", user, "/profile"],
     ["admin", admin, "/dashboard"],
@@ -1151,6 +1153,7 @@ async function applicationCases(harness: TestHarness, env: IdpEnv): Promise<void
     assert.equal(callback.status, 302);
     assert.equal(callback.headers.get("location"), success);
     const cookie = cookiePair(callback, `__Host-${workerName}-session`);
+    if (workerName === "admin") adminCookie = cookie;
     assertSessionCookieFlags(cookieLine(callback, `__Host-${workerName}-session`));
     assert.ok(
       (
@@ -1220,7 +1223,7 @@ async function applicationCases(harness: TestHarness, env: IdpEnv): Promise<void
     issuer = origins.id,
     audience = origins.id,
     payloadKid = true,
-    jti = randomUUID(),
+    jti: string = randomUUID(),
   ): Promise<string> {
     return await new SignJWT({
       email: fixture.email,
@@ -1334,8 +1337,211 @@ async function applicationCases(harness: TestHarness, env: IdpEnv): Promise<void
     null,
   );
   ok("MCP actual JWKS/JWT/D1 tool/session deletion and issuer/audience/role/revocation rejection");
+  assert.ok(adminCookie);
+  await serviceOwnerSubCases(harness, env, admin, user, token, adminCookie, sessionIds[1]);
   await scheduledCleanup(id, env, admin.id, sessionIds[0]);
 }
+type SmokeToken = (
+  fixture: FixtureUser,
+  issuer?: string,
+  audience?: string,
+  payloadKid?: boolean,
+  jti?: string,
+) => Promise<string>;
+
+async function serviceOwnerSubCases(
+  harness: TestHarness,
+  env: IdpEnv,
+  admin: FixtureUser,
+  owner: FixtureUser,
+  token: SmokeToken,
+  adminCookie: string,
+  adminSessionId: string,
+): Promise<void> {
+  const id = harness.getWorker<IdpEnv>(names.id);
+  const adminBff = harness.getWorker(names.admin);
+  const db = env.DB;
+  const serviceId = randomUUID();
+  const clientId = `owner-sub-${serviceId}`;
+  const api = `/api/services/${serviceId}/owner-sub`;
+  await db
+    .prepare(
+      "INSERT INTO services (id, name, client_id, client_secret_hash, owner_user_id) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(serviceId, "Owner subject fixture", clientId, sha256("unused-owner-sub-secret"), owner.id)
+    .run();
+  const expected = {
+    service_id: serviceId,
+    client_id: clientId,
+    owner_user_id: owner.id,
+    sub: await generatePairwiseSub(clientId, owner.id, env.PAIRWISE_SALT),
+  };
+  const bearer = await token(admin);
+  async function direct(
+    auth: string | undefined = bearer,
+    suffix = "",
+    session?: string,
+  ): Promise<AppResponse> {
+    const headers: Record<string, string> = {};
+    if (auth) headers.Authorization = `Bearer ${auth}`;
+    if (session) headers["X-BFF-Session-Id"] = session;
+    const res = await id.fetch(`${origins.id}${api}${suffix}`, { headers });
+    assert.equal(res.headers.get("Cache-Control"), "no-store");
+    return res;
+  }
+  const tables = ["services", "auth_codes", "refresh_tokens", "bff_sessions", "admin_audit_logs"];
+  async function counts(): Promise<number[]> {
+    return Promise.all(
+      tables.map(async (table) => {
+        const row = await db
+          .prepare(`SELECT COUNT(*) AS count FROM ${table}`)
+          .first<{ count: number }>();
+        assert.ok(row);
+        return row.count;
+      }),
+    );
+  }
+  async function snapshot(): Promise<unknown[]> {
+    return Promise.all(
+      tables.map(
+        async (table) => (await db.prepare(`SELECT * FROM ${table} ORDER BY id`).all()).results,
+      ),
+    );
+  }
+  const before = await counts();
+  const rowsBefore = await snapshot();
+  const authorizationCount = await db
+    .prepare("SELECT COUNT(*) AS count FROM refresh_tokens WHERE service_id = ?")
+    .bind(serviceId)
+    .first<{ count: number }>();
+  assert.equal(authorizationCount?.count, 0, "The owner has never authorized this service");
+  assert.deepEqual(
+    (await json<{ data: typeof expected }>(await direct(), 200, "owner sub actual JWT/D1")).data,
+    expected,
+  );
+  assert.equal(
+    (await direct(await token(admin, origins.id, origins.id, false))).status,
+    200,
+    "IdP accepts its production token shape without payload kid",
+  );
+  const viaBff = await adminBff.fetch(`${origins.admin}${api}`, {
+    headers: { Cookie: adminCookie },
+  });
+  assert.equal(viaBff.headers.get("Cache-Control"), "no-store");
+  assert.deepEqual(
+    (await json<{ data: typeof expected }>(viaBff, 200, "owner sub real BFF session/binding")).data,
+    expected,
+  );
+  for (const suffix of ["?user_id=other", "?client_id=other"])
+    assert.equal((await direct(bearer, suffix)).status, 400);
+  assert.equal((await id.fetch(`${origins.id}${api}`)).status, 401);
+  for (const invalid of [
+    await token(admin, "https://wrong.smoke.invalid"),
+    await token(admin, origins.id, "https://wrong.smoke.invalid"),
+    `${bearer.slice(0, bearer.lastIndexOf(".") + 1)}AA`,
+  ])
+    assert.equal(
+      (await direct(invalid)).status,
+      401,
+      "Owner sub rejects invalid signed-token claims/signature",
+    );
+  assert.equal((await direct(await token(owner))).status, 403);
+  assert.equal(
+    (await direct(bearer, "", randomUUID())).status,
+    401,
+    "Unknown BFF session rejected",
+  );
+  assert.equal(
+    (await direct(bearer, "", adminSessionId)).status,
+    200,
+    "Active matching BFF session accepted",
+  );
+  assert.deepEqual(
+    await counts(),
+    before,
+    "Owner-sub reads must not create/update tokens, sessions, services or audit records",
+  );
+  assert.deepEqual(
+    await snapshot(),
+    rowsBefore,
+    "Read-only route must leave all fixture rows unchanged",
+  );
+  const activeSession = await db
+    .prepare("SELECT expires_at FROM bff_sessions WHERE id = ?")
+    .bind(adminSessionId)
+    .first<{ expires_at: number }>();
+  assert.ok(activeSession);
+  await db
+    .prepare("UPDATE bff_sessions SET expires_at = ? WHERE id = ?")
+    .bind(Math.floor(Date.now() / 1000) - 60, adminSessionId)
+    .run();
+  assert.equal(
+    (await direct(bearer, "", adminSessionId)).status,
+    401,
+    "Expired BFF session rejected",
+  );
+  await db
+    .prepare("UPDATE bff_sessions SET expires_at = ? WHERE id = ?")
+    .bind(activeSession.expires_at, adminSessionId)
+    .run();
+  const changedOwner = await generatePairwiseSub(clientId, admin.id, env.PAIRWISE_SALT);
+  await db
+    .prepare("UPDATE services SET owner_user_id = ? WHERE id = ?")
+    .bind(admin.id, serviceId)
+    .run();
+  const transferred = await json<{ data: typeof expected }>(
+    await direct(),
+    200,
+    "current owner read after transfer",
+  );
+  assert.equal(transferred.data.owner_user_id, admin.id);
+  assert.equal(transferred.data.sub, changedOwner);
+  assert.notEqual(transferred.data.sub, expected.sub);
+  await db
+    .prepare("UPDATE services SET owner_user_id = ? WHERE id = ?")
+    .bind(owner.id, serviceId)
+    .run();
+  const revokedJti = randomUUID();
+  const revoked = await token(admin, origins.id, origins.id, true, revokedJti);
+  await db
+    .prepare("INSERT INTO revoked_access_tokens (jti, expires_at) VALUES (?, ?)")
+    .bind(revokedJti, Math.floor(Date.now() / 1000) + 3600)
+    .run();
+  assert.equal((await direct(revoked)).status, 401, "Revoked real signed token rejected");
+  await db
+    .prepare("UPDATE users SET banned_at = ? WHERE id = ?")
+    .bind(new Date().toISOString(), admin.id)
+    .run();
+  assert.equal(
+    (await direct()).status,
+    401,
+    "Banned admin rejected with otherwise valid signature",
+  );
+  await db.prepare("UPDATE users SET banned_at = NULL WHERE id = ?").bind(admin.id).run();
+  await db
+    .prepare("UPDATE bff_sessions SET revoked_at = ? WHERE id = ?")
+    .bind(Math.floor(Date.now() / 1000), adminSessionId)
+    .run();
+  assert.equal(
+    (await direct(bearer, "", adminSessionId)).status,
+    401,
+    "Revoked BFF session rejected at IdP",
+  );
+  const deniedBff = await adminBff.fetch(`${origins.admin}${api}`, {
+    headers: { Cookie: adminCookie },
+  });
+  assert.equal(
+    deniedBff.status,
+    401,
+    "Revoked BFF cookie cannot read owner-sub through refresh/retry",
+  );
+  assert.equal(deniedBff.headers.get("Cache-Control"), "no-store");
+  assert.ok(!(await deniedBff.text()).includes(expected.sub), "No subject in denied BFF response");
+  ok(
+    "owner-sub actual ES256/issuer/audience/signature/D1/BFF binding, zero prior authorization, read-only counts, current owner, revocation and BAN checks",
+  );
+}
+
 async function scheduledCleanup(
   id: WorkerHandle<IdpEnv>,
   env: IdpEnv,

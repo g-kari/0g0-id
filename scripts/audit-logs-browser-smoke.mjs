@@ -5,6 +5,7 @@ import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { serviceOwnerSubBrowserCases } from "./service-owner-sub-browser-smoke.mjs";
 
 // This runner never starts a Worker, reads credentials, or reaches a live API.
 const playwrightModule = process.env.AUDIT_LOGS_PLAYWRIGHT_MODULE;
@@ -1110,6 +1111,14 @@ async function main() {
         });
       },
     );
+
+    report.serviceOwnerSub = await serviceOwnerSubBrowserCases({
+      browser,
+      expect,
+      origin,
+      staticRoot,
+      reportDir,
+    });
 
     report.status = "passed";
   } catch (err) {
