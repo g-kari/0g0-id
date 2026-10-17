@@ -1,3 +1,4 @@
+/* global window */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
@@ -60,19 +61,42 @@ export async function usersStatusBrowserCases({ browser, expect, origin, staticR
     });
     const page = await context.newPage();
     const calls = [],
+      blockedExternal = [],
       unexpected = [],
       errors = [];
-    const result = { name, calls, unexpected, errors, status: "running" };
+    const result = { name, calls, blockedExternal, unexpected, errors, status: "running" };
     report.cases.push(result);
     page.on("pageerror", (error) => errors.push(error.message));
     await context.routeWebSocket("**/*", (socket) => {
       unexpected.push(`WebSocket ${socket.url()}`);
       socket.close();
     });
+    await context.addInitScript(() => {
+      // Observe body consumption without replacing the real fetch/Response behavior.
+      // The marker task runs after apiFetch and loadUsers finish their promise continuations.
+      window.__usersStatusConsumed = [];
+      const fetch = window.fetch.bind(window);
+      window.fetch = async (...args) => {
+        const response = await fetch(...args);
+        const url = new URL(response.url);
+        if (url.pathname === "/api/users") {
+          const json = response.json.bind(response);
+          response.json = async () => {
+            try {
+              return await json();
+            } finally {
+              setTimeout(() => window.__usersStatusConsumed.push(url.search), 0);
+            }
+          };
+        }
+        return response;
+      };
+    });
     await context.route("**/*", async (route) => {
       const request = route.request(),
         url = new URL(request.url());
       if (url.origin !== origin) {
+        blockedExternal.push(`${url.origin}${url.pathname}`);
         if (url.origin !== "https://fonts.googleapis.com" || url.pathname !== "/css2") {
           unexpected.push(`External ${url.origin}${url.pathname}`);
         }
@@ -178,12 +202,8 @@ export async function usersStatusBrowserCases({ browser, expect, origin, staticR
           await page.locator("#status-filter").selectOption("banned");
           await loaded(page, [banned]);
           assert.deepEqual(calls, ["", "?banned=false", "?banned=true"]);
-          const settled = page.waitForResponse((response) =>
-            response.url().endsWith("?banned=false"),
-          );
           await (outcome === "success" ? success(older, [active]) : failure(older));
-          await (await settled).finished();
-          await page.waitForTimeout(100);
+          await page.waitForFunction(() => window.__usersStatusConsumed.includes("?banned=false"));
           await loaded(page, [banned]);
           await expect(page.locator("#status-filter")).toHaveValue("banned");
         },
@@ -209,12 +229,8 @@ export async function usersStatusBrowserCases({ browser, expect, origin, staticR
           await expect.poll(() => calls.length).toBe(2);
           await page.locator("#status-filter").selectOption("banned");
           await expect.poll(() => calls.length).toBe(3);
-          const settled = page.waitForResponse((response) =>
-            response.url().endsWith("?banned=false"),
-          );
           await (outcome === "success" ? success(older, [active]) : failure(older));
-          await (await settled).finished();
-          await page.waitForTimeout(100);
+          await page.waitForFunction(() => window.__usersStatusConsumed.includes("?banned=false"));
           await expect(page.locator("#loading")).toBeVisible();
           await expect(page.locator("#table-wrap")).toBeHidden();
           await expect(page.locator("#error")).toBeHidden();
@@ -241,12 +257,8 @@ export async function usersStatusBrowserCases({ browser, expect, origin, staticR
           await page.locator("#status-filter").selectOption("banned");
           await expect(page.locator("#error")).toBeVisible();
           const currentError = await page.locator("#error").textContent();
-          const settled = page.waitForResponse((response) =>
-            response.url().endsWith("?banned=false"),
-          );
           await (outcome === "success" ? success(older, [active]) : failure(older));
-          await (await settled).finished();
-          await page.waitForTimeout(100);
+          await page.waitForFunction(() => window.__usersStatusConsumed.includes("?banned=false"));
           await expect(page.locator("#error")).toHaveText(currentError);
           await expect(page.locator("#error")).toBeVisible();
           await expect(page.locator("#loading")).toBeHidden();
