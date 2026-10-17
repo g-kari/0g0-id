@@ -30,6 +30,8 @@ import {
 } from "@0g0-id/shared";
 
 import externalRoutes from "./external";
+import { EXTERNAL_OPENAPI } from "./openapi/external-spec";
+import { INTERNAL_OPENAPI } from "./openapi/internal-spec";
 
 const mockFindUserById = vi.mocked(findUserById);
 const mockFindUserIdByPairwiseSub = vi.mocked(findUserIdByPairwiseSub);
@@ -56,7 +58,7 @@ function basicAuth(clientId: string, clientSecret: string): string {
   return `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
 }
 
-// テストヘルパー: /api/external/users/:id へのリクエストを生成
+// テストヘルパー: /api/external/users/:sub へのリクエストを生成
 function makeRequest(userId: string, auth?: string, headers?: Record<string, string>): Request {
   return new Request(`${baseUrl}/api/external/users/${userId}`, {
     headers: { ...(auth ? { Authorization: auth } : {}), ...headers },
@@ -138,6 +140,89 @@ describe("GET /api/external/users/:sub", () => {
     mockFindUserIdByPairwiseSub.mockResolvedValue("user-1");
   });
 
+  describe.each([
+    ["内部仕様", INTERNAL_OPENAPI],
+    ["外部仕様", EXTERNAL_OPENAPI],
+  ] as const)("%s の外部ユーザー検索契約", (_name, spec) => {
+    const operation = spec.paths["/api/external/users/{sub}"].get;
+    const parameter = operation.parameters[0];
+    const pattern = new RegExp(parameter.schema.pattern);
+
+    it("登録済みルートと必須pairwise sub・Basic認証要件が一致する", () => {
+      expect(app.routes).toContainEqual(
+        expect.objectContaining({ method: "GET", path: "/api/external/users/:sub" }),
+      );
+      expect(spec.paths).not.toHaveProperty("/api/external/users/{id}");
+      expect(operation.security).toEqual([{ BasicAuth: [] }]);
+      expect(parameter).toMatchObject({ name: "sub", in: "path", required: true });
+      expect(parameter.schema).toMatchObject({ type: "string", minLength: 64, maxLength: 64 });
+      expect(operation.description).toContain("ペアワイズ");
+      expect(operation.description).toContain("内部ユーザーIDは検索に使わない");
+    });
+
+    it("仕様の形式を満たすsubでサービス固有の検索を実行する", async () => {
+      expect(pattern.test(PAIRWISE_SUB)).toBe(true);
+      const response = await requestExternalUser(app, PAIRWISE_SUB);
+      expect(response.status).toBe(200);
+      expect(mockFindUserIdByPairwiseSub).toHaveBeenCalledWith(
+        mockEnv.DB,
+        mockService.id,
+        PAIRWISE_SUB,
+      );
+      expect(mockFindUserById).toHaveBeenCalledWith(mockEnv.DB, "user-1");
+    });
+
+    it("大文字hexは形式を満たすが変換せず検索し、未登録なら404を返す", async () => {
+      const uppercaseSub = PAIRWISE_SUB.toUpperCase();
+      expect(pattern.test(uppercaseSub)).toBe(true);
+      mockFindUserIdByPairwiseSub.mockResolvedValue(null);
+      const response = await requestExternalUser(app, uppercaseSub);
+      expect(response.status).toBe(404);
+      expect(mockFindUserIdByPairwiseSub).toHaveBeenCalledWith(
+        mockEnv.DB,
+        mockService.id,
+        uppercaseSub,
+      );
+      expect(mockFindUserById).not.toHaveBeenCalled();
+      expect(await response.json()).toEqual(
+        operation.responses["404"].content["application/json"].example,
+      );
+    });
+
+    it.each(["user-1", "a".repeat(63), "a".repeat(65), "g".repeat(64)])(
+      "内部ID/不正subの仕様と実400が一致しユーザー検索しない: %s",
+      async (sub) => {
+        expect(pattern.test(sub)).toBe(false);
+        const response = await requestExternalUser(app, sub);
+        expect(response.status).toBe(400);
+        const documented = operation.responses["400"].content["application/json"];
+        expect(documented.schema.$ref).toBe("#/components/schemas/Error");
+        expect(await response.json()).toEqual(documented.example);
+        expect(spec.components.schemas.Error.properties.error.required).toEqual([
+          "code",
+          "message",
+        ]);
+        expect(mockFindUserIdByPairwiseSub).not.toHaveBeenCalled();
+        expect(mockFindUserById).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(["未認可", "不存在", "BAN済み"])(
+      "%sを区別せず仕様どおり404を返す",
+      async (condition) => {
+        if (condition === "未認可") mockFindUserIdByPairwiseSub.mockResolvedValue(null);
+        if (condition === "不存在") mockFindUserById.mockResolvedValue(null);
+        if (condition === "BAN済み")
+          mockFindUserById.mockResolvedValue({ ...mockUser, banned_at: "2026-01-01T00:00:00Z" });
+        const response = await requestExternalUser(app, PAIRWISE_SUB);
+        expect(response.status).toBe(404);
+        const documented = operation.responses["404"].content["application/json"];
+        expect(documented.schema.$ref).toBe("#/components/schemas/Error");
+        expect(await response.json()).toEqual(documented.example);
+      },
+    );
+  });
+
   describe("認証", () => {
     it("Authorizationヘッダーなし → 401を返す", async () => {
       const req = makeRequest("user-1");
@@ -212,10 +297,10 @@ describe("GET /api/external/users/:sub", () => {
       expect(res.status).toBe(200);
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data.sub).toBe(PAIRWISE_SUB);
-      expect(body.data.name).toBe("Test User");
-      expect(body.data.email).toBe("test@example.com");
-      expect(body.data.email_verified).toBe(true);
-      expect(body.data.picture).toBe("https://example.com/pic.jpg");
+      expect(body.data.name).toBeUndefined();
+      expect(body.data.email).toBeUndefined();
+      expect(body.data.email_verified).toBeUndefined();
+      expect(body.data.picture).toBeUndefined();
     });
 
     it("ペアワイズsubが一致してもfindUserByIdがnull → 404を返す", async () => {
@@ -243,15 +328,15 @@ describe("GET /api/external/users/:sub", () => {
       expect(body.data).not.toHaveProperty("address");
     });
 
-    it("全スコープ許可の場合 → phone/addressも返す", async () => {
+    it("全スコープ許可でも本人同意なし → 個人情報を返さない", async () => {
       mockFindServiceByClientId.mockResolvedValue({
         ...mockService,
         allowed_scopes: JSON.stringify(["profile", "email", "phone", "address"]),
       });
       const res = await requestExternalUser(app, PAIRWISE_SUB);
       const body = await res.json<{ data: Record<string, unknown> }>();
-      expect(body.data.phone).toBe("090-0000-0000");
-      expect(body.data.address).toBe("Tokyo");
+      expect(body.data.phone).toBeUndefined();
+      expect(body.data.address).toBeUndefined();
     });
 
     it("profileスコープなし → name/pictureを含まない", async () => {
@@ -263,7 +348,7 @@ describe("GET /api/external/users/:sub", () => {
       const body = await res.json<{ data: Record<string, unknown> }>();
       expect(body.data).not.toHaveProperty("name");
       expect(body.data).not.toHaveProperty("picture");
-      expect(body.data.email).toBe("test@example.com");
+      expect(body.data.email).toBeUndefined();
     });
 
     it("常にsubフィールドは返す", async () => {
@@ -360,8 +445,8 @@ describe("GET /api/external/users", () => {
       }>();
       expect(body.data).toHaveLength(1);
       expect(body.data[0].sub).toBe(PAIRWISE_SUB);
-      expect(body.data[0].name).toBe("Test User");
-      expect(body.data[0].email).toBe("test@example.com");
+      expect(body.data[0].name).toBeUndefined();
+      expect(body.data[0].email).toBeUndefined();
     });
 
     it("metaフィールドにtotal/limit/offsetを含む", async () => {
@@ -460,88 +545,33 @@ describe("GET /api/external/users", () => {
     });
   });
 
-  describe("検索フィルタリング", () => {
-    it("nameクエリでlistUsersAuthorizedForServiceにfilterを渡す", async () => {
-      const res = await requestExternalUserList(app, { name: "Test" });
-      expect(res.status).toBe(200);
-      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
-        expect.anything(),
-        "service-1",
-        50,
-        0,
-        expect.objectContaining({ name: "Test" }),
-      );
-      expect(mockCountUsersAuthorizedForService).toHaveBeenCalledWith(
-        expect.anything(),
-        "service-1",
-        expect.objectContaining({ name: "Test" }),
-      );
-    });
-
-    it("emailクエリでlistUsersAuthorizedForServiceにfilterを渡す", async () => {
-      const res = await requestExternalUserList(app, { email: "test@example.com" });
-      expect(res.status).toBe(200);
-      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
-        expect.anything(),
-        "service-1",
-        50,
-        0,
-        expect.objectContaining({ email: "test@example.com" }),
-      );
-      expect(mockCountUsersAuthorizedForService).toHaveBeenCalledWith(
-        expect.anything(),
-        "service-1",
-        expect.objectContaining({ email: "test@example.com" }),
-      );
-    });
-
-    it("nameとemailを同時に指定できる", async () => {
-      const res = await requestExternalUserList(app, { name: "Test", email: "test@example.com" });
-      expect(res.status).toBe(200);
-      expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
-        expect.anything(),
-        "service-1",
-        50,
-        0,
-        expect.objectContaining({ name: "Test", email: "test@example.com" }),
-      );
-    });
-
-    it("profileスコープなしでnameフィルターを使用すると403", async () => {
-      mockFindServiceByClientId.mockResolvedValue({
-        ...mockService,
-        allowed_scopes: JSON.stringify(["email"]),
+  describe("個人情報による検索は本人同意まで禁止", () => {
+    const forbiddenQueries: Record<string, string>[] = [
+      { name: "Synthetic Name" },
+      { email: "synthetic@example.invalid" },
+      { name: "Synthetic Name", email: "synthetic@example.invalid" },
+      { name: "" },
+      { email: "" },
+    ];
+    for (const query of forbiddenQueries) {
+      it(`設定にscopeがあっても検索を拒否: ${JSON.stringify(query)}`, async () => {
+        const res = await requestExternalUserList(app, query);
+        expect(res.status).toBe(403);
+        expect(mockListUsersAuthorizedForService).not.toHaveBeenCalled();
+        expect(mockCountUsersAuthorizedForService).not.toHaveBeenCalled();
       });
-      const res = await requestExternalUserList(app, { name: "Test" });
-      expect(res.status).toBe(403);
-      const body = await res.json<{ error: { code: string } }>();
-      expect(body.error.code).toBe("FORBIDDEN");
-    });
+    }
 
-    it("emailスコープなしでemailフィルターを使用すると403", async () => {
-      mockFindServiceByClientId.mockResolvedValue({
-        ...mockService,
-        allowed_scopes: JSON.stringify(["profile"]),
-      });
-      const res = await requestExternalUserList(app, { email: "test@example.com" });
-      expect(res.status).toBe(403);
-      const body = await res.json<{ error: { code: string } }>();
-      expect(body.error.code).toBe("FORBIDDEN");
-    });
-
-    it("フィルターなしの場合は従来どおり動作する", async () => {
+    it("フィルターなしは既存paginationと認可済ユーザー範囲を保つ", async () => {
       const res = await requestExternalUserList(app);
       expect(res.status).toBe(200);
+      const body = await res.json<{ data: Record<string, unknown>[] }>();
+      expect(body.data).toEqual([{ sub: PAIRWISE_SUB }]);
       expect(mockListUsersAuthorizedForService).toHaveBeenCalledWith(
-        expect.anything(),
+        mockEnv.DB,
         "service-1",
         50,
         0,
-        {},
-      );
-      expect(mockCountUsersAuthorizedForService).toHaveBeenCalledWith(
-        expect.anything(),
-        "service-1",
         {},
       );
     });

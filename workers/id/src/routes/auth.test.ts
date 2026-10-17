@@ -773,18 +773,19 @@ describe("POST /auth/exchange", () => {
     expect(body.data.expires_in).toBe(900);
     expect(body.data.user.id).toBe("user-1");
     expect(body.data.user.email).toBe("test@example.com");
-    // signIdToken が正しいペイロードで呼ばれていることを確認
+    // BFF JSON profile remains unchanged; ID-token assertions are profile-free.
     expect(vi.mocked(signIdToken)).toHaveBeenCalledWith(
       expect.objectContaining({
         iss: "https://id.0g0.xyz",
         sub: "user-1",
         aud: "https://id.0g0.xyz",
-        email: "test@example.com",
-        name: "Test User",
       }),
       "mock-private-key",
       "mock-public-key",
     );
+    expect(vi.mocked(signIdToken).mock.calls[0][0]).not.toHaveProperty("email");
+    expect(vi.mocked(signIdToken).mock.calls[0][0]).not.toHaveProperty("name");
+    expect(vi.mocked(signIdToken).mock.calls[0][0]).not.toHaveProperty("picture");
   });
 });
 

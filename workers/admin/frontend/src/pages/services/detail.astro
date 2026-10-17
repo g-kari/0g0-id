@@ -35,6 +35,7 @@ import ServiceActionsCard from '../../components/services/ServiceActionsCard.ast
   import { apiFetch, formatDate } from '../../lib/api';
   import { escapeHtml } from '../../lib/helpers';
   import { showToast } from '../../lib/toast';
+  import { setupOwnerSub } from '../../lib/service-owner-sub';
   import type { ServiceSummary } from '@0g0-id/api-types';
 
   type ServiceDetail = ServiceSummary & { updated_at?: string };
@@ -97,6 +98,13 @@ import ServiceActionsCard from '../../components/services/ServiceActionsCard.ast
     `,
       )
       .join('');
+
+    setupOwnerSub(service, {
+      value: document.getElementById('owner-sub-value')!,
+      status: document.getElementById('owner-sub-status')!,
+      load: document.getElementById('btn-load-owner-sub') as HTMLButtonElement,
+      copy: document.getElementById('btn-copy-owner-sub') as HTMLButtonElement,
+    });
 
     // スコープ
     const ALL_SCOPES = ['profile', 'email', 'phone', 'address'] as const;

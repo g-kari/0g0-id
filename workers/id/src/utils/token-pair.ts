@@ -6,7 +6,7 @@ import {
   signIdToken,
   createRefreshToken,
 } from "@0g0-id/shared";
-import type { IdpEnv, User } from "@0g0-id/shared";
+import type { AccessTokenInput, IdpEnv, User } from "@0g0-id/shared";
 
 /** リフレッシュトークンの有効期限（30日） */
 export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -27,17 +27,30 @@ export async function issueTokenPair(
   options: { serviceId: string | null; clientId?: string; familyId?: string; scope?: string },
 ): Promise<{ accessToken: string; refreshToken: string }> {
   const { serviceId, clientId, familyId = crypto.randomUUID(), scope } = options;
+  if ((serviceId !== null) !== (clientId !== undefined) || clientId === "") {
+    throw new Error("Service tokens require a matching serviceId and clientId");
+  }
 
+  const accessTokenInput: AccessTokenInput =
+    clientId === undefined
+      ? {
+          iss: env.IDP_ORIGIN,
+          sub: user.id,
+          aud: env.IDP_ORIGIN,
+          email: user.email,
+          role: user.role,
+          scope,
+          cid: undefined,
+        }
+      : {
+          iss: env.IDP_ORIGIN,
+          sub: user.id,
+          aud: clientId,
+          scope,
+          cid: clientId,
+        };
   const accessToken = await signAccessToken(
-    {
-      iss: env.IDP_ORIGIN,
-      sub: user.id,
-      aud: clientId ?? env.IDP_ORIGIN,
-      email: user.email,
-      role: user.role,
-      scope,
-      cid: clientId,
-    },
+    accessTokenInput,
     env.JWT_PRIVATE_KEY,
     env.JWT_PUBLIC_KEY,
   );
@@ -109,12 +122,9 @@ export async function issueIdToken(
       iss: env.IDP_ORIGIN,
       sub: pairwiseSub,
       aud: service.client_id,
-      email: user.email,
-      name: user.name,
-      picture: user.picture,
       authTime,
       nonce: options?.nonce,
-      amr: options?.amr,
+      // Do not disclose the upstream provider to an RP by default.
     },
     env.JWT_PRIVATE_KEY,
     env.JWT_PUBLIC_KEY,
