@@ -4,6 +4,8 @@
 **役割**: 管理者向け BFF（サービス管理 / ユーザー管理 / メトリクス / 監査ログ） + Astro SPA 配信
 **ソース**: `workers/admin/src/index.ts` および `workers/admin/src/routes/*.ts`
 
+> Method/Path テーブルは `vp run docs:api:check` で、実際に登録された Hono ルートと双方向照合します。DBSC 登録/更新とフォールバックも対象です。[検査範囲・更新手順](./api-reference-generation.md#bff-の手書き-api-一覧の同期確認)
+
 ## 認証・セキュリティ
 
 - **セッション Cookie**: `__Host-admin-session`（HS256 署名、`access_token` / `refresh_token` / `user` を含む）
@@ -82,11 +84,19 @@ Chrome は発行された nonce を `jti` クレームに含めた proof JWT を
 
 ## サービス管理（`/api/services/*`）
 
+`GET /api/services/:id/owner-sub` は現在のサービス所有者に限定した読み取り専用APIです。
+サービス詳細の基本情報にある「確認」で取得し、明示的な「コピー」でクリップボードへ移します。
+初回連携やアクティブなトークンは不要で、連携・トークンの作成も行いません。
+レスポンスは `{ data: { service_id, client_id, owner_user_id, sub } }`、`Cache-Control: no-store`。
+user/client などのクエリ指定は 400 で拒否します。所有者・Client ID・salt が変わると値も変わります。
+取得失敗は基本情報と独立して表示し、コピー失敗時は手動選択を案内します。
+
 | Method | Path                                     | 転送先 (id)                       | 用途                                               |
 | ------ | ---------------------------------------- | --------------------------------- | -------------------------------------------------- |
 | GET    | `/api/services`                          | `/api/services`                   | サービス一覧（`limit` / `offset` / `name`）        |
 | POST   | `/api/services`                          | `/api/services`                   | サービス新規作成（client_id / client_secret 発行） |
 | GET    | `/api/services/:id`                      | `/api/services/:id`               | サービス詳細                                       |
+| GET    | `/api/services/:id/owner-sub`            | 同左                              | 初回連携前のオーナー Pairwise Sub ID 取得          |
 | PATCH  | `/api/services/:id`                      | `/api/services/:id`               | 名称 / allowed_scopes 更新                         |
 | DELETE | `/api/services/:id`                      | `/api/services/:id`               | サービス削除                                       |
 | POST   | `/api/services/:id/rotate-secret`        | `/api/services/:id/rotate-secret` | client_secret 再発行                               |
@@ -118,6 +128,8 @@ Chrome は発行された nonce を `jti` クレームに含めた proof JWT を
 | DELETE | `/api/users/:id/tokens/:tokenId`         | 同左                            | 個別セッション失効                                                                                                  |
 | GET    | `/api/users/:id/bff-sessions`            | `/api/users/:id/bff-sessions`   | BFF セッション一覧（DBSC バインド状態 `has_device_key` 含む）                                                       |
 | DELETE | `/api/users/:id/bff-sessions/:sessionId` | 同左                            | 単一 BFF セッション失効（管理者強制ログアウト・DBSC 端末バインド済みも対象・refresh_token は別途 `/tokens` で失効） |
+| GET    | `/api/users/:id/lockout`                 | 同左                            | ロックアウト状態取得                                                                                                |
+| DELETE | `/api/users/:id/lockout`                 | 同左                            | ロックアウト解除                                                                                                    |
 
 ## メトリクス（`/api/metrics/*`）
 
@@ -130,6 +142,15 @@ Chrome は発行された nonce を `jti` クレームに含めた proof JWT を
 | GET    | `/api/metrics/user-registrations` | 同左           | 日別新規ユーザー登録数（`days`）                        |
 | GET    | `/api/metrics/active-users`       | 同左           | DAU / WAU / MAU                                         |
 | GET    | `/api/metrics/active-users/daily` | 同左           | 日別アクティブユーザー（`days`）                        |
+| GET    | `/api/metrics/dbsc-bindings`      | 同左           | アクティブ BFF セッションの DBSC 端末バインド集計       |
+
+## ログイン傾向（`/api/security-trends/*`）
+
+| Method | Path                                    | 転送先 (id)                     | 用途                                                                                                                             |
+| ------ | --------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/security-trends/ip-stats`         | `/api/metrics/ip-stats`         | IP別ログイン統計（`days` 1〜365 / `limit` 1〜100）                                                                               |
+| GET    | `/api/security-trends/user-agent-stats` | `/api/metrics/user-agent-stats` | User-Agent別ログイン統計（`days` 1〜365 / `limit` 1〜100）                                                                       |
+| GET    | `/api/security-trends/recent-events`    | `/api/metrics/recent-events`    | ログインイベント一覧（`limit` / `offset` / `user_id` / `country` / `provider` / `period`）。詳細は下記「ログインイベントの調査」 |
 
 ## 監査ログ（`/api/audit-logs`）
 
@@ -148,3 +169,14 @@ Chrome は発行された nonce を `jti` クレームに含めた proof JWT を
 ## エラーフォーマット
 
 id Worker と同一の `{ error: { code, message } }` 形式。ミドルウェア由来の代表コード: `UNAUTHORIZED`（セッションなし）、`FORBIDDEN`（非 admin）、`BAD_REQUEST`（UUID 形式不正）、`INVALID_PARAMETER`（数値パラメータ範囲外）、`INTERNAL_ERROR`。
+
+## ログインイベントの調査（`/api/security-trends/recent-events`）
+
+`GET /api/security-trends/recent-events` → IdP `/api/metrics/recent-events`。
+`user_id`（完全一致・1〜128文字の英数字/`_`/`-`）、`country`（大文字2文字または `unknown`）、
+`provider`（google/line/twitch/github/x）、`period`（all/24h/7d/30d）を AND で組み合わせます。
+`limit` は1〜100（既定50）、`offset` は0以上の安全な整数（既定0）。
+一覧と総件数は同じ条件で、フィルターなしは従来どおり全件です。
+不正値・空の明示値・重複・未知のキー・2048文字超のクエリーは400。
+レスポンスは `{ data, meta: { limit, offset, total } }`、認証・管理者権限は従来どおりです。
+操作と検証の詳細は [ログインイベントの絞り込み](./login-event-filters.md) を参照。

@@ -75,34 +75,13 @@ BFF（user/admin）はブラウザと直接通信。idへはService Bindingsで�
 
 ## 開発ツール
 
-### ⚠️ Serena（セマンティックコーディングMCP）— 必須ツール
+### 読み取り・検索・編集
 
-> **このプロジェクトでは、コードの読み取り・検索・編集にSerenaを必ず利用すること。**
-> **SerenaのMCPツールが利用可能であれば、他の手段（Read/Edit/Grep/Glob等）の使用は禁止。**
+作業環境で利用できる読み取り・検索・編集ツールを使用し、変更は必要最小限にとどめる。
 
-SerenaはLanguage Serverを活用したセマンティックコーディングツールです。
-以下の場面でSerenaのツールを積極的に使用してください：
-
-| 操作 | 使用するSerenaツール |
-|------|---------------------|
-| シンボルの検索 | `find_symbol` |
-| シンボルの参照先検索 | `find_referencing_symbols` |
-| ディレクトリ一覧 | `list_dir` |
-| ファイル検索 | `find_file` |
-| コード読み取り | `read_file` |
-| シンボル一覧取得 | `get_symbols_overview` |
-| シンボル単位の編集 | `replace_symbol_body` |
-| コードの挿入（後） | `insert_after_symbol` |
-| コードの挿入（前） | `insert_before_symbol` |
-| パターン検索 | `search_for_pattern` |
-| ファイル作成・上書き | `create_text_file` |
-
-**禁止事項（SerenaのMCPツールが使える場合）:**
-- `cat`, `sed`, `awk`, `grep`, `find` 等のシェルコマンドによるファイル操作
-- Claude Code組み込みのRead/Edit/Grep/Glob ツールによるファイル操作
-- 行番号ベースの編集（シンボル単位の編集を優先）
-
-**例外:** Serenaのセッションが未初期化・ツールが利用不可の場合のみ、代替手段を使用可。
+- `Glob` / `find` 等で対象ファイルを絞り、`Grep` / `grep` 等でシンボルの定義・参照を確認する。参照確認では import / alias / re-export も追う。
+- `Read` / `sed` 等で対象シンボルと必要な周辺範囲を読み、全ファイルの読み取りは検証に必要な場合に限る。
+- 編集前に対象の現状を確認し、`Edit` 等で最小変更を行った後、差分で意図しない変更がないことを確認する。
 
 ## コード規約
 

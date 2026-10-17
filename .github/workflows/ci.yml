@@ -10,10 +10,12 @@ jobs:
   check:
     name: lint・fmt・型チェック・テスト
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: チェックアウト
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Vite+ セットアップ
         run: |
@@ -21,10 +23,15 @@ jobs:
           echo "$HOME/.vite-plus/bin" >> $GITHUB_PATH
 
       - name: Node.js セットアップ
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: "npm"
+
+      - name: packageManager に合わせて npm をセットアップ
+        run: |
+          npm install --global "$(node -p 'require("./package.json").packageManager')"
+          npm --version
 
       - name: 依存パッケージインストール（ルートワークスペース）
         run: npm ci
@@ -39,11 +46,17 @@ jobs:
         run: npm ci
         working-directory: workers/admin/frontend
 
+      - name: TypeScript CLI versions and workspace checks (Node22 / TS6+TS7 isolation)
+        run: node scripts/check-typescript-cli.mjs
+
       - name: check（lint + fmt + typecheck）
-        run: vp check
+        run: ./node_modules/.bin/vp check
+
+      - name: IdP / BFF API ドキュメント同期確認（読み取り専用）
+        run: ./node_modules/.bin/vp run docs:api:check
 
       - name: テスト実行
-        run: vp test run
+        run: ./node_modules/.bin/vp test run
 
       - name: フロントエンドビルド検証（user）
         run: npm run build
@@ -53,19 +66,109 @@ jobs:
         run: npm run build
         working-directory: workers/admin/frontend
 
+      - name: プロフィール復旧・セキュリティ UI（合成データ・外部通信遮断）
+        timeout-minutes: 5
+        run: |
+          tools="$(mktemp -d)"
+          npm install --prefix "$tools" --no-package-lock --ignore-scripts @playwright/test@1.57.0
+          "$tools/node_modules/.bin/playwright" install --with-deps chromium
+          PROFILE_RECOVERY_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
+            PROFILE_RECOVERY_REPORT_DIR="$RUNNER_TEMP/profile-recovery-ui" \
+            node scripts/profile-recovery-browser-smoke.mjs
+          PROVIDERS_RECOVERY_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
+            PROVIDERS_RECOVERY_REPORT_DIR="$RUNNER_TEMP/providers-recovery-ui" \
+            node scripts/providers-recovery-browser-smoke.mjs
+          LOGIN_HISTORY_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
+            LOGIN_HISTORY_REPORT_DIR="$RUNNER_TEMP/login-history-ui" \
+            node scripts/login-history-browser-smoke.mjs
+          SECURITY_EVENTS_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
+            SECURITY_EVENTS_REPORT_DIR="$RUNNER_TEMP/security-events-ui" \
+            node scripts/security-events-browser-smoke.mjs
+          AUDIT_LOGS_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
+            AUDIT_LOGS_REPORT_DIR="$RUNNER_TEMP/audit-logs-ui" \
+            node scripts/audit-logs-browser-smoke.mjs
+          LOGIN_STATS_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
+            LOGIN_STATS_REPORT_DIR="$RUNNER_TEMP/login-stats-ui" \
+            node scripts/login-stats-browser-smoke.mjs
+
+      - name: プロフィール復旧 UI の検証記録
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: profile-recovery-ui
+          path: ${{ runner.temp }}/profile-recovery-ui
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: ログイン履歴復旧 UI の検証記録
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: login-history-ui
+          path: ${{ runner.temp }}/login-history-ui
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: SNS 連携復旧 UI の検証記録
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: providers-recovery-ui
+          path: ${{ runner.temp }}/providers-recovery-ui
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: ログインイベント UI の検証記録
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-events-ui
+          path: ${{ runner.temp }}/security-events-ui
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: 管理者監査ログ UI の検証記録
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-logs-ui
+          path: ${{ runner.temp }}/audit-logs-ui
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Cloudflare 実アプリ統合スモーク（ローカル・使い捨て状態）
+        timeout-minutes: 8
+        run: |
+          ./node_modules/.bin/vp exec tsx scripts/ci-app-smoke.ts --self-test
+          ./node_modules/.bin/vp exec tsx scripts/ci-app-smoke.ts
+
+      - name: ログイン統計 UI の検証記録
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: login-stats-ui
+          path: ${{ runner.temp }}/login-stats-ui
+          retention-days: 7
+          if-no-files-found: warn
+
   audit:
     name: npm audit（脆弱性チェック）
     runs-on: ubuntu-latest
 
     steps:
       - name: チェックアウト
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Node.js セットアップ
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: "npm"
+
+      - name: packageManager に合わせて npm をセットアップ
+        run: |
+          npm install --global "$(node -p 'require("./package.json").packageManager')"
+          npm --version
 
       - name: 依存パッケージインストール（ルートワークスペース）
         run: npm ci
