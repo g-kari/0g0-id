@@ -4,6 +4,16 @@
     <table style="width:100%; font-size:0.875rem;">
       <tbody id="info-tbody"></tbody>
     </table>
+    <div style="margin-top:16px;">
+      <p style="margin:0 0 8px; font-size:0.875rem;">オーナーの Pairwise Sub ID</p>
+      <p style="margin:0 0 8px; color:var(--color-muted); font-size:0.8rem;">このサービス専用のオーナー識別子です。初回連携前でも確認できます。所有者・Client ID・salt の変更で値が変わります。</p>
+      <code id="owner-sub-value" style="display:block; word-break:break-all; font-size:0.8rem;"></code>
+      <p id="owner-sub-status" role="status" aria-live="polite" style="font-size:0.8rem;"></p>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <button id="btn-load-owner-sub" class="btn btn-ghost" style="font-size:0.8rem;">確認</button>
+        <button id="btn-copy-owner-sub" class="btn btn-ghost" style="font-size:0.8rem;" disabled>コピー</button>
+      </div>
+    </div>
   </div>
   <div class="card" style="padding:20px;">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">

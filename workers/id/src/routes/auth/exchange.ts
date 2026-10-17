@@ -10,6 +10,7 @@ import {
   timingSafeEqual,
   generatePairwiseSub,
   signIdToken,
+  createLegacyRelyingPartyUser,
   createLogger,
   createBffSession,
   BFF_SESSION_MAX_AGE_SECONDS,
@@ -136,13 +137,10 @@ export async function handleExchange(c: Context<{ Bindings: IdpEnv; Variables: V
         iss: c.env.IDP_ORIGIN,
         sub: idTokenSub,
         aud: idTokenAud,
-        email: user.email,
-        name: user.name,
-        picture: user.picture,
         authTime,
         nonce: authCode.nonce ?? undefined,
         // RFC 8176: 認証方式リスト。ソーシャルログインのプロバイダーを記録する
-        amr: authCode.provider ? [authCode.provider] : undefined,
+        amr: serviceId === null && authCode.provider ? [authCode.provider] : undefined,
       },
       c.env.JWT_PRIVATE_KEY,
       c.env.JWT_PUBLIC_KEY,
@@ -179,13 +177,16 @@ export async function handleExchange(c: Context<{ Bindings: IdpEnv; Variables: V
       ...(bffSessionId ? { session_id: bffSessionId } : {}),
       token_type: "Bearer",
       expires_in: ACCESS_TOKEN_TTL_SECONDS,
-      user: {
-        id: idTokenSub,
-        email: user.email,
-        name: user.name,
-        picture: user.picture,
-        ...(serviceId === null ? { role: user.role } : {}),
-      },
+      user:
+        serviceId === null
+          ? {
+              id: user.id,
+              email: user.email,
+              name: user.name,
+              picture: user.picture,
+              role: user.role,
+            }
+          : createLegacyRelyingPartyUser(idTokenSub),
     },
   });
 }
