@@ -1,22 +1,53 @@
 ---
 import Admin from '../../layouts/Admin.astro';
+import { ALL_PROVIDERS, PROVIDER_DISPLAY_NAMES } from '../../lib/login-event-filters';
 ---
 <Admin title="ログインイベント — 0g0 Admin">
-  <div class="page-header" style="display:flex; align-items:center; justify-content:space-between;">
+  <div class="page-header events-header">
     <div>
       <h1 class="page-title">ログインイベント</h1>
-      <p class="page-subtitle" id="events-summary">読み込み中...</p>
+      <p class="page-subtitle" id="events-summary" aria-live="polite">読み込み中...</p>
     </div>
     <a href="/security/dashboard" class="btn btn-ghost" style="padding:4px 10px; font-size:0.8rem;">← セキュリティ概況に戻る</a>
   </div>
 
+  <form id="filter-form" class="card event-filters" aria-label="ログインイベントの絞り込み">
+    <div class="filter-fields">
+      <label>ユーザーID
+        <input id="filter-user" name="user_id" class="form-input" type="text" maxlength="128" placeholder="完全一致のID" autocomplete="off" />
+      </label>
+      <label>国コード
+        <input id="filter-country" name="country" class="form-input" type="text" maxlength="7" list="country-options" placeholder="JP / unknown" autocomplete="off" aria-describedby="country-help" />
+        <datalist id="country-options"><option value="JP"></option><option value="US"></option><option value="unknown"></option></datalist>
+      </label>
+      <label>プロバイダー
+        <select id="filter-provider" name="provider" class="form-input">
+          <option value="">すべて</option>
+          {ALL_PROVIDERS.map(provider => <option value={provider}>{PROVIDER_DISPLAY_NAMES[provider]}</option>)}
+        </select>
+      </label>
+      <label>期間
+        <select id="filter-period" name="period" class="form-input">
+          <option value="all">全期間</option><option value="24h">直近24時間</option><option value="7d">直近7日</option><option value="30d">直近30日</option>
+        </select>
+      </label>
+    </div>
+    <p id="country-help" class="filter-help">条件はすべて組み合わせて検索します。国は2文字のコード、取得できなかった国は unknown を指定してください</p>
+    <div class="filter-actions">
+      <button id="apply-filters" type="submit" class="btn btn-primary">絞り込む</button>
+      <button id="reset-filters" type="button" class="btn">リセット</button>
+    </div>
+  </form>
+
   <div id="loading" style="display:flex; justify-content:center; padding:3rem;">
     <div class="spinner"></div>
   </div>
-  <div id="error" class="alert alert-error" style="display:none;" aria-live="polite"></div>
+  <div id="error" class="alert alert-error" style="display:none;" role="alert">
+    <p id="error-message"></p><button id="retry-btn" type="button" class="btn">再読み込み</button>
+  </div>
 
   <div id="table-wrap" class="card" style="padding:0; overflow:hidden; display:none;">
-    <div class="table-wrap"><table class="data-table">
+    <div class="table-wrap" tabindex="0" role="region" aria-label="ログインイベント一覧（横スクロールできます）"><table class="data-table">
       <caption class="visually-hidden">直近のログインイベント一覧</caption>
       <thead>
         <tr>
@@ -30,7 +61,7 @@ import Admin from '../../layouts/Admin.astro';
       </thead>
       <tbody id="events-tbody"></tbody>
     </table></div>
-    <div id="empty-message" style="padding:2rem; text-align:center; color:var(--color-muted); display:none;">ログインイベントがありません</div>
+    <div id="empty-message" style="padding:2rem; text-align:center; color:var(--color-muted); display:none;">条件に一致するログインイベントがありません</div>
   </div>
 
   <!-- ページング -->
@@ -42,6 +73,16 @@ import Admin from '../../layouts/Admin.astro';
 </Admin>
 
 <style>
+  .events-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+  .event-filters { padding: 20px; margin-bottom: 16px; }
+  .filter-fields { display: grid; grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .filter-fields label { display: grid; gap: 6px; min-width: 0; font-size: 0.875rem; }
+  .filter-fields input, .filter-fields select { width: 100%; min-width: 0; }
+  .filter-help { color: var(--color-muted); font-size: 0.8rem; margin: 12px 0; }
+  .filter-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  #pagination { flex-wrap: wrap; }
+  @media (max-width: 900px) { .filter-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 480px) { .filter-fields { grid-template-columns: minmax(0, 1fr); } .event-filters { padding: 16px; } }
   .visually-hidden {
     position: absolute;
     width: 1px;
@@ -57,6 +98,7 @@ import Admin from '../../layouts/Admin.astro';
 <script>
   import { formatDatetime } from '../../lib/api';
   import { escapeHtml, truncate } from '../../lib/helpers';
+  import { parseLoginEventQuery, type LoginEventQuery } from '../../lib/login-event-filters';
 
   interface LoginEvent {
     id: string;
@@ -70,11 +112,21 @@ import Admin from '../../layouts/Admin.astro';
 
   interface RecentEventsResponse {
     data: LoginEvent[];
-    meta: { limit: number; offset: number; total: number };
+    meta: { limit: number; offset: number; total: number; applied_filters?: {
+      user_id: string | null; country: string | null; provider: string | null; period: string;
+    } };
   }
 
   const LIMIT = 50;
-  let offset = 0;
+  let requestId = 0;
+  let activeRequest: AbortController | undefined;
+  const form = document.getElementById('filter-form') as HTMLFormElement;
+  const userInput = document.getElementById('filter-user') as HTMLInputElement;
+  const countryInput = document.getElementById('filter-country') as HTMLInputElement;
+  const providerInput = document.getElementById('filter-provider') as HTMLSelectElement;
+  const periodInput = document.getElementById('filter-period') as HTMLSelectElement;
+  const errorMessage = document.getElementById('error-message')!;
+  const retryBtn = document.getElementById('retry-btn') as HTMLButtonElement;
 
   const loadingEl = document.getElementById('loading')!;
   const errorEl = document.getElementById('error')!;
@@ -87,17 +139,68 @@ import Admin from '../../layouts/Admin.astro';
   const nextBtn = document.getElementById('next-btn') as HTMLButtonElement;
   const pageInfoEl = document.getElementById('page-info')!;
 
+  function syncForm(query: LoginEventQuery): void {
+    userInput.value = query.userId ?? '';
+    countryInput.value = query.country ?? '';
+    providerInput.value = query.provider ?? '';
+    periodInput.value = query.period;
+  }
+
+  function queryParams(query: LoginEventQuery): URLSearchParams {
+    const params = new URLSearchParams();
+    if (query.userId) params.set('user_id', query.userId);
+    if (query.country) params.set('country', query.country);
+    if (query.provider) params.set('provider', query.provider);
+    if (query.period !== 'all') params.set('period', query.period);
+    if (query.offset > 0) params.set('offset', String(query.offset));
+    return params;
+  }
+
+  function navigate(query: LoginEventQuery, replace = false): void {
+    const params = queryParams(query);
+    const url = `${window.location.pathname}${params.size ? `?${params}` : ''}`;
+    if (replace) window.history.replaceState(null, '', url);
+    else if (url !== `${window.location.pathname}${window.location.search}`) window.history.pushState(null, '', url);
+    void loadEvents();
+  }
+
+  function showError(message: string): void {
+    summaryEl.textContent = 'イベントを表示できませんでした';
+    errorMessage.textContent = message;
+    errorEl.style.display = '';
+  }
+
   async function loadEvents(): Promise<void> {
+    const id = ++requestId;
+    retryBtn.disabled = true;
+    activeRequest?.abort();
+    activeRequest = new AbortController();
     loadingEl.style.display = 'flex';
+    summaryEl.textContent = '読み込み中...';
     errorEl.style.display = 'none';
     tableWrap.style.display = 'none';
     paginationEl.style.display = 'none';
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+    const query = parseLoginEventQuery(new URLSearchParams(window.location.search));
+    if ('error' in query) {
+      showError(`検索条件が不正です: ${query.error}。条件を入力し直すかリセットしてください`);
+      loadingEl.style.display = 'none';
+      retryBtn.disabled = false;
+      return;
+    }
+    syncForm(query);
+    const offset = query.offset;
+    const params = queryParams(query);
+    params.set('limit', String(LIMIT));
+    params.set('offset', String(offset));
 
     try {
       const res = await fetch(
-        `/api/security-trends/recent-events?limit=${LIMIT}&offset=${offset}`,
-        { credentials: 'same-origin', headers: { 'Content-Type': 'application/json' } },
+        `/api/security-trends/recent-events?${params}`,
+        { credentials: 'same-origin', signal: activeRequest.signal },
       );
+      if (id !== requestId) return;
       if (res.status === 401) {
         window.location.href = '/';
         return;
@@ -107,9 +210,21 @@ import Admin from '../../layouts/Admin.astro';
         throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
       }
       const body = (await res.json()) as RecentEventsResponse;
+      if (id !== requestId) return;
+      // Fail closed during separate IdP/BFF deployments if an old API ignores filters.
+      if (query.userId || query.country || query.provider || query.period !== 'all') {
+        const applied = body.meta?.applied_filters;
+        if (!applied || applied.user_id !== (query.userId ?? null) || applied.country !== (query.country ?? null) || applied.provider !== (query.provider ?? null) || applied.period !== query.period) {
+          throw new Error('検索条件の適用を確認できませんでした。しばらくしてから再読み込みしてください');
+        }
+      }
       const events = body.data ?? [];
       const total = body.meta?.total ?? events.length;
 
+      if (offset > 0 && offset >= total) {
+        navigate({ ...query, offset: Math.max(0, Math.floor((total - 1) / LIMIT) * LIMIT) }, true);
+        return;
+      }
       const startN = total === 0 ? 0 : offset + 1;
       const endN = Math.min(offset + events.length, total);
       summaryEl.textContent = `${total.toLocaleString()} 件中 ${startN.toLocaleString()} - ${endN.toLocaleString()} 件を表示`;
@@ -120,8 +235,8 @@ import Admin from '../../layouts/Admin.astro';
           const uaShort = truncate(ua, 60);
           return `
           <tr>
-            <td style="color:var(--color-muted); font-size:0.875rem; white-space:nowrap;">${formatDatetime(ev.created_at)}</td>
-            <td style="font-family:monospace; font-size:0.8rem;"><a href="/users/${encodeURIComponent(ev.user_id)}">${escapeHtml(ev.user_id)}</a></td>
+            <td style="color:var(--color-muted); font-size:0.875rem; white-space:nowrap;">${escapeHtml(formatDatetime(ev.created_at))}</td>
+            <td style="font-family:monospace; font-size:0.8rem;"><a href="/users/${escapeHtml(encodeURIComponent(ev.user_id))}">${escapeHtml(ev.user_id)}</a></td>
             <td>${escapeHtml(ev.provider)}</td>
             <td style="font-family:monospace; font-size:0.875rem;">${escapeHtml(ev.ip_address ?? '—')}</td>
             <td>${escapeHtml(ev.country ?? '—')}</td>
@@ -142,21 +257,51 @@ import Admin from '../../layouts/Admin.astro';
       nextBtn.disabled = offset + LIMIT >= total;
       paginationEl.style.display = 'flex';
     } catch (e) {
-      errorEl.textContent = e instanceof Error ? e.message : 'データ取得に失敗しました';
-      errorEl.style.display = '';
+      if (id !== requestId) return;
+      showError(e instanceof Error ? e.message : 'データ取得に失敗しました');
     } finally {
-      loadingEl.style.display = 'none';
+      if (id === requestId) {
+        loadingEl.style.display = 'none';
+        retryBtn.disabled = false;
+      }
     }
   }
 
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const params = new URLSearchParams();
+    if (userInput.value.trim()) params.set('user_id', userInput.value.trim());
+    const country = countryInput.value.trim();
+    if (country) params.set('country', country.toLowerCase() === 'unknown' ? 'unknown' : country.toUpperCase());
+    if (providerInput.value) params.set('provider', providerInput.value);
+    params.set('period', periodInput.value);
+    const query = parseLoginEventQuery(params);
+    if ('error' in query) {
+      ++requestId;
+      activeRequest?.abort();
+      retryBtn.disabled = false;
+      loadingEl.style.display = 'none';
+      tableWrap.style.display = 'none';
+      paginationEl.style.display = 'none';
+      showError(`検索条件が不正です: ${query.error}`);
+      return;
+    }
+    navigate(query);
+  });
+  document.getElementById('reset-filters')!.addEventListener('click', () => {
+    navigate({ limit: LIMIT, offset: 0, period: 'all' });
+  });
+  retryBtn.addEventListener('click', () => {
+    if (!retryBtn.disabled) void loadEvents();
+  });
   prevBtn.addEventListener('click', () => {
-    offset = Math.max(0, offset - LIMIT);
-    void loadEvents();
+    const query = parseLoginEventQuery(new URLSearchParams(window.location.search));
+    if (!('error' in query)) navigate({ ...query, offset: Math.max(0, query.offset - LIMIT) });
   });
   nextBtn.addEventListener('click', () => {
-    offset = offset + LIMIT;
-    void loadEvents();
+    const query = parseLoginEventQuery(new URLSearchParams(window.location.search));
+    if (!('error' in query)) navigate({ ...query, offset: query.offset + LIMIT });
   });
-
+  window.addEventListener('popstate', () => { void loadEvents(); });
   void loadEvents();
 </script>

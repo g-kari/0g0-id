@@ -1,5 +1,4 @@
 import { sha256, findRefreshTokenByHash, findUserById, createLogger } from "@0g0-id/shared";
-import { parseAllowedScopes } from "../../utils/scopes";
 import { buildTokenResponse } from "../../utils/token-pair";
 import { attemptUnrevokeToken } from "../../utils/token-recovery";
 import {
@@ -89,8 +88,8 @@ export async function handleRefreshTokenGrant(
   }
 
   // スコープ引き継ぎ
-  const refreshScope =
-    storedToken.scope ?? (parseAllowedScopes(service.allowed_scopes).join(" ") || "openid");
+  // A service capability is not a user grant. Missing/empty legacy scope stays minimal.
+  const refreshScope = storedToken.scope || "openid";
 
   const issueResult = await issueTokenPairWithRecovery(
     c.env.DB,

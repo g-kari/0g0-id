@@ -125,8 +125,9 @@ app.get("*", async (c) => {
   return c.env.ASSETS.fetch(new Request(url.toString()));
 });
 
-app.onError((err, c) => {
-  appLogger.error("Unhandled error", err);
+app.onError((_err, c) => {
+  // 例外には個人情報やtokenが含まれ得るため、固定イベントだけを記録する。
+  appLogger.error("Unhandled error");
   return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
 });
 

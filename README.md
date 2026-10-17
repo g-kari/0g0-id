@@ -49,9 +49,15 @@ mcp.0g0.xyz   — MCP Worker（Claude Code連携）
 | DBSC                 | Device Bound Session Credentials（端末公開鍵バインド + チャレンジ・レスポンス） |
 | 管理者権限           | DB ロールベース + 初回ブートストラップ                                          |
 
+## ログのプライバシー
+
+共有 logger は任意の例外・extra を出力せず、固定イベントと検証済みの HTTP / cleanup
+metadata だけを記録します。動的メッセージや他のログは対象外です。
+互換性への影響と残る制限は [Error log privacy](docs/error-logging-privacy.md) を参照してください。
+
 ## 動作要件
 
-- **Node.js**: v20.x 以上（LTS 推奨）
+- **Node.js**: v22.19.0 以上（Astro 7 frontend の固定依存を含む要件。CI は v22.x）
 - **npm**: v11.x 以上（`packageManager` フィールドで `npm@11.12.1` に固定）
 
 ## セットアップ
@@ -99,6 +105,11 @@ npx wrangler secret put JWT_PRIVATE_KEY      # private.pem の内容
 npx wrangler secret put JWT_PUBLIC_KEY       # public.pem の内容
 npx wrangler secret put BOOTSTRAP_ADMIN_EMAIL
 ```
+
+> ⚠️ 初回管理者で管理画面への新しいログインと管理者専用一覧の読み取りを確認したら、
+> `BOOTSTRAP_ADMIN_EMAIL` を削除してください。既存の管理者ロールは DB に保持されます。
+> 削除の前提条件・即時デプロイへの注意・再投入の防止は
+> [初回管理者の作成後](docs/environment-variables.md#初回管理者の作成後) を参照してください。
 
 ### 6. フロントエンドビルド
 

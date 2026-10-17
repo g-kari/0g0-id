@@ -4,6 +4,8 @@
 **役割**: ユーザー向け BFF（ログイン UI / プロフィール / セッション管理） + Astro SPA 配信
 **ソース**: `workers/user/src/index.ts` および `workers/user/src/routes/*.ts`
 
+> Method/Path テーブルは `vp run docs:api:check` で、実際に登録された Hono ルートと双方向照合します。DBSC 登録/更新とフォールバックも対象です。[検査範囲・更新手順](./api-reference-generation.md#bff-の手書き-api-一覧の同期確認)
+
 ## 認証・セキュリティ
 
 - **セッション Cookie**: `__Host-user-session`（HS256 署名付き、`access_token` / `refresh_token` / `user_id` を含む）
