@@ -5,7 +5,7 @@ import type { BffEnv } from "../types";
 import { parseSession } from "./bff";
 import { verifyDbscRegistrationJwt, buildSecureSessionChallengeHeader } from "./dbsc";
 import { internalServiceHeaders } from "./bff";
-import { createLogger } from "./logger";
+import { createLogger, httpStatusMetadata } from "./logger";
 import { logUpstreamDeprecation } from "./internal-secret-deprecation";
 
 /** ファクトリに渡す設定 */
@@ -140,7 +140,7 @@ export function createBffDbscRoutes(config: BffDbscConfig) {
     logUpstreamDeprecation(bindResp, { method: "POST", path: "/auth/dbsc/bind" }, dbscLogger);
 
     if (!bindResp.ok) {
-      dbscLogger.warn("[dbsc-start] IdP bind failed", { status: bindResp.status });
+      dbscLogger.warn("[dbsc-start] IdP bind failed", httpStatusMetadata(bindResp.status));
       // 列挙攻撃ヒント（INVALID_SESSION か ALREADY_BOUND かの区別）を外向きに与えないため、
       // 4xx はすべて INVALID_REQUEST に畳む。5xx のみ運用判断用に区別する。
       if (bindResp.status >= 500) {
@@ -213,7 +213,10 @@ export function createBffDbscRoutes(config: BffDbscConfig) {
       );
 
       if (!challengeResp.ok) {
-        dbscLogger.warn("[dbsc-refresh] challenge issue failed", { status: challengeResp.status });
+        dbscLogger.warn(
+          "[dbsc-refresh] challenge issue failed",
+          httpStatusMetadata(challengeResp.status),
+        );
         if (challengeResp.status >= 500) {
           return c.json(
             { error: { code: "INTERNAL_ERROR", message: "Failed to issue challenge" } },
@@ -279,7 +282,7 @@ export function createBffDbscRoutes(config: BffDbscConfig) {
     logUpstreamDeprecation(verifyResp, { method: "POST", path: "/auth/dbsc/verify" }, dbscLogger);
 
     if (!verifyResp.ok) {
-      dbscLogger.warn("[dbsc-refresh] verify failed", { status: verifyResp.status });
+      dbscLogger.warn("[dbsc-refresh] verify failed", httpStatusMetadata(verifyResp.status));
       if (verifyResp.status >= 500) {
         return c.json(
           { error: { code: "INTERNAL_ERROR", message: "Failed to verify proof" } },

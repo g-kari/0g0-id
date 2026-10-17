@@ -1,6 +1,7 @@
 export function createAstroConfig(importMetaUrl: string, plugins: unknown[]) {
   return {
     output: "static" as const,
+    compressHTML: true,
     outDir: "../dist/client",
     vite: {
       plugins: plugins as any[],

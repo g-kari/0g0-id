@@ -97,14 +97,48 @@ export interface TokenPayload {
   exp: number;
   iat: number;
   jti: string;
-  kid: string;
-  email: string;
-  role: "user" | "admin";
+  /** kidはJWS保護ヘッダーに置く。旧payloadにある値だけを任意で表す。 */
+  kid?: string;
+  /** BFF/既発行tokenでは存在し得るが、新規RP tokenでは省略する。 */
+  email?: string;
+  /** IdP内部の権限。新規RP tokenでは省略し、未指定を管理者とみなさない。 */
+  role?: "user" | "admin";
   /** OIDCスコープ（スペース区切り）。サービストークンのみ設定される。BFFセッションはundefined。 */
   scope?: string;
   /** トークンを発行したサービスのclient_id。サービストークンのみ設定される。BFFセッションはundefined。 */
   cid?: string;
 }
+
+/** 新規BFF access tokenの既存プロフィール契約。 */
+export interface BffAccessTokenPayload extends TokenPayload {
+  cid?: undefined;
+  email: string;
+  role: "user" | "admin";
+}
+
+/** 新規RP access tokenの出力契約。既発行tokenのdecode型とは分ける。 */
+export interface RelyingPartyAccessTokenPayload extends TokenPayload {
+  cid: string;
+  email?: never;
+  role?: never;
+}
+
+/** プロフィールなしでRP access tokenを発行できる入力。 */
+export interface RelyingPartyAccessTokenInput extends Pick<
+  TokenPayload,
+  "iss" | "sub" | "aud" | "scope"
+> {
+  cid: string;
+  /** @deprecated 旧caller互換の入力のみ。RP tokenには出力しない。 */
+  email?: string;
+  /** @deprecated 旧caller互換の入力のみ。RP tokenには出力しない。 */
+  role?: "user" | "admin";
+}
+
+/** BFFは既存profileを必須とし、RPはprofileなしで発行する。 */
+export type AccessTokenInput =
+  | Omit<BffAccessTokenPayload, "exp" | "iat" | "jti" | "kid">
+  | RelyingPartyAccessTokenInput;
 
 /**
  * Cloudflare Workers Rate Limiting API のバインディング型。

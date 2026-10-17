@@ -3,7 +3,7 @@ import { getCookie } from "hono/cookie";
 import type { BffEnv } from "../types";
 import { parseSession, internalServiceHeaders } from "../lib/bff";
 import { buildSecureSessionRegistrationHeader, isDbscEnforceValue } from "../lib/dbsc";
-import { createLogger, type Logger } from "../lib/logger";
+import { createLogger, httpStatusMetadata, type Logger } from "../lib/logger";
 import { logUpstreamDeprecation } from "../lib/internal-secret-deprecation";
 import { restErrorBody } from "../lib/errors";
 
@@ -66,7 +66,7 @@ async function fetchDbscStatus(
     );
     logUpstreamDeprecation(resp, { method: "POST", path: "/auth/dbsc/status" }, logger);
     if (!resp.ok) {
-      logger.warn("[require-dbsc-bound] status lookup failed", { status: resp.status });
+      logger.warn("[require-dbsc-bound] status lookup failed", httpStatusMetadata(resp.status));
       return null;
     }
     const body = (await resp.json()) as StatusResponse;
