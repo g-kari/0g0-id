@@ -46,6 +46,9 @@ jobs:
         run: npm ci
         working-directory: workers/admin/frontend
 
+      - name: TypeScript CLI versions and workspace checks (Node22 / TS6+TS7 isolation)
+        run: node scripts/check-typescript-cli.mjs
+
       - name: check（lint + fmt + typecheck）
         run: ./node_modules/.bin/vp check
 
