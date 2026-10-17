@@ -10,7 +10,7 @@ import {
   createLogger,
 } from "@0g0-id/shared";
 import { authenticateService } from "../../utils/service-auth";
-import { parseTokenBody, applyUserClaims } from "./utils";
+import { parseTokenBody } from "./utils";
 
 const tokenLogger = createLogger("token");
 
@@ -46,7 +46,6 @@ async function introspectRefreshToken(
     return { active: false };
   }
   const scopeStr = refreshToken.scope ?? "";
-  const scopeList = scopeStr.split(" ").filter((s: string) => s !== "openid" && s !== "");
   const sub = await generatePairwiseSub(service.client_id, refreshToken.user_id, pairwiseSalt);
   const response: Record<string, unknown> = {
     active: true,
@@ -57,7 +56,6 @@ async function introspectRefreshToken(
     iat: Math.floor(new Date(refreshToken.created_at).getTime() / 1000),
     scope: scopeStr,
   };
-  applyUserClaims(response, user, scopeList);
   return response;
 }
 
@@ -89,7 +87,6 @@ async function introspectJwtToken(
       return { active: false };
     }
     const tokenScopeStr = payload.scope ?? "";
-    const tokenScopes = tokenScopeStr.split(" ").filter((s: string) => s !== "openid" && s !== "");
     const sub = await generatePairwiseSub(service.client_id, payload.sub, env.PAIRWISE_SALT);
     const jwtResponse: Record<string, unknown> = {
       active: true,
@@ -100,7 +97,6 @@ async function introspectJwtToken(
       scope: tokenScopeStr,
       token_type: "access_token",
     };
-    applyUserClaims(jwtResponse, tokenUser, tokenScopes);
     return jwtResponse;
   } catch (err) {
     tokenLogger.error("Introspect: DB error in introspectJwtToken", err);

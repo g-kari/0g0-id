@@ -366,8 +366,13 @@ describe("POST /auth/exchange", () => {
       expect(body.data.id_token).toBe("mock-id-token");
       // サービスフローでは session_id は含まない
       expect(body.data.session_id).toBeUndefined();
-      // サービスフローでは role は含まない
-      expect((body.data.user as Record<string, unknown>).role).toBeUndefined();
+      // Client capability/scope is not user consent. The legacy shape stays id-only.
+      expect(body.data.user).toEqual({ id: "pairwise-sub-1" });
+      expect(signIdToken).toHaveBeenCalledWith(
+        expect.not.objectContaining({ email: mockUser.email }),
+        expect.any(String),
+        expect.any(String),
+      );
     });
 
     it("authenticateService が例外を投げた → 500 INTERNAL_ERROR", async () => {
