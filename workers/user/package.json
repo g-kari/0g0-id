@@ -19,7 +19,7 @@
     "@cloudflare/vite-plugin": "1.63.1",
     "@cloudflare/workers-types": "^4.20260426.1",
     "@types/node": "^22.10.0",
-    "happy-dom": "^20.9.0",
+    "happy-dom": "^20.10.2",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vite-plus": "0.1.24",
