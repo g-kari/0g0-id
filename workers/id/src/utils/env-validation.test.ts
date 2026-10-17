@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vite-plus/test";
+import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
 import { validateEnv, _resetValidationCache } from "./env-validation";
 import type { IdpEnv } from "@0g0-id/shared";
 
@@ -11,6 +11,7 @@ const validEnv: Partial<IdpEnv> = {
   USER_ORIGIN: "https://user.0g0.xyz",
   ADMIN_ORIGIN: "https://admin.0g0.xyz",
   COOKIE_SECRET: "a".repeat(32),
+  PAIRWISE_SALT: "test-pairwise-salt-value",
 };
 
 beforeEach(() => {
@@ -143,5 +144,106 @@ describe("validateEnv", () => {
     const result2 = validateEnv(validEnv as IdpEnv);
     expect(result2.ok).toBe(true);
     expect(result1).not.toBe(result2);
+  });
+
+  describe("レートリミッター binding 警告", () => {
+    const rateLimiterBindings = [
+      "RATE_LIMITER_AUTH",
+      "RATE_LIMITER_EXTERNAL",
+      "RATE_LIMITER_TOKEN",
+      "RATE_LIMITER_TOKEN_CLIENT",
+      "RATE_LIMITER_DEVICE_VERIFY",
+    ];
+
+    it("本番環境でRATE_LIMITER未設定時にconsole.warnが呼ばれる", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      // validEnv は IDP_ORIGIN が https:// なので本番扱い
+      const result = validateEnv(validEnv as IdpEnv);
+      expect(result.ok).toBe(true);
+      expect(warnSpy).toHaveBeenCalledTimes(rateLimiterBindings.length + 1);
+      for (const bindingName of rateLimiterBindings) {
+        expect(warnSpy.mock.calls.some((call) => (call[0] as string).includes(bindingName))).toBe(
+          true,
+        );
+      }
+      warnSpy.mockRestore();
+    });
+
+    it("非本番環境ではconsole.warnが呼ばれない", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const devEnv = { ...validEnv, IDP_ORIGIN: "http://localhost:8787" };
+      const result = validateEnv(devEnv as IdpEnv);
+      expect(result.ok).toBe(true);
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it("本番環境でもvalidation結果はok: trueである（warningであってerrorではない）", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const result = validateEnv(validEnv as IdpEnv);
+      expect(result.ok).toBe(true);
+      warnSpy.mockRestore();
+    });
+  });
+
+  describe("LINK_TOKEN_KV binding 警告", () => {
+    it("本番環境でLINK_TOKEN_KV未設定時にconsole.warnが呼ばれる", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const result = validateEnv(validEnv as IdpEnv);
+      expect(result.ok).toBe(true);
+      expect(warnSpy.mock.calls.some((call) => (call[0] as string).includes("LINK_TOKEN_KV"))).toBe(
+        true,
+      );
+      warnSpy.mockRestore();
+    });
+
+    it("本番環境でLINK_TOKEN_KV設定済みの場合はwarnが呼ばれない", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const env = { ...validEnv, LINK_TOKEN_KV: {} } as unknown as IdpEnv;
+      const result = validateEnv(env);
+      expect(result.ok).toBe(true);
+      expect(warnSpy.mock.calls.some((call) => (call[0] as string).includes("LINK_TOKEN_KV"))).toBe(
+        false,
+      );
+      warnSpy.mockRestore();
+    });
+
+    it("非本番環境ではLINK_TOKEN_KV未設定でもwarnが呼ばれない", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const devEnv = { ...validEnv, IDP_ORIGIN: "http://localhost:8787" };
+      const result = validateEnv(devEnv as IdpEnv);
+      expect(result.ok).toBe(true);
+      expect(warnSpy.mock.calls.some((call) => (call[0] as string).includes("LINK_TOKEN_KV"))).toBe(
+        false,
+      );
+      warnSpy.mockRestore();
+    });
+  });
+
+  describe("PAIRWISE_SALT バリデーション", () => {
+    it("本番環境でPAIRWISE_SALT未設定の場合はエラーを返す", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { PAIRWISE_SALT: _, ...envWithoutSalt } = validEnv;
+      const result = validateEnv(envWithoutSalt as IdpEnv);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors.some((e) => e.includes("PAIRWISE_SALT"))).toBe(true);
+      }
+      warnSpy.mockRestore();
+    });
+
+    it("本番環境でPAIRWISE_SALT設定済みの場合はエラーなし", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const env = { ...validEnv, PAIRWISE_SALT: "a-secure-random-salt-value" } as IdpEnv;
+      const result = validateEnv(env);
+      expect(result.ok).toBe(true);
+      warnSpy.mockRestore();
+    });
+
+    it("非本番環境ではPAIRWISE_SALT未設定でもエラーにならない", () => {
+      const env = { ...validEnv, IDP_ORIGIN: "http://localhost:8787" } as IdpEnv;
+      const result = validateEnv(env);
+      expect(result.ok).toBe(true);
+    });
   });
 });

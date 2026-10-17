@@ -1048,3 +1048,107 @@ describe("upsertTwitchUser", () => {
     ).rejects.toThrow("Failed to create Twitch user");
   });
 });
+
+describe("upsertProviderUser — 自動リンクの安全性", () => {
+  it("既存ユーザーのメールが未検証の場合は自動リンクせず新規作成する", async () => {
+    const unverifiedUser: User = {
+      ...baseUser,
+      email_verified: 0,
+      google_sub: null,
+    };
+    const newUser: User = {
+      ...baseUser,
+      id: "user-new",
+      google_sub: "google-sub-new",
+      email_verified: 1,
+    };
+    // findUserBySub → null, findUserByEmail → unverified user, INSERT → new user
+    const db = makeMultiD1Mock({ first: null }, { first: unverifiedUser }, { first: newUser });
+    const user = await upsertUser(db, {
+      id: "user-new",
+      googleSub: "google-sub-new",
+      email: "test@example.com",
+      emailVerified: true,
+      name: "Test User",
+      picture: null,
+    });
+    expect(user.id).toBe("user-new");
+    expect(user.google_sub).toBe("google-sub-new");
+  });
+
+  it("既存ユーザーが同じプロバイダー列を既に持つ場合は自動リンクせず新規作成する", async () => {
+    const existingWithGithub: User = {
+      ...baseUser,
+      github_sub: "existing-github-sub",
+      email_verified: 1,
+    };
+    const newUser: User = {
+      ...baseUser,
+      id: "user-new",
+      github_sub: "new-github-sub",
+      email_verified: 1,
+    };
+    // findUserBySub → null, findUserByEmail → user with github_sub, INSERT → new user
+    const db = makeMultiD1Mock({ first: null }, { first: existingWithGithub }, { first: newUser });
+    const user = await upsertGithubUser(db, {
+      id: "user-new",
+      githubSub: "new-github-sub",
+      email: "test@example.com",
+      isPlaceholderEmail: false,
+      name: "Test User",
+      picture: null,
+    });
+    expect(user.id).toBe("user-new");
+    expect(user.github_sub).toBe("new-github-sub");
+  });
+
+  it("既存ユーザーがBAN済みの場合は自動リンクせず新規作成する", async () => {
+    const bannedUser: User = {
+      ...baseUser,
+      email_verified: 1,
+      github_sub: null,
+      banned_at: "2025-01-01T00:00:00Z",
+    };
+    const newUser: User = {
+      ...baseUser,
+      id: "user-new",
+      github_sub: "new-github-sub",
+      email_verified: 1,
+    };
+    // findUserBySub → null, findUserByEmail → banned user, INSERT → new user
+    const db = makeMultiD1Mock({ first: null }, { first: bannedUser }, { first: newUser });
+    const user = await upsertGithubUser(db, {
+      id: "user-new",
+      githubSub: "new-github-sub",
+      email: "test@example.com",
+      isPlaceholderEmail: false,
+      name: "Test User",
+      picture: null,
+    });
+    expect(user.id).toBe("user-new");
+  });
+
+  it("既存ユーザーのメールが検証済み＋プロバイダー列が空なら自動リンクする", async () => {
+    const verifiedUser: User = {
+      ...baseUser,
+      email_verified: 1,
+      github_sub: null,
+    };
+    const linkedUser: User = {
+      ...verifiedUser,
+      github_sub: "new-github-sub",
+    };
+    // findUserBySub → null, findUserByEmail → verified user, UPDATE → linked
+    const db = makeMultiD1Mock({ first: null }, { first: verifiedUser }, { first: linkedUser });
+    const user = await upsertGithubUser(db, {
+      id: "user-new",
+      githubSub: "new-github-sub",
+      email: "test@example.com",
+      isPlaceholderEmail: false,
+      name: "Test User",
+      picture: null,
+    });
+    expect(user.github_sub).toBe("new-github-sub");
+    expect(user.id).toBe("user-1");
+  });
+});

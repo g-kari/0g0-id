@@ -5,12 +5,9 @@ import { createMockIdpEnv } from "../../../../packages/shared/src/db/test-helper
 
 // @0g0-id/sharedの全関数をモック
 vi.mock("@0g0-id/shared", async (importOriginal) => {
-  const { parseJsonBody, restErrorBody, oauthErrorBody } =
-    await importOriginal<typeof import("@0g0-id/shared")>();
+  const actual = await importOriginal<typeof import("@0g0-id/shared")>();
   return {
-    parseJsonBody,
-    restErrorBody,
-    oauthErrorBody,
+    ...actual,
     createLogger: vi
       .fn()
       .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -93,12 +90,25 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     findRefreshTokenById: vi.fn(),
     // JTIブロックリスト
     addRevokedAccessToken: vi.fn(),
+    // INTERNAL_SECRET_STRICT 判定用（issue #156 Phase 6）— 副作用なし純粋関数なのでモック不要で実装をそのまま公開
+    parseStrictBoolEnv: (raw: string | undefined | null): boolean =>
+      String(raw ?? "")
+        .trim()
+        .toLowerCase() === "true",
     // BFFセッション（issue #139）
     createBffSession: vi.fn(),
     findActiveBffSession: vi.fn(),
     revokeBffSession: vi.fn(),
     revokeAllBffSessionsByUserId: vi.fn(),
     BFF_SESSION_MAX_AGE_SECONDS: 7 * 24 * 60 * 60,
+    // アカウントロックアウト（issue #172）
+    isAccountLocked: vi
+      .fn()
+      .mockResolvedValue({ locked: false, lockedUntil: null, failedAttempts: 0 }),
+    recordFailedAttempt: vi
+      .fn()
+      .mockResolvedValue({ locked: false, lockedUntil: null, failedAttempts: 0 }),
+    resetFailedAttempts: vi.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -151,6 +161,9 @@ import {
   verifyCookie,
   findRefreshTokenById,
   addRevokedAccessToken,
+  isAccountLocked,
+  recordFailedAttempt,
+  resetFailedAttempts,
 } from "@0g0-id/shared";
 
 import authRoutes from "./auth";
@@ -166,7 +179,7 @@ const mockEnv = createMockIdpEnv({
   GITHUB_CLIENT_SECRET: "github-client-secret",
   X_CLIENT_ID: "x-client-id",
   X_CLIENT_SECRET: "x-client-secret",
-  INTERNAL_SERVICE_SECRET: "mock-internal-secret",
+  INTERNAL_SERVICE_SECRET_USER: "mock-internal-secret",
 });
 
 const mockUser = {
@@ -245,6 +258,17 @@ describe("GET /auth/login", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(generateToken).mockReturnValue("mock-token-16");
     vi.mocked(generateCodeVerifier).mockReturnValue("mock-code-verifier");
     vi.mocked(generateCodeChallenge).mockResolvedValue("mock-code-challenge");
@@ -444,6 +468,17 @@ describe("GET /auth/callback", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(sha256).mockResolvedValue("hashed-value");
     vi.mocked(generateToken).mockReturnValue("mock-auth-code");
     vi.mocked(upsertUser).mockResolvedValue(mockUser);
@@ -486,7 +521,9 @@ describe("GET /auth/callback", () => {
       provider: "google",
     });
     const res = await sendRequest(app, "/auth/callback?error=access_denied", {
-      headers: { Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier` },
+      headers: {
+        Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
+      },
     });
     expect(res.status).toBe(302);
     const location = res.headers.get("Location") ?? "";
@@ -504,7 +541,9 @@ describe("GET /auth/callback", () => {
       provider: "google",
     });
     const res = await sendRequest(app, "/auth/callback?error=unknown_internal_error", {
-      headers: { Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier` },
+      headers: {
+        Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
+      },
     });
     expect(res.status).toBe(302);
     const location = res.headers.get("Location") ?? "";
@@ -539,7 +578,7 @@ describe("GET /auth/callback", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=wrong-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -560,7 +599,7 @@ describe("GET /auth/callback", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -589,7 +628,7 @@ describe("GET /auth/callback", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -604,7 +643,7 @@ describe("GET /auth/callback", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=some-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=!!!invalid-base64!!!; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=!!!invalid-base64!!!; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -622,6 +661,17 @@ describe("POST /auth/exchange", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     // serviceBindingMiddleware 通過用（X-Internal-Secret ヘッダー検証）
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(sha256).mockResolvedValue("hashed-code");
@@ -666,7 +716,7 @@ describe("POST /auth/exchange", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("無効なコード → 400を返す", async () => {
@@ -723,18 +773,19 @@ describe("POST /auth/exchange", () => {
     expect(body.data.expires_in).toBe(900);
     expect(body.data.user.id).toBe("user-1");
     expect(body.data.user.email).toBe("test@example.com");
-    // signIdToken が正しいペイロードで呼ばれていることを確認
+    // BFF JSON profile remains unchanged; ID-token assertions are profile-free.
     expect(vi.mocked(signIdToken)).toHaveBeenCalledWith(
       expect.objectContaining({
         iss: "https://id.0g0.xyz",
         sub: "user-1",
         aud: "https://id.0g0.xyz",
-        email: "test@example.com",
-        name: "Test User",
       }),
       "mock-private-key",
       "mock-public-key",
     );
+    expect(vi.mocked(signIdToken).mock.calls[0][0]).not.toHaveProperty("email");
+    expect(vi.mocked(signIdToken).mock.calls[0][0]).not.toHaveProperty("name");
+    expect(vi.mocked(signIdToken).mock.calls[0][0]).not.toHaveProperty("picture");
   });
 });
 
@@ -755,6 +806,17 @@ describe("POST /auth/refresh", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     // serviceBindingMiddleware 通過用
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(sha256).mockResolvedValue("hashed-token");
@@ -791,7 +853,7 @@ describe("POST /auth/refresh", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("トークンが存在しない → 401を返す", async () => {
@@ -841,7 +903,7 @@ describe("POST /auth/refresh", () => {
       method: "POST",
       body: { refresh_token: "recently-rotated-token" },
     });
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(503);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("TOKEN_ROTATED");
     // グレースピリオド内はfamilyを失効させない
@@ -1015,6 +1077,17 @@ describe("POST /auth/logout", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     // serviceBindingMiddleware 通過用
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(sha256).mockResolvedValue("hashed-token");
@@ -1128,8 +1201,8 @@ describe("POST /auth/logout", () => {
     expect(vi.mocked(addRevokedAccessToken)).not.toHaveBeenCalled();
   });
 
-  it("INTERNAL_SERVICE_SECRET設定時にヘッダーなし → 403を返す", async () => {
-    const envWithSecret = { ...mockEnv, INTERNAL_SERVICE_SECRET: "test-secret" };
+  it("INTERNAL_SERVICE_SECRET_USER設定時にヘッダーなし → 403を返す", async () => {
+    const envWithSecret = { ...mockEnv, INTERNAL_SERVICE_SECRET_USER: "test-secret" };
     const securedApp = new Hono<{ Bindings: typeof mockEnv }>();
     securedApp.route("/auth", authRoutes);
     const res = await securedApp.request(
@@ -1153,6 +1226,17 @@ describe("POST /auth/link-intent", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(findUserById).mockResolvedValue({ id: "user-1", banned_at: null } as never);
     vi.mocked(signCookie).mockImplementation(async (payload: string) =>
       btoa(encodeURIComponent(payload)),
@@ -1201,6 +1285,17 @@ describe("POST /auth/link-intent", () => {
 describe("GET /auth/callback - LINEプロバイダー", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(sha256).mockResolvedValue("hashed-value");
     vi.mocked(generateToken).mockReturnValue("mock-auth-code");
     vi.mocked(upsertLineUser).mockResolvedValue(mockUser);
@@ -1213,6 +1308,7 @@ describe("GET /auth/callback - LINEプロバイダー", () => {
       name: "LINE User",
       picture: "https://example.com/line-pic.jpg",
       email: "line@example.com",
+      email_verified: true,
     } as never);
     vi.mocked(signCookie).mockImplementation(async (payload: string) =>
       btoa(encodeURIComponent(payload)),
@@ -1236,7 +1332,7 @@ describe("GET /auth/callback - LINEプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1259,7 +1355,7 @@ describe("GET /auth/callback - LINEプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1286,7 +1382,7 @@ describe("GET /auth/callback - LINEプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1307,6 +1403,17 @@ describe("GET /auth/callback - LINEプロバイダー", () => {
 describe("GET /auth/callback - GitHubプロバイダー", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(sha256).mockResolvedValue("hashed-value");
     vi.mocked(generateToken).mockReturnValue("mock-auth-code");
     vi.mocked(upsertGithubUser).mockResolvedValue(mockUser);
@@ -1345,7 +1452,7 @@ describe("GET /auth/callback - GitHubプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1381,7 +1488,7 @@ describe("GET /auth/callback - GitHubプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1417,7 +1524,7 @@ describe("GET /auth/callback - GitHubプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1438,6 +1545,17 @@ describe("GET /auth/callback - GitHubプロバイダー", () => {
 describe("GET /auth/callback - Twitchプロバイダー", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(sha256).mockResolvedValue("hashed-value");
     vi.mocked(generateToken).mockReturnValue("mock-auth-code");
     vi.mocked(upsertTwitchUser).mockResolvedValue(mockUser);
@@ -1474,7 +1592,7 @@ describe("GET /auth/callback - Twitchプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1508,7 +1626,7 @@ describe("GET /auth/callback - Twitchプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1541,7 +1659,7 @@ describe("GET /auth/callback - Twitchプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1557,6 +1675,17 @@ describe("GET /auth/callback - Twitchプロバイダー", () => {
 describe("GET /auth/callback - Xプロバイダー", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(sha256).mockResolvedValue("hashed-value");
     vi.mocked(generateToken).mockReturnValue("mock-auth-code");
     vi.mocked(upsertXUser).mockResolvedValue(mockUser);
@@ -1592,7 +1721,7 @@ describe("GET /auth/callback - Xプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1625,7 +1754,7 @@ describe("GET /auth/callback - Xプロバイダー", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1643,6 +1772,17 @@ describe("GET /auth/callback - Xプロバイダー", () => {
 describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(sha256).mockResolvedValue("hashed-value");
     vi.mocked(generateToken).mockReturnValue("mock-auth-code");
     vi.mocked(findUserById).mockResolvedValue(mockUser);
@@ -1681,7 +1821,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1709,7 +1849,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1727,6 +1867,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
       name: "LINE User",
       picture: null,
       email: "line@example.com",
+      email_verified: true,
     } as never);
     const stateData = buildStateCookie({
       idState: "correct-state",
@@ -1738,7 +1879,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1765,7 +1906,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1785,6 +1926,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
       name: "LINE User",
       picture: null,
       email: "line@example.com",
+      email_verified: true,
     } as never);
     const stateData = buildStateCookie({
       idState: "correct-state",
@@ -1796,7 +1938,7 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1812,6 +1954,17 @@ describe("GET /auth/callback - プロバイダー連携 (linkUserId)", () => {
 describe("GET /auth/callback - ブートストラップ管理者", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(sha256).mockResolvedValue("hashed-value");
     vi.mocked(generateToken).mockReturnValue("mock-auth-code");
     vi.mocked(tryBootstrapAdmin).mockResolvedValue(true);
@@ -1853,7 +2006,7 @@ describe("GET /auth/callback - ブートストラップ管理者", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1875,7 +2028,7 @@ describe("GET /auth/callback - ブートストラップ管理者", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1895,7 +2048,7 @@ describe("GET /auth/callback - ブートストラップ管理者", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -1917,7 +2070,7 @@ describe("GET /auth/callback - ブートストラップ管理者", () => {
     const res = await buildApp().request(
       new Request(`${baseUrl}/auth/callback?code=auth-code&state=correct-state`, {
         headers: {
-          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=mock-verifier`,
+          Cookie: `__Host-oauth-state=${stateData}; __Host-oauth-pkce=bW9jay12ZXJpZmllcg%3D%3D`,
         },
       }),
       undefined,
@@ -2038,6 +2191,17 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     // serviceBindingMiddleware 通過用
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     // sha256 は呼び出し引数に応じて返す値を変える
@@ -2286,6 +2450,17 @@ describe("GET /auth/authorize", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     vi.mocked(findServiceByClientId).mockResolvedValue(mockService as never);
     vi.mocked(normalizeRedirectUri).mockImplementation((uri: string) => uri);
     vi.mocked(listRedirectUris).mockResolvedValue([
@@ -2460,6 +2635,17 @@ describe("GET /auth/authorize", () => {
 describe("Authorization Code Flow E2E (State Cookie Round-trip)", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(recordFailedAttempt).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(resetFailedAttempts).mockResolvedValue(undefined);
     // Cookie署名モック（base64エンコード/デコードで署名をシミュレート）
     vi.mocked(signCookie).mockImplementation(async (payload: string) =>
       btoa(encodeURIComponent(payload)),

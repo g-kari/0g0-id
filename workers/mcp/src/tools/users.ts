@@ -1,11 +1,9 @@
 import type { McpTool } from "../mcp";
 import {
-  findUserById,
   listUsers,
   countUsers,
   banUserWithRevocation,
   unbanUser,
-  deleteUser,
   updateUserRoleWithRevocation,
   getUserProviders,
   getLoginEventsByUserId,
@@ -14,11 +12,23 @@ import {
   listActiveSessionsByUserId,
   listServicesByOwner,
   listUserConnections,
+  countServicesByOwner,
   revokeUserTokens,
+  revokeAllBffSessionsByUserId,
   deleteMcpSessionsByUser,
+  deleteUser,
   createAdminAuditLog,
   type UserFilter,
 } from "@0g0-id/shared";
+import {
+  requireString,
+  isErrorResponse,
+  errorResponse,
+  jsonResponse,
+  textResponse,
+  requireUserValidation,
+  isValidationError,
+} from "./_helpers";
 
 export const listUsersTool: McpTool = {
   definition: {
@@ -68,7 +78,7 @@ export const listUsersTool: McpTool = {
       },
     };
 
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return jsonResponse(result);
   },
 };
 
@@ -85,17 +95,11 @@ export const getUserTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = params.user_id;
-    if (typeof userId !== "string" || userId.length === 0) {
-      return { content: [{ type: "text", text: "user_id は必須です" }], isError: true };
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { user } = validated;
 
-    const user = await findUserById(context.db, userId);
-    if (!user) {
-      return { content: [{ type: "text", text: "ユーザーが見つかりません" }], isError: true };
-    }
-
-    return { content: [{ type: "text", text: JSON.stringify(user, null, 2) }] };
+    return jsonResponse(user);
   },
 };
 
@@ -112,15 +116,9 @@ export const banUserTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = params.user_id;
-    if (typeof userId !== "string" || userId.length === 0) {
-      return { content: [{ type: "text", text: "user_id は必須です" }], isError: true };
-    }
-
-    const existing = await findUserById(context.db, userId);
-    if (!existing) {
-      return { content: [{ type: "text", text: "ユーザーが見つかりません" }], isError: true };
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId } = validated;
 
     // BAN + 全トークン失効 + MCPセッション削除 を D1 batch() でアトミックに実行
     const user = await banUserWithRevocation(context.db, userId);
@@ -130,14 +128,9 @@ export const banUserTool: McpTool = {
       targetType: "user",
       targetId: userId,
     });
-    return {
-      content: [
-        {
-          type: "text",
-          text: `ユーザー ${user.name} (${user.email}) をBANしました。banned_at: ${user.banned_at}`,
-        },
-      ],
-    };
+    return textResponse(
+      `ユーザー ${user.name} (${user.email}) をBANしました。banned_at: ${user.banned_at}`,
+    );
   },
 };
 
@@ -154,15 +147,9 @@ export const unbanUserTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = params.user_id;
-    if (typeof userId !== "string" || userId.length === 0) {
-      return { content: [{ type: "text", text: "user_id は必須です" }], isError: true };
-    }
-
-    const existing = await findUserById(context.db, userId);
-    if (!existing) {
-      return { content: [{ type: "text", text: "ユーザーが見つかりません" }], isError: true };
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId } = validated;
 
     const user = await unbanUser(context.db, userId);
     await createAdminAuditLog(context.db, {
@@ -171,14 +158,7 @@ export const unbanUserTool: McpTool = {
       targetType: "user",
       targetId: userId,
     });
-    return {
-      content: [
-        {
-          type: "text",
-          text: `ユーザー ${user.name} (${user.email}) のBANを解除しました。`,
-        },
-      ],
-    };
+    return textResponse(`ユーザー ${user.name} (${user.email}) のBANを解除しました。`);
   },
 };
 
@@ -195,22 +175,24 @@ export const deleteUserTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = params.user_id;
-    if (typeof userId !== "string" || userId.length === 0) {
-      return { content: [{ type: "text", text: "user_id は必須です" }], isError: true };
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId } = validated;
 
-    const existing = await findUserById(context.db, userId);
-    if (!existing) {
-      return { content: [{ type: "text", text: "ユーザーが見つかりません" }], isError: true };
+    const ownedServices = await countServicesByOwner(context.db, userId);
+    if (ownedServices > 0) {
+      return errorResponse(
+        `User owns ${ownedServices} service(s). Transfer ownership before deleting.`,
+      );
     }
 
     await revokeUserTokens(context.db, userId, "security_event");
+    await revokeAllBffSessionsByUserId(context.db, userId, "security_event");
     await deleteMcpSessionsByUser(context.db, userId);
 
     const deleted = await deleteUser(context.db, userId);
     if (!deleted) {
-      return { content: [{ type: "text", text: "ユーザーの削除に失敗しました" }], isError: true };
+      return errorResponse("ユーザーの削除に失敗しました");
     }
 
     await createAdminAuditLog(context.db, {
@@ -220,9 +202,7 @@ export const deleteUserTool: McpTool = {
       targetId: userId,
     });
 
-    return {
-      content: [{ type: "text", text: `ユーザー ${userId} を削除しました。` }],
-    };
+    return textResponse(`ユーザー ${userId} を削除しました。`);
   },
 };
 
@@ -240,15 +220,13 @@ export const getUserLoginHistoryTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = params.user_id;
-    if (typeof userId !== "string" || userId.length === 0) {
-      return { content: [{ type: "text", text: "user_id は必須です" }], isError: true };
-    }
+    const userId = requireString(params.user_id, "user_id");
+    if (isErrorResponse(userId)) return userId;
 
     const limit = Math.min(100, Math.max(1, Number(params.limit) || 20));
     const result = await getLoginEventsByUserId(context.db, userId, limit);
 
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return jsonResponse(result);
   },
 };
 
@@ -266,21 +244,15 @@ export const getUserLoginStatsTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = params.user_id;
-    if (typeof userId !== "string" || userId.length === 0) {
-      return { content: [{ type: "text", text: "user_id は必須です" }], isError: true };
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId } = validated;
 
     const days = Math.min(365, Math.max(1, Number(params.days) || 30));
     const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-    const user = await findUserById(context.db, userId);
-    if (!user) {
-      return { content: [{ type: "text", text: "ユーザーが見つかりません" }], isError: true };
-    }
-
     const stats = await getUserLoginProviderStats(context.db, userId, sinceIso);
-    return { content: [{ type: "text", text: JSON.stringify({ stats, days }, null, 2) }] };
+    return jsonResponse({ stats, days });
   },
 };
 
@@ -298,20 +270,14 @@ export const getUserLoginTrendsTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = params.user_id;
-    if (typeof userId !== "string" || userId.length === 0) {
-      return { content: [{ type: "text", text: "user_id は必須です" }], isError: true };
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId } = validated;
 
     const days = Math.min(365, Math.max(1, Number(params.days) || 30));
 
-    const user = await findUserById(context.db, userId);
-    if (!user) {
-      return { content: [{ type: "text", text: "ユーザーが見つかりません" }], isError: true };
-    }
-
     const trends = await getUserDailyLoginTrends(context.db, userId, days);
-    return { content: [{ type: "text", text: JSON.stringify({ trends, days }, null, 2) }] };
+    return jsonResponse({ trends, days });
   },
 };
 export const getUserProvidersTool: McpTool = {
@@ -327,13 +293,11 @@ export const getUserProvidersTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = params.user_id;
-    if (typeof userId !== "string" || userId.length === 0) {
-      return { content: [{ type: "text", text: "user_id は必須です" }], isError: true };
-    }
+    const userId = requireString(params.user_id, "user_id");
+    if (isErrorResponse(userId)) return userId;
 
     const providers = await getUserProviders(context.db, userId);
-    return { content: [{ type: "text", text: JSON.stringify(providers, null, 2) }] };
+    return jsonResponse(providers);
   },
 };
 
@@ -351,15 +315,9 @@ export const listUserSessionsTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = params.user_id;
-    if (typeof userId !== "string" || userId.length === 0) {
-      return { content: [{ type: "text", text: "user_id は必須です" }], isError: true };
-    }
-
-    const user = await findUserById(context.db, userId);
-    if (!user) {
-      return { content: [{ type: "text", text: "ユーザーが見つかりません" }], isError: true };
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId, user } = validated;
 
     const sessions = await listActiveSessionsByUserId(context.db, userId);
 
@@ -369,7 +327,7 @@ export const listUserSessionsTool: McpTool = {
       total: sessions.length,
     };
 
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return jsonResponse(result);
   },
 };
 
@@ -386,15 +344,9 @@ export const revokeUserSessionsTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = params.user_id;
-    if (typeof userId !== "string" || userId.length === 0) {
-      return { content: [{ type: "text", text: "user_id は必須です" }], isError: true };
-    }
-
-    const user = await findUserById(context.db, userId);
-    if (!user) {
-      return { content: [{ type: "text", text: "ユーザーが見つかりません" }], isError: true };
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId, user } = validated;
 
     await revokeUserTokens(context.db, userId, "admin_action");
     await deleteMcpSessionsByUser(context.db, userId);
@@ -406,14 +358,7 @@ export const revokeUserSessionsTool: McpTool = {
       targetId: userId,
     });
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: `ユーザー ${user.name} (${user.email}) の全セッションを失効させました。`,
-        },
-      ],
-    };
+    return textResponse(`ユーザー ${user.name} (${user.email}) の全セッションを失効させました。`);
   },
 };
 
@@ -430,15 +375,9 @@ export const getUserOwnedServicesTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = params.user_id;
-    if (typeof userId !== "string" || userId.length === 0) {
-      return { content: [{ type: "text", text: "user_id は必須です" }], isError: true };
-    }
-
-    const user = await findUserById(context.db, userId);
-    if (!user) {
-      return { content: [{ type: "text", text: "ユーザーが見つかりません" }], isError: true };
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId, user } = validated;
 
     const services = await listServicesByOwner(context.db, userId);
     const result = {
@@ -453,7 +392,7 @@ export const getUserOwnedServicesTool: McpTool = {
       total: services.length,
     };
 
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return jsonResponse(result);
   },
 };
 
@@ -470,15 +409,9 @@ export const getUserAuthorizedServicesTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = params.user_id;
-    if (typeof userId !== "string" || userId.length === 0) {
-      return { content: [{ type: "text", text: "user_id は必須です" }], isError: true };
-    }
-
-    const user = await findUserById(context.db, userId);
-    if (!user) {
-      return { content: [{ type: "text", text: "ユーザーが見つかりません" }], isError: true };
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId, user } = validated;
 
     const connections = await listUserConnections(context.db, userId);
     const result = {
@@ -487,7 +420,7 @@ export const getUserAuthorizedServicesTool: McpTool = {
       total: connections.length,
     };
 
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return jsonResponse(result);
   },
 };
 
@@ -509,33 +442,17 @@ export const updateUserRoleTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const userId = params.user_id;
-    if (typeof userId !== "string" || userId.length === 0) {
-      return { content: [{ type: "text", text: "user_id は必須です" }], isError: true };
-    }
+    const validated = await requireUserValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { userId, user } = validated;
 
     const role = params.role;
     if (role !== "user" && role !== "admin") {
-      return {
-        content: [{ type: "text", text: 'role は "user" または "admin" を指定してください' }],
-        isError: true,
-      };
+      return errorResponse('role は "user" または "admin" を指定してください');
     }
 
-    const existing = await findUserById(context.db, userId);
-    if (!existing) {
-      return { content: [{ type: "text", text: "ユーザーが見つかりません" }], isError: true };
-    }
-
-    if (existing.role === role) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `ユーザー ${existing.name} (${existing.email}) のロールは既に "${role}" です`,
-          },
-        ],
-      };
+    if (user.role === role) {
+      return textResponse(`ユーザー ${user.name} (${user.email}) のロールは既に "${role}" です`);
     }
 
     // ロール変更 + 全トークン失効 + MCPセッション削除 を D1 batch() でアトミックに実行
@@ -547,7 +464,7 @@ export const updateUserRoleTool: McpTool = {
       action: "user.role_change",
       targetType: "user",
       targetId: userId,
-      details: { from: existing.role, to: role },
+      details: { from: user.role, to: role },
     });
 
     const result = {
@@ -558,6 +475,6 @@ export const updateUserRoleTool: McpTool = {
       updated_at: updated.updated_at,
     };
 
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return jsonResponse(result);
   },
 };

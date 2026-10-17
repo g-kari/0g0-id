@@ -20,12 +20,15 @@
  */
 export const REST_ERROR_CODES = {
   BAD_REQUEST: "BAD_REQUEST",
+  INVALID_PARAMETER: "INVALID_PARAMETER",
   UNAUTHORIZED: "UNAUTHORIZED",
   FORBIDDEN: "FORBIDDEN",
   NOT_FOUND: "NOT_FOUND",
   CONFLICT: "CONFLICT",
+  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
   TOO_MANY_REQUESTS: "TOO_MANY_REQUESTS",
   INTERNAL_ERROR: "INTERNAL_ERROR",
+  VALIDATION_ERROR: "VALIDATION_ERROR",
 } as const;
 
 export type RestErrorCode = (typeof REST_ERROR_CODES)[keyof typeof REST_ERROR_CODES];
@@ -40,6 +43,19 @@ export interface RestErrorBody {
   };
 }
 
+export interface ValidationErrorDetail {
+  path: string[];
+  message: string;
+}
+
+export interface RestValidationErrorBody {
+  error: {
+    code: "VALIDATION_ERROR";
+    message: string;
+    details: ValidationErrorDetail[];
+  };
+}
+
 /**
  * OAuth 2.0 (RFC 6749) 形式のエラーレスポンスボディ。
  */
@@ -47,6 +63,26 @@ export interface OAuthErrorBody {
   error: string;
   error_description?: string;
   error_uri?: string;
+}
+
+/**
+ * JSON-RPC 2.0 エラーレスポンスボディ。
+ * MCP Worker の認証ミドルウェア等で使用する。
+ */
+export interface JsonRpcErrorBody {
+  jsonrpc: "2.0";
+  id: null;
+  error: { code: number; message: string };
+}
+
+/**
+ * Zod バリデーションエラーボディを生成する。全フィールドのエラーを details に含める。
+ */
+export function validationErrorBody(
+  message: string,
+  details: ValidationErrorDetail[],
+): RestValidationErrorBody {
+  return { error: { code: "VALIDATION_ERROR", message, details } };
 }
 
 /**
@@ -67,4 +103,12 @@ export function restErrorBody(code: string, message: string): RestErrorBody {
  */
 export function oauthErrorBody(error: string, description?: string): OAuthErrorBody {
   return description === undefined ? { error } : { error, error_description: description };
+}
+
+/**
+ * JSON-RPC 2.0 エラーボディを生成する。
+ * id=null は「リクエスト ID が不明」を示す（認証失敗時はリクエスト本文を解釈しないため）。
+ */
+export function jsonRpcErrorBody(code: number, message: string): JsonRpcErrorBody {
+  return { jsonrpc: "2.0", id: null, error: { code, message } };
 }

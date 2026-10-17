@@ -66,6 +66,10 @@ npm run deploy:id
 npm run deploy:mcp
 ```
 
+`deploy:user` / `deploy:admin` は `wrangler deploy` の前に `scripts/preflight-deploy.ts` を走らせ、`DBSC_ENFORCE_SENSITIVE` secret の登録有無を確認する。ローカル運用では warn のみで続行（fail-open）するが、**CI 経由のデプロイを追加する際は該当 job の `env:` に `PREFLIGHT_STRICT: "1"` を固定設定する**ことを推奨（issue #155 Phase 3 — secret 登録漏れの本番反映を防ぐ運用ゲート）。詳細は `docs/api-user.md` / `docs/api-admin.md` の「デプロイ運用」セクションを参照。
+
+`deploy:id` も `wrangler deploy` 前に `workers/id/scripts/preflight-deploy.ts` を走らせ、`INTERNAL_SERVICE_SECRET_USER` / `INTERNAL_SERVICE_SECRET_ADMIN` の登録有無を確認する（issue #156 — 片方の BFF が 403 全壊する事故を事前検知）。ローカル運用では warn のみで続行（fail-open）、**CI 経由のデプロイを追加する際は該当 job の `env:` に `PREFLIGHT_STRICT: "1"` を固定設定する**ことを推奨。BFF 側の `DBSC_ENFORCE_SENSITIVE` プリフライトと同じ共通コア（`packages/shared/src/lib/preflight-core.ts`）を使用。詳細は `docs/api-id.md` の「デプロイ運用」セクションを参照。
+
 ### ⚠️ id worker の静的アセット生成
 
 `deploy:id` は `build:assets` で `dist/.well-known/*.json` と `dist/docs/*.json` を生成し、Workers Assets 経由で配信する。公開鍵は以下の優先順で解決される:
@@ -97,25 +101,10 @@ npm run migrate:id    # 本番DBに適用（push前に必ず実行）
 
 ## 開発ツール
 
-### ⚠️ Serena（セマンティックコーディングMCP）— 必須ツール
+### 読み取り・検索・編集
 
-> **コードの読み取り・検索・編集には必ずSerenaを使うこと。**
-> **SerenaのMCPツールが利用可能な場合、Read/Edit/Grep/Glob等の使用は禁止。**
+作業環境で利用できる読み取り・検索・編集ツールを使用し、変更は必要最小限にとどめる。
 
-| 操作                 | Serenaツール                                   |
-| -------------------- | ---------------------------------------------- |
-| シンボル検索         | `find_symbol`                                  |
-| 参照先検索           | `find_referencing_symbols`                     |
-| ディレクトリ一覧     | `list_dir`                                     |
-| ファイル検索         | `find_file`                                    |
-| ファイル読み取り     | `read_file`                                    |
-| シンボル一覧         | `get_symbols_overview`                         |
-| シンボル単位の編集   | `replace_symbol_body`                          |
-| コンテンツ置換       | `replace_content`                              |
-| 挿入（後/前）        | `insert_after_symbol` / `insert_before_symbol` |
-| パターン検索         | `search_for_pattern`                           |
-| ファイル作成・上書き | `create_text_file`                             |
-
-**禁止（Serena利用可能時）:** `cat`, `sed`, `awk`, `grep`, `find` 等のシェルコマンド、行番号ベースの編集
-
-**例外:** Serenaが未初期化・利用不可の場合のみ代替手段を使用可。
+- `Glob` / `find` 等で対象ファイルを絞り、`Grep` / `grep` 等でシンボルの定義・参照を確認する。参照確認では import / alias / re-export も追う。
+- `Read` / `sed` 等で対象シンボルと必要な周辺範囲を読み、全ファイルの読み取りは検証に必要な場合に限る。
+- 編集前に対象の現状を確認し、`Edit` 等で最小変更を行った後、差分で意図しない変更がないことを確認する。

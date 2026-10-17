@@ -2,7 +2,6 @@ import type { McpTool } from "../mcp";
 import {
   listServices,
   countServices,
-  findServiceById,
   findUserById,
   createService,
   deleteService,
@@ -24,6 +23,15 @@ import {
   createAdminAuditLog,
   type ServiceListFilter,
 } from "@0g0-id/shared";
+import {
+  requireString,
+  isErrorResponse,
+  requireServiceValidation,
+  isValidationError,
+  errorResponse,
+  jsonResponse,
+  textResponse,
+} from "./_helpers";
 
 export const listServicesTool: McpTool = {
   definition: {
@@ -72,7 +80,7 @@ export const listServicesTool: McpTool = {
       },
     };
 
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return jsonResponse(result);
   },
 };
 
@@ -89,15 +97,9 @@ export const getServiceTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = params.service_id;
-    if (typeof serviceId !== "string" || serviceId.length === 0) {
-      return { content: [{ type: "text", text: "service_id は必須です" }], isError: true };
-    }
-
-    const service = await findServiceById(context.db, serviceId);
-    if (!service) {
-      return { content: [{ type: "text", text: "サービスが見つかりません" }], isError: true };
-    }
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { service } = validated;
 
     // client_secret_hash は返さない
     const result = {
@@ -110,7 +112,7 @@ export const getServiceTool: McpTool = {
       updated_at: service.updated_at,
     };
 
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return jsonResponse(result);
   },
 };
 
@@ -133,10 +135,8 @@ export const createServiceTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const name = params.name;
-    if (typeof name !== "string" || name.length === 0) {
-      return { content: [{ type: "text", text: "name は必須です" }], isError: true };
-    }
+    const name = requireString(params.name, "name");
+    if (isErrorResponse(name)) return name;
 
     // JSON.stringify で配列形式に統一（parseAllowedScopes がJSON配列を期待するため）
     const allowedScopes = Array.isArray(params.allowed_scopes)
@@ -176,14 +176,9 @@ export const createServiceTool: McpTool = {
       updated_at: service.updated_at,
     };
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: `サービスを作成しました。client_secret は以下のレスポンスのみで返却されます（再取得不可）。\n\n${JSON.stringify(result, null, 2)}`,
-        },
-      ],
-    };
+    return textResponse(
+      `サービスを作成しました。client_secret は以下のレスポンスのみで返却されます（再取得不可）。\n\n${JSON.stringify(result, null, 2)}`,
+    );
   },
 };
 
@@ -200,15 +195,9 @@ export const deleteServiceTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = params.service_id;
-    if (typeof serviceId !== "string" || serviceId.length === 0) {
-      return { content: [{ type: "text", text: "service_id は必須です" }], isError: true };
-    }
-
-    const service = await findServiceById(context.db, serviceId);
-    if (!service) {
-      return { content: [{ type: "text", text: "サービスが見つかりません" }], isError: true };
-    }
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId, service } = validated;
 
     // サービス削除前に全ユーザーのアクティブトークンを失効させる（REST APIと同じ挙動）
     const revokedCount = await revokeAllServiceTokens(context.db, serviceId, "service_delete");
@@ -223,14 +212,9 @@ export const deleteServiceTool: McpTool = {
       details: { name: service.name, revoked_token_count: revokedCount },
     });
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: `サービス "${service.name}" (ID: ${serviceId}) を削除しました。${revokedCount > 0 ? `（アクティブトークン ${revokedCount} 件を失効）` : ""}`,
-        },
-      ],
-    };
+    return textResponse(
+      `サービス "${service.name}" (ID: ${serviceId}) を削除しました。${revokedCount > 0 ? `（アクティブトークン ${revokedCount} 件を失効）` : ""}`,
+    );
   },
 };
 
@@ -248,25 +232,16 @@ export const rotateServiceSecretTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = params.service_id;
-    if (typeof serviceId !== "string" || serviceId.length === 0) {
-      return { content: [{ type: "text", text: "service_id は必須です" }], isError: true };
-    }
-
-    const service = await findServiceById(context.db, serviceId);
-    if (!service) {
-      return { content: [{ type: "text", text: "サービスが見つかりません" }], isError: true };
-    }
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId, service } = validated;
 
     const newClientSecret = generateClientSecret();
     const newClientSecretHash = await sha256(newClientSecret);
 
     const updated = await rotateClientSecret(context.db, serviceId, newClientSecretHash);
     if (!updated) {
-      return {
-        content: [{ type: "text", text: "シークレットのローテーションに失敗しました" }],
-        isError: true,
-      };
+      return errorResponse("シークレットのローテーションに失敗しました");
     }
 
     await createAdminAuditLog(context.db, {
@@ -285,14 +260,9 @@ export const rotateServiceSecretTool: McpTool = {
       updated_at: updated.updated_at,
     };
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: `シークレットをローテーションしました。新しい client_secret は以下のレスポンスのみで返却されます（再取得不可）。\n\n${JSON.stringify(result, null, 2)}`,
-        },
-      ],
-    };
+    return textResponse(
+      `シークレットをローテーションしました。新しい client_secret は以下のレスポンスのみで返却されます（再取得不可）。\n\n${JSON.stringify(result, null, 2)}`,
+    );
   },
 };
 
@@ -315,15 +285,9 @@ export const updateServiceTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = params.service_id;
-    if (typeof serviceId !== "string" || serviceId.length === 0) {
-      return { content: [{ type: "text", text: "service_id は必須です" }], isError: true };
-    }
-
-    const service = await findServiceById(context.db, serviceId);
-    if (!service) {
-      return { content: [{ type: "text", text: "サービスが見つかりません" }], isError: true };
-    }
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId } = validated;
 
     const name =
       typeof params.name === "string" && params.name.length > 0 ? params.name : undefined;
@@ -332,12 +296,7 @@ export const updateServiceTool: McpTool = {
       : undefined;
 
     if (!name && !allowedScopes) {
-      return {
-        content: [
-          { type: "text", text: "name または allowed_scopes のいずれかを指定してください" },
-        ],
-        isError: true,
-      };
+      return errorResponse("name または allowed_scopes のいずれかを指定してください");
     }
 
     const updated = await updateServiceFields(context.db, serviceId, {
@@ -346,7 +305,7 @@ export const updateServiceTool: McpTool = {
     });
 
     if (!updated) {
-      return { content: [{ type: "text", text: "サービスの更新に失敗しました" }], isError: true };
+      return errorResponse("サービスの更新に失敗しました");
     }
 
     await createAdminAuditLog(context.db, {
@@ -369,7 +328,7 @@ export const updateServiceTool: McpTool = {
       updated_at: updated.updated_at,
     };
 
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return jsonResponse(result);
   },
 };
 
@@ -386,15 +345,9 @@ export const listRedirectUrisTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = params.service_id;
-    if (typeof serviceId !== "string" || serviceId.length === 0) {
-      return { content: [{ type: "text", text: "service_id は必須です" }], isError: true };
-    }
-
-    const service = await findServiceById(context.db, serviceId);
-    if (!service) {
-      return { content: [{ type: "text", text: "サービスが見つかりません" }], isError: true };
-    }
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId, service } = validated;
 
     const uris = await listRedirectUris(context.db, serviceId);
     const result = {
@@ -404,7 +357,7 @@ export const listRedirectUrisTool: McpTool = {
       total: uris.length,
     };
 
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return jsonResponse(result);
   },
 };
 
@@ -423,32 +376,18 @@ export const addRedirectUriTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = params.service_id;
-    if (typeof serviceId !== "string" || serviceId.length === 0) {
-      return { content: [{ type: "text", text: "service_id は必須です" }], isError: true };
-    }
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId } = validated;
 
-    const uri = params.uri;
-    if (typeof uri !== "string" || uri.length === 0) {
-      return { content: [{ type: "text", text: "uri は必須です" }], isError: true };
-    }
+    const uri = requireString(params.uri, "uri");
+    if (isErrorResponse(uri)) return uri;
 
     const normalized = normalizeRedirectUri(uri);
     if (!normalized) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: "無効なリダイレクトURIです（https必須、フラグメント禁止、localhostのみhttp可）",
-          },
-        ],
-        isError: true,
-      };
-    }
-
-    const service = await findServiceById(context.db, serviceId);
-    if (!service) {
-      return { content: [{ type: "text", text: "サービスが見つかりません" }], isError: true };
+      return errorResponse(
+        "無効なリダイレクトURIです（https必須、フラグメント禁止、localhostのみhttp可）",
+      );
     }
 
     let added;
@@ -460,10 +399,7 @@ export const addRedirectUriTool: McpTool = {
       });
     } catch (err) {
       if (err instanceof Error && err.message.includes("UNIQUE constraint failed")) {
-        return {
-          content: [{ type: "text", text: "そのリダイレクトURIは既に登録されています" }],
-          isError: true,
-        };
+        return errorResponse("そのリダイレクトURIは既に登録されています");
       }
       throw err;
     }
@@ -476,7 +412,7 @@ export const addRedirectUriTool: McpTool = {
       details: { uri: normalized },
     });
 
-    return { content: [{ type: "text", text: JSON.stringify(added, null, 2) }] };
+    return jsonResponse(added);
   },
 };
 
@@ -494,35 +430,21 @@ export const deleteRedirectUriTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = params.service_id;
-    if (typeof serviceId !== "string" || serviceId.length === 0) {
-      return { content: [{ type: "text", text: "service_id は必須です" }], isError: true };
-    }
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId } = validated;
 
-    const uriId = params.uri_id;
-    if (typeof uriId !== "string" || uriId.length === 0) {
-      return { content: [{ type: "text", text: "uri_id は必須です" }], isError: true };
-    }
-
-    const service = await findServiceById(context.db, serviceId);
-    if (!service) {
-      return { content: [{ type: "text", text: "サービスが見つかりません" }], isError: true };
-    }
+    const uriId = requireString(params.uri_id, "uri_id");
+    if (isErrorResponse(uriId)) return uriId;
 
     const existing = await findRedirectUriById(context.db, uriId, serviceId);
     if (!existing) {
-      return {
-        content: [{ type: "text", text: "リダイレクトURIが見つかりません" }],
-        isError: true,
-      };
+      return errorResponse("リダイレクトURIが見つかりません");
     }
 
     const changes = await deleteRedirectUri(context.db, uriId, serviceId);
     if (changes === 0) {
-      return {
-        content: [{ type: "text", text: "リダイレクトURIの削除に失敗しました" }],
-        isError: true,
-      };
+      return errorResponse("リダイレクトURIの削除に失敗しました");
     }
 
     await createAdminAuditLog(context.db, {
@@ -533,9 +455,7 @@ export const deleteRedirectUriTool: McpTool = {
       details: { uri: existing.uri },
     });
 
-    return {
-      content: [{ type: "text", text: `リダイレクトURI "${existing.uri}" を削除しました。` }],
-    };
+    return textResponse(`リダイレクトURI "${existing.uri}" を削除しました。`);
   },
 };
 
@@ -554,15 +474,9 @@ export const listServiceUsersTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = params.service_id;
-    if (typeof serviceId !== "string" || serviceId.length === 0) {
-      return { content: [{ type: "text", text: "service_id は必須です" }], isError: true };
-    }
-
-    const service = await findServiceById(context.db, serviceId);
-    if (!service) {
-      return { content: [{ type: "text", text: "サービスが見つかりません" }], isError: true };
-    }
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId, service } = validated;
 
     const page = Math.max(1, Number(params.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(params.limit) || 50));
@@ -590,7 +504,7 @@ export const listServiceUsersTool: McpTool = {
       },
     };
 
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return jsonResponse(result);
   },
 };
 
@@ -609,26 +523,16 @@ export const revokeServiceUserAccessTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = params.service_id;
-    if (typeof serviceId !== "string" || serviceId.length === 0) {
-      return { content: [{ type: "text", text: "service_id は必須です" }], isError: true };
-    }
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId, service } = validated;
 
-    const userId = params.user_id;
-    if (typeof userId !== "string" || userId.length === 0) {
-      return { content: [{ type: "text", text: "user_id は必須です" }], isError: true };
-    }
+    const userId = requireString(params.user_id, "user_id");
+    if (isErrorResponse(userId)) return userId;
 
-    const [service, user] = await Promise.all([
-      findServiceById(context.db, serviceId),
-      findUserById(context.db, userId),
-    ]);
-
-    if (!service) {
-      return { content: [{ type: "text", text: "サービスが見つかりません" }], isError: true };
-    }
+    const user = await findUserById(context.db, userId);
     if (!user) {
-      return { content: [{ type: "text", text: "ユーザーが見つかりません" }], isError: true };
+      return errorResponse("ユーザーが見つかりません");
     }
 
     const revokedCount = await revokeUserServiceTokens(
@@ -638,14 +542,9 @@ export const revokeServiceUserAccessTool: McpTool = {
       "admin_action",
     );
     if (revokedCount === 0) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `ユーザー ${user.name} (${user.email}) はサービス "${service.name}" へのアクティブなトークンを持っていません（既に失効済みまたは未認可）`,
-          },
-        ],
-      };
+      return textResponse(
+        `ユーザー ${user.name} (${user.email}) はサービス "${service.name}" へのアクティブなトークンを持っていません（既に失効済みまたは未認可）`,
+      );
     }
 
     await createAdminAuditLog(context.db, {
@@ -656,14 +555,9 @@ export const revokeServiceUserAccessTool: McpTool = {
       details: { user_id: userId, revoked_token_count: revokedCount },
     });
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: `ユーザー ${user.name} (${user.email}) のサービス "${service.name}" へのアクセスを失効させました。（トークン ${revokedCount} 件を失効）`,
-        },
-      ],
-    };
+    return textResponse(
+      `ユーザー ${user.name} (${user.email}) のサービス "${service.name}" へのアクセスを失効させました。（トークン ${revokedCount} 件を失効）`,
+    );
   },
 };
 
@@ -681,48 +575,27 @@ export const transferServiceOwnershipTool: McpTool = {
     },
   },
   handler: async (params, context) => {
-    const serviceId = params.service_id;
-    if (typeof serviceId !== "string" || serviceId.length === 0) {
-      return { content: [{ type: "text", text: "service_id は必須です" }], isError: true };
-    }
+    const validated = await requireServiceValidation(params, context.db);
+    if (isValidationError(validated)) return validated;
+    const { serviceId, service } = validated;
 
-    const newOwnerUserId = params.new_owner_user_id;
-    if (typeof newOwnerUserId !== "string" || newOwnerUserId.length === 0) {
-      return { content: [{ type: "text", text: "new_owner_user_id は必須です" }], isError: true };
-    }
+    const newOwnerUserId = requireString(params.new_owner_user_id, "new_owner_user_id");
+    if (isErrorResponse(newOwnerUserId)) return newOwnerUserId;
 
-    const [service, newOwner] = await Promise.all([
-      findServiceById(context.db, serviceId),
-      findUserById(context.db, newOwnerUserId),
-    ]);
-
-    if (!service) {
-      return { content: [{ type: "text", text: "サービスが見つかりません" }], isError: true };
-    }
+    const newOwner = await findUserById(context.db, newOwnerUserId);
     if (!newOwner) {
-      return {
-        content: [{ type: "text", text: "新しいオーナーのユーザーが見つかりません" }],
-        isError: true,
-      };
+      return errorResponse("新しいオーナーのユーザーが見つかりません");
     }
 
     if (service.owner_user_id === newOwnerUserId) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `サービス "${service.name}" の所有者は既に ${newOwner.name} (${newOwner.email}) です`,
-          },
-        ],
-      };
+      return textResponse(
+        `サービス "${service.name}" の所有者は既に ${newOwner.name} (${newOwner.email}) です`,
+      );
     }
 
     const updated = await transferServiceOwnership(context.db, serviceId, newOwnerUserId);
     if (!updated) {
-      return {
-        content: [{ type: "text", text: "所有権の転送に失敗しました" }],
-        isError: true,
-      };
+      return errorResponse("所有権の転送に失敗しました");
     }
 
     await createAdminAuditLog(context.db, {
@@ -744,13 +617,8 @@ export const transferServiceOwnershipTool: McpTool = {
       updated_at: updated.updated_at,
     };
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: `サービス "${service.name}" の所有権を ${newOwner.name} (${newOwner.email}) に転送しました。\n\n${JSON.stringify(result, null, 2)}`,
-        },
-      ],
-    };
+    return textResponse(
+      `サービス "${service.name}" の所有権を ${newOwner.name} (${newOwner.email}) に転送しました。\n\n${JSON.stringify(result, null, 2)}`,
+    );
   },
 };

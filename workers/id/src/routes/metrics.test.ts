@@ -2,9 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
 
 vi.mock("@0g0-id/shared", async (importOriginal) => {
-  const { restErrorBody } = await importOriginal<typeof import("@0g0-id/shared")>();
+  const { restErrorBody, REST_ERROR_CODES, parseLoginEventQuery, loginEventFilters } =
+    await importOriginal<typeof import("@0g0-id/shared")>();
   return {
     restErrorBody,
+    REST_ERROR_CODES,
+    parseLoginEventQuery,
+    loginEventFilters,
     createLogger: vi
       .fn()
       .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -27,6 +31,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     getLoginEventIpStats: vi.fn(),
     getLoginEventUserAgentStats: vi.fn(),
     getRecentLoginEvents: vi.fn(),
+    getBffSessionDbscStats: vi.fn(),
     parseDays: vi.fn(),
   };
 });
@@ -50,6 +55,7 @@ import {
   getLoginEventIpStats,
   getLoginEventUserAgentStats,
   getRecentLoginEvents,
+  getBffSessionDbscStats,
   parseDays,
 } from "@0g0-id/shared";
 
@@ -1221,6 +1227,7 @@ describe("GET /api/metrics/recent-events", () => {
           ip_address: "1.2.3.4",
           user_agent: "Mozilla/5.0",
           country: "JP",
+          success: 1,
           created_at: "2026-04-17T00:00:00Z",
         },
       ],
@@ -1240,7 +1247,12 @@ describe("GET /api/metrics/recent-events", () => {
     }>();
     expect(body.data).toHaveLength(1);
     expect(body.meta).toEqual({ limit: 50, offset: 0, total: 1 });
-    expect(vi.mocked(getRecentLoginEvents)).toHaveBeenCalledWith(mockEnv.DB, 50, 0);
+    expect(vi.mocked(getRecentLoginEvents)).toHaveBeenCalledWith(mockEnv.DB, 50, 0, {
+      userId: undefined,
+      country: undefined,
+      provider: undefined,
+      sinceIso: undefined,
+    });
   });
 
   it("offset が負数（非数値扱い）の場合 400 INVALID_PARAMETER を返す", async () => {
@@ -1256,5 +1268,175 @@ describe("GET /api/metrics/recent-events", () => {
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("INVALID_PARAMETER");
     expect(getRecentLoginEvents).not.toHaveBeenCalled();
+  });
+  it("forwards combined filters and an exact request-time UTC cutoff", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getRecentLoginEvents).mockResolvedValue({ events: [], total: 0 });
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      const res = await app.request(
+        makeRequest(
+          "/api/metrics/recent-events?user_id=user-1&country=unknown&provider=github&period=24h&offset=50",
+          "admin-token",
+        ),
+        undefined,
+        mockEnv,
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({
+        meta: {
+          applied_filters: {
+            user_id: "user-1",
+            country: "unknown",
+            provider: "github",
+            period: "24h",
+          },
+        },
+      });
+      expect(getRecentLoginEvents).toHaveBeenCalledWith(mockEnv.DB, 50, 50, {
+        userId: "user-1",
+        country: "unknown",
+        provider: "github",
+        sinceIso: new Date(now - 86400000).toISOString(),
+      });
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+  it.each([
+    "country=bad",
+    "provider=bad",
+    "period=bad",
+    "user_id=",
+    "country=JP&country=US",
+    "offset=9007199254740992",
+    `user_id=${"a".repeat(129)}`,
+    "user=typo",
+  ])("rejects invalid filters before database reads: %s", async (query) => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    const res = await app.request(
+      makeRequest(`/api/metrics/recent-events?${query}`, "admin-token"),
+      undefined,
+      mockEnv,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: { code: "INVALID_PARAMETER" } });
+    expect(getRecentLoginEvents).not.toHaveBeenCalled();
+  });
+  it("preserves 401 without a token even for invalid filters", async () => {
+    const res = await app.request(
+      makeRequest("/api/metrics/recent-events?country=bad"),
+      undefined,
+      mockEnv,
+    );
+    expect(res.status).toBe(401);
+    expect(getRecentLoginEvents).not.toHaveBeenCalled();
+  });
+  it("preserves non-admin 403 with valid filters", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue({
+      id: "regular-user-id",
+      role: "user",
+      banned_at: null,
+    } as any);
+    const res = await app.request(
+      makeRequest("/api/metrics/recent-events?country=JP", "user-token"),
+      undefined,
+      mockEnv,
+    );
+    expect(res.status).toBe(403);
+    expect(getRecentLoginEvents).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/metrics/dbsc-bindings", () => {
+  const app = buildApp();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(findUserById).mockResolvedValue({
+      id: "admin-user-id",
+      email: "admin@example.com",
+      role: "admin",
+      banned_at: null,
+    } as any);
+  });
+
+  it("管理者トークンで DBSC 端末バインド集計を返す", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getBffSessionDbscStats).mockResolvedValue({
+      total: 120,
+      device_bound: 94,
+      unbound: 26,
+      by_bff_origin: [
+        { bff_origin: "https://admin.0g0.xyz", total: 12, device_bound: 12, unbound: 0 },
+        { bff_origin: "https://user.0g0.xyz", total: 108, device_bound: 82, unbound: 26 },
+      ],
+    });
+
+    const res = await app.request(
+      makeRequest("/api/metrics/dbsc-bindings", "admin-token"),
+      undefined,
+      mockEnv,
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json<{
+      data: {
+        total: number;
+        device_bound: number;
+        unbound: number;
+        by_bff_origin: Array<{
+          bff_origin: string;
+          total: number;
+          device_bound: number;
+          unbound: number;
+        }>;
+      };
+    }>();
+    expect(body.data.total).toBe(120);
+    expect(body.data.device_bound).toBe(94);
+    expect(body.data.unbound).toBe(26);
+    expect(body.data.by_bff_origin).toHaveLength(2);
+    expect(vi.mocked(getBffSessionDbscStats)).toHaveBeenCalledWith(mockEnv.DB);
+  });
+
+  it("未認証（トークンなし）は 401 を返し集計関数を呼ばない", async () => {
+    const res = await app.request(makeRequest("/api/metrics/dbsc-bindings"), undefined, mockEnv);
+    expect(res.status).toBe(401);
+    expect(getBffSessionDbscStats).not.toHaveBeenCalled();
+  });
+
+  it("非管理者ロールは 403 を返し集計関数を呼ばない", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue({
+      id: "regular-user-id",
+      email: "user@example.com",
+      role: "user",
+      banned_at: null,
+    } as any);
+
+    const res = await app.request(
+      makeRequest("/api/metrics/dbsc-bindings", "user-token"),
+      undefined,
+      mockEnv,
+    );
+    expect(res.status).toBe(403);
+    expect(getBffSessionDbscStats).not.toHaveBeenCalled();
+  });
+
+  it("集計関数が throw した場合は 500 INTERNAL_ERROR を返す", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(getBffSessionDbscStats).mockRejectedValue(new Error("db down"));
+
+    const res = await app.request(
+      makeRequest("/api/metrics/dbsc-bindings", "admin-token"),
+      undefined,
+      mockEnv,
+    );
+    expect(res.status).toBe(500);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("INTERNAL_ERROR");
   });
 });

@@ -1,13 +1,8 @@
 import type { Context } from "hono";
-import type { IdpEnv, Service, ServiceRedirectUri } from "@0g0-id/shared";
-import {
-  findServiceByClientId,
-  normalizeRedirectUri,
-  listRedirectUris,
-  matchRedirectUri,
-  createLogger,
-} from "@0g0-id/shared";
-import { validateNonce, validateCodeChallenge } from "../../utils/scopes";
+import type { IdpEnv } from "@0g0-id/shared";
+import { createLogger } from "@0g0-id/shared";
+import { validateNonce, validateCodeChallengeParams } from "../../utils/scopes";
+import { validateServiceRedirectUri } from "../../utils/auth-helpers";
 
 const authLogger = createLogger("auth");
 
@@ -63,11 +58,7 @@ export async function handleAuthorize(c: Context<{ Bindings: IdpEnv }>) {
     return oauthError(c, "invalid_request", "missing required parameter", 400);
   }
 
-  if (codeChallengeMethod !== "S256") {
-    return oauthError(c, "invalid_request", "Only code_challenge_method=S256 is supported", 400);
-  }
-  // RFC 7636 §4.2: S256のcode_challengeはBASE64URL(SHA256(code_verifier)) = 43文字
-  const codeChallengeError = validateCodeChallenge(codeChallenge);
+  const codeChallengeError = validateCodeChallengeParams(codeChallenge, codeChallengeMethod);
   if (codeChallengeError) {
     return oauthError(c, "invalid_request", codeChallengeError, 400);
   }
@@ -89,46 +80,26 @@ export async function handleAuthorize(c: Context<{ Bindings: IdpEnv }>) {
     return oauthError(c, "invalid_request", nonceError, 400);
   }
 
-  // サービス検証
-  let service: Service | null;
+  let uriResult: Awaited<ReturnType<typeof validateServiceRedirectUri>>;
   try {
-    service = await findServiceByClientId(c.env.DB, clientId);
+    uriResult = await validateServiceRedirectUri(c.env.DB, clientId, redirectUri);
   } catch (err) {
-    authLogger.error("[authorize] Failed to find service by client_id", err);
+    authLogger.error("[authorize] Failed to validate service redirect URI", err);
     return oauthError(c, "server_error", "Internal server error", 500);
   }
-  if (!service) {
-    return oauthError(c, "invalid_request", "Unknown client_id", 400);
-  }
-
-  // redirect_uri 検証（localhost/127.0.0.1 の場合はポートを無視: RFC 8252 §7.3）
-  const normalizedRequested = normalizeRedirectUri(redirectUri);
-  if (!normalizedRequested) {
-    return oauthError(c, "invalid_request", "Invalid redirect_uri", 400);
-  }
-
-  // 登録済みredirect_uriを取得して、matchRedirectUriで比較
-  let registeredUris: ServiceRedirectUri[];
-  try {
-    registeredUris = await listRedirectUris(c.env.DB, service.id);
-  } catch (err) {
-    authLogger.error("[authorize] Failed to list redirect URIs", err);
-    return oauthError(c, "server_error", "Internal server error", 500);
-  }
-  const matched = registeredUris.some((ru) => matchRedirectUri(ru.uri, normalizedRequested));
-  if (!matched) {
-    return oauthError(c, "invalid_request", "redirect_uri not registered for this client", 400);
+  if (!uriResult.ok) {
+    return oauthError(c, "invalid_request", uriResult.error, 400);
   }
 
   // ユーザーをプロバイダー選択画面（USER_ORIGIN/login）にリダイレクト
   // BFFのログイン画面がプロバイダー選択とIdPへの/auth/loginリダイレクトを担当する
   const loginUrl = new URL("/login", c.env.USER_ORIGIN);
-  loginUrl.searchParams.set("service_id", service.id);
+  loginUrl.searchParams.set("service_id", uriResult.serviceId);
   loginUrl.searchParams.set("client_id", clientId);
   loginUrl.searchParams.set("redirect_uri", redirectUri);
   loginUrl.searchParams.set("state", state);
   loginUrl.searchParams.set("code_challenge", codeChallenge);
-  loginUrl.searchParams.set("code_challenge_method", codeChallengeMethod);
+  loginUrl.searchParams.set("code_challenge_method", codeChallengeMethod ?? "S256");
   if (scope) {
     loginUrl.searchParams.set("scope", scope);
   }

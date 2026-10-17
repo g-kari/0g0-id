@@ -1,5 +1,6 @@
+import { z } from "zod";
 import { fetchWithRetry } from "./fetch-retry";
-import { createLogger } from "./logger";
+import { createLogger, httpStatusMetadata } from "./logger";
 
 const logger = createLogger("oauth-github");
 
@@ -8,13 +9,15 @@ const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_URL = "https://api.github.com/user";
 const GITHUB_EMAILS_URL = "https://api.github.com/user/emails";
 
-export interface GithubUserInfo {
-  id: number;
-  login: string;
-  name: string | null;
-  email: string | null;
-  avatar_url: string | null;
-}
+const GithubUserInfoSchema = z.object({
+  id: z.number(),
+  login: z.string(),
+  name: z.string().nullable(),
+  email: z.string().nullable(),
+  avatar_url: z.string().nullable(),
+});
+
+export type GithubUserInfo = z.infer<typeof GithubUserInfoSchema>;
 
 export interface GithubEmailInfo {
   email: string;
@@ -75,15 +78,15 @@ export async function exchangeGithubCode(params: {
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    logger.error(`GitHub token exchange failed (${response.status})`, error);
+    // Provider error bodies can contain personal data or echoed credentials.
+    logger.error("GitHub token exchange failed", httpStatusMetadata(response.status));
     throw new Error("GitHub token exchange failed");
   }
 
   try {
     const data = (await response.json()) as GithubTokenResponse & { error?: string };
     if (data.error) {
-      logger.error("GitHub token exchange failed", data.error);
+      logger.error("GitHub token exchange failed", httpStatusMetadata(response.status));
       throw new Error("GitHub token exchange failed");
     }
     return data;
@@ -109,7 +112,7 @@ export async function fetchGithubUserInfo(accessToken: string): Promise<GithubUs
   }
 
   try {
-    return (await response.json()) as GithubUserInfo;
+    return GithubUserInfoSchema.parse(await response.json());
   } catch {
     throw new Error("GitHub user info fetch failed: Invalid JSON response");
   }

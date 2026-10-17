@@ -1,10 +1,14 @@
 import { Hono } from "hono";
 
 import { getCookie, deleteCookie } from "hono/cookie";
-import type { BffEnv } from "@0g0-id/shared";
+import type { BffEnv, RateLimitBinding } from "@0g0-id/shared";
 
 // ASSETS binding: Cloudflare Workers Assets を Service Binding として使用
-type AdminEnv = BffEnv & { ASSETS: Fetcher };
+type AdminEnv = BffEnv & {
+  ASSETS: Fetcher;
+  RATE_LIMITER_ADMIN_AUTH?: RateLimitBinding;
+  RATE_LIMITER_ADMIN_API?: RateLimitBinding;
+};
 import {
   logger,
   securityHeaders,
@@ -14,14 +18,18 @@ import {
   createLogger,
   parseSession,
   validateBffEnv,
+  requireDbscBoundSession,
+  COOKIE_NAMES,
+  SESSION_COOKIE_DELETE_OPTIONS,
 } from "@0g0-id/shared";
 import authRoutes from "./routes/auth";
-import { SESSION_COOKIE } from "./routes/auth";
+import dbscRoutes from "./routes/dbsc";
 import servicesRoutes from "./routes/services";
 import usersRoutes from "./routes/users";
 import metricsRoutes from "./routes/metrics";
 import securityTrendsRoutes from "./routes/security-trends";
 import auditLogsRoutes from "./routes/audit-logs";
+import { adminAuthRateLimitMiddleware, adminApiRateLimitMiddleware } from "./middleware/rate-limit";
 
 const appLogger = createLogger("admin");
 
@@ -37,6 +45,11 @@ app.use("*", logger());
 app.use("*", securityHeaders());
 app.use("*", bodyLimitMiddleware());
 
+// 認証エンドポイントへのレートリミット（ログイン・コールバック・ログアウト）
+app.use("/auth/*", adminAuthRateLimitMiddleware);
+// APIエンドポイントへのレートリミット
+app.use("/api/*", adminApiRateLimitMiddleware);
+
 // 管理画面APIへのCORSを管理画面自身のドメインのみに制限
 app.use("/api/*", bffCorsMiddleware);
 
@@ -44,23 +57,44 @@ app.use("/api/*", bffCorsMiddleware);
 // /api/* および /auth/logout に適用（強制ログアウトCSRF対策）
 app.use("/api/*", bffCsrfMiddleware);
 app.use("/auth/logout", bffCsrfMiddleware);
+// /auth/dbsc/* はブラウザ主導（Chrome 内部）の DBSC フローで、リクエストの
+// Origin ヘッダが付かない／"null" になり得るため bffCsrfMiddleware を適用しない。
+// 代わりに以下の多層で攻撃者からの誤バインドを防ぐ:
+//   1. __Host-admin-session Cookie 必須（SameSite=Lax のため、攻撃者サイト発の
+//      cross-site fetch には添付されず、ログイン済みユーザーのブラウザ以外からは無効）
+//   2. 登録 JWT が ES256 自署 (proof of possession) かつ audience=SELF_ORIGIN を要求
+//   3. IdP /auth/dbsc/bind 側で session.bff_origin と X-BFF-Origin が一致する場合のみ受理
 
 // 管理者ロール検証ミドルウェア（多層防御）
 // IdP側でroleがadminから降格されたセッションを早期拒否する
 app.use("/api/*", async (c, next) => {
-  const cookie = getCookie(c, SESSION_COOKIE);
+  const cookie = getCookie(c, COOKIE_NAMES.ADMIN_SESSION);
   const session = await parseSession(cookie, c.env.SESSION_SECRET);
   if (!session) {
     return c.json({ error: { code: "UNAUTHORIZED", message: "Unauthorized" } }, 401);
   }
   if (session.user.role !== "admin") {
-    deleteCookie(c, SESSION_COOKIE, { path: "/", secure: true, httpOnly: true, sameSite: "Lax" });
+    deleteCookie(c, COOKIE_NAMES.ADMIN_SESSION, SESSION_COOKIE_DELETE_OPTIONS);
     return c.json({ error: { code: "FORBIDDEN", message: "Forbidden" } }, 403);
   }
   await next();
 });
 
+// DBSC 必須化ミドルウェア（Phase 3 — 機密操作への段階的導入）。
+// 破壊的メソッド（POST/PATCH/PUT/DELETE）のみ DBSC バインド状態を IdP に問い合わせる。
+// デフォルトは warn-only（未バインドでも通過・ログのみ）で、
+// `DBSC_ENFORCE_SENSITIVE="true"` を設定した環境のみ 403 で拒否する。
+// services/users の全破壊的操作に適用することで、管理画面側の機密度を底上げする。
+const dbscRequire = requireDbscBoundSession({
+  sessionCookieName: COOKIE_NAMES.ADMIN_SESSION,
+  loggerName: "admin-dbsc-enforce",
+  enforce: "env",
+});
+app.use("/api/services/*", dbscRequire);
+app.use("/api/users/*", dbscRequire);
+
 app.route("/auth", authRoutes);
+app.route("/auth/dbsc", dbscRoutes);
 app.route("/api/services", servicesRoutes);
 app.route("/api/users", usersRoutes);
 app.route("/api/metrics", metricsRoutes);
@@ -91,8 +125,9 @@ app.get("*", async (c) => {
   return c.env.ASSETS.fetch(new Request(url.toString()));
 });
 
-app.onError((err, c) => {
-  appLogger.error("Unhandled error", err);
+app.onError((_err, c) => {
+  // 例外には個人情報やtokenが含まれ得るため、固定イベントだけを記録する。
+  appLogger.error("Unhandled error");
   return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
 });
 

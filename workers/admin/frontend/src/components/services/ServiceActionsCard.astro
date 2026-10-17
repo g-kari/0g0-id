@@ -1,0 +1,17 @@
+<div class="card" style="padding:20px;">
+  <h3 style="margin:0 0 12px; font-size:0.9rem; color:var(--color-muted);">操作</h3>
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    <button id="btn-edit" class="btn" style="font-size:0.85rem;">サービス名を編集</button>
+    <button id="btn-rotate-secret" class="btn" style="font-size:0.85rem;">シークレット再発行</button>
+    <button id="btn-delete" class="btn btn-danger" style="font-size:0.85rem;">サービス削除</button>
+  </div>
+</div>
+
+<!-- シークレット表示エリア -->
+<div id="secret-display" class="card" style="padding:20px; margin-top:16px; display:none;">
+  <div class="alert alert-success" style="margin-bottom:12px;">新しいシークレットが発行されました。この値は一度しか表示されません。</div>
+  <div class="form-group">
+    <label for="new-secret-value">Client Secret</label>
+    <input id="new-secret-value" type="text" readonly />
+  </div>
+</div>

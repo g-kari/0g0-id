@@ -8,6 +8,8 @@ import {
   findServiceById,
   createLogger,
   restErrorBody,
+  generatePairwiseSub,
+  createLegacyRelyingPartyUser,
 } from "@0g0-id/shared";
 import { resolveEffectiveScope } from "../../utils/scopes";
 import { ACCESS_TOKEN_TTL_SECONDS } from "../../utils/token-pair";
@@ -38,7 +40,7 @@ export async function handleRefresh(c: Context<{ Bindings: IdpEnv; Variables: Va
     if (validationResult.reason === "TOKEN_ROTATED") {
       return c.json(
         restErrorBody("TOKEN_ROTATED", "Token already rotated, retry with new token"),
-        401,
+        503,
       );
     }
     if (validationResult.reason === "TOKEN_REUSE") {
@@ -74,8 +76,8 @@ export async function handleRefresh(c: Context<{ Bindings: IdpEnv; Variables: Va
       return c.json(restErrorBody("INVALID_TOKEN", "Service no longer exists"), 401);
     }
     // 保存済みスコープがあればそれを引き継ぐ（スコープ昇格防止）
-    // 保存済みスコープがない（マイグレーション前のトークン）場合はallowed_scopesにフォールバック
-    refreshScope = storedToken.scope ?? resolveEffectiveScope(null, refreshService.allowed_scopes);
+    // Missing/empty legacy scope never grants the service configuration wholesale.
+    refreshScope = storedToken.scope || resolveEffectiveScope(null, refreshService.allowed_scopes);
   }
 
   const issueResult = await issueTokenPairWithRecovery(
@@ -108,12 +110,11 @@ export async function handleRefresh(c: Context<{ Bindings: IdpEnv; Variables: Va
       refresh_token: newRefreshTokenRaw,
       token_type: "Bearer",
       expires_in: ACCESS_TOKEN_TTL_SECONDS,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
+      user: refreshService
+        ? createLegacyRelyingPartyUser(
+            await generatePairwiseSub(refreshService.client_id, user.id, c.env.PAIRWISE_SALT),
+          )
+        : { id: user.id, email: user.email, name: user.name, role: user.role },
     },
   });
 }

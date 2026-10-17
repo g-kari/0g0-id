@@ -73,6 +73,14 @@ export interface ServiceSummary {
   created_at: string;
 }
 
+/** GET /api/services/:id/owner-sub — current owner's service-specific subject */
+export interface ServiceOwnerSub {
+  service_id: string;
+  client_id: string;
+  owner_user_id: string;
+  sub: string;
+}
+
 /** サービス新規作成レスポンス（POST /api/services） — client_secret は作成時のみ */
 export interface NewServiceResult {
   id: string;
@@ -92,5 +100,6 @@ export interface NewServiceResult {
 //    index.ts 経由ではなくローカル re-export が必要。
 export type { ProviderStatus } from "./db/users";
 export type { UserConnection, ActiveSession } from "./db/refresh-tokens";
+export type { ActiveBffSessionSummary, BffSessionDbscStats } from "./db/bff-sessions";
 export type { LoginProviderStat, DailyLoginStat } from "./db/login-events";
 export type { LoginEvent } from "./types";

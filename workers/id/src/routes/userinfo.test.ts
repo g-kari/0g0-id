@@ -293,6 +293,31 @@ describe("GET /api/userinfo", () => {
     });
   });
 
+  describe("RP profile disclosure is fail-closed", () => {
+    for (const scope of [
+      undefined,
+      "",
+      "openid",
+      "openid profile email phone address",
+      "invalid",
+    ]) {
+      for (const method of ["GET", "POST"] as const) {
+        it(`${method} RP scope=${String(scope)} is sub-only`, async () => {
+          vi.mocked(verifyAccessToken).mockResolvedValue({
+            ...mockTokenPayload,
+            cid: "synthetic-client",
+            scope,
+          });
+          vi.mocked(generatePairwiseSub).mockResolvedValue("b".repeat(64));
+          const res = await requestUserInfo(buildApp(), method);
+          expect(res.status).toBe(200);
+          const body = await res.json<Record<string, unknown>>();
+          expect(body).toEqual({ sub: "b".repeat(64) });
+        });
+      }
+    }
+  });
+
   describe("ペアワイズsub（サービストークン）", () => {
     it("cid付きトークン → sha256(cid:userId)のペアワイズsubを返す", async () => {
       vi.mocked(verifyAccessToken).mockResolvedValue({
@@ -305,7 +330,11 @@ describe("GET /api/userinfo", () => {
       expect(res.status).toBe(200);
       const body = await res.json<Record<string, unknown>>();
       expect(body.sub).toBe("pairwise-sub-hash");
-      expect(vi.mocked(generatePairwiseSub)).toHaveBeenCalledWith("test-client-id", "user-1");
+      expect(vi.mocked(generatePairwiseSub)).toHaveBeenCalledWith(
+        "test-client-id",
+        "user-1",
+        undefined,
+      );
     });
 
     it("cidなしトークン（BFFセッション）→ 内部IDをそのまま返す", async () => {

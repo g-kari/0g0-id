@@ -1,0 +1,12 @@
+---
+interface Props {
+  message: string;
+  backHref: string;
+  backLabel: string;
+}
+const { message, backHref, backLabel } = Astro.props;
+---
+<div id="error" style="display:none; text-align:center; padding:48px;">
+  <p style="color:var(--color-danger);">{message}</p>
+  <a href={backHref} class="btn" style="margin-top:12px;">{backLabel}</a>
+</div>

@@ -3,9 +3,9 @@ import { Hono } from "hono";
 
 // @0g0-id/sharedの全関数をモック
 vi.mock("@0g0-id/shared", async (importOriginal) => {
-  const { parseJsonBody } = await importOriginal<typeof import("@0g0-id/shared")>();
+  const actual = await importOriginal<typeof import("@0g0-id/shared")>();
   return {
-    parseJsonBody,
+    ...actual,
     createLogger: vi
       .fn()
       .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -21,10 +21,12 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     revokeUserTokens: vi.fn(),
     deleteMcpSessionsByUser: vi.fn(),
     revokeAllBffSessionsByUserId: vi.fn(),
+    revokeBffSessionByIdForUser: vi.fn(),
     findActiveBffSession: vi.fn(),
     revokeTokenByIdForUser: vi.fn(),
     revokeOtherUserTokens: vi.fn(),
     listActiveSessionsByUserId: vi.fn(),
+    listActiveBffSessionsByUserId: vi.fn(),
     countServicesByOwner: vi.fn(),
     listServicesByOwner: vi.fn(),
     getUserProviders: vi.fn(),
@@ -36,41 +38,6 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     banUserWithRevocation: vi.fn(),
     unbanUser: vi.fn(),
     createAdminAuditLog: vi.fn(),
-    UUID_RE: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-    uuidParamMiddleware: (await importOriginal<typeof import("@0g0-id/shared")>())
-      .uuidParamMiddleware,
-    isValidProvider: (value: string) => ["google", "line", "twitch", "github", "x"].includes(value),
-    parseDays: (
-      daysParam: string | undefined,
-      options: { minDays?: number; maxDays?: number } = {},
-    ) => {
-      if (daysParam === undefined) return undefined;
-      const { minDays = 1, maxDays = 90 } = options;
-      const days = parseInt(daysParam, 10);
-      if (!Number.isInteger(days) || days < minDays || days > maxDays) {
-        return {
-          error: {
-            code: "INVALID_REQUEST",
-            message: `days must be an integer between ${minDays} and ${maxDays}`,
-          },
-        };
-      }
-      return { days };
-    },
-    parsePagination: (
-      query: { limit?: string; offset?: string },
-      options: { defaultLimit: number; maxLimit: number } = { defaultLimit: 20, maxLimit: 100 },
-    ) => {
-      const limitRaw = query.limit !== undefined ? parseInt(query.limit, 10) : options.defaultLimit;
-      const offsetRaw = query.offset !== undefined ? parseInt(query.offset, 10) : 0;
-      if (query.limit !== undefined && (isNaN(limitRaw) || limitRaw < 1)) {
-        return { error: "limit は1以上の整数で指定してください" };
-      }
-      if (query.offset !== undefined && (isNaN(offsetRaw) || offsetRaw < 0)) {
-        return { error: "offset は0以上の整数で指定してください" };
-      }
-      return { limit: Math.min(limitRaw, options.maxLimit), offset: offsetRaw };
-    },
     verifyAccessToken: vi.fn(),
     isAccessTokenRevoked: vi.fn().mockResolvedValue(false),
   };
@@ -86,9 +53,12 @@ import {
   listUserConnections,
   revokeUserServiceTokens,
   revokeUserTokens,
+  revokeAllBffSessionsByUserId,
   revokeTokenByIdForUser,
   revokeOtherUserTokens,
   listActiveSessionsByUserId,
+  listActiveBffSessionsByUserId,
+  revokeBffSessionByIdForUser,
   countServicesByOwner,
   listServicesByOwner,
   getUserProviders,
@@ -255,6 +225,7 @@ describe("GET /api/users/me/data-export", () => {
       service_id: "svc-1",
       service_name: "My App",
       client_id: "client-1",
+      pairwise_sub: "pairwise-sub-hash-1",
       first_authorized_at: "2024-01-01T00:00:00Z",
       last_authorized_at: "2024-01-02T00:00:00Z",
     },
@@ -268,6 +239,7 @@ describe("GET /api/users/me/data-export", () => {
       ip_address: "1.2.3.4",
       user_agent: "Mozilla/5.0",
       country: null,
+      success: 1,
       created_at: "2024-01-01T00:00:00Z",
     },
   ];
@@ -358,6 +330,7 @@ describe("GET /api/users/me/security-summary", () => {
       service_id: "svc-1",
       service_name: "My App",
       client_id: "client-1",
+      pairwise_sub: "pairwise-sub-hash-1",
       first_authorized_at: "2024-01-01T00:00:00Z",
       last_authorized_at: "2024-01-02T00:00:00Z",
     },
@@ -370,6 +343,7 @@ describe("GET /api/users/me/security-summary", () => {
     ip_address: "1.2.3.4",
     user_agent: "Mozilla/5.0",
     country: null,
+    success: 1,
     created_at: "2024-01-15T10:00:00Z",
   };
 
@@ -477,7 +451,7 @@ describe("PATCH /api/users/me", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("全フィールドが未指定の場合 → 400を返す", async () => {
@@ -488,7 +462,7 @@ describe("PATCH /api/users/me", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("nameなしでpictureだけ更新できる", async () => {
@@ -562,7 +536,7 @@ describe("PATCH /api/users/me", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("pictureにjavascript: URLを指定 → 400を返す", async () => {
@@ -573,7 +547,7 @@ describe("PATCH /api/users/me", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("pictureにdata: URLを指定 → 400を返す", async () => {
@@ -584,7 +558,7 @@ describe("PATCH /api/users/me", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("pictureに有効なHTTPS URLを指定 → 成功する", async () => {
@@ -610,7 +584,7 @@ describe("PATCH /api/users/me", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("phoneが51文字 → 400を返す", async () => {
@@ -621,7 +595,7 @@ describe("PATCH /api/users/me", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("addressが501文字 → 400を返す", async () => {
@@ -632,7 +606,7 @@ describe("PATCH /api/users/me", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 });
 
@@ -644,6 +618,7 @@ describe("GET /api/users/me/connections", () => {
       service_id: "00000000-0000-0000-0000-000000000010",
       service_name: "Test Service",
       client_id: "client-abc",
+      pairwise_sub: "pairwise-sub-test",
       first_authorized_at: "2024-01-01T00:00:00Z",
       last_authorized_at: "2024-01-02T00:00:00Z",
     },
@@ -977,7 +952,7 @@ describe("PATCH /api/users/:id/role", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("ロール変更時にbatchで既存トークン失効・MCPセッション削除が同時に実行される", async () => {
@@ -1073,6 +1048,11 @@ describe("DELETE /api/users/:id", () => {
       origin: "https://admin.0g0.xyz",
     });
     expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(
+      expect.anything(),
+      "00000000-0000-0000-0000-000000000004",
+      "admin_action",
+    );
+    expect(vi.mocked(revokeAllBffSessionsByUserId)).toHaveBeenCalledWith(
       expect.anything(),
       "00000000-0000-0000-0000-000000000004",
       "admin_action",
@@ -1324,6 +1304,7 @@ describe("GET /api/users/me/login-history", () => {
       ip_address: "127.0.0.1",
       user_agent: "Mozilla/5.0",
       country: null,
+      success: 1,
       created_at: "2024-01-01T00:00:00Z",
     },
   ];
@@ -1432,6 +1413,7 @@ describe("GET /api/users/:id/services", () => {
       service_id: "00000000-0000-0000-0000-000000000010",
       service_name: "Test Service",
       client_id: "client-abc",
+      pairwise_sub: "pairwise-sub-test",
       first_authorized_at: "2024-01-01T00:00:00Z",
       last_authorized_at: "2024-01-02T00:00:00Z",
     },
@@ -1439,6 +1421,7 @@ describe("GET /api/users/:id/services", () => {
       service_id: "00000000-0000-0000-0000-000000000011",
       service_name: "Another Service",
       client_id: "client-xyz",
+      pairwise_sub: "pairwise-sub-xyz",
       first_authorized_at: "2024-02-01T00:00:00Z",
       last_authorized_at: "2024-02-03T00:00:00Z",
     },
@@ -1518,6 +1501,7 @@ describe("GET /api/users/:id/login-history", () => {
       ip_address: "192.168.0.1",
       user_agent: "Chrome/120",
       country: null,
+      success: 1,
       created_at: "2024-02-01T00:00:00Z",
     },
     {
@@ -1527,6 +1511,7 @@ describe("GET /api/users/:id/login-history", () => {
       ip_address: "192.168.0.2",
       user_agent: "Firefox/120",
       country: null,
+      success: 1,
       created_at: "2024-01-01T00:00:00Z",
     },
   ];
@@ -1891,6 +1876,75 @@ describe("GET /api/users/me/tokens", () => {
   });
 });
 
+// ===== GET /api/users/me/bff-sessions =====
+describe("GET /api/users/me/bff-sessions", () => {
+  const app = buildApp();
+
+  const mockBffSessions = [
+    {
+      id: "bff-1",
+      user_id: mockUserPayload.sub,
+      created_at: 1700000000,
+      expires_at: 1800000000,
+      user_agent: "Mozilla/5.0",
+      ip: "192.0.2.1",
+      bff_origin: "https://user.0g0.xyz",
+      has_device_key: true,
+      device_bound_at: 1700000001,
+    },
+    {
+      id: "bff-2",
+      user_id: mockUserPayload.sub,
+      created_at: 1700000010,
+      expires_at: 1800000000,
+      user_agent: "Mozilla/5.0",
+      ip: "192.0.2.2",
+      bff_origin: "https://user.0g0.xyz",
+      has_device_key: false,
+      device_bound_at: null,
+    },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(listActiveBffSessionsByUserId).mockResolvedValue(mockBffSessions);
+  });
+
+  it("Authorizationヘッダーなし → 401を返す", async () => {
+    const res = await sendRequest(app, "/api/users/me/bff-sessions", { withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it("BFFセッション一覧を返す（DBSC バインド情報を含む）", async () => {
+    const res = await sendRequest(app, "/api/users/me/bff-sessions");
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: typeof mockBffSessions }>();
+    expect(body.data).toHaveLength(2);
+    expect(body.data[0].has_device_key).toBe(true);
+    expect(body.data[0].device_bound_at).toBe(1700000001);
+    expect(body.data[1].has_device_key).toBe(false);
+    expect(body.data[1].device_bound_at).toBeNull();
+  });
+
+  it("自分のuser_idでlistActiveBffSessionsByUserIdを呼ぶ", async () => {
+    await sendRequest(app, "/api/users/me/bff-sessions");
+    expect(vi.mocked(listActiveBffSessionsByUserId)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      mockUserPayload.sub,
+    );
+  });
+
+  it("セッションが0件の場合は空配列を返す", async () => {
+    vi.mocked(listActiveBffSessionsByUserId).mockResolvedValue([]);
+    const res = await sendRequest(app, "/api/users/me/bff-sessions");
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: unknown[] }>();
+    expect(body.data).toHaveLength(0);
+  });
+});
+
 // ===== DELETE /api/users/me/tokens =====
 describe("DELETE /api/users/me/tokens", () => {
   const app = buildApp();
@@ -2010,6 +2064,89 @@ describe("DELETE /api/users/me/tokens/:tokenId", () => {
   });
 });
 
+// ===== DELETE /api/users/me/bff-sessions/:sessionId（self-service）=====
+describe("DELETE /api/users/me/bff-sessions/:sessionId", () => {
+  const app = buildApp();
+  const sessionId = "00000000-0000-0000-0000-0000000000bb";
+  const path = `/api/users/me/bff-sessions/${sessionId}`;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(revokeBffSessionByIdForUser).mockResolvedValue(1);
+  });
+
+  it("Authorization ヘッダーなし → 401", async () => {
+    const res = await sendRequest(app, path, { method: "DELETE", withAuth: false });
+    expect(res.status).toBe(401);
+    expect(vi.mocked(revokeBffSessionByIdForUser)).not.toHaveBeenCalled();
+  });
+
+  it("サービストークン（cid 付き）→ 403", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue({
+      ...mockUserPayload,
+      cid: "00000000-0000-0000-0000-000000000050",
+    });
+    const res = await sendRequest(app, path, {
+      method: "DELETE",
+      origin: "https://user.0g0.xyz",
+    });
+    expect(res.status).toBe(403);
+    expect(vi.mocked(revokeBffSessionByIdForUser)).not.toHaveBeenCalled();
+  });
+
+  it("BAN 済みユーザー → 401（rejectBannedUserMiddleware が UNAUTHORIZED に畳む）", async () => {
+    vi.mocked(findUserById).mockResolvedValue({ ...mockUser, banned_at: "2025-01-01T00:00:00Z" });
+    const res = await sendRequest(app, path, {
+      method: "DELETE",
+      origin: "https://user.0g0.xyz",
+    });
+    expect(res.status).toBe(401);
+    expect(vi.mocked(revokeBffSessionByIdForUser)).not.toHaveBeenCalled();
+  });
+
+  it("Origin ヘッダーなし（CSRF）→ 403", async () => {
+    const res = await sendRequest(app, path, { method: "DELETE" });
+    expect(res.status).toBe(403);
+    expect(vi.mocked(revokeBffSessionByIdForUser)).not.toHaveBeenCalled();
+  });
+
+  it("非UUID形式の sessionId → 400", async () => {
+    const res = await sendRequest(app, "/api/users/me/bff-sessions/not-a-uuid", {
+      method: "DELETE",
+      origin: "https://user.0g0.xyz",
+    });
+    expect(res.status).toBe(400);
+    expect(vi.mocked(revokeBffSessionByIdForUser)).not.toHaveBeenCalled();
+  });
+
+  it("他人の sessionId（revokeBffSessionByIdForUser が 0 を返す） → 404", async () => {
+    vi.mocked(revokeBffSessionByIdForUser).mockResolvedValue(0);
+    const res = await sendRequest(app, path, {
+      method: "DELETE",
+      origin: "https://user.0g0.xyz",
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("自分の BFF セッションを失効させて 204 を返す（user_self_revoke）", async () => {
+    const res = await sendRequest(app, path, {
+      method: "DELETE",
+      origin: "https://user.0g0.xyz",
+    });
+    expect(res.status).toBe(204);
+    expect(vi.mocked(revokeBffSessionByIdForUser)).toHaveBeenCalledWith(
+      expect.anything(),
+      sessionId,
+      mockUserPayload.sub,
+      "user_self_revoke",
+    );
+  });
+});
+
 // ===== DELETE /api/users/me/tokens/others =====
 describe("DELETE /api/users/me/tokens/others", () => {
   const app = buildApp();
@@ -2062,7 +2199,7 @@ describe("DELETE /api/users/me/tokens/others", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("token_hashが空文字の場合 → 400を返す", async () => {
@@ -2073,7 +2210,7 @@ describe("DELETE /api/users/me/tokens/others", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("該当セッションがない場合はrevoked_count: 0を返す", async () => {
@@ -2157,6 +2294,166 @@ describe("GET /api/users/:id/tokens", () => {
       withAuth: false,
     });
     expect(res.status).toBe(401);
+  });
+});
+
+describe("GET /api/users/:id/bff-sessions", () => {
+  const app = buildApp();
+
+  const mockBffSessions = [
+    {
+      id: "00000000-0000-0000-0000-0000000000aa",
+      user_id: "00000000-0000-0000-0000-000000000004",
+      created_at: 1700000000,
+      expires_at: 1800000000,
+      user_agent: "Mozilla/5.0",
+      ip: "203.0.113.1",
+      bff_origin: "https://admin.0g0.xyz",
+      has_device_key: true,
+      device_bound_at: 1700000100,
+    },
+    {
+      id: "00000000-0000-0000-0000-0000000000bb",
+      user_id: "00000000-0000-0000-0000-000000000004",
+      created_at: 1699000000,
+      expires_at: 1799000000,
+      user_agent: null,
+      ip: null,
+      bff_origin: "https://user.0g0.xyz",
+      has_device_key: false,
+      device_bound_at: null,
+    },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(listActiveBffSessionsByUserId).mockResolvedValue(mockBffSessions);
+  });
+
+  it("管理者: has_device_key / device_bound_at を含む BFF セッション一覧を返す", async () => {
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/bff-sessions",
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: typeof mockBffSessions }>();
+    expect(body.data).toHaveLength(2);
+    expect(body.data[0].has_device_key).toBe(true);
+    expect(body.data[0].device_bound_at).toBe(1700000100);
+    expect(body.data[1].has_device_key).toBe(false);
+    expect(vi.mocked(listActiveBffSessionsByUserId)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      "00000000-0000-0000-0000-000000000004",
+    );
+  });
+
+  it("管理者: 存在しないユーザー → 404", async () => {
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000099/bff-sessions",
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("一般ユーザー → 403", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/bff-sessions",
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("未認証 → 401", async () => {
+    const res = await sendRequest(
+      app,
+      "/api/users/00000000-0000-0000-0000-000000000004/bff-sessions",
+      { withAuth: false },
+    );
+    expect(res.status).toBe(401);
+  });
+});
+
+// ===== DELETE /api/users/:id/bff-sessions/:sessionId（管理者のみ）=====
+describe("DELETE /api/users/:id/bff-sessions/:sessionId", () => {
+  const app = buildApp();
+  const userId = "00000000-0000-0000-0000-000000000004";
+  const sessionId = "00000000-0000-0000-0000-0000000000aa";
+  const path = `/api/users/${userId}/bff-sessions/${sessionId}`;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(revokeBffSessionByIdForUser).mockResolvedValue(1);
+  });
+
+  it("Authorization ヘッダーなし → 401", async () => {
+    const res = await sendRequest(app, path, { method: "DELETE", withAuth: false });
+    expect(res.status).toBe(401);
+  });
+
+  it("管理者以外 → 403", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
+    const res = await sendRequest(app, path, {
+      method: "DELETE",
+      origin: "https://admin.0g0.xyz",
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("Origin ヘッダーなし（CSRF）→ 403", async () => {
+    const res = await sendRequest(app, path, { method: "DELETE" });
+    expect(res.status).toBe(403);
+  });
+
+  it("非UUID形式の sessionId → 400", async () => {
+    const res = await sendRequest(app, `/api/users/${userId}/bff-sessions/not-a-uuid`, {
+      method: "DELETE",
+      origin: "https://admin.0g0.xyz",
+    });
+    expect(res.status).toBe(400);
+    expect(vi.mocked(revokeBffSessionByIdForUser)).not.toHaveBeenCalled();
+  });
+
+  it("対象ユーザー不在 → 404", async () => {
+    vi.mocked(findUserById).mockResolvedValueOnce(mockAdminUser).mockResolvedValueOnce(null);
+    const res = await sendRequest(
+      app,
+      `/api/users/00000000-0000-0000-0000-000000000099/bff-sessions/${sessionId}`,
+      { method: "DELETE", origin: "https://admin.0g0.xyz" },
+    );
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("指定 BFF セッションを失効させて 204 を返す", async () => {
+    const res = await sendRequest(app, path, {
+      method: "DELETE",
+      origin: "https://admin.0g0.xyz",
+    });
+    expect(res.status).toBe(204);
+    expect(vi.mocked(revokeBffSessionByIdForUser)).toHaveBeenCalledWith(
+      expect.anything(),
+      sessionId,
+      userId,
+      `admin_action:${mockAdminPayload.sub}`,
+    );
+  });
+
+  it("存在しないor他ユーザー所属の sessionId → 404", async () => {
+    vi.mocked(revokeBffSessionByIdForUser).mockResolvedValue(0);
+    const res = await sendRequest(app, path, {
+      method: "DELETE",
+      origin: "https://admin.0g0.xyz",
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("NOT_FOUND");
   });
 });
 
@@ -2391,13 +2688,22 @@ describe("DELETE /api/users/me", () => {
       mockUserPayload.sub,
       "admin_action",
     );
+    expect(vi.mocked(revokeAllBffSessionsByUserId)).toHaveBeenCalledWith(
+      expect.anything(),
+      mockUserPayload.sub,
+      "admin_action",
+    );
     expect(vi.mocked(deleteUser)).toHaveBeenCalledWith(expect.anything(), mockUserPayload.sub);
   });
 
-  it("revokeUserTokensがdeleteUserより先に呼ばれる", async () => {
+  it("revokeUserTokens・revokeAllBffSessionsByUserIdがdeleteUserより先に呼ばれる", async () => {
     const callOrder: string[] = [];
     vi.mocked(revokeUserTokens).mockImplementation(async () => {
-      callOrder.push("revoke");
+      callOrder.push("revokeTokens");
+    });
+    vi.mocked(revokeAllBffSessionsByUserId).mockImplementation(async () => {
+      callOrder.push("revokeBffSessions");
+      return 0;
     });
     vi.mocked(deleteUser).mockImplementation(async () => {
       callOrder.push("delete");
@@ -2409,7 +2715,7 @@ describe("DELETE /api/users/me", () => {
       origin: "https://id.0g0.xyz",
     });
 
-    expect(callOrder).toEqual(["revoke", "delete"]);
+    expect(callOrder).toEqual(["revokeTokens", "revokeBffSessions", "delete"]);
   });
 });
 

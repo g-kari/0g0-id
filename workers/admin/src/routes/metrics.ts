@@ -1,15 +1,21 @@
 import { Hono } from "hono";
-import { fetchWithAuth, parseDays, proxyResponse } from "@0g0-id/shared";
+import {
+  fetchWithAuth,
+  parseDays,
+  proxyGet,
+  proxyResponse,
+  REST_ERROR_CODES,
+  COOKIE_NAMES,
+} from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
-import { SESSION_COOKIE } from "./auth";
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
 // GET /api/metrics
-app.get("/", async (c) => {
-  const res = await fetchWithAuth(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/metrics`);
-  return proxyResponse(res);
-});
+app.get(
+  "/",
+  proxyGet(COOKIE_NAMES.ADMIN_SESSION, (c) => `${c.env.IDP_ORIGIN}/api/metrics`),
+);
 
 // GET /api/metrics/login-trends?days=30
 app.get("/login-trends", async (c) => {
@@ -17,19 +23,22 @@ app.get("/login-trends", async (c) => {
   const daysResult = parseDays(c.req.query("days"));
   if (daysResult !== undefined) {
     if ("error" in daysResult) {
-      return c.json({ error: { code: "INVALID_PARAMETER", message: daysResult.error } }, 400);
+      return c.json(
+        { error: { code: REST_ERROR_CODES.INVALID_PARAMETER, message: daysResult.error } },
+        400,
+      );
     }
     url.searchParams.set("days", String(daysResult.days));
   }
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
   return proxyResponse(res);
 });
 
 // GET /api/metrics/services — サービス別アクティブトークン統計
-app.get("/services", async (c) => {
-  const res = await fetchWithAuth(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/metrics/services`);
-  return proxyResponse(res);
-});
+app.get(
+  "/services",
+  proxyGet(COOKIE_NAMES.ADMIN_SESSION, (c) => `${c.env.IDP_ORIGIN}/api/metrics/services`),
+);
 
 // GET /api/metrics/suspicious-logins?hours=24&min_countries=2
 app.get("/suspicious-logins", async (c) => {
@@ -38,14 +47,24 @@ app.get("/suspicious-logins", async (c) => {
   if (hoursRaw !== undefined) {
     if (!/^\d+$/.test(hoursRaw)) {
       return c.json(
-        { error: { code: "INVALID_PARAMETER", message: "hours must be a positive integer" } },
+        {
+          error: {
+            code: REST_ERROR_CODES.INVALID_PARAMETER,
+            message: "hours must be a positive integer",
+          },
+        },
         400,
       );
     }
     const hours = parseInt(hoursRaw, 10);
     if (hours < 1 || hours > 720) {
       return c.json(
-        { error: { code: "INVALID_PARAMETER", message: "hours must be between 1 and 720" } },
+        {
+          error: {
+            code: REST_ERROR_CODES.INVALID_PARAMETER,
+            message: "hours must be between 1 and 720",
+          },
+        },
         400,
       );
     }
@@ -56,7 +75,10 @@ app.get("/suspicious-logins", async (c) => {
     if (!/^\d+$/.test(minCountriesRaw)) {
       return c.json(
         {
-          error: { code: "INVALID_PARAMETER", message: "min_countries must be a positive integer" },
+          error: {
+            code: REST_ERROR_CODES.INVALID_PARAMETER,
+            message: "min_countries must be a positive integer",
+          },
         },
         400,
       );
@@ -65,14 +87,17 @@ app.get("/suspicious-logins", async (c) => {
     if (minCountries < 1 || minCountries > 100) {
       return c.json(
         {
-          error: { code: "INVALID_PARAMETER", message: "min_countries must be between 1 and 100" },
+          error: {
+            code: REST_ERROR_CODES.INVALID_PARAMETER,
+            message: "min_countries must be between 1 and 100",
+          },
         },
         400,
       );
     }
     url.searchParams.set("min_countries", String(minCountries));
   }
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
   return proxyResponse(res);
 });
 
@@ -82,23 +107,22 @@ app.get("/user-registrations", async (c) => {
   const daysResult = parseDays(c.req.query("days"));
   if (daysResult !== undefined) {
     if ("error" in daysResult) {
-      return c.json({ error: { code: "INVALID_PARAMETER", message: daysResult.error } }, 400);
+      return c.json(
+        { error: { code: REST_ERROR_CODES.INVALID_PARAMETER, message: daysResult.error } },
+        400,
+      );
     }
     url.searchParams.set("days", String(daysResult.days));
   }
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
   return proxyResponse(res);
 });
 
 // GET /api/metrics/active-users — DAU/WAU/MAU アクティブユーザー数
-app.get("/active-users", async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/metrics/active-users`,
-  );
-  return proxyResponse(res);
-});
+app.get(
+  "/active-users",
+  proxyGet(COOKIE_NAMES.ADMIN_SESSION, (c) => `${c.env.IDP_ORIGIN}/api/metrics/active-users`),
+);
 
 // GET /api/metrics/active-users/daily?days=30 — 日別アクティブユーザー数推移
 app.get("/active-users/daily", async (c) => {
@@ -106,12 +130,21 @@ app.get("/active-users/daily", async (c) => {
   const daysResult = parseDays(c.req.query("days"));
   if (daysResult !== undefined) {
     if ("error" in daysResult) {
-      return c.json({ error: { code: "INVALID_PARAMETER", message: daysResult.error } }, 400);
+      return c.json(
+        { error: { code: REST_ERROR_CODES.INVALID_PARAMETER, message: daysResult.error } },
+        400,
+      );
     }
     url.searchParams.set("days", String(daysResult.days));
   }
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
   return proxyResponse(res);
 });
+
+// GET /api/metrics/dbsc-bindings — アクティブ BFF セッションの DBSC 端末バインド集計
+app.get(
+  "/dbsc-bindings",
+  proxyGet(COOKIE_NAMES.ADMIN_SESSION, (c) => `${c.env.IDP_ORIGIN}/api/metrics/dbsc-bindings`),
+);
 
 export default app;

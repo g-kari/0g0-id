@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { IdpEnv } from "@0g0-id/shared";
+import { PROVIDER_CREDENTIALS, type IdpEnv } from "@0g0-id/shared";
 
 /**
  * 起動時に必須の環境変数を検証するスキーマ
@@ -46,19 +46,41 @@ export function validateEnv(env: IdpEnv): EnvValidationResult {
     : result.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`);
 
   // オプションプロバイダーの認証情報は片方だけ設定されていてはならない（設定ミスの早期検知）
-  const optionalProviderPairs = [
-    { id: "LINE_CLIENT_ID" as const, secret: "LINE_CLIENT_SECRET" as const, name: "LINE" },
-    { id: "TWITCH_CLIENT_ID" as const, secret: "TWITCH_CLIENT_SECRET" as const, name: "Twitch" },
-    { id: "GITHUB_CLIENT_ID" as const, secret: "GITHUB_CLIENT_SECRET" as const, name: "GitHub" },
-    { id: "X_CLIENT_ID" as const, secret: "X_CLIENT_SECRET" as const, name: "X" },
-  ];
-
-  for (const pair of optionalProviderPairs) {
+  for (const pair of Object.values(PROVIDER_CREDENTIALS)) {
     const hasId = !!env[pair.id];
     const hasSecret = !!env[pair.secret];
     if (hasId !== hasSecret) {
       const missing = hasId ? pair.secret : pair.id;
       errors.push(`${missing}: ${pair.name} の CLIENT_ID と CLIENT_SECRET は両方設定してください`);
+    }
+  }
+
+  // 本番環境ではレートリミッターの binding 未設定を警告（起動は止めない）
+  const isProduction = env.IDP_ORIGIN?.startsWith("https://") ?? false;
+  if (isProduction) {
+    const rateLimiterBindings = [
+      "RATE_LIMITER_AUTH",
+      "RATE_LIMITER_EXTERNAL",
+      "RATE_LIMITER_TOKEN",
+      "RATE_LIMITER_TOKEN_CLIENT",
+      "RATE_LIMITER_DEVICE_VERIFY",
+    ] as const;
+    for (const bindingName of rateLimiterBindings) {
+      if (!env[bindingName]) {
+        console.warn(`${bindingName}: 本番環境ではレートリミッターの binding 設定が必要です`);
+      }
+    }
+
+    if (!env.LINK_TOKEN_KV) {
+      console.warn(
+        "LINK_TOKEN_KV: 本番環境では link_token のワンタイム消費チェック用 KV binding が必要です",
+      );
+    }
+
+    if (!env.PAIRWISE_SALT) {
+      errors.push(
+        "PAIRWISE_SALT: 本番環境ではペアワイズsub計算用のソルトが必須です（OIDC Core §8.1）",
+      );
     }
   }
 

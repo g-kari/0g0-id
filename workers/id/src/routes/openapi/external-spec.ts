@@ -1,3 +1,10 @@
+import {
+  STANDARD_TOKEN_OPERATION,
+  DEVICE_CODE_OPERATION,
+  DEVICE_VERIFY_OPERATION,
+  USERINFO_GET_OPERATION,
+  USERINFO_POST_OPERATION,
+} from "./standard-protocol-spec";
 // 外部連携サービス向け OpenAPI 仕様
 // 外部公開API 変更時はこのファイルの paths / components.schemas を更新すること
 
@@ -49,7 +56,7 @@ export const EXTERNAL_OPENAPI = {
     │                                    │
     │  7. ユーザーデータ取得（External API）│
     │──────────────────────────────────>│
-    │  GET /api/external/users/:id       │
+    │  GET /api/external/users/:sub      │
     │  Authorization: Basic <cred>       │
     │                                    │
     │  8. スコープに応じたユーザーデータ     │
@@ -69,16 +76,14 @@ Authorization: Basic <Base64(client_id:client_secret)>
 プライバシー保護のため、External API が返す \`sub\` はサービスごとに固有の不透明な識別子です。
 同じユーザーでも異なるサービスには異なる \`sub\` が返ります。内部ユーザーIDは公開されません。
 
-## 利用可能なスコープ
+## 個人情報の提供方針
 
-| スコープ | 取得できる情報 |
-|---------|-------------|
-| \`profile\` | name, picture |
-| \`email\` | email, email_verified |
-| \`phone\` | phone |
-| \`address\` | address |
+外部サービスへのプロフィール提供は既定で無効です。External API / UserInfo はサービス固有の \`sub\` のみを返します。
+\`profile\` / \`email\` / \`phone\` / \`address\` の要求や管理者設定は、項目・送信先・目的への本人同意の代わりになりません。
+項目提供の同意機構は未実装であり、name/email検索も403で拒否します。
 
-スコープは管理者がサービス登録時に設定します。`,
+標準IDトークンもプロフィールを含めません。service access tokenはemail/roleを含めませんが、既存互換性のため内部UUIDのsubが残ります。
+この残存はアプリ間相関の懸念であり、識別子移行を含む追加対応が必要です。`,
   },
   servers: [{ url: "https://id.0g0.xyz", description: "本番環境" }],
   components: {
@@ -96,23 +101,31 @@ Authorization: Basic <Base64(client_id:client_secret)>
       },
     },
     schemas: {
+      OAuthError: {
+        type: "object",
+        properties: {
+          error: { type: "string", description: "OAuth 2.0 エラーコード" },
+          error_description: { type: "string", description: "エラーの説明" },
+        },
+        required: ["error", "error_description"],
+      },
       ExternalUser: {
         type: "object",
-        description: "スコープに応じたユーザー情報（内部IDの代わりにペアワイズsubを返す）",
+        description: "プロフィールを含まないサービス固有のペアワイズ識別子。",
         properties: {
           sub: { type: "string", description: "サービス固有のユーザー識別子（ペアワイズ）" },
-          name: { type: "string", description: "表示名（profileスコープ）" },
-          picture: {
-            type: "string",
-            nullable: true,
-            description: "プロフィール画像URL（profileスコープ）",
-          },
-          email: { type: "string", description: "メールアドレス（emailスコープ）" },
-          email_verified: { type: "boolean", description: "メール認証済みフラグ（emailスコープ）" },
-          phone: { type: "string", nullable: true, description: "電話番号（phoneスコープ）" },
-          address: { type: "string", nullable: true, description: "住所（addressスコープ）" },
         },
         required: ["sub"],
+        additionalProperties: false,
+      },
+      LegacyExternalUser: {
+        type: "object",
+        description: "旧exchange/refresh応答。idの値はサービス固有pairwise sub。",
+        properties: {
+          id: { type: "string", description: "内部UUIDではなくサービス固有pairwise sub。" },
+        },
+        required: ["id"],
+        additionalProperties: false,
       },
       Error: {
         type: "object",
@@ -130,6 +143,9 @@ Authorization: Basic <Base64(client_id:client_secret)>
     },
   },
   paths: {
+    "/api/token": { post: STANDARD_TOKEN_OPERATION },
+    "/api/device/code": { post: DEVICE_CODE_OPERATION },
+    "/api/device/verify": { post: DEVICE_VERIFY_OPERATION },
     "/auth/authorize": {
       get: {
         tags: ["認証フロー"],
@@ -359,7 +375,8 @@ Authorization: Basic <Base64(client_id:client_secret)>
           "このエンドポイントはサーバーサイドから呼び出すこと（コードは1回しか使えない）。\n\n" +
           "`redirect_to` には `/auth/login` に渡したのと同じコールバックURLを指定する。\n\n" +
           "**認証**: `Authorization: Basic <Base64(client_id:client_secret)>` ヘッダーが必須。\n\n" +
-          "**PKCE**: `/auth/login` に `code_challenge` を渡した場合（PKCE使用時）は `code_verifier` も必須。",
+          "**PKCE**: `/auth/login` に `code_challenge` を渡した場合（PKCE使用時）は `code_verifier` も必須。\n" +
+          "外部サービスのdata.userは{id: pairwise sub}のみ。ID tokenもプロフィールを含まない。BFF JSON契約は別の内部API仕様を参照。",
         security: [{ BasicAuth: [] }],
         requestBody: {
           required: true,
@@ -425,19 +442,7 @@ Authorization: Basic <Base64(client_id:client_secret)>
                           example: 900,
                           description: "アクセストークン有効期限（秒）",
                         },
-                        user: {
-                          type: "object",
-                          properties: {
-                            id: {
-                              type: "string",
-                              description: "0g0 ID 内部ユーザーID（External API で使用）",
-                            },
-                            email: { type: "string" },
-                            name: { type: "string" },
-                            picture: { type: "string", nullable: true },
-                            role: { type: "string", enum: ["user", "admin"] },
-                          },
-                        },
+                        user: { $ref: "#/components/schemas/LegacyExternalUser" },
                       },
                     },
                   },
@@ -463,7 +468,8 @@ Authorization: Basic <Base64(client_id:client_secret)>
           "リフレッシュトークンを使って新しいアクセストークンとリフレッシュトークンを発行する（トークンローテーション）。\n\n" +
           "⚠️ **旧リフレッシュトークンは即時無効化される**。必ず新しいリフレッシュトークンを保存すること。\n\n" +
           "同じリフレッシュトークンを2回使った場合（再使用検出）、そのファミリー全体が失効する（セキュリティ機能）。\n\n" +
-          "**認証**: `Authorization: Basic <Base64(client_id:client_secret)>` ヘッダーが必須。",
+          "**認証**: `Authorization: Basic <Base64(client_id:client_secret)>` ヘッダーが必須。\n" +
+          "サービスのdata.userは{id: pairwise sub}のみ。未保存/空のlegacy scopeはopenidのみへfallbackする。",
         security: [{ BasicAuth: [] }],
         requestBody: {
           required: true,
@@ -497,6 +503,7 @@ Authorization: Basic <Base64(client_id:client_secret)>
                         },
                         token_type: { type: "string", example: "Bearer" },
                         expires_in: { type: "integer", example: 900 },
+                        user: { $ref: "#/components/schemas/LegacyExternalUser" },
                       },
                     },
                   },
@@ -546,7 +553,7 @@ Authorization: Basic <Base64(client_id:client_secret)>
         summary: "リフレッシュトークンの有効性確認",
         description:
           "RFC 7662 準拠のトークンイントロスペクションエンドポイント。\n\n" +
-          "リフレッシュトークンが有効かどうかを確認し、有効な場合はユーザー情報を返す。\n\n" +
+          "トークンの有効性とpairwise sub・トークンメタデータを返す。プロフィールはscopeに関係なく返さない。\n\n" +
           "認証には Basic 認証（`client_id:client_secret`）を使用する。\n\n" +
           "自サービス向けに発行されたトークンのみ照会可能（他サービスのトークンは `active: false`）。",
         security: [{ BasicAuth: [] }],
@@ -580,27 +587,6 @@ Authorization: Basic <Base64(client_id:client_secret)>
                     },
                     exp: { type: "integer", description: "有効期限（Unix timestamp）" },
                     scope: { type: "string", description: "許可スコープ（スペース区切り）" },
-                    name: { type: "string", description: "表示名（profileスコープ）" },
-                    picture: {
-                      type: "string",
-                      nullable: true,
-                      description: "プロフィール画像URL（profileスコープ）",
-                    },
-                    email: { type: "string", description: "メールアドレス（emailスコープ）" },
-                    email_verified: {
-                      type: "boolean",
-                      description: "メール認証済みフラグ（emailスコープ）",
-                    },
-                    phone: {
-                      type: "string",
-                      nullable: true,
-                      description: "電話番号（phoneスコープ）",
-                    },
-                    address: {
-                      type: "string",
-                      nullable: true,
-                      description: "住所（addressスコープ）",
-                    },
                   },
                   required: ["active"],
                 },
@@ -611,9 +597,6 @@ Authorization: Basic <Base64(client_id:client_secret)>
                       sub: "a1b2c3...",
                       exp: 1735689600,
                       scope: "profile email",
-                      name: "山田 太郎",
-                      email: "taro@example.com",
-                      email_verified: true,
                     },
                   },
                   invalid: { value: { active: false } },
@@ -672,7 +655,7 @@ Authorization: Basic <Base64(client_id:client_secret)>
         description:
           "このサービスを認可したユーザーの一覧を返す。\n\n" +
           "返却される `sub` はサービス固有のペアワイズ識別子。\n" +
-          "許可されたスコープに応じたフィールドのみ返す。",
+          "scopeに関係なくsubのみ返す。name/email検索は本人同意機構がないため、空文字を含め403で拒否する。",
         security: [{ BasicAuth: [] }],
         parameters: [
           {
@@ -714,9 +697,6 @@ Authorization: Basic <Base64(client_id:client_secret)>
                   data: [
                     {
                       sub: "a1b2c3...",
-                      name: "山田 太郎",
-                      email: "taro@example.com",
-                      email_verified: true,
                     },
                   ],
                   meta: { total: 1, limit: 50, offset: 0 },
@@ -733,6 +713,10 @@ Authorization: Basic <Base64(client_id:client_secret)>
               },
             },
           },
+          "403": {
+            description: "name/email検索はプロフィール項目への本人同意が未実装のため拒否。",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
           "500": {
             description: "サーバー内部エラー",
             content: {
@@ -744,23 +728,22 @@ Authorization: Basic <Base64(client_id:client_secret)>
         },
       },
     },
-    "/api/external/users/{id}": {
+    "/api/external/users/{sub}": {
       get: {
         tags: ["ユーザーデータ取得"],
-        summary: "IDによるユーザー取得",
+        summary: "ペアワイズ sub によるユーザー取得",
         description:
-          "指定したユーザーIDで完全一致検索を行い、ユーザー情報を返す。\n\n" +
-          "セキュリティのため、このサービスを認可していないユーザーのIDを指定した場合も 404 を返す（IDOR防止）。\n\n" +
-          "**注意**: このエンドポイントで指定する `id` は 0g0 ID の内部ユーザーID。ペアワイズ `sub` ではない。\n" +
-          "内部ユーザーIDは `/auth/exchange` または `/auth/refresh` のレスポンスから取得できる。",
+          "認証したサービスに固有のペアワイズ `sub`（64桁の16進文字列）で完全一致検索を行い、ユーザー情報を返す。\n\n" +
+          "同じサービスの `/api/external/users` 一覧で返された `sub` を指定する。内部ユーザーIDは検索に使わない。\n\n" +
+          "不正な形式は 400、一致する認可済みユーザーがいない場合・ユーザーが存在しない場合・BAN済みの場合は 404 を返す。",
         security: [{ BasicAuth: [] }],
         parameters: [
           {
-            name: "id",
+            name: "sub",
             in: "path",
             required: true,
-            schema: { type: "string" },
-            description: "0g0 ID 内部ユーザーID",
+            schema: { type: "string", minLength: 64, maxLength: 64, pattern: "^[0-9a-fA-F]{64}$" },
+            description: "認証したサービス固有のペアワイズ sub（64桁の16進文字列）",
           },
         ],
         responses: {
@@ -775,11 +758,17 @@ Authorization: Basic <Base64(client_id:client_secret)>
                 example: {
                   data: {
                     sub: "a1b2c3...",
-                    name: "山田 太郎",
-                    email: "taro@example.com",
-                    email_verified: true,
                   },
                 },
+              },
+            },
+          },
+          "400": {
+            description: "sub が64桁の16進文字列ではない",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                example: { error: { code: "BAD_REQUEST", message: "Invalid sub format" } },
               },
             },
           },
@@ -792,7 +781,7 @@ Authorization: Basic <Base64(client_id:client_secret)>
             },
           },
           "404": {
-            description: "ユーザーが存在しない、またはこのサービスを未認可",
+            description: "一致する認可済みユーザーがいない、ユーザーが存在しない、またはBAN済み",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/Error" },
@@ -811,84 +800,8 @@ Authorization: Basic <Base64(client_id:client_secret)>
         },
       },
     },
-    "/api/userinfo": {
-      get: {
-        tags: ["OIDC"],
-        summary: "UserInfo エンドポイント（OIDC Core 1.0）",
-        description:
-          "OIDC Core 1.0 Section 5.3 準拠のUserInfoエンドポイント。\n\n" +
-          "アクセストークンに付与されたスコープに応じたユーザークレームを返す。\n\n" +
-          "| スコープ | 返却クレーム |\n" +
-          "|---------|------------|\n" +
-          "| `profile` | `name`, `picture` |\n" +
-          "| `email` | `email`, `email_verified` |\n" +
-          "| `phone` | `phone_number` |\n" +
-          "| `address` | `address` |\n\n" +
-          "`sub` は常にサービス固有のペアワイズ識別子。",
-        security: [{ BearerAuth: [] }],
-        responses: {
-          "200": {
-            description: "スコープに応じたユーザークレーム",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    sub: { type: "string", description: "ペアワイズユーザー識別子" },
-                    name: { type: "string", description: "表示名（profileスコープ）" },
-                    picture: {
-                      type: "string",
-                      nullable: true,
-                      description: "プロフィール画像URL（profileスコープ）",
-                    },
-                    email: { type: "string", description: "メールアドレス（emailスコープ）" },
-                    email_verified: {
-                      type: "boolean",
-                      description: "メール認証済み（emailスコープ）",
-                    },
-                    phone_number: {
-                      type: "string",
-                      nullable: true,
-                      description: "電話番号（phoneスコープ）",
-                    },
-                    address: {
-                      type: "object",
-                      nullable: true,
-                      description: "住所（addressスコープ）",
-                      properties: { formatted: { type: "string" } },
-                    },
-                    updated_at: { type: "integer", description: "最終更新日時（Unix timestamp）" },
-                  },
-                  required: ["sub", "updated_at"],
-                },
-                example: {
-                  sub: "pairwise_abc123",
-                  name: "山田 太郎",
-                  picture: "https://example.com/photo.jpg",
-                  email: "taro@example.com",
-                  email_verified: true,
-                  updated_at: 1735689600,
-                },
-              },
-            },
-          },
-          "401": {
-            description: "UNAUTHORIZED — アクセストークン無効・期限切れ",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    error: { type: "string", example: "invalid_token" },
-                    error_description: { type: "string", example: "User not found" },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
+    "/api/userinfo": { get: USERINFO_GET_OPERATION, post: USERINFO_POST_OPERATION },
+
     "/api/token/revoke": {
       post: {
         tags: ["トークン失効"],

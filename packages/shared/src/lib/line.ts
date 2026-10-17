@@ -1,5 +1,6 @@
+import { z } from "zod";
 import { fetchWithRetry } from "./fetch-retry";
-import { createLogger } from "./logger";
+import { createLogger, httpStatusMetadata } from "./logger";
 
 const logger = createLogger("oauth-line");
 
@@ -7,12 +8,15 @@ const LINE_AUTH_URL = "https://access.line.me/oauth2/v2.1/authorize";
 const LINE_TOKEN_URL = "https://api.line.me/oauth2/v2.1/token";
 const LINE_USERINFO_URL = "https://api.line.me/oauth2/v2.1/userinfo";
 
-export interface LineUserInfo {
-  sub: string;
-  name: string;
-  picture?: string;
-  email?: string;
-}
+const LineUserInfoSchema = z.object({
+  sub: z.string(),
+  name: z.string(),
+  picture: z.string().optional(),
+  email: z.string().optional(),
+  email_verified: z.boolean().optional(),
+});
+
+export type LineUserInfo = z.infer<typeof LineUserInfoSchema>;
 
 export interface LineTokenResponse {
   access_token: string;
@@ -71,8 +75,8 @@ export async function exchangeLineCode(params: {
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    logger.error(`LINE token exchange failed (${response.status})`, error);
+    // Provider error bodies can contain personal data or echoed credentials.
+    logger.error("LINE token exchange failed", httpStatusMetadata(response.status));
     throw new Error("LINE token exchange failed");
   }
 
@@ -96,7 +100,7 @@ export async function fetchLineUserInfo(accessToken: string): Promise<LineUserIn
   }
 
   try {
-    return (await response.json()) as LineUserInfo;
+    return LineUserInfoSchema.parse(await response.json());
   } catch {
     throw new Error("LINE userinfo fetch failed: Invalid JSON response");
   }

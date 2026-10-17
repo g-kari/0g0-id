@@ -1,7 +1,7 @@
 import { createMiddleware } from "hono/factory";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import type { TokenPayload } from "@0g0-id/shared";
-import { findUserById, isAccessTokenRevoked } from "@0g0-id/shared";
+import { z } from "zod";
+import { findUserById, isAccessTokenRevoked, jsonRpcErrorBody } from "@0g0-id/shared";
 
 type McpEnv = {
   Bindings: {
@@ -11,21 +11,46 @@ type McpEnv = {
     MCP_ORIGIN: string;
   };
   Variables: {
-    user: TokenPayload;
+    user: McpTokenPayload;
   };
 };
 
-/**
- * IDP_ORIGIN ごとに JWKS クライアントをキャッシュする。
- * createRemoteJWKSet は内部で鍵キャッシュ・ローテーション対応を行う。
- */
-const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+const tokenPayloadSchema = z.object({
+  iss: z.string(),
+  sub: z.string(),
+  aud: z.string(),
+  exp: z.number(),
+  iat: z.number(),
+  jti: z.string(),
+  kid: z.string(),
+  email: z.string(),
+  role: z.enum(["user", "admin"]),
+  scope: z.string().optional(),
+  cid: z.string().optional(),
+});
+
+/** MCPの既存schemaで検証した値。一般RP decode型へprofile必須を持ち込まない。 */
+export type McpTokenPayload = z.infer<typeof tokenPayloadSchema>;
+
+const JWKS_CACHE_TTL_MS = 60 * 60 * 1000;
+
+interface JwksCacheEntry {
+  jwks: ReturnType<typeof createRemoteJWKSet>;
+  cachedAt: number;
+}
+
+const jwksCache = new Map<string, JwksCacheEntry>();
+
+/** @internal テスト用 */
+export function resetJwksCache(): void {
+  jwksCache.clear();
+}
 
 function getJWKS(idpOrigin: string): ReturnType<typeof createRemoteJWKSet> {
-  const cached = jwksCache.get(idpOrigin);
-  if (cached) return cached;
+  const entry = jwksCache.get(idpOrigin);
+  if (entry && Date.now() - entry.cachedAt < JWKS_CACHE_TTL_MS) return entry.jwks;
   const jwks = createRemoteJWKSet(new URL(`${idpOrigin}/.well-known/jwks.json`));
-  jwksCache.set(idpOrigin, jwks);
+  jwksCache.set(idpOrigin, { jwks, cachedAt: Date.now() });
   return jwks;
 }
 
@@ -42,7 +67,7 @@ export const mcpAuthMiddleware = createMiddleware<McpEnv>(
         "WWW-Authenticate",
         `Bearer resource_metadata="${c.env.MCP_ORIGIN}/.well-known/oauth-protected-resource"`,
       );
-      return c.json({ error: { code: "UNAUTHORIZED", message: "Bearer token required" } }, 401);
+      return c.json(jsonRpcErrorBody(-32001, "Bearer token required"), 401);
     }
 
     const token = authHeader.slice(7);
@@ -54,15 +79,22 @@ export const mcpAuthMiddleware = createMiddleware<McpEnv>(
         audience: c.env.IDP_ORIGIN,
         algorithms: ["ES256"],
       });
-      const user = payload as unknown as TokenPayload;
+      const parsed = tokenPayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        c.header(
+          "WWW-Authenticate",
+          `Bearer error="invalid_token", resource_metadata="${c.env.MCP_ORIGIN}/.well-known/oauth-protected-resource"`,
+        );
+        return c.json(jsonRpcErrorBody(-32001, "Invalid token payload"), 401);
+      }
+      const user: McpTokenPayload = parsed.data;
 
-      // リボークされたトークンを拒否（JWT有効期限内でも即時無効化）
       if (user.jti && (await isAccessTokenRevoked(c.env.DB, user.jti))) {
         c.header(
           "WWW-Authenticate",
           `Bearer error="invalid_token", resource_metadata="${c.env.MCP_ORIGIN}/.well-known/oauth-protected-resource"`,
         );
-        return c.json({ error: { code: "UNAUTHORIZED", message: "Token has been revoked" } }, 401);
+        return c.json(jsonRpcErrorBody(-32001, "Token has been revoked"), 401);
       }
 
       c.set("user", user);
@@ -72,7 +104,7 @@ export const mcpAuthMiddleware = createMiddleware<McpEnv>(
         "WWW-Authenticate",
         `Bearer error="invalid_token", resource_metadata="${c.env.MCP_ORIGIN}/.well-known/oauth-protected-resource"`,
       );
-      return c.json({ error: { code: "UNAUTHORIZED", message: "Invalid or expired token" } }, 401);
+      return c.json(jsonRpcErrorBody(-32001, "Invalid or expired token"), 401);
     }
   },
 );
@@ -86,19 +118,16 @@ export const mcpRejectBannedUserMiddleware = createMiddleware<McpEnv>(
   async (c, next): Promise<Response | void> => {
     const user = c.get("user");
     if (!user) {
-      return c.json({ error: { code: "UNAUTHORIZED", message: "Not authenticated" } }, 401);
+      return c.json(jsonRpcErrorBody(-32001, "Not authenticated"), 401);
     }
     let dbUser;
     try {
       dbUser = await findUserById(c.env.DB, user.sub);
     } catch {
-      return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+      return c.json(jsonRpcErrorBody(-32603, "Internal server error"), 500);
     }
     if (!dbUser || dbUser.banned_at !== null) {
-      return c.json(
-        { error: { code: "UNAUTHORIZED", message: "Account suspended or not found" } },
-        401,
-      );
+      return c.json(jsonRpcErrorBody(-32001, "Account suspended or not found"), 401);
     }
     await next();
   },
@@ -112,20 +141,15 @@ export const mcpAdminMiddleware = createMiddleware<McpEnv>(
   async (c, next): Promise<Response | void> => {
     const user = c.get("user");
     if (!user || user.role !== "admin") {
-      return c.json({ error: { code: "FORBIDDEN", message: "Admin role required" } }, 403);
+      return c.json(jsonRpcErrorBody(-32001, "Admin role required"), 403);
     }
 
-    // jtiが存在しないトークンは管理者エンドポイントでは拒否（リボークチェック必須）
     if (!user.jti) {
-      return c.json(
-        { error: { code: "UNAUTHORIZED", message: "Invalid token: missing jti" } },
-        401,
-      );
+      return c.json(jsonRpcErrorBody(-32001, "Invalid token: missing jti"), 401);
     }
 
-    // リボークされたトークンを拒否（JWT有効期限内でも即時無効化）
     if (await isAccessTokenRevoked(c.env.DB, user.jti)) {
-      return c.json({ error: { code: "UNAUTHORIZED", message: "Token has been revoked" } }, 401);
+      return c.json(jsonRpcErrorBody(-32001, "Token has been revoked"), 401);
     }
 
     await next();

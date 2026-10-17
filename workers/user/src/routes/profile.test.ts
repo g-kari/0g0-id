@@ -1,21 +1,11 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { encodeSession } from "@0g0-id/shared";
 import { Hono } from "hono";
+import { makeSessionCookie } from "@0g0-id/shared/test-helpers";
 
 import profileRoutes from "./profile";
 
 const SESSION_COOKIE = "__Host-user-session";
 const baseUrl = "https://user.0g0.xyz";
-
-async function makeSessionCookie(): Promise<string> {
-  const session = {
-    session_id: "00000000-0000-0000-0000-000000000000",
-    access_token: "mock-access-token",
-    refresh_token: "mock-refresh-token",
-    user: { id: "user-123", email: "user@example.com", name: "Test User", role: "user" as const },
-  };
-  return encodeSession(session, "test-secret");
-}
 
 function buildApp(idpFetch: (req: Request) => Promise<Response>) {
   const app = new Hono<{

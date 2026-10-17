@@ -1,7 +1,7 @@
 # データベーススキーマドキュメント
 
 > 0g0-id（統合ID基盤）の Cloudflare D1 データベーススキーマ定義。  
-> マイグレーション `0001` 〜 `0022` を適用した最終状態。
+> マイグレーション `0001` 〜 `0024` を適用した最終状態。
 
 ## テーブル一覧
 
@@ -17,6 +17,8 @@
 | [device_codes](#device_codes)                   | Device Authorization Grant（RFC 8628）                             |
 | [mcp_sessions](#mcp_sessions)                   | MCP（Model Context Protocol）セッション管理                        |
 | [revoked_access_tokens](#revoked_access_tokens) | アクセストークン失効リスト（RFC 7009）                             |
+| [bff_sessions](#bff_sessions)                   | BFF セッション（リモート失効・DBSC 端末バインド対応）              |
+| [dbsc_challenges](#dbsc_challenges)             | DBSC リフレッシュ用 nonce の短寿命保存（challenge-response）       |
 
 ## テーブル間リレーション
 
@@ -26,6 +28,8 @@ users
  ├─< auth_codes          (user_id → users.id, CASCADE)
  ├─< login_events        (user_id → users.id, CASCADE)
  ├─< device_codes        (user_id → users.id, CASCADE)
+ ├─< bff_sessions        (user_id → users.id, CASCADE)
+ │    └─< dbsc_challenges (session_id → bff_sessions.id, CASCADE)
  └─< services            (owner_user_id → users.id)
 
 services
@@ -336,6 +340,82 @@ MCP（Model Context Protocol）セッション管理。Worker のスケールア
 
 - アクセストークン（JWT）は有効期限15分と短いが、明示的失効が必要なケース（ログアウト・セキュリティイベント）に対応
 - `expires_at` を保持することで、元トークンの有効期限が過ぎたレコードを安全に削除できる（テーブル肥大化防止）
+
+---
+
+## bff_sessions
+
+BFF（user.0g0.xyz / admin.0g0.xyz）のセッション Cookie を D1 上で任意失効可能にするテーブル。
+Cookie 自体は AES-GCM で暗号化されているが、端末マルウェア等で漏洩した場合の強制失効手段として、
+リクエスト毎に行の有効性を ID Worker 側で検証する。
+
+DBSC（Device Bound Session Credentials）対応で `device_public_key_jwk` / `device_bound_at` 列を追加（migration 0024）。
+Chrome 等が `POST /auth/dbsc/start` で送ってくる端末公開鍵 JWK をここに保存し、Phase 2 の
+`/auth/dbsc/refresh` で発行するチャレンジ nonce の proof JWT 検証に利用する。
+チャレンジ本体は別テーブル [dbsc_challenges](#dbsc_challenges) に保存。
+
+| カラム                | 型      | NULL | デフォルト | 説明                                                                    |
+| --------------------- | ------- | ---- | ---------- | ----------------------------------------------------------------------- |
+| id                    | TEXT    | NO   | —          | UUID（PK）。セッション Cookie の payload に含まれる識別子               |
+| user_id               | TEXT    | NO   | —          | FK → users.id（CASCADE）                                                |
+| created_at            | INTEGER | NO   | —          | 作成時刻（unix 秒）                                                     |
+| expires_at            | INTEGER | NO   | —          | 有効期限（unix 秒）。デフォルト 7 日                                    |
+| revoked_at            | INTEGER | YES  | —          | 失効時刻。NULL なら未失効                                               |
+| revoked_reason        | TEXT    | YES  | —          | 失効理由（`user_logout` / `security_event` / `admin_revoke` 等）        |
+| user_agent            | TEXT    | YES  | —          | 監査用                                                                  |
+| ip                    | TEXT    | YES  | —          | 監査用（CF-Connecting-IP）                                              |
+| bff_origin            | TEXT    | NO   | —          | 発行元 BFF オリジン。DBSC バインド時に呼び出し元一致確認に使う          |
+| device_public_key_jwk | TEXT    | YES  | —          | DBSC: 端末公開鍵 JWK（JSON 文字列、ES256 / P-256）。未バインドなら NULL |
+| device_bound_at       | INTEGER | YES  | —          | DBSC: バインド成立時刻（unix 秒）。未バインドなら NULL                  |
+
+### インデックス
+
+| 名前                        | カラム     | 種別  | 備考                         |
+| --------------------------- | ---------- | ----- | ---------------------------- |
+| idx_bff_sessions_user_id    | user_id    | INDEX | ユーザー単位の一括失効・件数 |
+| idx_bff_sessions_expires_at | expires_at | INDEX | 期限切れレコードの定期削除用 |
+
+### 設計メモ
+
+- 二重バインドは `bindDeviceKeyToBffSession` の WHERE `device_public_key_jwk IS NULL` でアトミックに排除
+- 端末追加は新規ログイン経由のみ（既存セッションへの公開鍵上書き不可）
+- 失効後 7 日経過したレコードは `cleanupStaleBffSessions` で削除（日次 cron 想定）
+- DBSC 公開鍵を読み出す際は `parseStoredDbscPublicJwk` で kty/crv/d を再検証してから `importJWK` する
+
+---
+
+## dbsc_challenges
+
+DBSC Phase 2 の challenge-response 方式で使用する短寿命 nonce を管理する。
+`POST /auth/dbsc/refresh` で Chrome が最初に POST すると、IdP はここに nonce を登録し、`403`
+応答の `Secure-Session-Challenge` ヘッダで Chrome に返す。Chrome は端末秘密鍵で nonce を
+含む proof JWT を署名して再送 → IdP 側で `consumeDbscChallenge` により一回限り消費する。
+
+### カラム
+
+| カラム      | 型      | NULL | デフォルト | 説明                                                       |
+| ----------- | ------- | ---- | ---------- | ---------------------------------------------------------- |
+| nonce       | TEXT    | NO   | —          | 主キー。base64url な乱数（十分長いものを呼び出し側で担保） |
+| session_id  | TEXT    | NO   | —          | `bff_sessions.id`（FK, CASCADE）                           |
+| created_at  | INTEGER | NO   | —          | 発行時刻（unix 秒）                                        |
+| expires_at  | INTEGER | NO   | —          | 有効期限（unix 秒、既定 60 秒 TTL）                        |
+| consumed_at | INTEGER | YES  | —          | 消費済みマーキング（unix 秒）。未消費なら NULL             |
+
+### インデックス
+
+| 名前                           | カラム     | 種別    | 備考                             |
+| ------------------------------ | ---------- | ------- | -------------------------------- |
+| (PK) nonce                     | nonce      | PRIMARY | 一意制約でもリプレイを阻止       |
+| idx_dbsc_challenges_session_id | session_id | INDEX   | セッション単位のクリーンアップ用 |
+| idx_dbsc_challenges_expires_at | expires_at | INDEX   | 期限切れレコードの定期削除用     |
+
+### 設計メモ
+
+- 並行リフレッシュに備え、同一セッションで複数の未消費 nonce を許容（PK は nonce 単体）
+- `consumeDbscChallenge` の WHERE で `consumed_at IS NULL AND expires_at > ? AND session_id = ?` を
+  アトミックに絞り込むことで、リプレイ・期限切れ・セッション不一致を一本化して排除する
+- `cleanupStaleDbscChallenges` は期限切れ／消費後 1 時間経過した行を削除（監査用に短期保持）。
+  `workers/id` の scheduled ハンドラから日次 cron（`0 0 * * *`）で呼び出される
 
 ---
 

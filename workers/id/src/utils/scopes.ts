@@ -66,3 +66,22 @@ export function validateCodeChallenge(codeChallenge: string | undefined): string
   if (!/^[A-Za-z0-9\-_]{43}$/.test(codeChallenge)) return "Invalid code_challenge format for S256";
   return null;
 }
+
+/**
+ * code_challenge / code_challenge_method パラメータの整合性を検証する。
+ * - code_challenge 指定時: S256 のみ許可 + フォーマット検証
+ * - code_challenge_method のみ指定: エラー
+ * - 両方未指定: OK（オプショナルなケース）
+ */
+export function validateCodeChallengeParams(
+  codeChallenge: string | undefined,
+  codeChallengeMethod: string | undefined,
+): string | null {
+  if (codeChallenge && codeChallengeMethod !== "S256") {
+    return "Only S256 code_challenge_method is supported";
+  }
+  if (!codeChallenge && codeChallengeMethod !== undefined) {
+    return "code_challenge is required when code_challenge_method is specified";
+  }
+  return validateCodeChallenge(codeChallenge);
+}

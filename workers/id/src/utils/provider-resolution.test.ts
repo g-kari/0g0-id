@@ -18,6 +18,14 @@ vi.mock("@0g0-id/shared", () => ({
   upsertGithubUser: vi.fn(),
   upsertXUser: vi.fn(),
   createLogger: vi.fn(() => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn() })),
+  restErrorBody: (code: string, message: string) => ({ error: { code, message } }),
+  PROVIDER_DISPLAY_NAMES: {
+    google: "Google",
+    line: "LINE",
+    twitch: "Twitch",
+    github: "GitHub",
+    x: "X",
+  },
 }));
 
 import {
@@ -157,6 +165,7 @@ describe("resolveProvider - LINE", () => {
     vi.mocked(fetchLineUserInfo).mockResolvedValue({
       sub: "line-sub-1",
       email: "line@example.com",
+      email_verified: true,
       name: "LINE User",
       picture: "https://pic.example.com/line.jpg",
     });
@@ -184,6 +193,65 @@ describe("resolveProvider - LINE", () => {
     expect(res.status).toBe(200);
     const body = await res.json<Record<string, unknown>>();
     expect(body).toEqual({ ok: true, sub: "line-sub-2" });
+  });
+
+  it("email あり・email_verified=false → UNVERIFIED_EMAIL エラー", async () => {
+    vi.mocked(exchangeLineCode).mockResolvedValue({
+      access_token: "at",
+      token_type: "Bearer",
+      expires_in: 3600,
+      scope: "openid profile email",
+    });
+    vi.mocked(fetchLineUserInfo).mockResolvedValue({
+      sub: "line-sub-3",
+      email: "line@example.com",
+      email_verified: false,
+      name: "LINE User",
+    });
+
+    const res = await callProvider("line");
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("UNVERIFIED_EMAIL");
+  });
+
+  it("email あり・email_verified=true → ok=true", async () => {
+    vi.mocked(exchangeLineCode).mockResolvedValue({
+      access_token: "at",
+      token_type: "Bearer",
+      expires_in: 3600,
+      scope: "openid profile email",
+    });
+    vi.mocked(fetchLineUserInfo).mockResolvedValue({
+      sub: "line-sub-4",
+      email: "verified-line@example.com",
+      email_verified: true,
+      name: "LINE User",
+    });
+
+    const res = await callProvider("line");
+    expect(res.status).toBe(200);
+    const body = await res.json<Record<string, unknown>>();
+    expect(body).toEqual({ ok: true, sub: "line-sub-4" });
+  });
+
+  it("email あり・email_verified 未定義 → UNVERIFIED_EMAIL エラー", async () => {
+    vi.mocked(exchangeLineCode).mockResolvedValue({
+      access_token: "at",
+      token_type: "Bearer",
+      expires_in: 3600,
+      scope: "openid profile email",
+    });
+    vi.mocked(fetchLineUserInfo).mockResolvedValue({
+      sub: "line-sub-5",
+      email: "line@example.com",
+      name: "LINE User",
+    });
+
+    const res = await callProvider("line");
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("UNVERIFIED_EMAIL");
   });
 });
 

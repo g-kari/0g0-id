@@ -1,51 +1,63 @@
-import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 
-vi.mock("@0g0-id/shared", () => ({
-  createLogger: vi.fn().mockReturnValue({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
-  logger: () => async (_c: unknown, next: () => Promise<void>) => next(),
-  securityHeaders: () => async (_c: unknown, next: () => Promise<void>) => next(),
-  bodyLimitMiddleware: () => async (_c: unknown, next: () => Promise<void>) => next(),
-  verifyAccessToken: vi.fn(),
-  countUsers: vi.fn(),
-  countAdminUsers: vi.fn(),
-  countServices: vi.fn(),
-  countActiveRefreshTokens: vi.fn(),
-  getServiceById: vi.fn(),
-  getServiceByClientId: vi.fn(),
-  listServices: vi.fn(),
-  createService: vi.fn(),
-  updateService: vi.fn(),
-  deleteService: vi.fn(),
-  listServiceRedirectUris: vi.fn(),
-  addServiceRedirectUri: vi.fn(),
-  deleteServiceRedirectUri: vi.fn(),
-  getUserById: vi.fn(),
-  getUserByEmail: vi.fn(),
-  listUsers: vi.fn(),
-  updateUser: vi.fn(),
-  deleteUser: vi.fn(),
-  createUser: vi.fn(),
-  createAuthCode: vi.fn(),
-  getAuthCode: vi.fn(),
-  markAuthCodeUsed: vi.fn(),
-  createRefreshToken: vi.fn(),
-  getRefreshToken: vi.fn(),
-  revokeRefreshToken: vi.fn(),
-  revokeRefreshTokenFamily: vi.fn(),
-  generateAccessToken: vi.fn(),
-  generateRefreshTokenValue: vi.fn(),
-  hashToken: vi.fn(),
-  // well-known route で使用
-  getJWTKeys: vi.fn(),
-  getJWKS: vi.fn(),
-  // scheduled handler で使用
-  cleanupExpiredAuthCodes: vi.fn().mockResolvedValue(0),
-  deleteExpiredDeviceCodes: vi.fn().mockResolvedValue(undefined),
-  cleanupExpiredMcpSessions: vi.fn().mockResolvedValue(0),
-  cleanupExpiredRevokedAccessTokens: vi.fn().mockResolvedValue(0),
-  deleteExpiredRefreshTokens: vi.fn().mockResolvedValue(0),
-  uuidParamMiddleware: () => async (_c: unknown, next: () => Promise<void>) => next(),
-}));
+vi.mock("@0g0-id/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@0g0-id/shared")>();
+  return {
+    ...actual,
+    COOKIE_NAMES: {
+      IDP_STATE: "__Host-oauth-state",
+      IDP_PKCE: "__Host-oauth-pkce",
+      ADMIN_SESSION: "__Host-admin-session",
+      ADMIN_STATE: "__Host-admin-oauth-state",
+      USER_SESSION: "__Host-user-session",
+      USER_STATE: "__Host-user-oauth-state",
+    },
+    logger: () => async (_c: unknown, next: () => Promise<void>) => next(),
+    securityHeaders: () => async (_c: unknown, next: () => Promise<void>) => next(),
+    bodyLimitMiddleware: () => async (_c: unknown, next: () => Promise<void>) => next(),
+    verifyAccessToken: vi.fn(),
+    countUsers: vi.fn(),
+    countAdminUsers: vi.fn(),
+    countServices: vi.fn(),
+    countActiveRefreshTokens: vi.fn(),
+    getServiceById: vi.fn(),
+    getServiceByClientId: vi.fn(),
+    listServices: vi.fn(),
+    createService: vi.fn(),
+    updateService: vi.fn(),
+    deleteService: vi.fn(),
+    listServiceRedirectUris: vi.fn(),
+    addServiceRedirectUri: vi.fn(),
+    deleteServiceRedirectUri: vi.fn(),
+    getUserById: vi.fn(),
+    getUserByEmail: vi.fn(),
+    listUsers: vi.fn(),
+    updateUser: vi.fn(),
+    deleteUser: vi.fn(),
+    createUser: vi.fn(),
+    createAuthCode: vi.fn(),
+    getAuthCode: vi.fn(),
+    markAuthCodeUsed: vi.fn(),
+    createRefreshToken: vi.fn(),
+    getRefreshToken: vi.fn(),
+    revokeRefreshToken: vi.fn(),
+    revokeRefreshTokenFamily: vi.fn(),
+    generateAccessToken: vi.fn(),
+    generateRefreshTokenValue: vi.fn(),
+    hashToken: vi.fn(),
+    // well-known route で使用
+    getJWTKeys: vi.fn(),
+    getJWKS: vi.fn(),
+    // scheduled handler で使用
+    cleanupExpiredAuthCodes: vi.fn().mockResolvedValue(0),
+    deleteExpiredDeviceCodes: vi.fn().mockResolvedValue(undefined),
+    cleanupExpiredMcpSessions: vi.fn().mockResolvedValue(0),
+    cleanupExpiredRevokedAccessTokens: vi.fn().mockResolvedValue(0),
+    deleteExpiredRefreshTokens: vi.fn().mockResolvedValue(0),
+    cleanupStaleDbscChallenges: vi.fn().mockResolvedValue(undefined),
+    uuidParamMiddleware: () => async (_c: unknown, next: () => Promise<void>) => next(),
+  };
+});
 
 import type { IdpEnv } from "@0g0-id/shared";
 import {
@@ -55,6 +67,7 @@ import {
   cleanupExpiredMcpSessions,
   cleanupExpiredRevokedAccessTokens,
   deleteExpiredRefreshTokens,
+  cleanupStaleDbscChallenges,
 } from "@0g0-id/shared";
 import { app } from "./index";
 import worker from "./index";
@@ -70,6 +83,7 @@ const mockEnv = {
   USER_ORIGIN: "https://user.0g0.xyz",
   ADMIN_ORIGIN: "https://admin.0g0.xyz",
   COOKIE_SECRET: "mock-cookie-secret-for-testing-32chars!!",
+  PAIRWISE_SALT: "test-pairwise-salt-value",
 };
 
 describe("GET /api/health", () => {
@@ -234,6 +248,7 @@ describe("scheduled handler", () => {
     vi.mocked(cleanupExpiredMcpSessions).mockClear();
     vi.mocked(cleanupExpiredRevokedAccessTokens).mockClear();
     vi.mocked(deleteExpiredRefreshTokens).mockClear();
+    vi.mocked(cleanupStaleDbscChallenges).mockClear();
   });
 
   it("全クリーンアップ処理を実行する", async () => {
@@ -256,5 +271,127 @@ describe("scheduled handler", () => {
     expect(cleanupExpiredMcpSessions).toHaveBeenCalledWith(mockEnv.DB);
     expect(cleanupExpiredRevokedAccessTokens).toHaveBeenCalledWith(mockEnv.DB);
     expect(deleteExpiredRefreshTokens).toHaveBeenCalledWith(mockEnv.DB);
+    expect(cleanupStaleDbscChallenges).toHaveBeenCalledWith(mockEnv.DB);
   });
+});
+
+describe("scheduled handler の実 logger metadata 統合", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function runCleanup(counts: [number, number, number]): Promise<void> {
+    vi.mocked(cleanupExpiredAuthCodes).mockResolvedValue(counts[0]);
+    vi.mocked(cleanupExpiredRevokedAccessTokens).mockResolvedValue(counts[1]);
+    vi.mocked(deleteExpiredRefreshTokens).mockResolvedValue(counts[2]);
+    const waitUntil = vi.fn();
+    await worker.scheduled(
+      {} as ScheduledEvent,
+      mockEnv as unknown as IdpEnv,
+      { waitUntil } as unknown as ExecutionContext,
+    );
+    expect(waitUntil).toHaveBeenCalledOnce();
+    await waitUntil.mock.calls[0][0];
+  }
+
+  function entries(): unknown[] {
+    return vi.mocked(console.log).mock.calls.map(([line]) => JSON.parse(line as string) as unknown);
+  }
+
+  const messages = [
+    "認可コードクリーンアップ完了",
+    "デバイスコードクリーンアップ完了",
+    "MCPセッションクリーンアップ完了",
+    "失効アクセストークンクリーンアップ完了",
+    "期限切れリフレッシュトークンクリーンアップ完了",
+    "DBSCチャレンジクリーンアップ完了",
+  ];
+
+  it("全3箇所のaggregate countと固定イベントを保つ", async () => {
+    await runCleanup([0, 3, Number.MAX_SAFE_INTEGER]);
+    expect(entries()).toEqual(
+      messages.map((msg, index) => ({
+        level: "info",
+        ctx: "id",
+        msg,
+        ...(index === 0
+          ? { data: { deletedCount: 0 } }
+          : index === 3
+            ? { data: { deletedCount: 3 } }
+            : index === 4
+              ? { data: { deletedCount: Number.MAX_SAFE_INTEGER } }
+              : {}),
+      })),
+    );
+  });
+
+  it("不正なcountを変換・出力せずcleanup完了イベントを保つ", async () => {
+    await runCleanup([-1, NaN, "synthetic-private-count" as unknown as number]);
+    expect(entries()).toEqual(messages.map((msg) => ({ level: "info", ctx: "id", msg })));
+  });
+});
+
+describe("onError の実 logger 統合 privacy 回帰", () => {
+  const canary = "synthetic-only@example.invalid token=SYNTHETIC-ONLY-TOKEN";
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "debug").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function requestFailure(error: Error): Promise<Response> {
+    vi.mocked(getJWTKeys).mockRejectedValueOnce(error);
+    return app.request(
+      "https://id.0g0.xyz/.well-known/jwks.json",
+      undefined,
+      mockEnv as unknown as Record<string, string>,
+    );
+  }
+
+  async function expectFixedFailure(error: Error): Promise<void> {
+    const response = await requestFailure(error);
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: { code: "INTERNAL_ERROR", message: "Internal server error" },
+    });
+    expect(console.error).toHaveBeenCalledExactlyOnceWith(
+      JSON.stringify({ level: "error", ctx: "id", msg: "Unhandled error" }),
+    );
+    expect(console.warn).not.toHaveBeenCalled();
+    expect(console.log).not.toHaveBeenCalled();
+    expect(console.debug).not.toHaveBeenCalled();
+    const output = JSON.stringify(vi.mocked(console.error).mock.calls);
+    expect(output).not.toContain(canary);
+  }
+
+  it("例外の message・stack・cause・任意extraをconsoleへ渡さない", async () => {
+    const error = new Error(canary, { cause: new Error(canary) });
+    error.stack = `${canary}\n    at synthetic-only.invalid`;
+    Object.assign(error, { details: { email: canary }, self: error });
+    await expectFixedFailure(error);
+  });
+
+  it.each(["message", "stack", "cause", "name", "toJSON", "details"])(
+    "例外の %s getterを参照せず固定500を返す",
+    async (field) => {
+      const error = new Error("Synthetic failure");
+      error.stack = "Synthetic stack";
+      const getter = vi.fn(() => {
+        throw new Error(canary);
+      });
+      Object.defineProperty(error, field, { get: getter, configurable: true });
+      await expectFixedFailure(error);
+      expect(getter).not.toHaveBeenCalled();
+    },
+  );
 });

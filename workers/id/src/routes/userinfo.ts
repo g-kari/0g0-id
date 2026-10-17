@@ -1,6 +1,11 @@
 import { Hono, type Context } from "hono";
 import type { IdpEnv, TokenPayload } from "@0g0-id/shared";
-import { findUserById, generatePairwiseSub, oauthErrorBody } from "@0g0-id/shared";
+import {
+  findUserById,
+  generatePairwiseSub,
+  createRelyingPartyClaims,
+  oauthErrorBody,
+} from "@0g0-id/shared";
 import { authMiddleware } from "../middleware/auth";
 import { externalApiRateLimitMiddleware } from "../middleware/rate-limit";
 
@@ -32,13 +37,22 @@ async function handleUserInfo(c: AppContext): Promise<Response> {
     return c.json(oauthErrorBody("invalid_token", "Account suspended"), 401);
   }
 
+  // A scope request, including an old scope-less token, is not profile disclosure consent.
+  if (tokenUser.cid !== undefined) {
+    const sub = await generatePairwiseSub(tokenUser.cid, user.id, c.env.PAIRWISE_SALT);
+    return c.json(createRelyingPartyClaims(sub));
+  }
+
+  // BFF-only profile contract. Its storage/session minimization is a separate migration.
   // スコープベースのクレームフィルタリング（OIDC Core 1.0 Section 5.3）
   // scope未定義 = BFFセッション（全クレームを返す）
   // scope定義済み = サービストークン（スコープに応じてフィルタリング）
   const scopes = tokenUser.scope ? new Set(tokenUser.scope.split(" ")) : null;
 
   // サービストークン（cid設定済み）はペアワイズsub、BFFセッションは内部IDを返す
-  const sub = tokenUser.cid ? await generatePairwiseSub(tokenUser.cid, user.id) : user.id;
+  const sub = tokenUser.cid
+    ? await generatePairwiseSub(tokenUser.cid, user.id, c.env.PAIRWISE_SALT)
+    : user.id;
 
   const claims: Record<string, unknown> = {
     sub,

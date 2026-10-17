@@ -4,25 +4,239 @@
 **役割**: ユーザー向け BFF（ログイン UI / プロフィール / セッション管理） + Astro SPA 配信
 **ソース**: `workers/user/src/index.ts` および `workers/user/src/routes/*.ts`
 
+> Method/Path テーブルは `vp run docs:api:check` で、実際に登録された Hono ルートと双方向照合します。DBSC 登録/更新とフォールバックも対象です。[検査範囲・更新手順](./api-reference-generation.md#bff-の手書き-api-一覧の同期確認)
+
 ## 認証・セキュリティ
 
 - **セッション Cookie**: `__Host-user-session`（HS256 署名付き、`access_token` / `refresh_token` / `user_id` を含む）
 - **OAuth state Cookie**: `__Host-user-oauth-state`（CSRF 対策ワンタイム）
 - **内部通信**: id Worker へは Service Binding (`c.env.IDP.fetch`) で呼び出し、`internalServiceHeaders()` を付与
-- **CSRF 対策**: `/api/*` / `/auth/logout` / `/auth/link` に `bffCsrfMiddleware`（Origin/Referer 検証）
+- **CSRF 対策**: `/api/*` / `/auth/logout` / `/auth/link` に `bffCsrfMiddleware`（Origin/Referer 検証）。`/auth/dbsc/*` は Chrome 内部発のフローで Origin ヘッダが付かないため除外し、Cookie セッション + 自署 JWT (audience=SELF_ORIGIN) + bff_origin 一致確認の多層で防御。
 - **CORS**: `/api/*` は自身のオリジン (`user.0g0.xyz`) のみ許可
+- **DBSC（Phase 1-2）**: ログイン callback 応答に `Secure-Session-Registration: (ES256);path="/auth/dbsc/start"` を付与。Chrome は端末公開鍵で自署した登録 JWT を `/auth/dbsc/start` に送り、bff_sessions に紐付ける。Phase 2 は `/auth/dbsc/refresh` で challenge-response を実装（初回 403 + `Secure-Session-Challenge: "<nonce>"`、再送は `Sec-Session-Response` に proof JWT）。短寿命 Cookie 切替は Phase 3 で対応予定。
+- **DBSC 機密操作必須化（Phase 3 導入 — issue #155）**: `/api/me/*`・`/api/connections/*`・`/api/device/*`・`/api/providers/*`・`/auth/link` の破壊的メソッド（POST/PATCH/PUT/DELETE）に `requireDbscBoundSession` ミドルウェアを適用。デフォルトは warn-only（未バインドでも通過・ログのみ）で、環境変数 `DBSC_ENFORCE_SENSITIVE="true"` を設定した環境では `403 DBSC_BINDING_REQUIRED` + `Secure-Session-Registration` ヘッダで拒否する。IdP 応答異常時は fail-open（ユーザー操作の全停止を回避）。対象はプロフィール更新・アカウント削除・連携解除・SNS 追加連携・デバイス承認など、ハイジャック時に恒久的な乗っ取りや復旧経路封鎖につながる操作。
+- **デプロイ時 secret 存在チェック（Phase 3 — issue #155）**: `npm run deploy:user` は `wrangler deploy` の前に `scripts/preflight-deploy.ts` を実行し、`DBSC_ENFORCE_SENSITIVE` が wrangler secret として登録済みか確認する。未登録なら warn-only モードでデプロイされる旨を警告出力するだけで続行する（`PREFLIGHT_STRICT=1` で abort、`SKIP_PREFLIGHT=1` でチェック省略）。wrangler CLI 未認証やオフライン時は fail-open で通過（deploy 本体で別途検出されるため、プリフライトでは block しない）。
 - **レスポンス透過**: id Worker からのレスポンスは `proxyResponse()` / `proxyMutate()` でそのままクライアントに返す
+
+## デプロイ運用
+
+### プリフライトモード選択
+
+`scripts/preflight-deploy.ts` は `npm run deploy:user` 実行時に wrangler secret list を叩き、`DBSC_ENFORCE_SENSITIVE` secret の登録有無を確認する。挙動は以下の環境変数で切り替える:
+
+| シナリオ                                          | 推奨設定                             | 挙動                                                                      |
+| ------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------- |
+| ローカル開発・手動デプロイ                        | なし（デフォルト）                   | secret 未登録でも warn のみで続行（fail-open）                            |
+| **CI の本番デプロイ job**                         | **`PREFLIGHT_STRICT=1` を env 固定** | secret 未登録なら abort（exit 1）。登録漏れでの本番反映を事前遮断         |
+| 緊急デプロイ（secret 未整備下で回避が必要な場合） | `SKIP_PREFLIGHT=1`                   | チェック自体を省略（`PREFLIGHT_STRICT` より優先）。通常運用では使用しない |
+
+**注意**: `PREFLIGHT_STRICT` は厳密比較で `"1"` のみ strict 扱い。`"true"` / `"yes"` 等を設定しても警告が出るだけで strict モードにならない（`runPreflight` の誤設定検知ログが出る）。GitHub Actions の `env:` ブロックに書く際は明示的にクォートした `PREFLIGHT_STRICT: "1"` を指定すること。裸の `true` は YAML パーサが boolean 化するため `"1"` に一致せず、strict が有効にならない。
+
+**混同注意 — プリフライト env と runtime env で受理値が逆**: preflight 側の `PREFLIGHT_STRICT` は `"1"` のみ受理する一方、runtime 側の `DBSC_ENFORCE_SENSITIVE`（`require-dbsc-bound.ts` の `isDbscEnforceValue`）は `"true"`（trim + case-insensitive）のみ enforce と判定する。両方を `"1"` で揃えると CI プリフライトは strict で通っても runtime は warn-only のままになるので、**secret 値は `"true"`、CI env は `"1"`** という組み合わせで設定すること。
+
+現状このリポジトリには deploy workflow は存在せず、ローカル `npm run deploy:user` で本番反映する運用となっている。将来 CI 経由の deploy job を追加する場合、該当 job の `env:` ブロックに `PREFLIGHT_STRICT: "1"` を固定設定することを推奨する（secret 登録漏れの本番反映を防ぐための運用ゲート — issue #155 Phase 3）。
 
 ## 認証フロー（`/auth/*`）
 
 `createBffAuthRoutes()` が生成する共通ルート + 独自の `/auth/link`。
 
-| Method | Path             | 認証              | 説明                                                                                                                                                                       |
-| ------ | ---------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/auth/login`    | —                 | `provider` クエリでプロバイダーを選択し、id Worker `/auth/login` にリダイレクト。                                                                                          |
-| GET    | `/auth/callback` | —                 | id Worker からのコールバック。ワンタイムコードを `/auth/exchange` で交換し、セッション Cookie を発行して `/profile` へ。                                                   |
-| POST   | `/auth/logout`   | セッション Cookie | リフレッシュトークンを失効させ、セッション Cookie を削除。                                                                                                                 |
-| POST   | `/auth/link`     | セッション Cookie | ログイン済みユーザーの SNS プロバイダー追加連携。内部で `link-intent` トークンを取得し、`/auth/login?link_token=...` へリダイレクト。POST 固定（強制ナビゲーション対策）。 |
+| Method | Path                 | 認証              | 説明                                                                                                                                                                                                                                     |
+| ------ | -------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/auth/login`        | —                 | `provider` クエリでプロバイダーを選択し、id Worker `/auth/login` にリダイレクト。                                                                                                                                                        |
+| GET    | `/auth/callback`     | —                 | id Worker からのコールバック。ワンタイムコードを `/auth/exchange` で交換し、セッション Cookie を発行して `/profile` へ。`Secure-Session-Registration` ヘッダで DBSC 登録を Chrome に開始させる。                                         |
+| POST   | `/auth/logout`       | セッション Cookie | リフレッシュトークンを失効させ、セッション Cookie を削除。                                                                                                                                                                               |
+| POST   | `/auth/link`         | セッション Cookie | ログイン済みユーザーの SNS プロバイダー追加連携。内部で `link-intent` トークンを取得し、`/auth/login?link_token=...` へリダイレクト。POST 固定（強制ナビゲーション対策）。                                                               |
+| POST   | `/auth/dbsc/start`   | セッション Cookie | DBSC 端末公開鍵バインド。Body は `application/jwt` または `{ "jwt": "..." }`。検証成功で `bff_sessions` に公開鍵保存。                                                                                                                   |
+| POST   | `/auth/dbsc/refresh` | セッション Cookie | DBSC challenge-response リフレッシュ。初回 POST は `403` + `Secure-Session-Challenge: "<nonce>"`。Chrome は `Sec-Session-Response` ヘッダに端末秘密鍵で署名した proof JWT（`aud=SELF_ORIGIN` / `jti=<nonce>`）を付けて再送。成功時 200。 |
+
+### `POST /auth/dbsc/start` の応答
+
+成功時 200:
+
+```json
+{
+  "session_identifier": "<bff_sessions.id>",
+  "refresh_url": "/auth/dbsc/refresh",
+  "scope": { "include_site": true },
+  "credentials": [{ "type": "cookie", "name": "__Host-user-session" }]
+}
+```
+
+エラー: 401 `UNAUTHORIZED`（Cookie なし）、400 `INVALID_REQUEST` / `INVALID_JWT`（JWT 検証失敗・既バインド・列挙対策で 4xx は一律畳み込み）、500 `INTERNAL_ERROR`（IdP 障害）。
+
+### `POST /auth/dbsc/refresh` の応答
+
+**Phase 1（初回 POST, `Sec-Session-Response` 無し）**:
+
+- Status: `403 Forbidden`
+- Header: `Secure-Session-Challenge: "<nonce>"`（RFC 8941 Structured Field String）
+- Body: `{ "error": { "code": "SESSION_CHALLENGE_REQUIRED", ... } }`
+
+Chrome は発行された nonce を `jti` クレームに含めた proof JWT を端末秘密鍵（ES256）で署名し、`Sec-Session-Response` ヘッダに詰めて再送する。
+
+**Phase 2（proof 提示, `Sec-Session-Response: <jwt>`）**:
+
+- Status: `200 OK`（proof 検証成功・nonce ワンタイム消費）
+- Body: `/auth/dbsc/start` と同形式（Phase 2 時点では既存 Cookie は据え置き）
+
+エラー: 401 `UNAUTHORIZED`（Cookie なし）、400 `INVALID_REQUEST`（nonce 発行失敗・proof 形式不正）／ `INVALID_PROOF`（署名不一致・aud 不一致・nonce 期限切れ／消費済み、すべて列挙対策で一本化）、500 `INTERNAL_ERROR`（IdP 障害）。
+
+## DBSC エンドポイント詳細（`/auth/dbsc/*`）
+
+DBSC（Device Bound Session Credentials）のエンドポイントは、`packages/shared/src/lib/bff-dbsc-factory.ts` の `createBffDbscRoutes()` ファクトリで生成される共通実装を使用する。user / admin BFF で Cookie 名・ロガー名のみ異なり、処理フローとセキュリティ方針は完全に同一。
+
+CSRF 対策: `/auth/dbsc/*` は Chrome 内部発のフローで `Origin` ヘッダが付かないため `bffCsrfMiddleware` を除外し、Cookie セッション + 自署 JWT（`aud` = `SELF_ORIGIN`）+ `bff_origin` 一致確認の多層で防御する。
+
+### POST `/auth/dbsc/start` — 端末公開鍵登録
+
+Chrome が `Secure-Session-Registration` ヘッダに応じて送信する登録 JWT を受け取り、IdP の `/auth/dbsc/bind` に転送して端末公開鍵をセッションに紐付ける。
+
+**リクエスト**
+
+```http
+POST /auth/dbsc/start
+Content-Type: application/jwt
+Cookie: __Host-user-session=<signed-session>
+```
+
+```
+eyJhbGciOiJFUzI1NiIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6Ii4uLiIsInkiOiIuLi4ifX0.eyJhdWQiOiJodHRwczovL3VzZXIuMGcwLnh5eiJ9.signature
+```
+
+または JSON 形式:
+
+```http
+POST /auth/dbsc/start
+Content-Type: application/json
+Cookie: __Host-user-session=<signed-session>
+```
+
+```json
+{ "jwt": "eyJhbGciOiJFUzI1NiJ9..." }
+```
+
+**成功レスポンス（200）**
+
+```json
+{
+  "session_identifier": "<bff_sessions.id>",
+  "refresh_url": "/auth/dbsc/refresh",
+  "scope": { "include_site": true },
+  "credentials": [{ "type": "cookie", "name": "__Host-user-session" }]
+}
+```
+
+**エラーレスポンス**
+
+| HTTP | code              | 条件                                                                      |
+| ---- | ----------------- | ------------------------------------------------------------------------- |
+| 400  | `INVALID_REQUEST` | JWT 本文なし・形式不正・IdP バインド拒否（列挙対策で 4xx は一律畳み込み） |
+| 400  | `INVALID_JWT`     | 登録 JWT の署名検証失敗                                                   |
+| 401  | `UNAUTHORIZED`    | セッション Cookie なし・無効                                              |
+| 500  | `INTERNAL_ERROR`  | IdP 障害（5xx）                                                           |
+
+### POST `/auth/dbsc/refresh` — challenge-response リフレッシュ
+
+2 段階のフローで端末バインドを検証する。
+
+#### Phase 1: challenge 発行（初回 POST、`Sec-Session-Response` ヘッダなし）
+
+**リクエスト**
+
+```http
+POST /auth/dbsc/refresh
+Cookie: __Host-user-session=<signed-session>
+```
+
+**レスポンス（403）**
+
+```http
+HTTP/1.1 403 Forbidden
+Secure-Session-Challenge: "<nonce>"
+Content-Type: application/json
+```
+
+```json
+{
+  "error": {
+    "code": "SESSION_CHALLENGE_REQUIRED",
+    "message": "Challenge issued"
+  }
+}
+```
+
+`Secure-Session-Challenge` ヘッダの値は RFC 8941 Structured Field String 形式（ダブルクォート囲み）。Chrome はこの nonce を `jti` クレームに含めた proof JWT を端末秘密鍵（ES256）で署名し、再送する。
+
+#### Phase 2: proof 検証（再送、`Sec-Session-Response` ヘッダあり）
+
+**リクエスト**
+
+```http
+POST /auth/dbsc/refresh
+Cookie: __Host-user-session=<signed-session>
+Sec-Session-Response: eyJhbGciOiJFUzI1NiJ9.eyJhdWQiOiJodHRwczovL3VzZXIuMGcwLnh5eiIsImp0aSI6Im5vbmNlLXZhbHVlIn0.signature
+```
+
+**成功レスポンス（200）**
+
+```json
+{
+  "session_identifier": "<bff_sessions.id>",
+  "refresh_url": "/auth/dbsc/refresh",
+  "scope": { "include_site": true },
+  "credentials": [{ "type": "cookie", "name": "__Host-user-session" }]
+}
+```
+
+Phase 2 時点では既存 Cookie は据え置き。短寿命 Cookie 切替は Phase 3 で対応予定。
+
+**エラーレスポンス**
+
+| HTTP | code              | 条件                                                               |
+| ---- | ----------------- | ------------------------------------------------------------------ |
+| 400  | `INVALID_REQUEST` | nonce 発行失敗・proof 形式不正・端末未バインド（列挙対策で一本化） |
+| 400  | `INVALID_PROOF`   | 署名不一致・aud 不一致・nonce 期限切れ・消費済み                   |
+| 401  | `UNAUTHORIZED`    | セッション Cookie なし・無効                                       |
+| 500  | `INTERNAL_ERROR`  | IdP 障害                                                           |
+
+### 内部通信の流れ
+
+```
+[Chrome]                    [user BFF (user.0g0.xyz)]              [IdP (id.0g0.xyz)]
+   │                                 │                                      │
+   │  POST /auth/dbsc/start          │                                      │
+   │  (registration JWT)             │                                      │
+   ├────────────────────────────────▶│                                      │
+   │                                 │  POST /auth/dbsc/bind                │
+   │                                 │  X-Internal-Secret + X-BFF-Origin    │
+   │                                 ├─────────────────────────────────────▶│
+   │                                 │◀── { data: { session_id, bound_at }}│
+   │◀── { session_identifier, ... } │                                      │
+   │                                 │                                      │
+   │  POST /auth/dbsc/refresh        │                                      │
+   │  (Sec-Session-Response なし)    │                                      │
+   ├────────────────────────────────▶│                                      │
+   │                                 │  POST /auth/dbsc/challenge           │
+   │                                 ├─────────────────────────────────────▶│
+   │                                 │◀── { data: { nonce, expires_at } }  │
+   │◀── 403 + Challenge: "<nonce>"  │                                      │
+   │                                 │                                      │
+   │  POST /auth/dbsc/refresh        │                                      │
+   │  Sec-Session-Response: <proof>  │                                      │
+   ├────────────────────────────────▶│                                      │
+   │                                 │  POST /auth/dbsc/verify              │
+   │                                 ├─────────────────────────────────────▶│
+   │                                 │◀── { data: { session_id, verified }}│
+   │◀── 200 { session_identifier }  │                                      │
+```
+
+### 実装参照
+
+- BFF ルート定義: `workers/user/src/routes/dbsc.ts`（12 行、factory wrapper のみ）
+- 共通ファクトリ: `packages/shared/src/lib/bff-dbsc-factory.ts`（`createBffDbscRoutes()`）
+- IdP ハンドラー: `workers/id/src/routes/auth/dbsc.ts`（`handleDbscBind` / `handleDbscChallenge` / `handleDbscVerify` / `handleDbscStatus`）
+- DBSC ユーティリティ: `packages/shared/src/lib/dbsc.ts`（JWT 検証・ヘッダ構築）
+- 機密操作必須化ミドルウェア: `packages/shared/src/middleware/require-dbsc-bound.ts`
 
 ## OAuth / OIDC プロバイダー選択（`/login`）
 
@@ -60,6 +274,17 @@
 | DELETE | `/api/me/sessions/others`     | `/api/users/me/tokens/others`     | 現在のセッション以外をすべて終了（現在の refresh_token の SHA-256 ハッシュを送信） |
 | DELETE | `/api/me/sessions/:sessionId` | `/api/users/me/tokens/:sessionId` | 特定セッションを終了（UUID 形式検証）                                              |
 | DELETE | `/api/me/sessions`            | `/api/users/me/tokens`            | 全デバイスからログアウト                                                           |
+
+## BFF セッション管理（`/api/me/bff-sessions`）
+
+| Method | Path                              | 転送先 (id)                             | 用途                                                                                                                          |
+| ------ | --------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/me/bff-sessions`            | `/api/users/me/bff-sessions`            | 自分のBFFセッション一覧（DBSC 端末バインド状態を `has_device_key` / `device_bound_at` で含む。公開鍵 JWK そのものは返さない） |
+| DELETE | `/api/me/bff-sessions/:sessionId` | `/api/users/me/bff-sessions/:sessionId` | 自分の特定 BFF セッションを失効（self-service・UUID 検証・他人の sessionId は 404 に畳み込み）                                |
+
+> **自セッション失効時の挙動**: `DELETE /api/me/bff-sessions/:sessionId` で渡した `sessionId` が現在の Cookie セッション ID と一致した場合のみ、BFF Cookie (`__Host-user-session`) を `Max-Age=0` で削除する（自端末ログアウト動線）。他端末セッションを失効させた場合は Cookie を保持し、操作中ブラウザの利便性を維持する。
+>
+> **強制ログアウトの完全化**: 本ルートは BFF Cookie 経路のみを停止する。攻撃者が並行して握っている `refresh_tokens`（30日有効）は残るため、ハイジャック疑い時は併せて `DELETE /api/me/sessions/:id` も実行すること（既存の admin 版運用注意と同調）。
 
 ## 連携サービス（`/api/connections/*`）
 

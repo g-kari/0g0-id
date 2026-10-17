@@ -39,14 +39,26 @@ mcp.0g0.xyz   — MCP Worker（Claude Code連携）
 
 ## セキュリティ設計
 
-| 項目                 | 実装                                                      |
-| -------------------- | --------------------------------------------------------- |
-| JWT署名              | ES256 + JWKS（`kid` 付き）                                |
-| OAuth                | state + PKCE (S256) 必須                                  |
-| Cookie               | `__Host-` prefix / `HttpOnly` / `Secure` / `SameSite=Lax` |
-| CSRF                 | Origin ヘッダー検証                                       |
-| リフレッシュトークン | ローテーション + reuse detection（family 全失効）         |
-| 管理者権限           | DB ロールベース + 初回ブートストラップ                    |
+| 項目                 | 実装                                                                            |
+| -------------------- | ------------------------------------------------------------------------------- |
+| JWT署名              | ES256 + JWKS（`kid` 付き）                                                      |
+| OAuth                | state + PKCE (S256) 必須                                                        |
+| Cookie               | `__Host-` prefix / `HttpOnly` / `Secure` / `SameSite=Lax`                       |
+| CSRF                 | Origin ヘッダー検証                                                             |
+| リフレッシュトークン | ローテーション + reuse detection（family 全失効）                               |
+| DBSC                 | Device Bound Session Credentials（端末公開鍵バインド + チャレンジ・レスポンス） |
+| 管理者権限           | DB ロールベース + 初回ブートストラップ                                          |
+
+## ログのプライバシー
+
+共有 logger は任意の例外・extra を出力せず、固定イベントと検証済みの HTTP / cleanup
+metadata だけを記録します。動的メッセージや他のログは対象外です。
+互換性への影響と残る制限は [Error log privacy](docs/error-logging-privacy.md) を参照してください。
+
+## 動作要件
+
+- **Node.js**: v22.19.0 以上（Astro 7 frontend の固定依存を含む要件。CI は v22.x）
+- **npm**: v11.x 以上（`packageManager` フィールドで `npm@11.12.1` に固定）
 
 ## セットアップ
 
@@ -66,9 +78,15 @@ wrangler d1 create 0g0-id-db
 ### 3. マイグレーション実行
 
 ```bash
+# ローカル D1 に全マイグレーション適用
 cd workers/id
-npx wrangler d1 execute 0g0-id-db --remote --file=../../migrations/0001_initial.sql
+npx wrangler d1 migrations apply 0g0-id-db --local
+
+# 本番 D1 に適用（push 前に必ず実行）
+npm run migrate:id
 ```
+
+> ⚠️ 新しいマイグレーションを追加して適用せずにデプロイすると `D1_ERROR: no such column` が本番で発生します。
 
 ### 4. ES256 鍵ペア生成
 
@@ -87,6 +105,11 @@ npx wrangler secret put JWT_PRIVATE_KEY      # private.pem の内容
 npx wrangler secret put JWT_PUBLIC_KEY       # public.pem の内容
 npx wrangler secret put BOOTSTRAP_ADMIN_EMAIL
 ```
+
+> ⚠️ 初回管理者で管理画面への新しいログインと管理者専用一覧の読み取りを確認したら、
+> `BOOTSTRAP_ADMIN_EMAIL` を削除してください。既存の管理者ロールは DB に保持されます。
+> 削除の前提条件・即時デプロイへの注意・再投入の防止は
+> [初回管理者の作成後](docs/environment-variables.md#初回管理者の作成後) を参照してください。
 
 ### 6. フロントエンドビルド
 
@@ -195,6 +218,29 @@ MCP 対応クライアント（Claude Code 等）から管理操作を実行す�
 - 認証: Bearer Token (ES256 JWT) + 管理者ロール必須
 
 ツール一覧・認証方式・セットアップ方法は [docs/mcp-server.md](docs/mcp-server.md) を参照してください。
+
+## DBSC（Device Bound Session Credentials）
+
+BFF セッションに端末の公開鍵を結びつけ、チャレンジ・レスポンスで端末所有を証明する機構です。
+機密操作（アカウント削除・SNS 連携解除等）をデバイスバインド済みセッションに限定できます。
+
+- **Phase 1**: デバイス公開鍵のバインド（ES256 JWK）
+- **Phase 2**: チャレンジ・レスポンス（nonce 発行 → Proof JWT 検証）
+- **Phase 3**: 機密操作の DBSC 必須化（`DBSC_ENFORCE_SENSITIVE` で制御）
+
+詳細は [docs/dbsc.md](docs/dbsc.md) を参照。
+
+## デプロイ前 preflight チェック
+
+`npm run deploy:{id,user,admin}` は `wrangler deploy` の前に preflight スクリプトを実行し、必須シークレットの登録漏れを検出する。
+
+| Worker | 検査対象シークレット                                            |
+| ------ | --------------------------------------------------------------- |
+| id     | `INTERNAL_SERVICE_SECRET_USER`, `INTERNAL_SERVICE_SECRET_ADMIN` |
+| user   | `DBSC_ENFORCE_SENSITIVE`                                        |
+| admin  | `DBSC_ENFORCE_SENSITIVE`                                        |
+
+ローカルでは warn のみ（fail-open）。CI では `PREFLIGHT_STRICT=1` を設定して必須化を推奨。
 
 ## Cloudflare / GitHub 接続設定
 

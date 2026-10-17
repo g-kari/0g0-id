@@ -2,14 +2,18 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
 import { mcpRateLimitMiddleware } from "./rate-limit";
 
-vi.mock("@0g0-id/shared", () => ({
-  createLogger: vi.fn().mockReturnValue({
-    warn: vi.fn(),
-    info: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock("@0g0-id/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@0g0-id/shared")>();
+  return {
+    ...actual,
+    createLogger: vi.fn().mockReturnValue({
+      warn: vi.fn(),
+      info: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    }),
+  };
+});
 
 const baseUrl = "https://mcp.example.com";
 
@@ -45,14 +49,32 @@ describe("mcpRateLimitMiddleware", () => {
     vi.resetAllMocks();
   });
 
-  it("RATE_LIMITER_MCPバインディングがない場合はスキップして200を返す", async () => {
-    const { app, env } = buildApp({ RATE_LIMITER_MCP: undefined });
+  it("開発環境でバインディング未設定の場合はスキップして200を返す", async () => {
+    const { app, env } = buildApp({
+      RATE_LIMITER_MCP: undefined,
+      MCP_ORIGIN: "http://localhost:8787",
+    });
     const res = await app.request(
       new Request(`${baseUrl}/test`),
       undefined,
       env as unknown as Record<string, string>,
     );
     expect(res.status).toBe(200);
+  });
+
+  it("本番環境でバインディング未設定の場合は503を返す", async () => {
+    const { app, env } = buildApp({
+      RATE_LIMITER_MCP: undefined,
+      MCP_ORIGIN: "https://mcp.example.com",
+    });
+    const res = await app.request(
+      new Request(`${baseUrl}/test`),
+      undefined,
+      env as unknown as Record<string, string>,
+    );
+    expect(res.status).toBe(503);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("SERVICE_UNAVAILABLE");
   });
 
   it("レートリミット成功の場合は200を返す", async () => {

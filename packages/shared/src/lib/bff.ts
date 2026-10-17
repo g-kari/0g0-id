@@ -3,12 +3,24 @@ import { setCookie, getCookie, deleteCookie } from "hono/cookie";
 import type { BffEnv } from "../types";
 import { decodeBase64Url } from "./base64url";
 import { timingSafeEqual } from "./crypto";
+import { logUpstreamDeprecation } from "./internal-secret-deprecation";
 
 /**
  * BFF セッション Cookie の最大有効期間（秒）。
  * issue #139 対応で 30日 → 7日に短縮。Cookie 漏洩時の悪用ウィンドウを制限する。
  */
 export const BFF_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+
+/**
+ * セッション Cookie 削除時の共通オプション。
+ * deleteCookie(c, name, SESSION_COOKIE_DELETE_OPTIONS) の形で使う。
+ */
+export const SESSION_COOKIE_DELETE_OPTIONS = {
+  path: "/",
+  secure: true,
+  httpOnly: true,
+  sameSite: "Lax" as const,
+};
 
 export interface BffSession {
   /**
@@ -128,10 +140,10 @@ export async function encodeSession(session: BffSession, secret: string): Promis
 }
 
 /**
- * セッションCookieを30日間有効で設定する。
+ * セッションCookieを7日間有効で設定する。
  */
-export async function setSessionCookie(
-  c: Context<{ Bindings: BffEnv }>,
+export async function setSessionCookie<E extends { Bindings: BffEnv }>(
+  c: Context<E>,
   cookieName: string,
   session: BffSession,
 ): Promise<void> {
@@ -156,12 +168,26 @@ function errorResponse(status: number, code: string, message: string): Response 
 }
 
 /**
- * BFF→IdP間のService Bindings呼び出しに付与する内部認証ヘッダーを返す。
- * INTERNAL_SERVICE_SECRET が未設定の場合は空オブジェクトを返す。
+ * URL 文字列からログ用のパス部分だけを取り出す。
+ * 解析に失敗したら元文字列を返す（ログが落ちるのを防ぐ）。
+ */
+function safePathForLog(url: string): string {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * BFF→IdP間の内部認証ヘッダーを返す。
+ *
+ * `INTERNAL_SERVICE_SECRET_SELF` が設定されていれば `X-Internal-Secret` ヘッダーを付与する。
+ * BFF 毎に専用シークレットを持たせることで、漏洩時の影響範囲を当該 BFF に限定できる（issue #156）。
  */
 export function internalServiceHeaders(env: BffEnv): Record<string, string> {
-  if (env.INTERNAL_SERVICE_SECRET) {
-    return { "X-Internal-Secret": env.INTERNAL_SERVICE_SECRET };
+  if (env.INTERNAL_SERVICE_SECRET_SELF) {
+    return { "X-Internal-Secret": env.INTERNAL_SERVICE_SECRET_SELF };
   }
   return {};
 }
@@ -172,8 +198,8 @@ export function internalServiceHeaders(env: BffEnv): Record<string, string> {
  * リフレッシュに成功した場合はセッションCookieも更新する。
  * Service Bindingのフェッチ失敗は502として返す。
  */
-export async function fetchWithAuth(
-  c: Context<{ Bindings: BffEnv }>,
+export async function fetchWithAuth<E extends { Bindings: BffEnv }>(
+  c: Context<E>,
   sessionCookieName: string,
   url: string,
   init?: RequestInit,
@@ -187,6 +213,10 @@ export async function fetchWithAuth(
 
   // BFF セッション ID を ID Worker に渡して bff_sessions の失効チェックを行わせる（issue #139）。
   const bffSessionHeader = { "X-BFF-Session-Id": session.session_id };
+
+  // Deprecation ログ出力時のトレース用 method/path。init.method 未指定時は fetch 仕様に従い GET。
+  const primaryMethod = init?.method ?? "GET";
+  const primaryPath = safePathForLog(url);
 
   const makeRequest = (token: string): Promise<Response> =>
     c.env.IDP.fetch(
@@ -207,6 +237,7 @@ export async function fetchWithAuth(
   } catch {
     return errorResponse(502, "UPSTREAM_ERROR", "Failed to reach identity provider");
   }
+  logUpstreamDeprecation(res, { method: primaryMethod, path: primaryPath });
 
   // アクセストークン期限切れ → リフレッシュして再試行
   if (res.status === 401) {
@@ -227,6 +258,7 @@ export async function fetchWithAuth(
       // リフレッシュ自体が通信失敗 → 502
       return errorResponse(502, "UPSTREAM_ERROR", "Failed to reach identity provider");
     }
+    logUpstreamDeprecation(refreshRes, { method: "POST", path: "/auth/refresh" });
 
     if (refreshRes.ok) {
       const refreshData = await refreshRes.json<{
@@ -244,12 +276,7 @@ export async function fetchWithAuth(
         typeof refreshData.data?.refresh_token !== "string" ||
         !refreshData.data.refresh_token
       ) {
-        deleteCookie(c, sessionCookieName, {
-          path: "/",
-          secure: true,
-          httpOnly: true,
-          sameSite: "Lax",
-        });
+        deleteCookie(c, sessionCookieName, SESSION_COOKIE_DELETE_OPTIONS);
         return errorResponse(401, "UNAUTHORIZED", "Session expired");
       }
 
@@ -278,6 +305,7 @@ export async function fetchWithAuth(
       } catch {
         return errorResponse(502, "UPSTREAM_ERROR", "Failed to reach identity provider");
       }
+      logUpstreamDeprecation(res, { method: primaryMethod, path: primaryPath });
     } else if (refreshRes.status >= 500) {
       // リフレッシュエンドポイントが5xx → 502（認証失敗ではなくアップストリーム障害）
       return errorResponse(502, "UPSTREAM_ERROR", "Identity provider error");
@@ -303,12 +331,7 @@ export async function fetchWithAuth(
       }
 
       // TOKEN_REUSE・TOKEN_EXPIRED・INVALID_TOKEN 等の真のセッション無効時のみCookieを削除する
-      deleteCookie(c, sessionCookieName, {
-        path: "/",
-        secure: true,
-        httpOnly: true,
-        sameSite: "Lax",
-      });
+      deleteCookie(c, sessionCookieName, SESSION_COOKIE_DELETE_OPTIONS);
       return errorResponse(401, "UNAUTHORIZED", "Session expired");
     }
   }
@@ -365,6 +388,16 @@ export async function proxyResponse(res: Response): Promise<Response> {
     status: res.status,
     headers: safeHeaders,
   });
+}
+
+export function proxyGet(
+  cookieName: string,
+  buildUrl: (c: Context<{ Bindings: BffEnv }>) => string,
+): (c: Context<{ Bindings: BffEnv }>) => Promise<Response> {
+  return async (c) => {
+    const res = await fetchWithAuth(c, cookieName, buildUrl(c));
+    return proxyResponse(res);
+  };
 }
 
 /**
@@ -433,6 +466,21 @@ export interface ExchangeResult {
  * BFFからIdPへ認可コードを交換する。
  * Service Bindingsを使用してIdPのexchangeエンドポイントを呼び出す。
  */
+function isExchangeResult(obj: unknown): obj is ExchangeResult {
+  if (typeof obj !== "object" || obj === null || Array.isArray(obj)) return false;
+  const r = obj as Record<string, unknown>;
+  if (typeof r["access_token"] !== "string" || !r["access_token"]) return false;
+  if (typeof r["refresh_token"] !== "string" || !r["refresh_token"]) return false;
+  if (r["session_id"] !== undefined && typeof r["session_id"] !== "string") return false;
+  if (typeof r["user"] !== "object" || r["user"] === null || Array.isArray(r["user"])) return false;
+  const u = r["user"] as Record<string, unknown>;
+  if (typeof u["id"] !== "string" || !u["id"]) return false;
+  if (typeof u["email"] !== "string" || !u["email"]) return false;
+  if (typeof u["name"] !== "string" || !u["name"]) return false;
+  if (u["role"] !== "user" && u["role"] !== "admin") return false;
+  return true;
+}
+
 export async function exchangeCodeAtIdp(
   env: BffEnv,
   code: string,
@@ -445,9 +493,15 @@ export async function exchangeCodeAtIdp(
       body: JSON.stringify({ code, redirect_to: callbackUrl }),
     }),
   );
+  logUpstreamDeprecation(res, { method: "POST", path: "/auth/exchange" });
   if (!res.ok) return { ok: false };
-  const body = await res.json<{ data: ExchangeResult }>();
-  return { ok: true, data: body.data };
+  const body: unknown = await res.json();
+  const data =
+    typeof body === "object" && body !== null && "data" in body
+      ? (body as Record<string, unknown>)["data"]
+      : undefined;
+  if (!isExchangeResult(data)) return { ok: false };
+  return { ok: true, data };
 }
 
 /**
@@ -459,7 +513,7 @@ export async function revokeTokenAtIdp(
   refreshToken: string,
   sessionId?: string,
 ): Promise<void> {
-  await env.IDP.fetch(
+  const res = await env.IDP.fetch(
     new Request(`${env.IDP_ORIGIN}/auth/logout`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...internalServiceHeaders(env) },
@@ -469,6 +523,7 @@ export async function revokeTokenAtIdp(
       }),
     }),
   );
+  logUpstreamDeprecation(res, { method: "POST", path: "/auth/logout" });
 }
 
 /**

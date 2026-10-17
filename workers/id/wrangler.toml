@@ -1,6 +1,6 @@
 name = "0g0-id"
 main = "src/index.ts"
-compatibility_date = "2024-11-01"
+compatibility_date = "2025-04-01"
 workers_dev = false
 
 [triggers]
@@ -39,6 +39,10 @@ binding = "DB"
 database_name = "0g0-id-db"
 database_id = "f13d6e85-7a42-463f-b07e-5201423dc840"
 migrations_dir = "../../migrations"
+
+[[kv_namespaces]]
+binding = "LINK_TOKEN_KV"
+id = "d32e6c76dde24764ab02d4c9202ddb35"
 
 [[unsafe.bindings]]
 name = "RATE_LIMITER_AUTH"

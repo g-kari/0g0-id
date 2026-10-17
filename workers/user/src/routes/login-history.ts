@@ -1,32 +1,30 @@
 import { Hono } from "hono";
-import { fetchWithAuth, isValidProvider, parsePagination, proxyResponse } from "@0g0-id/shared";
+import {
+  fetchWithAuth,
+  isValidProvider,
+  paginationMiddleware,
+  proxyResponse,
+  restErrorBody,
+  COOKIE_NAMES,
+} from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
-import { SESSION_COOKIE } from "./auth";
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
 // GET /api/login-history
-app.get("/", async (c) => {
-  const limitRaw = c.req.query("limit");
-  const offsetRaw = c.req.query("offset");
-  const pagination = parsePagination(
-    { limit: limitRaw, offset: offsetRaw },
-    { defaultLimit: 20, maxLimit: 100 },
-  );
-  if ("error" in pagination) {
-    return c.json({ error: pagination.error }, 400);
-  }
+app.get("/", paginationMiddleware({ defaultLimit: 20, maxLimit: 100 }), async (c) => {
+  const { limit, offset } = c.get("pagination");
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/me/login-history`);
-  if (limitRaw !== undefined) url.searchParams.set("limit", String(pagination.limit));
-  if (offsetRaw !== undefined) url.searchParams.set("offset", String(pagination.offset));
+  if (c.req.query("limit") !== undefined) url.searchParams.set("limit", String(limit));
+  if (c.req.query("offset") !== undefined) url.searchParams.set("offset", String(offset));
   const provider = c.req.query("provider");
   if (provider) {
     if (!isValidProvider(provider)) {
-      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid provider" } }, 400);
+      return c.json(restErrorBody("BAD_REQUEST", "Invalid provider"), 400);
     }
     url.searchParams.set("provider", provider);
   }
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.USER_SESSION, url.toString());
   return proxyResponse(res);
 });
 

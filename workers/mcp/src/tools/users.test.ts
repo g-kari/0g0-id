@@ -15,7 +15,9 @@ vi.mock("@0g0-id/shared", () => ({
   listActiveSessionsByUserId: vi.fn(),
   listServicesByOwner: vi.fn(),
   listUserConnections: vi.fn(),
+  countServicesByOwner: vi.fn(),
   revokeUserTokens: vi.fn(),
+  revokeAllBffSessionsByUserId: vi.fn(),
   deleteMcpSessionsByUser: vi.fn(),
   createAdminAuditLog: vi.fn(),
 }));
@@ -35,6 +37,7 @@ import {
   listActiveSessionsByUserId,
   listServicesByOwner,
   listUserConnections,
+  countServicesByOwner,
   revokeUserTokens,
   deleteMcpSessionsByUser,
   createAdminAuditLog,
@@ -267,6 +270,7 @@ describe("unbanUserTool", () => {
 describe("deleteUserTool", () => {
   it("ユーザーを削除し監査ログを記録する", async () => {
     vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(countServicesByOwner).mockResolvedValue(0);
     vi.mocked(deleteUser).mockResolvedValue(true as never);
 
     const result = await deleteUserTool.handler({ user_id: "user-1" }, mockContext);
@@ -295,6 +299,16 @@ describe("deleteUserTool", () => {
     expect(result.isError).toBe(true);
     expect(vi.mocked(deleteUser)).not.toHaveBeenCalled();
     expect(vi.mocked(createAdminAuditLog)).not.toHaveBeenCalled();
+  });
+
+  it("サービスを所有している場合はエラー", async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(countServicesByOwner).mockResolvedValue(2);
+
+    const result = await deleteUserTool.handler({ user_id: "user-1" }, mockContext);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Transfer ownership");
+    expect(vi.mocked(deleteUser)).not.toHaveBeenCalled();
   });
 });
 
@@ -649,6 +663,7 @@ describe("getUserAuthorizedServicesTool", () => {
     service_id: "svc-1",
     service_name: "My Service",
     client_id: "client-1",
+    pairwise_sub: "pairwise-sub-1",
     first_authorized_at: "2024-01-01T00:00:00Z",
     last_authorized_at: "2024-06-01T00:00:00Z",
   };
@@ -751,13 +766,13 @@ describe("updateUserRoleTool", () => {
   });
 
   it("不正なroleはエラー", async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser as never);
     const result = await updateUserRoleTool.handler(
       { user_id: "user-1", role: "superadmin" },
       mockContext,
     );
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("role");
-    expect(vi.mocked(findUserById)).not.toHaveBeenCalled();
   });
 
   it("ユーザーが見つからない場合はエラー", async () => {

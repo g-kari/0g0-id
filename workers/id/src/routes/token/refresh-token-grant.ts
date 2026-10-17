@@ -1,5 +1,4 @@
 import { sha256, findRefreshTokenByHash, findUserById, createLogger } from "@0g0-id/shared";
-import { parseAllowedScopes } from "../../utils/scopes";
 import { buildTokenResponse } from "../../utils/token-pair";
 import { attemptUnrevokeToken } from "../../utils/token-recovery";
 import {
@@ -64,11 +63,12 @@ export async function handleRefreshTokenGrant(
     if (currentToken && currentToken.revoked_reason === "reuse_detected") {
       return c.json({ error: "invalid_grant", error_description: "Token reuse detected" }, 400);
     }
-    // 期限切れトークン: rotation済み状態のまま拒否（unrevokeは不要かつ危険）
+    // 期限切れトークン: serviceMismatch が同時に true でも unrevoke しない。
+    // 理由: expired トークンを unrevoke すると無効なトークンが再び有効化され、
+    // rotation 済みの旧トークンが復活するセキュリティリスクがある。
     if (isExpired) {
       return c.json({ error: "invalid_grant", error_description: "Refresh token expired" }, 400);
-    }
-    if (serviceMismatch) {
+    } else if (serviceMismatch) {
       // 別サービス向けのトークン → 元に戻して拒否
       await attemptUnrevokeToken(c.env.DB, storedToken.id, "[token] service_id mismatch 後");
       return c.json(
@@ -88,8 +88,8 @@ export async function handleRefreshTokenGrant(
   }
 
   // スコープ引き継ぎ
-  const refreshScope =
-    storedToken.scope ?? (parseAllowedScopes(service.allowed_scopes).join(" ") || "openid");
+  // A service capability is not a user grant. Missing/empty legacy scope stays minimal.
+  const refreshScope = storedToken.scope || "openid";
 
   const issueResult = await issueTokenPairWithRecovery(
     c.env.DB,

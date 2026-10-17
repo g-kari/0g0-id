@@ -229,6 +229,102 @@ describe("fetchWithAuth", () => {
     // セッションCookieは削除されない（ログアウトさせない）
     expect(vi.mocked(deleteCookie)).not.toHaveBeenCalled();
   });
+
+  it("初回・refresh・retry の Deprecation は詳細を省いて固定 warn を 3 回出す", async () => {
+    // 401→refresh→retry の通知を保ち、実 logger が legacy extra を出力しないことを検証する。
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const canary = "synthetic-deprecation-person@example.invalid";
+      const oldAccessToken = "synthetic-old-access-token";
+      const oldRefreshToken = "synthetic-old-refresh-token";
+      const newAccessToken = "synthetic-new-access-token";
+      const newRefreshToken = "synthetic-new-refresh-token";
+      const session = {
+        ...mockSession,
+        access_token: oldAccessToken,
+        refresh_token: oldRefreshToken,
+        user: { ...mockSession.user, email: canary },
+      };
+      const cookie = await encodeSession(session, TEST_SECRET);
+      vi.mocked(getCookie).mockReturnValue(cookie);
+
+      const deprecationHeaders = {
+        Deprecation: "@1792062000",
+        Link: `<https://example.invalid/deprecation?private=${canary}>; rel="deprecation"`,
+      } as const;
+      const url = `https://id.0g0.xyz/api/users/${encodeURIComponent(canary)}?private=${canary}`;
+      const { fetchWithAuth } = await import("./bff");
+      const idpFetch = vi
+        .fn()
+        // 初回: 401 + Deprecation
+        .mockResolvedValueOnce(
+          new Response("Unauthorized", { status: 401, headers: deprecationHeaders }),
+        )
+        // refresh: 200 + 新トークン + Deprecation
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              data: {
+                access_token: newAccessToken,
+                refresh_token: newRefreshToken,
+                user: session.user,
+              },
+            }),
+            { status: 200, headers: deprecationHeaders },
+          ),
+        )
+        // retry: 200 + Deprecation
+        .mockResolvedValueOnce(
+          new Response('{"data":"ok"}', { status: 200, headers: deprecationHeaders }),
+        );
+      const ctx = {
+        req: {},
+        env: {
+          IDP: { fetch: idpFetch },
+          IDP_ORIGIN: "https://id.0g0.xyz",
+          SESSION_SECRET: TEST_SECRET,
+        },
+      } as unknown as Parameters<typeof fetchWithAuth>[0];
+
+      const result = await fetchWithAuth(ctx, "__session", url);
+      expect(result.status).toBe(200);
+      expect(await result.json()).toEqual({ data: "ok" });
+      expect(idpFetch).toHaveBeenCalledTimes(3);
+      const [initial, refresh, retry] = idpFetch.mock.calls.map(([request]) => request as Request);
+      expect(initial.url).toBe(url);
+      expect(initial.headers.get("Authorization")).toBe(`Bearer ${oldAccessToken}`);
+      expect(refresh.url).toBe("https://id.0g0.xyz/auth/refresh");
+      expect(refresh.method).toBe("POST");
+      expect(await refresh.json()).toEqual({ refresh_token: oldRefreshToken });
+      expect(retry.url).toBe(url);
+      expect(retry.headers.get("Authorization")).toBe(`Bearer ${newAccessToken}`);
+
+      const fixedWarn = JSON.stringify({
+        level: "warn",
+        ctx: "bff-upstream-deprecation",
+        msg: "upstream deprecation notice from id worker",
+      });
+      expect(warnSpy.mock.calls).toEqual([[fixedWarn], [fixedWarn], [fixedWarn]]);
+      const output = JSON.stringify(warnSpy.mock.calls);
+      for (const omitted of [
+        canary,
+        encodeURIComponent(canary),
+        url,
+        "/api/users/",
+        "/auth/refresh",
+        deprecationHeaders.Deprecation,
+        deprecationHeaders.Link,
+        oldAccessToken,
+        oldRefreshToken,
+        newAccessToken,
+        newRefreshToken,
+      ]) {
+        expect(output).not.toContain(omitted);
+      }
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
 });
 
 describe("fetchWithJsonBody", () => {
@@ -377,16 +473,16 @@ describe("setSessionCookie", () => {
 });
 
 describe("internalServiceHeaders", () => {
-  it("INTERNAL_SERVICE_SECRETが設定されている場合はX-Internal-Secretヘッダーを返す", () => {
+  it("INTERNAL_SERVICE_SECRET_SELFが設定されている場合はX-Internal-Secretヘッダーを返す", () => {
     const env = {
       IDP_ORIGIN: "https://id.0g0.xyz",
-      INTERNAL_SERVICE_SECRET: "my-internal-secret",
+      INTERNAL_SERVICE_SECRET_SELF: "my-internal-secret",
     } as unknown as Parameters<typeof internalServiceHeaders>[0];
     const headers = internalServiceHeaders(env);
     expect(headers).toEqual({ "X-Internal-Secret": "my-internal-secret" });
   });
 
-  it("INTERNAL_SERVICE_SECRETが未設定の場合は空オブジェクトを返す", () => {
+  it("INTERNAL_SERVICE_SECRET_SELFが未設定の場合は空オブジェクトを返す", () => {
     const env = {
       IDP_ORIGIN: "https://id.0g0.xyz",
     } as unknown as Parameters<typeof internalServiceHeaders>[0];
@@ -506,12 +602,47 @@ describe("exchangeCodeAtIdp", () => {
     const env = {
       IDP: { fetch: idpFetch },
       IDP_ORIGIN: "https://id.0g0.xyz",
-      INTERNAL_SERVICE_SECRET: "secret-123",
+      INTERNAL_SERVICE_SECRET_SELF: "secret-123",
     } as unknown as Parameters<typeof exchangeCodeAtIdp>[0];
 
     await exchangeCodeAtIdp(env, "code", "https://user.0g0.xyz/cb");
     const reqArg: Request = idpFetch.mock.calls[0][0];
     expect(reqArg.headers.get("X-Internal-Secret")).toBe("secret-123");
+  });
+
+  it("IdP が Deprecation ヘッダを返した場合は console.warn に通知する", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const idpFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            access_token: "at",
+            refresh_token: "rt",
+            user: { id: "u1", email: "e@e.com", name: "N", role: "user" },
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            Deprecation: "true",
+            Link: '<https://github.com/g-kari/0g0-id/issues/156>; rel="deprecation"',
+          },
+        },
+      ),
+    );
+    const env = {
+      IDP: { fetch: idpFetch },
+      IDP_ORIGIN: "https://id.0g0.xyz",
+    } as unknown as Parameters<typeof exchangeCodeAtIdp>[0];
+
+    const result = await exchangeCodeAtIdp(env, "code", "https://user.0g0.xyz/cb");
+    expect(result.ok).toBe(true);
+    const warnCall = warnSpy.mock.calls.find((call) => {
+      const payload = String(call[0] ?? "");
+      return payload.includes("upstream deprecation notice from id worker");
+    });
+    expect(warnCall).toBeDefined();
+    warnSpy.mockRestore();
   });
 });
 
@@ -537,12 +668,37 @@ describe("revokeTokenAtIdp", () => {
     const env = {
       IDP: { fetch: idpFetch },
       IDP_ORIGIN: "https://id.0g0.xyz",
-      INTERNAL_SERVICE_SECRET: "my-secret",
+      INTERNAL_SERVICE_SECRET_SELF: "my-secret",
     } as unknown as Parameters<typeof revokeTokenAtIdp>[0];
 
     await revokeTokenAtIdp(env, "refresh-token-xyz");
     const reqArg: Request = idpFetch.mock.calls[0][0];
     expect(reqArg.headers.get("X-Internal-Secret")).toBe("my-secret");
+  });
+
+  it("IdP が Deprecation ヘッダを返した場合は console.warn に通知する", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const idpFetch = vi.fn().mockResolvedValue(
+      new Response(null, {
+        status: 204,
+        headers: {
+          Deprecation: "true",
+          Link: '<https://github.com/g-kari/0g0-id/issues/156>; rel="deprecation"',
+        },
+      }),
+    );
+    const env = {
+      IDP: { fetch: idpFetch },
+      IDP_ORIGIN: "https://id.0g0.xyz",
+    } as unknown as Parameters<typeof revokeTokenAtIdp>[0];
+
+    await revokeTokenAtIdp(env, "rt-deprecated");
+    const warnCall = warnSpy.mock.calls.find((call) => {
+      const payload = String(call[0] ?? "");
+      return payload.includes("upstream deprecation notice from id worker");
+    });
+    expect(warnCall).toBeDefined();
+    warnSpy.mockRestore();
   });
 });
 

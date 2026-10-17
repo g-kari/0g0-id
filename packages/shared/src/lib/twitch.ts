@@ -1,5 +1,6 @@
+import { z } from "zod";
 import { fetchWithRetry } from "./fetch-retry";
-import { createLogger } from "./logger";
+import { createLogger, httpStatusMetadata } from "./logger";
 
 const logger = createLogger("oauth-twitch");
 
@@ -7,13 +8,15 @@ const TWITCH_AUTH_URL = "https://id.twitch.tv/oauth2/authorize";
 const TWITCH_TOKEN_URL = "https://id.twitch.tv/oauth2/token";
 const TWITCH_USERINFO_URL = "https://id.twitch.tv/oauth2/userinfo";
 
-export interface TwitchUserInfo {
-  sub: string;
-  preferred_username: string;
-  email?: string;
-  email_verified?: boolean;
-  picture?: string;
-}
+const TwitchUserInfoSchema = z.object({
+  sub: z.string(),
+  preferred_username: z.string(),
+  email: z.string().optional(),
+  email_verified: z.boolean().optional(),
+  picture: z.string().optional(),
+});
+
+export type TwitchUserInfo = z.infer<typeof TwitchUserInfoSchema>;
 
 export interface TwitchTokenResponse {
   access_token: string;
@@ -72,8 +75,8 @@ export async function exchangeTwitchCode(params: {
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    logger.error(`Twitch token exchange failed (${response.status})`, error);
+    // Provider error bodies can contain personal data or echoed credentials.
+    logger.error("Twitch token exchange failed", httpStatusMetadata(response.status));
     throw new Error("Twitch token exchange failed");
   }
 
@@ -97,7 +100,7 @@ export async function fetchTwitchUserInfo(accessToken: string): Promise<TwitchUs
   }
 
   try {
-    return (await response.json()) as TwitchUserInfo;
+    return TwitchUserInfoSchema.parse(await response.json());
   } catch {
     throw new Error("Twitch userinfo fetch failed: Invalid JSON response");
   }

@@ -1,3 +1,5 @@
+import type { Context, MiddlewareHandler } from "hono";
+
 export type PaginationResult =
   | { limit: number; offset: number }
   | { error: { code: string; message: string } };
@@ -27,6 +29,45 @@ export function parsePagination(
   return {
     limit: Math.min(limitRaw, options.maxLimit),
     offset: offsetRaw,
+  };
+}
+
+export function requirePagination(
+  c: Context,
+  options: { defaultLimit: number; maxLimit: number } = { defaultLimit: 20, maxLimit: 100 },
+): { limit: number; offset: number } | Response {
+  const result = parsePagination(
+    { limit: c.req.query("limit"), offset: c.req.query("offset") },
+    options,
+  );
+  if ("error" in result) {
+    return c.json({ error: result.error }, 400);
+  }
+  return result;
+}
+
+/**
+ * Hono ミドルウェア版の pagination バリデーション。
+ * c.get("pagination") で { limit, offset } を取得できる。
+ *
+ * @example
+ * app.get("/", paginationMiddleware({ defaultLimit: 50, maxLimit: 100 }), async (c) => {
+ *   const { limit, offset } = c.get("pagination");
+ * });
+ */
+export function paginationMiddleware(
+  options: { defaultLimit: number; maxLimit: number } = { defaultLimit: 20, maxLimit: 100 },
+): MiddlewareHandler<{ Variables: { pagination: { limit: number; offset: number } } }> {
+  return async (c, next) => {
+    const result = parsePagination(
+      { limit: c.req.query("limit"), offset: c.req.query("offset") },
+      options,
+    );
+    if ("error" in result) {
+      return c.json({ error: result.error }, 400);
+    }
+    c.set("pagination", result);
+    await next();
   };
 }
 

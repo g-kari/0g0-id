@@ -1,6 +1,15 @@
 import { type Context } from "hono";
 import { setCookie } from "hono/cookie";
-import { verifyCookie, linkProvider } from "@0g0-id/shared";
+import {
+  verifyCookie,
+  linkProvider,
+  COOKIE_NAMES,
+  PROVIDER_CREDENTIALS,
+  findServiceByClientId,
+  normalizeRedirectUri,
+  listRedirectUris,
+  matchRedirectUri,
+} from "@0g0-id/shared";
 import type { IdpEnv, TokenPayload, User, OAuthStateCookieData } from "@0g0-id/shared";
 import type { OAuthProvider } from "@0g0-id/shared";
 import { parse as parseDomain } from "tldts";
@@ -28,8 +37,8 @@ export const OAUTH_ERROR_MAP: Record<string, string> = {
 };
 
 // state/PKCE保存用Cookie名
-export const STATE_COOKIE = "__Host-oauth-state";
-export const PKCE_COOKIE = "__Host-oauth-pkce";
+export const STATE_COOKIE = COOKIE_NAMES.IDP_STATE;
+export const PKCE_COOKIE = COOKIE_NAMES.IDP_PKCE;
 
 /**
  * EXTRA_BFF_ORIGINS（カンマ区切り文字列）をパースし、
@@ -211,4 +220,46 @@ export async function handleProviderLink(
     }
     throw err;
   }
+}
+
+/**
+ * プロバイダー資格情報（client_id/secret）がenv に設定されているか検証する。
+ * Google は常に設定済みとみなす。
+ */
+export function validateProviderCredentials(
+  provider: OAuthProvider,
+  env: IdpEnv,
+): { ok: true } | { ok: false; code: string; message: string } {
+  if (provider === "google") return { ok: true };
+  const creds = PROVIDER_CREDENTIALS[provider];
+  if (!env[creds.id] || !env[creds.secret]) {
+    return {
+      ok: false,
+      code: "PROVIDER_NOT_CONFIGURED",
+      message: `${creds.name} provider is not configured`,
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * client_id に対応するサービスを検索し、redirectUri が登録済みか検証する。
+ * RFC 8252 §7.3: localhost の場合はポート番号を無視してマッチ。
+ */
+export async function validateServiceRedirectUri(
+  db: D1Database,
+  clientId: string,
+  redirectUri: string,
+): Promise<{ ok: true; serviceId: string } | { ok: false; error: string }> {
+  const service = await findServiceByClientId(db, clientId);
+  if (!service) return { ok: false, error: "Invalid client_id" };
+
+  const normalized = normalizeRedirectUri(redirectUri);
+  if (!normalized) return { ok: false, error: "Invalid redirect_uri" };
+
+  const registeredUris = await listRedirectUris(db, service.id);
+  const matched = registeredUris.some((ru) => matchRedirectUri(ru.uri, normalized));
+  if (!matched) return { ok: false, error: "redirect_uri not registered for this client" };
+
+  return { ok: true, serviceId: service.id };
 }

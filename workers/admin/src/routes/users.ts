@@ -4,14 +4,17 @@ import {
   fetchWithJsonBody,
   isValidProvider,
   parseDays,
-  parsePagination,
+  paginationMiddleware,
+  proxyGet,
   proxyMutate,
   proxyResponse,
+  REST_ERROR_CODES,
+  restErrorBody,
   UUID_RE,
   uuidParamMiddleware,
+  COOKIE_NAMES,
 } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
-import { SESSION_COOKIE } from "./auth";
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
@@ -20,17 +23,11 @@ app.use("/:id", uuidParamMiddleware("id", { label: "user ID" }));
 app.use("/:id/*", uuidParamMiddleware("id", { label: "user ID" }));
 
 // GET /api/users
-app.get("/", async (c) => {
-  const pagination = parsePagination(
-    { limit: c.req.query("limit"), offset: c.req.query("offset") },
-    { defaultLimit: 50, maxLimit: 100 },
-  );
-  if ("error" in pagination) {
-    return c.json({ error: pagination.error }, 400);
-  }
+app.get("/", paginationMiddleware({ defaultLimit: 50, maxLimit: 100 }), async (c) => {
+  const { limit, offset } = c.get("pagination");
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users`);
-  url.searchParams.set("limit", String(pagination.limit));
-  url.searchParams.set("offset", String(pagination.offset));
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("offset", String(offset));
   const email = c.req.query("email");
   const role = c.req.query("role");
   const name = c.req.query("name");
@@ -40,72 +37,63 @@ app.get("/", async (c) => {
   if (name) url.searchParams.set("name", name);
   if (banned === "true" || banned === "false") url.searchParams.set("banned", banned);
 
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
   return proxyResponse(res);
 });
 
 // GET /api/users/:id
-app.get("/:id", async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}`,
-  );
-  return proxyResponse(res);
-});
+app.get(
+  "/:id",
+  proxyGet(COOKIE_NAMES.ADMIN_SESSION, (c) => `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}`),
+);
 
 // GET /api/users/:id/owned-services — ユーザーが所有するサービス一覧
-app.get("/:id/owned-services", async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/owned-services`,
-  );
-  return proxyResponse(res);
-});
+app.get(
+  "/:id/owned-services",
+  proxyGet(
+    COOKIE_NAMES.ADMIN_SESSION,
+    (c) => `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/owned-services`,
+  ),
+);
 
 // GET /api/users/:id/services — ユーザーが認可しているサービス一覧
-app.get("/:id/services", async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/services`,
-  );
-  return proxyResponse(res);
-});
+app.get(
+  "/:id/services",
+  proxyGet(
+    COOKIE_NAMES.ADMIN_SESSION,
+    (c) => `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/services`,
+  ),
+);
 
 // GET /api/users/:id/providers — ユーザーのSNSプロバイダー連携状態
-app.get("/:id/providers", async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/providers`,
-  );
-  return proxyResponse(res);
-});
+app.get(
+  "/:id/providers",
+  proxyGet(
+    COOKIE_NAMES.ADMIN_SESSION,
+    (c) => `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/providers`,
+  ),
+);
 
 // GET /api/users/:id/login-history
-app.get("/:id/login-history", async (c) => {
-  const pagination = parsePagination(
-    { limit: c.req.query("limit"), offset: c.req.query("offset") },
-    { defaultLimit: 20, maxLimit: 100 },
-  );
-  if ("error" in pagination) {
-    return c.json({ error: pagination.error }, 400);
-  }
-  const url = new URL(`${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/login-history`);
-  url.searchParams.set("limit", String(pagination.limit));
-  url.searchParams.set("offset", String(pagination.offset));
-  const provider = c.req.query("provider");
-  if (provider) {
-    if (!isValidProvider(provider)) {
-      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid provider" } }, 400);
+app.get(
+  "/:id/login-history",
+  paginationMiddleware({ defaultLimit: 20, maxLimit: 100 }),
+  async (c) => {
+    const { limit, offset } = c.get("pagination");
+    const url = new URL(`${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/login-history`);
+    url.searchParams.set("limit", String(limit));
+    url.searchParams.set("offset", String(offset));
+    const provider = c.req.query("provider");
+    if (provider) {
+      if (!isValidProvider(provider)) {
+        return c.json(restErrorBody("BAD_REQUEST", "Invalid provider"), 400);
+      }
+      url.searchParams.set("provider", provider);
     }
-    url.searchParams.set("provider", provider);
-  }
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
-  return proxyResponse(res);
-});
+    const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
+    return proxyResponse(res);
+  },
+);
 
 // GET /api/users/:id/login-stats — ユーザーのプロバイダー別ログイン統計
 app.get("/:id/login-stats", async (c) => {
@@ -113,11 +101,14 @@ app.get("/:id/login-stats", async (c) => {
   const daysResult = parseDays(c.req.query("days"));
   if (daysResult !== undefined) {
     if ("error" in daysResult) {
-      return c.json({ error: { code: "INVALID_PARAMETER", message: daysResult.error } }, 400);
+      return c.json(
+        restErrorBody(REST_ERROR_CODES.INVALID_PARAMETER, daysResult.error.message),
+        400,
+      );
     }
     url.searchParams.set("days", String(daysResult.days));
   }
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
   return proxyResponse(res);
 });
 
@@ -127,33 +118,57 @@ app.get("/:id/login-trends", async (c) => {
   const daysResult = parseDays(c.req.query("days"));
   if (daysResult !== undefined) {
     if ("error" in daysResult) {
-      return c.json({ error: { code: "INVALID_PARAMETER", message: daysResult.error } }, 400);
+      return c.json(
+        restErrorBody(REST_ERROR_CODES.INVALID_PARAMETER, daysResult.error.message),
+        400,
+      );
     }
     url.searchParams.set("days", String(daysResult.days));
   }
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.ADMIN_SESSION, url.toString());
   return proxyResponse(res);
 });
 
 // GET /api/users/:id/tokens — ユーザーのアクティブセッション一覧
-app.get("/:id/tokens", async (c) => {
-  const res = await fetchWithAuth(
+app.get(
+  "/:id/tokens",
+  proxyGet(
+    COOKIE_NAMES.ADMIN_SESSION,
+    (c) => `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/tokens`,
+  ),
+);
+
+// GET /api/users/:id/bff-sessions — ユーザーの BFF セッション一覧（DBSC バインド状態含む）
+app.get(
+  "/:id/bff-sessions",
+  proxyGet(
+    COOKIE_NAMES.ADMIN_SESSION,
+    (c) => `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/bff-sessions`,
+  ),
+);
+
+// DELETE /api/users/:id/bff-sessions/:sessionId — 単一の BFF セッションを失効（管理者強制ログアウト）
+app.delete("/:id/bff-sessions/:sessionId", async (c) => {
+  const sessionId = c.req.param("sessionId");
+  if (!UUID_RE.test(sessionId)) {
+    return c.json(restErrorBody("BAD_REQUEST", "Invalid session ID format"), 400);
+  }
+  return proxyMutate(
     c,
-    SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/tokens`,
+    COOKIE_NAMES.ADMIN_SESSION,
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/bff-sessions/${sessionId}`,
   );
-  return proxyResponse(res);
 });
 
 // DELETE /api/users/:id/tokens/:tokenId — ユーザーの特定セッションを失効
 app.delete("/:id/tokens/:tokenId", async (c) => {
   const tokenId = c.req.param("tokenId");
   if (!UUID_RE.test(tokenId)) {
-    return c.json({ error: { code: "BAD_REQUEST", message: "Invalid token ID format" } }, 400);
+    return c.json(restErrorBody("BAD_REQUEST", "Invalid token ID format"), 400);
   }
   return proxyMutate(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/tokens/${tokenId}`,
   );
 });
@@ -162,7 +177,7 @@ app.delete("/:id/tokens/:tokenId", async (c) => {
 app.delete("/:id/tokens", async (c) => {
   return proxyMutate(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/tokens`,
   );
 });
@@ -171,7 +186,7 @@ app.delete("/:id/tokens", async (c) => {
 app.patch("/:id/role", async (c) => {
   return fetchWithJsonBody(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/role`,
     "PATCH",
   );
@@ -181,7 +196,7 @@ app.patch("/:id/role", async (c) => {
 app.patch("/:id/ban", async (c) => {
   return proxyMutate(
     c,
-    SESSION_COOKIE,
+    COOKIE_NAMES.ADMIN_SESSION,
     `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/ban`,
     "PATCH",
   );
@@ -189,12 +204,38 @@ app.patch("/:id/ban", async (c) => {
 
 // DELETE /api/users/:id/ban — ユーザー停止を解除
 app.delete("/:id/ban", async (c) => {
-  return proxyMutate(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/ban`);
+  return proxyMutate(
+    c,
+    COOKIE_NAMES.ADMIN_SESSION,
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/ban`,
+  );
+});
+
+// GET /api/users/:id/lockout — ロックアウト状態取得
+app.get(
+  "/:id/lockout",
+  proxyGet(
+    COOKIE_NAMES.ADMIN_SESSION,
+    (c) => `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/lockout`,
+  ),
+);
+
+// DELETE /api/users/:id/lockout — ロックアウト解除
+app.delete("/:id/lockout", async (c) => {
+  return proxyMutate(
+    c,
+    COOKIE_NAMES.ADMIN_SESSION,
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}/lockout`,
+  );
 });
 
 // DELETE /api/users/:id
 app.delete("/:id", async (c) => {
-  return proxyMutate(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}`);
+  return proxyMutate(
+    c,
+    COOKIE_NAMES.ADMIN_SESSION,
+    `${c.env.IDP_ORIGIN}/api/users/${c.req.param("id")}`,
+  );
 });
 
 export default app;

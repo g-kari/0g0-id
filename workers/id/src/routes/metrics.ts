@@ -16,8 +16,12 @@ import {
   getLoginEventIpStats,
   getLoginEventUserAgentStats,
   getRecentLoginEvents,
+  getBffSessionDbscStats,
   parseDays,
+  parseLoginEventQuery,
+  loginEventFilters,
   restErrorBody,
+  REST_ERROR_CODES,
 } from "@0g0-id/shared";
 import type { IdpEnv, TokenPayload, AdminMetrics } from "@0g0-id/shared";
 import { authMiddleware } from "../middleware/auth";
@@ -165,14 +169,20 @@ app.get("/ip-stats", authMiddleware, adminMiddleware, async (c) => {
   const daysStr = c.req.query("days");
   if (daysStr !== undefined && !/^\d+$/.test(daysStr)) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "days must be an integer between 1 and 365"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "days must be an integer between 1 and 365",
+      ),
       400,
     );
   }
   const daysNum = daysStr !== undefined ? parseInt(daysStr, 10) : 7;
   if (daysNum < 1 || daysNum > 365) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "days must be an integer between 1 and 365"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "days must be an integer between 1 and 365",
+      ),
       400,
     );
   }
@@ -180,14 +190,20 @@ app.get("/ip-stats", authMiddleware, adminMiddleware, async (c) => {
   const limitStr = c.req.query("limit");
   if (limitStr !== undefined && !/^\d+$/.test(limitStr)) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "limit must be an integer between 1 and 100",
+      ),
       400,
     );
   }
   const limitNum = limitStr !== undefined ? parseInt(limitStr, 10) : 20;
   if (limitNum < 1 || limitNum > 100) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "limit must be an integer between 1 and 100",
+      ),
       400,
     );
   }
@@ -206,14 +222,20 @@ app.get("/user-agent-stats", authMiddleware, adminMiddleware, async (c) => {
   const daysStr = c.req.query("days");
   if (daysStr !== undefined && !/^\d+$/.test(daysStr)) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "days must be an integer between 1 and 365"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "days must be an integer between 1 and 365",
+      ),
       400,
     );
   }
   const daysNum = daysStr !== undefined ? parseInt(daysStr, 10) : 7;
   if (daysNum < 1 || daysNum > 365) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "days must be an integer between 1 and 365"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "days must be an integer between 1 and 365",
+      ),
       400,
     );
   }
@@ -221,14 +243,20 @@ app.get("/user-agent-stats", authMiddleware, adminMiddleware, async (c) => {
   const limitStr = c.req.query("limit");
   if (limitStr !== undefined && !/^\d+$/.test(limitStr)) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "limit must be an integer between 1 and 100",
+      ),
       400,
     );
   }
   const limitNum = limitStr !== undefined ? parseInt(limitStr, 10) : 20;
   if (limitNum < 1 || limitNum > 100) {
     return c.json(
-      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
+      restErrorBody(
+        REST_ERROR_CODES.INVALID_PARAMETER,
+        "limit must be an integer between 1 and 100",
+      ),
       400,
     );
   }
@@ -244,33 +272,45 @@ app.get("/user-agent-stats", authMiddleware, adminMiddleware, async (c) => {
 
 // GET /api/metrics/recent-events?limit=50&offset=0 — 全ユーザーの直近ログインイベント一覧
 app.get("/recent-events", authMiddleware, adminMiddleware, async (c) => {
-  const limitStr = c.req.query("limit");
-  if (limitStr !== undefined && !/^\d+$/.test(limitStr)) {
-    return c.json(
-      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
-      400,
-    );
+  const query = parseLoginEventQuery(new URL(c.req.url).searchParams);
+  if ("error" in query) {
+    return c.json(restErrorBody(REST_ERROR_CODES.INVALID_PARAMETER, query.error), 400);
   }
-  const limitNum = limitStr !== undefined ? parseInt(limitStr, 10) : 50;
-  if (limitNum < 1 || limitNum > 100) {
-    return c.json(
-      restErrorBody("INVALID_PARAMETER", "limit must be an integer between 1 and 100"),
-      400,
-    );
-  }
-
-  const offsetStr = c.req.query("offset");
-  if (offsetStr !== undefined && !/^\d+$/.test(offsetStr)) {
-    return c.json(restErrorBody("INVALID_PARAMETER", "offset must be a non-negative integer"), 400);
-  }
-  const offsetNum = offsetStr !== undefined ? parseInt(offsetStr, 10) : 0;
-  if (offsetNum < 0) {
-    return c.json(restErrorBody("INVALID_PARAMETER", "offset must be a non-negative integer"), 400);
-  }
+  const { limit: limitNum, offset: offsetNum } = query;
 
   try {
-    const { events, total } = await getRecentLoginEvents(c.env.DB, limitNum, offsetNum);
-    return c.json({ data: events, meta: { limit: limitNum, offset: offsetNum, total } });
+    const filters = loginEventFilters(query);
+    const { events, total } = await getRecentLoginEvents(c.env.DB, limitNum, offsetNum, filters);
+    const appliedFilters =
+      query.userId || query.country || query.provider || query.period !== "all"
+        ? {
+            user_id: query.userId ?? null,
+            country: query.country ?? null,
+            provider: query.provider ?? null,
+            period: query.period,
+          }
+        : undefined;
+    return c.json({
+      data: events,
+      meta: {
+        limit: limitNum,
+        offset: offsetNum,
+        total,
+        ...(appliedFilters ? { applied_filters: appliedFilters } : {}),
+      },
+    });
+  } catch {
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
+  }
+});
+
+// GET /api/metrics/dbsc-bindings — アクティブ BFF セッションの DBSC 端末バインド集計
+// issue #155 Phase 3: 「DBSC_ENFORCE_SENSITIVE=true」運用判断の前に、
+// Chrome 非対応環境がどれだけ残っているかを棚卸しするためのダッシュボード用 API。
+app.get("/dbsc-bindings", authMiddleware, adminMiddleware, async (c) => {
+  try {
+    const stats = await getBffSessionDbscStats(c.env.DB);
+    return c.json({ data: stats });
   } catch {
     return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }

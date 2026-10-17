@@ -6,11 +6,13 @@ import {
   securityHeaders,
   bodyLimitMiddleware,
   createLogger,
+  deletedCountMetadata,
   cleanupExpiredAuthCodes,
   deleteExpiredDeviceCodes,
   cleanupExpiredMcpSessions,
   cleanupExpiredRevokedAccessTokens,
   deleteExpiredRefreshTokens,
+  cleanupStaleDbscChallenges,
 } from "@0g0-id/shared";
 import { validateEnv } from "./utils/env-validation";
 import authRoutes from "./routes/auth";
@@ -66,8 +68,9 @@ app.get("/api/health", (c) => {
 });
 
 // エラーハンドリング
-app.onError((err, c) => {
-  appLogger.error("Unhandled error", err);
+app.onError((_err, c) => {
+  // 例外には個人情報やtokenが含まれ得るため、固定イベントだけを記録する。
+  appLogger.error("Unhandled error");
   return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
 });
 
@@ -83,7 +86,7 @@ export default {
     ctx.waitUntil(
       (async () => {
         const deleted = await cleanupExpiredAuthCodes(env.DB);
-        appLogger.info("認可コードクリーンアップ完了", { deletedCount: deleted });
+        appLogger.info("認可コードクリーンアップ完了", deletedCountMetadata(deleted));
 
         await deleteExpiredDeviceCodes(env.DB);
         appLogger.info("デバイスコードクリーンアップ完了");
@@ -92,12 +95,19 @@ export default {
         appLogger.info("MCPセッションクリーンアップ完了");
 
         const revokedDeleted = await cleanupExpiredRevokedAccessTokens(env.DB);
-        appLogger.info("失効アクセストークンクリーンアップ完了", { deletedCount: revokedDeleted });
+        appLogger.info(
+          "失効アクセストークンクリーンアップ完了",
+          deletedCountMetadata(revokedDeleted),
+        );
 
         const refreshDeleted = await deleteExpiredRefreshTokens(env.DB);
-        appLogger.info("期限切れリフレッシュトークンクリーンアップ完了", {
-          deletedCount: refreshDeleted,
-        });
+        appLogger.info(
+          "期限切れリフレッシュトークンクリーンアップ完了",
+          deletedCountMetadata(refreshDeleted),
+        );
+
+        await cleanupStaleDbscChallenges(env.DB);
+        appLogger.info("DBSCチャレンジクリーンアップ完了");
       })(),
     );
   },

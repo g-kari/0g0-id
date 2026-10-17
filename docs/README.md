@@ -11,6 +11,14 @@
 | [api-admin.md](./api-admin.md)   | `admin.0g0.xyz`（admin Worker） | 管理者向け BFF（admin ロール必須、サービス・ユーザー管理・メトリクス）            |
 | [mcp-server.md](./mcp-server.md) | `mcp.0g0.xyz`（mcp Worker）     | Model Context Protocol ツール仕様（Claude Code 連携）                             |
 
+### 生成済み IdP リファレンス
+
+- [内部 API](./generated/id-internal.md) / [外部連携 API](./generated/id-external.md)
+- [更新コマンド・CI 同期確認・対象範囲](./api-reference-generation.md)
+
+既存の手書き API / BFF / DBSC 資料はそのまま維持します。生成と同期確認は IdP の
+内部/外部 OpenAPI 仕様のみが対象で、User/Admin BFF 全体の同期は保証しません。
+
 ### インタラクティブ版（Scalar / Swagger UI）
 
 | URL                              | 対象                                       |
@@ -25,11 +33,21 @@
 | https://id.0g0.xyz/docs/openapi.md  | id 内部 OpenAPI の Markdown 版 |
 | https://id.0g0.xyz/docs/external.md | id 外部 OpenAPI の Markdown 版 |
 
+## セキュリティ・設計ドキュメント
+
+| ファイル                                               | 概要                                                   |
+| ------------------------------------------------------ | ------------------------------------------------------ |
+| [dbsc.md](./dbsc.md)                                   | DBSC（Device Bound Session Credentials）仕様・フロー図 |
+| [environment-variables.md](./environment-variables.md) | 全 Worker の環境変数・シークレット・Bindings 一覧      |
+| [asset-generation.md](./asset-generation.md)           | 静的アセット生成（JWKS / OIDC）・鍵ローテーション手順  |
+
 ## 運用ドキュメント
 
 | ファイル                                                   | 概要                                     |
 | ---------------------------------------------------------- | ---------------------------------------- |
 | [cloudflare-github-setup.md](./cloudflare-github-setup.md) | Cloudflare ↔ GitHub 連携セットアップ手順 |
+| [deployment.md](./deployment.md)                           | デプロイ手順・シークレット管理ガイド     |
+| [disaster-recovery.md](./disaster-recovery.md)             | D1 バックアップ・災害復旧手順            |
 
 ## アーキテクチャ
 

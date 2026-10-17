@@ -18,6 +18,10 @@ export interface BffSessionRecord {
   user_agent: string | null;
   ip: string | null;
   bff_origin: string;
+  /** DBSC 端末バインド公開鍵（ES256 JWK の JSON 文字列）。未バインドなら null。 */
+  device_public_key_jwk: string | null;
+  /** DBSC 端末バインド日時（unix 秒）。未バインドなら null。 */
+  device_bound_at: number | null;
 }
 
 export interface CreateBffSessionInput {
@@ -66,7 +70,7 @@ export async function findActiveBffSession(
   const row = await db
     .prepare(
       `SELECT id, user_id, created_at, expires_at, revoked_at, revoked_reason,
-              user_agent, ip, bff_origin
+              user_agent, ip, bff_origin, device_public_key_jwk, device_bound_at
          FROM bff_sessions
         WHERE id = ? AND revoked_at IS NULL AND expires_at > ?`,
     )
@@ -92,6 +96,28 @@ export async function revokeBffSession(
     )
     .bind(now, reason, sessionId)
     .run();
+}
+
+/**
+ * 単一の BFF セッションを user_id 一致条件付きで失効させる（管理者操作向け）。
+ * 失効件数を返す（指定 session が指定 user に紐づいていない場合は 0）。
+ */
+export async function revokeBffSessionByIdForUser(
+  db: D1Database,
+  sessionId: string,
+  userId: string,
+  reason: string,
+): Promise<number> {
+  const now = Math.floor(Date.now() / 1000);
+  const result = await db
+    .prepare(
+      `UPDATE bff_sessions
+          SET revoked_at = ?, revoked_reason = ?
+        WHERE id = ? AND user_id = ? AND revoked_at IS NULL`,
+    )
+    .bind(now, reason, sessionId, userId)
+    .run();
+  return result.meta?.changes ?? 0;
 }
 
 /**
@@ -149,4 +175,164 @@ export async function countActiveBffSessionsByUserId(
     .bind(userId, now)
     .first<{ cnt: number }>();
   return row?.cnt ?? 0;
+}
+
+/**
+ * BFF セッションに DBSC 端末公開鍵をバインドする。
+ *
+ * - 既にバインド済み・失効済み・期限切れ・存在しないセッションには no-op で false を返す。
+ * - 二重バインドを禁止する（端末追加は新規ログイン経由のみ）。
+ * - 公開鍵 JWK は呼び出し側が事前に jose 等で検証してから渡す前提。
+ */
+export async function bindDeviceKeyToBffSession(
+  db: D1Database,
+  sessionId: string,
+  publicKeyJwk: string,
+): Promise<boolean> {
+  const now = Math.floor(Date.now() / 1000);
+  const result = await db
+    .prepare(
+      `UPDATE bff_sessions
+          SET device_public_key_jwk = ?, device_bound_at = ?
+        WHERE id = ?
+          AND revoked_at IS NULL
+          AND expires_at > ?
+          AND device_public_key_jwk IS NULL`,
+    )
+    .bind(publicKeyJwk, now, sessionId, now)
+    .run();
+  return (result.meta?.changes ?? 0) > 0;
+}
+
+/**
+ * 管理画面向け BFF セッション一覧表示用サマリ。
+ *
+ * - `has_device_key`: DBSC 端末公開鍵がバインドされているか（内容自体は返さない）
+ * - `device_bound_at`: バインド日時（unix 秒）。未バインドなら null。
+ *
+ * 公開鍵 JWK 生データは管理画面には返さない（UI では不要・漏洩面を増やさないため）。
+ */
+export interface ActiveBffSessionSummary {
+  id: string;
+  user_id: string;
+  created_at: number;
+  expires_at: number;
+  user_agent: string | null;
+  ip: string | null;
+  bff_origin: string;
+  has_device_key: boolean;
+  device_bound_at: number | null;
+}
+
+/**
+ * ユーザーのアクティブ（未失効・未期限切れ）BFF セッション一覧を返す。
+ * 作成日時の降順でソートする。管理者向けの閲覧専用サマリで、公開鍵そのものは返さない。
+ */
+export async function listActiveBffSessionsByUserId(
+  db: D1Database,
+  userId: string,
+): Promise<ActiveBffSessionSummary[]> {
+  const now = Math.floor(Date.now() / 1000);
+  const result = await db
+    .prepare(
+      `SELECT id, user_id, created_at, expires_at, user_agent, ip, bff_origin,
+              device_public_key_jwk, device_bound_at
+         FROM bff_sessions
+        WHERE user_id = ?
+          AND revoked_at IS NULL
+          AND expires_at > ?
+        ORDER BY created_at DESC`,
+    )
+    .bind(userId, now)
+    .all<
+      Pick<
+        BffSessionRecord,
+        | "id"
+        | "user_id"
+        | "created_at"
+        | "expires_at"
+        | "user_agent"
+        | "ip"
+        | "bff_origin"
+        | "device_public_key_jwk"
+        | "device_bound_at"
+      >
+    >();
+  return result.results.map((row) => ({
+    id: row.id,
+    user_id: row.user_id,
+    created_at: row.created_at,
+    expires_at: row.expires_at,
+    user_agent: row.user_agent,
+    ip: row.ip,
+    bff_origin: row.bff_origin,
+    has_device_key: row.device_public_key_jwk !== null,
+    device_bound_at: row.device_bound_at,
+  }));
+}
+
+/**
+ * DBSC 端末バインド状態の集計（アクティブな BFF セッションが対象）。
+ * admin ダッシュボードで「Chrome 非対応環境の棚卸し」運用（issue #155 Phase 3）に利用する。
+ */
+export interface BffSessionDbscStats {
+  /** アクティブな BFF セッション総数 */
+  total: number;
+  /** DBSC 端末バインド済みのセッション数 */
+  device_bound: number;
+  /** 未バインドのセッション数 */
+  unbound: number;
+  /** BFF origin 別の内訳 */
+  by_bff_origin: Array<{
+    bff_origin: string;
+    total: number;
+    device_bound: number;
+    unbound: number;
+  }>;
+}
+
+/**
+ * アクティブな BFF セッションの DBSC バインド状況を集計する。
+ *
+ * expires_at（unix 秒）と revoked_at（NULL）で「アクティブ」を判定する条件は
+ * `listActiveBffSessionsByUserId` と揃えている。
+ * 公開鍵 JWK 自体は返さず、`device_public_key_jwk IS NOT NULL` のカウントのみ返す。
+ */
+export async function getBffSessionDbscStats(db: D1Database): Promise<BffSessionDbscStats> {
+  const now = Math.floor(Date.now() / 1000);
+  const result = await db
+    .prepare(
+      `SELECT bff_origin,
+              COUNT(*) AS total,
+              SUM(CASE WHEN device_public_key_jwk IS NOT NULL THEN 1 ELSE 0 END) AS device_bound
+         FROM bff_sessions
+        WHERE revoked_at IS NULL
+          AND expires_at > ?
+        GROUP BY bff_origin
+        ORDER BY bff_origin ASC`,
+    )
+    .bind(now)
+    .all<{ bff_origin: string; total: number; device_bound: number }>();
+  const rows = result.results;
+
+  const byOrigin = rows.map((row) => {
+    const total = Number(row.total ?? 0);
+    const deviceBound = Number(row.device_bound ?? 0);
+    return {
+      bff_origin: row.bff_origin,
+      total,
+      device_bound: deviceBound,
+      unbound: total - deviceBound,
+    };
+  });
+
+  const total = byOrigin.reduce((acc, r) => acc + r.total, 0);
+  const deviceBound = byOrigin.reduce((acc, r) => acc + r.device_bound, 0);
+
+  return {
+    total,
+    device_bound: deviceBound,
+    unbound: total - deviceBound,
+    by_bff_origin: byOrigin,
+  };
 }

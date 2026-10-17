@@ -6,7 +6,7 @@ import {
   signIdToken,
   createRefreshToken,
 } from "@0g0-id/shared";
-import type { IdpEnv, User } from "@0g0-id/shared";
+import type { AccessTokenInput, IdpEnv, User } from "@0g0-id/shared";
 
 /** リフレッシュトークンの有効期限（30日） */
 export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -27,17 +27,30 @@ export async function issueTokenPair(
   options: { serviceId: string | null; clientId?: string; familyId?: string; scope?: string },
 ): Promise<{ accessToken: string; refreshToken: string }> {
   const { serviceId, clientId, familyId = crypto.randomUUID(), scope } = options;
+  if ((serviceId !== null) !== (clientId !== undefined) || clientId === "") {
+    throw new Error("Service tokens require a matching serviceId and clientId");
+  }
 
+  const accessTokenInput: AccessTokenInput =
+    clientId === undefined
+      ? {
+          iss: env.IDP_ORIGIN,
+          sub: user.id,
+          aud: env.IDP_ORIGIN,
+          email: user.email,
+          role: user.role,
+          scope,
+          cid: undefined,
+        }
+      : {
+          iss: env.IDP_ORIGIN,
+          sub: user.id,
+          aud: clientId,
+          scope,
+          cid: clientId,
+        };
   const accessToken = await signAccessToken(
-    {
-      iss: env.IDP_ORIGIN,
-      sub: user.id,
-      aud: env.IDP_ORIGIN,
-      email: user.email,
-      role: user.role,
-      scope,
-      cid: clientId,
-    },
+    accessTokenInput,
     env.JWT_PRIVATE_KEY,
     env.JWT_PUBLIC_KEY,
   );
@@ -47,7 +60,9 @@ export async function issueTokenPair(
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
 
   // サービス連携時はペアワイズsubを事前計算して保存（外部API逆引き用）
-  const pairwiseSub = clientId ? await generatePairwiseSub(clientId, user.id) : null;
+  const pairwiseSub = clientId
+    ? await generatePairwiseSub(clientId, user.id, env.PAIRWISE_SALT)
+    : null;
 
   await createRefreshToken(db, {
     id: crypto.randomUUID(),
@@ -99,7 +114,7 @@ export async function issueIdToken(
     return undefined;
   }
 
-  const pairwiseSub = await generatePairwiseSub(service.client_id, user.id);
+  const pairwiseSub = await generatePairwiseSub(service.client_id, user.id, env.PAIRWISE_SALT);
   const authTime = Math.floor(Date.now() / 1000);
 
   return signIdToken(
@@ -107,12 +122,9 @@ export async function issueIdToken(
       iss: env.IDP_ORIGIN,
       sub: pairwiseSub,
       aud: service.client_id,
-      email: user.email,
-      name: user.name,
-      picture: user.picture,
       authTime,
       nonce: options?.nonce,
-      amr: options?.amr,
+      // Do not disclose the upstream provider to an RP by default.
     },
     env.JWT_PRIVATE_KEY,
     env.JWT_PUBLIC_KEY,

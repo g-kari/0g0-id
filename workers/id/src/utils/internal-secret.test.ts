@@ -1,0 +1,140 @@
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+
+vi.mock("@0g0-id/shared", () => ({
+  timingSafeEqual: vi.fn(),
+}));
+
+import { timingSafeEqual } from "@0g0-id/shared";
+import type { IdpEnv } from "@0g0-id/shared";
+import {
+  classifyInternalSecret,
+  getConfiguredInternalSecrets,
+  hasValidInternalSecret,
+  INTERNAL_SECRET_HEADER,
+} from "./internal-secret";
+
+function envWith(overrides: Partial<IdpEnv>): IdpEnv {
+  return overrides as IdpEnv;
+}
+
+function reqWith(headerValue?: string): Request {
+  const headers = new Headers();
+  if (headerValue !== undefined) headers.set(INTERNAL_SECRET_HEADER, headerValue);
+  return new Request("https://id.0g0.xyz/auth/exchange", { method: "POST", headers });
+}
+
+describe("getConfiguredInternalSecrets", () => {
+  it("設定済みシークレットを USER → ADMIN の順で返す", () => {
+    const env = envWith({
+      INTERNAL_SERVICE_SECRET_USER: "user-secret",
+      INTERNAL_SERVICE_SECRET_ADMIN: "admin-secret",
+    });
+    expect(getConfiguredInternalSecrets(env)).toEqual(["user-secret", "admin-secret"]);
+  });
+
+  it("未設定・空文字は除外される", () => {
+    const env = envWith({
+      INTERNAL_SERVICE_SECRET_USER: "user-secret",
+      INTERNAL_SERVICE_SECRET_ADMIN: "",
+    });
+    expect(getConfiguredInternalSecrets(env)).toEqual(["user-secret"]);
+  });
+
+  it("全て未設定なら空配列", () => {
+    expect(getConfiguredInternalSecrets(envWith({}))).toEqual([]);
+  });
+});
+
+describe("hasValidInternalSecret", () => {
+  beforeEach(() => {
+    vi.mocked(timingSafeEqual).mockReset();
+  });
+
+  it("ヘッダー未設定なら false（timingSafeEqual は呼ばれない）", () => {
+    const env = envWith({ INTERNAL_SERVICE_SECRET_USER: "s" });
+    expect(hasValidInternalSecret(env, reqWith())).toBe(false);
+    expect(timingSafeEqual).not.toHaveBeenCalled();
+  });
+
+  it("シークレット未設定なら false", () => {
+    expect(hasValidInternalSecret(envWith({}), reqWith("anything"))).toBe(false);
+    expect(timingSafeEqual).not.toHaveBeenCalled();
+  });
+
+  it("いずれかのシークレットに一致すれば true（早期 return で残りは照合しない）", () => {
+    vi.mocked(timingSafeEqual).mockReturnValueOnce(false).mockReturnValueOnce(true);
+    const env = envWith({
+      INTERNAL_SERVICE_SECRET_USER: "user-secret",
+      INTERNAL_SERVICE_SECRET_ADMIN: "admin-secret",
+    });
+    expect(hasValidInternalSecret(env, reqWith("admin-secret"))).toBe(true);
+    expect(timingSafeEqual).toHaveBeenCalledTimes(2);
+  });
+
+  it("どのシークレットにも一致しなければ全て照合して false", () => {
+    vi.mocked(timingSafeEqual).mockReturnValue(false);
+    const env = envWith({
+      INTERNAL_SERVICE_SECRET_USER: "user-secret",
+      INTERNAL_SERVICE_SECRET_ADMIN: "admin-secret",
+    });
+    expect(hasValidInternalSecret(env, reqWith("wrong"))).toBe(false);
+    expect(timingSafeEqual).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("classifyInternalSecret", () => {
+  beforeEach(() => {
+    vi.mocked(timingSafeEqual).mockReset();
+  });
+
+  it("ヘッダー未設定なら 'none' を返す（timingSafeEqual は呼ばれない）", () => {
+    const env = envWith({ INTERNAL_SERVICE_SECRET_USER: "s" });
+    expect(classifyInternalSecret(env, reqWith())).toBe("none");
+    expect(timingSafeEqual).not.toHaveBeenCalled();
+  });
+
+  it("シークレット未設定なら 'none'", () => {
+    expect(classifyInternalSecret(envWith({}), reqWith("anything"))).toBe("none");
+    expect(timingSafeEqual).not.toHaveBeenCalled();
+  });
+
+  it("USER シークレットに一致すれば 'user' を返し、以降は照合しない", () => {
+    vi.mocked(timingSafeEqual).mockReturnValueOnce(true);
+    const env = envWith({
+      INTERNAL_SERVICE_SECRET_USER: "user-secret",
+      INTERNAL_SERVICE_SECRET_ADMIN: "admin-secret",
+    });
+    expect(classifyInternalSecret(env, reqWith("user-secret"))).toBe("user");
+    expect(timingSafeEqual).toHaveBeenCalledTimes(1);
+  });
+
+  it("ADMIN シークレットに一致すれば 'admin' を返す（USER を先に照合してから）", () => {
+    vi.mocked(timingSafeEqual).mockReturnValueOnce(false).mockReturnValueOnce(true);
+    const env = envWith({
+      INTERNAL_SERVICE_SECRET_USER: "user-secret",
+      INTERNAL_SERVICE_SECRET_ADMIN: "admin-secret",
+    });
+    expect(classifyInternalSecret(env, reqWith("admin-secret"))).toBe("admin");
+    expect(timingSafeEqual).toHaveBeenCalledTimes(2);
+  });
+
+  it("空文字シークレットはスキップされる（timingSafeEqual は呼ばれない）", () => {
+    vi.mocked(timingSafeEqual).mockReturnValueOnce(true);
+    const env = envWith({
+      INTERNAL_SERVICE_SECRET_USER: "",
+      INTERNAL_SERVICE_SECRET_ADMIN: "admin-secret",
+    });
+    expect(classifyInternalSecret(env, reqWith("admin-secret"))).toBe("admin");
+    expect(timingSafeEqual).toHaveBeenCalledTimes(1);
+  });
+
+  it("どのシークレットにも一致しなければ 'none'（全候補を照合）", () => {
+    vi.mocked(timingSafeEqual).mockReturnValue(false);
+    const env = envWith({
+      INTERNAL_SERVICE_SECRET_USER: "user-secret",
+      INTERNAL_SERVICE_SECRET_ADMIN: "admin-secret",
+    });
+    expect(classifyInternalSecret(env, reqWith("wrong"))).toBe("none");
+    expect(timingSafeEqual).toHaveBeenCalledTimes(2);
+  });
+});

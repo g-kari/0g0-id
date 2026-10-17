@@ -1,6 +1,7 @@
 import type { HonoRequest } from "hono";
-import type { IdpEnv, User, Service } from "@0g0-id/shared";
+import type { IdpEnv, Service } from "@0g0-id/shared";
 import { findServiceByClientId, createLogger } from "@0g0-id/shared";
+import { parseRequestBody } from "../../utils/body-parser";
 import { authenticateService } from "../../utils/service-auth";
 
 const tokenLogger = createLogger("token");
@@ -19,50 +20,21 @@ export type TokenHandlerContext = {
 /**
  * RFC 7009 / RFC 7662 準拠: リクエストボディのパース。
  * application/x-www-form-urlencoded（RFC標準）と application/json（後方互換）の両方に対応。
+ * 共通の parseRequestBody を利用し、token 関連フィールドを抽出する。
  */
 export async function parseTokenBody(
   req: HonoRequest,
 ): Promise<{ token?: string; token_type_hint?: string } | null> {
-  const contentType = req.header("Content-Type") ?? "";
-  try {
-    if (contentType.includes("application/x-www-form-urlencoded")) {
-      const body = await req.parseBody();
-      return {
-        token: typeof body["token"] === "string" ? body["token"] : undefined,
-        token_type_hint:
-          typeof body["token_type_hint"] === "string" ? body["token_type_hint"] : undefined,
-      };
-    }
-    return await req.json<{ token?: string; token_type_hint?: string }>();
-  } catch (err) {
-    tokenLogger.error("Failed to parse request body", err);
+  const body = await parseRequestBody(req);
+  if (!body) {
+    tokenLogger.error("Failed to parse request body");
     return null;
   }
-}
-
-/**
- * スコープに基づいてイントロスペクションレスポンスへユーザークレームを付与する。
- * refresh_token / access_token の両ブランチで共通利用。
- */
-export function applyUserClaims(
-  claims: Record<string, unknown>,
-  user: User,
-  scopes: string[],
-): void {
-  if (scopes.includes("profile")) {
-    claims["name"] = user.name;
-    claims["picture"] = user.picture;
-  }
-  if (scopes.includes("email")) {
-    claims["email"] = user.email;
-    claims["email_verified"] = user.email_verified === 1;
-  }
-  if (scopes.includes("phone")) {
-    claims["phone"] = user.phone;
-  }
-  if (scopes.includes("address")) {
-    claims["address"] = user.address;
-  }
+  return {
+    token: typeof body["token"] === "string" ? body["token"] : undefined,
+    token_type_hint:
+      typeof body["token_type_hint"] === "string" ? body["token_type_hint"] : undefined,
+  };
 }
 
 /**

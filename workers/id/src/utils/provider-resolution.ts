@@ -17,9 +17,10 @@ import {
   upsertGithubUser,
   upsertXUser,
   createLogger,
+  restErrorBody,
 } from "@0g0-id/shared";
 import type { IdpEnv, TokenPayload, User } from "@0g0-id/shared";
-import type { OAuthProvider } from "@0g0-id/shared";
+import { PROVIDER_DISPLAY_NAMES, type OAuthProvider } from "@0g0-id/shared";
 
 type Variables = { user: TokenPayload };
 
@@ -35,12 +36,13 @@ function oauthError(
   message: string,
   code: string = "OAUTH_ERROR",
 ): { ok: false; response: Response } {
-  return { ok: false, response: c.json({ error: { code, message } }, 400) };
+  return { ok: false, response: c.json(restErrorBody(code, message), 400) };
 }
 
 /**
  * OAuthプロバイダー共通のコード交換・ユーザー情報取得処理。
  * 各 resolve*Provider 関数の try/catch ボイラープレートを集約する。
+ * 例外値には個人情報や認証情報が含まれ得るため、ログは既定のprovider/stageのみ。
  */
 async function exchangeAndFetchUserInfo<TTokenResponse extends { access_token: string }, TUserInfo>(
   c: Context<{ Bindings: IdpEnv; Variables: Variables }>,
@@ -55,16 +57,16 @@ async function exchangeAndFetchUserInfo<TTokenResponse extends { access_token: s
   let tokens: TTokenResponse;
   try {
     tokens = await exchangeFn();
-  } catch (err) {
-    providerLogger.error(`[oauth-${providerKey}] Failed to exchange code`, err);
+  } catch {
+    providerLogger.error(`[oauth-${providerKey}] Failed to exchange code`);
     return oauthError(c, `Failed to exchange ${displayName} code`);
   }
 
   let userInfo: TUserInfo;
   try {
     userInfo = await fetchFn(tokens.access_token);
-  } catch (err) {
-    providerLogger.error(`[oauth-${providerKey}] Failed to fetch user info`, err);
+  } catch {
+    providerLogger.error(`[oauth-${providerKey}] Failed to fetch user info`);
     return oauthError(c, `Failed to fetch ${displayName} user info`);
   }
 
@@ -90,12 +92,13 @@ export async function resolveProvider(
   pkceVerifier: string,
   callbackUri: string,
 ): Promise<ProviderResolution> {
+  const displayName = PROVIDER_DISPLAY_NAMES[provider];
   switch (provider) {
     case "google": {
       const result = await exchangeAndFetchUserInfo(
         c,
-        "google",
-        "Google",
+        provider,
+        displayName,
         () =>
           exchangeGoogleCode({
             code,
@@ -129,8 +132,8 @@ export async function resolveProvider(
     case "line": {
       const result = await exchangeAndFetchUserInfo(
         c,
-        "line",
-        "LINE",
+        provider,
+        displayName,
         () =>
           exchangeLineCode({
             code,
@@ -148,6 +151,9 @@ export async function resolveProvider(
         userInfo.sub,
         userInfo.email,
       );
+      if (!isPlaceholderEmail && !(userInfo.email_verified ?? false)) {
+        return oauthError(c, "Email not verified", "UNVERIFIED_EMAIL");
+      }
       return {
         ok: true,
         sub: userInfo.sub,
@@ -166,8 +172,8 @@ export async function resolveProvider(
     case "twitch": {
       const result = await exchangeAndFetchUserInfo(
         c,
-        "twitch",
-        "Twitch",
+        provider,
+        displayName,
         () =>
           exchangeTwitchCode({
             code,
@@ -207,8 +213,8 @@ export async function resolveProvider(
     case "github": {
       const result = await exchangeAndFetchUserInfo(
         c,
-        "github",
-        "GitHub",
+        provider,
+        displayName,
         () =>
           exchangeGithubCode({
             code,
@@ -227,8 +233,8 @@ export async function resolveProvider(
       let email: string | null;
       try {
         email = await fetchGithubPrimaryEmail(tokenResponse.access_token);
-      } catch (err) {
-        providerLogger.error("[oauth-github] Failed to fetch primary email", err);
+      } catch {
+        providerLogger.error("[oauth-github] Failed to fetch primary email");
         return oauthError(c, "Failed to fetch GitHub email");
       }
       const { email: finalEmail, isPlaceholderEmail } = makePlaceholderEmail(
@@ -254,8 +260,8 @@ export async function resolveProvider(
     case "x": {
       const result = await exchangeAndFetchUserInfo(
         c,
-        "x",
-        "X",
+        provider,
+        displayName,
         () =>
           exchangeXCode({
             code,

@@ -2,49 +2,17 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { Hono } from "hono";
 
 vi.mock("@0g0-id/shared", async (importOriginal) => {
-  const { restErrorBody } = await importOriginal<typeof import("@0g0-id/shared")>();
+  const actual = await importOriginal<typeof import("@0g0-id/shared")>();
   return {
-    restErrorBody,
+    ...actual,
     createLogger: vi
       .fn()
       .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
     findUserById: vi.fn(),
     listAdminAuditLogs: vi.fn(),
     getAuditLogStats: vi.fn(),
-    parseDays: (
-      daysParam: string | undefined,
-      options: { minDays?: number; maxDays?: number } = {},
-    ) => {
-      if (daysParam === undefined) return undefined;
-      const { minDays = 1, maxDays = 90 } = options;
-      const days = parseInt(daysParam, 10);
-      if (!Number.isInteger(days) || days < minDays || days > maxDays) {
-        return {
-          error: {
-            code: "INVALID_REQUEST",
-            message: `days must be an integer between ${minDays} and ${maxDays}`,
-          },
-        };
-      }
-      return { days };
-    },
-    parsePagination: (
-      query: { limit?: string; offset?: string },
-      options: { defaultLimit: number; maxLimit: number } = { defaultLimit: 50, maxLimit: 100 },
-    ) => {
-      const limitRaw = query.limit !== undefined ? parseInt(query.limit, 10) : options.defaultLimit;
-      const offsetRaw = query.offset !== undefined ? parseInt(query.offset, 10) : 0;
-      if (query.limit !== undefined && (isNaN(limitRaw) || limitRaw < 1)) {
-        return { error: "limit は1以上の整数で指定してください" };
-      }
-      if (query.offset !== undefined && (isNaN(offsetRaw) || offsetRaw < 0)) {
-        return { error: "offset は0以上の整数で指定してください" };
-      }
-      return { limit: Math.min(limitRaw, options.maxLimit), offset: offsetRaw };
-    },
     verifyAccessToken: vi.fn(),
     isAccessTokenRevoked: vi.fn().mockResolvedValue(false),
-    UUID_RE: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
   };
 });
 
@@ -250,6 +218,36 @@ describe("GET /api/admin/audit-logs", () => {
     );
   });
 
+  it("3条件を同時にDBに渡し、固定50件ページの空結果と件数を返す", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(listAdminAuditLogs).mockResolvedValue({ logs: [], total: 0 });
+    const adminUserId = "00000000-0000-0000-0000-000000000099";
+    const targetId = "00000000-0000-0000-0000-000000000001";
+    const query = new URLSearchParams({
+      admin_user_id: adminUserId,
+      target_id: targetId,
+      action: "user.ban",
+      limit: "50",
+      offset: "50",
+    });
+
+    const res = await createApp().request(
+      makeRequest(`/api/admin/audit-logs?${query.toString()}`),
+      undefined,
+      mockEnv,
+    );
+
+    expect(res.status).toBe(200);
+    expect(listAdminAuditLogs).toHaveBeenCalledOnce();
+    expect(listAdminAuditLogs).toHaveBeenCalledWith(
+      mockEnv.DB,
+      50,
+      50,
+      expect.objectContaining({ adminUserId, targetId, action: "user.ban" }),
+    );
+    expect(await res.json()).toEqual({ data: [], pagination: { total: 0, limit: 50, offset: 50 } });
+  });
+
   it("ページネーションパラメータが渡される", async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
     vi.mocked(listAdminAuditLogs).mockResolvedValue({ logs: [], total: 0 });
@@ -276,6 +274,7 @@ describe("GET /api/admin/audit-logs", () => {
     const res = await app.request(makeRequest("/api/admin/audit-logs"), undefined, mockEnv);
 
     expect(res.status).toBe(403);
+    expect(listAdminAuditLogs).not.toHaveBeenCalled();
   });
 
   it("未認証は 401 を返す", async () => {
@@ -289,6 +288,7 @@ describe("GET /api/admin/audit-logs", () => {
     );
 
     expect(res.status).toBe(401);
+    expect(listAdminAuditLogs).not.toHaveBeenCalled();
   });
 });
 

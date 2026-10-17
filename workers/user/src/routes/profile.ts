@@ -5,40 +5,38 @@ import {
   fetchWithJsonBody,
   isValidProvider,
   parseDays,
-  parsePagination,
+  paginationMiddleware,
+  proxyGet,
   proxyResponse,
+  restErrorBody,
+  REST_ERROR_CODES,
+  SESSION_COOKIE_DELETE_OPTIONS,
 } from "@0g0-id/shared";
 import type { BffEnv } from "@0g0-id/shared";
-import { SESSION_COOKIE } from "./auth";
+import { COOKIE_NAMES } from "@0g0-id/shared";
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
 // GET /api/me
-app.get("/", async (c) => {
-  const res = await fetchWithAuth(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/me`);
-  return proxyResponse(res);
-});
+app.get(
+  "/",
+  proxyGet(COOKIE_NAMES.USER_SESSION, (c) => `${c.env.IDP_ORIGIN}/api/users/me`),
+);
 
 // GET /api/me/login-history
-app.get("/login-history", async (c) => {
-  const pagination = parsePagination(
-    { limit: c.req.query("limit"), offset: c.req.query("offset") },
-    { defaultLimit: 20, maxLimit: 100 },
-  );
-  if ("error" in pagination) {
-    return c.json({ error: pagination.error }, 400);
-  }
+app.get("/login-history", paginationMiddleware({ defaultLimit: 20, maxLimit: 100 }), async (c) => {
+  const { limit, offset } = c.get("pagination");
   const url = new URL(`${c.env.IDP_ORIGIN}/api/users/me/login-history`);
-  url.searchParams.set("limit", String(pagination.limit));
-  url.searchParams.set("offset", String(pagination.offset));
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("offset", String(offset));
   const provider = c.req.query("provider");
   if (provider) {
     if (!isValidProvider(provider)) {
-      return c.json({ error: { code: "BAD_REQUEST", message: "Invalid provider" } }, 400);
+      return c.json(restErrorBody("BAD_REQUEST", "Invalid provider"), 400);
     }
     url.searchParams.set("provider", provider);
   }
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.USER_SESSION, url.toString());
   return proxyResponse(res);
 });
 
@@ -49,49 +47,51 @@ app.get("/login-stats", async (c) => {
   if (daysResult !== undefined) {
     if ("error" in daysResult) {
       return c.json(
-        { error: { code: "INVALID_PARAMETER", message: daysResult.error.message } },
+        restErrorBody(REST_ERROR_CODES.INVALID_PARAMETER, daysResult.error.message),
         400,
       );
     }
     url.searchParams.set("days", String(daysResult.days));
   }
-  const res = await fetchWithAuth(c, SESSION_COOKIE, url.toString());
+  const res = await fetchWithAuth(c, COOKIE_NAMES.USER_SESSION, url.toString());
   return proxyResponse(res);
 });
 
 // GET /api/me/data-export — アカウントデータ一括エクスポート
-app.get("/data-export", async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/users/me/data-export`,
-  );
-  return proxyResponse(res);
-});
+app.get(
+  "/data-export",
+  proxyGet(COOKIE_NAMES.USER_SESSION, (c) => `${c.env.IDP_ORIGIN}/api/users/me/data-export`),
+);
 
 // GET /api/me/security-summary — セキュリティ概要（セッション数・連携サービス数・リンク済みプロバイダー等）
-app.get("/security-summary", async (c) => {
-  const res = await fetchWithAuth(
-    c,
-    SESSION_COOKIE,
-    `${c.env.IDP_ORIGIN}/api/users/me/security-summary`,
-  );
-  return proxyResponse(res);
-});
+app.get(
+  "/security-summary",
+  proxyGet(COOKIE_NAMES.USER_SESSION, (c) => `${c.env.IDP_ORIGIN}/api/users/me/security-summary`),
+);
 
 // PATCH /api/me
 app.patch("/", async (c) => {
-  return fetchWithJsonBody(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/me`, "PATCH");
+  return fetchWithJsonBody(
+    c,
+    COOKIE_NAMES.USER_SESSION,
+    `${c.env.IDP_ORIGIN}/api/users/me`,
+    "PATCH",
+  );
 });
 
 // DELETE /api/me — アカウント削除（セッションCookieも削除）
 app.delete("/", async (c) => {
-  const res = await fetchWithAuth(c, SESSION_COOKIE, `${c.env.IDP_ORIGIN}/api/users/me`, {
-    method: "DELETE",
-    headers: { Origin: c.env.IDP_ORIGIN },
-  });
+  const res = await fetchWithAuth(
+    c,
+    COOKIE_NAMES.USER_SESSION,
+    `${c.env.IDP_ORIGIN}/api/users/me`,
+    {
+      method: "DELETE",
+      headers: { Origin: c.env.IDP_ORIGIN },
+    },
+  );
   if (res.status === 204) {
-    deleteCookie(c, SESSION_COOKIE, { path: "/", secure: true, httpOnly: true, sameSite: "Lax" });
+    deleteCookie(c, COOKIE_NAMES.USER_SESSION, SESSION_COOKIE_DELETE_OPTIONS);
     return c.body(null, 204);
   }
   return proxyResponse(res);
