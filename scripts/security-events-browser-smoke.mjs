@@ -283,9 +283,12 @@ async function main() {
         }
       });
       await context.addInitScript(
-        ({ ignoreFirstAbort }) => {
+        ({ ignoreFirstAbort, stallFirstBody }) => {
           window.__syntheticXss = 0;
           window.__syntheticAborts = [];
+          window.__syntheticBodyStalled = false;
+          window.__syntheticFirstReadDelivered = false;
+          window.__syntheticBodyConsumed = false;
           const nativeFetch = window.fetch.bind(window);
           let firstEventsRead = true;
           window.fetch = (input, init) => {
@@ -298,19 +301,45 @@ async function main() {
                 once: true,
               },
             );
-            if (
-              ignoreFirstAbort &&
-              firstEventsRead &&
-              requestUrl.startsWith("/api/security-trends/recent-events?")
-            ) {
-              firstEventsRead = false;
-              // Simulate a response that completes despite cancellation to verify the sequence guard.
-              return nativeFetch(input, { ...init, signal: undefined });
-            }
-            return nativeFetch(input, init);
+            const first =
+              firstEventsRead && requestUrl.startsWith("/api/security-trends/recent-events?");
+            if (first) firstEventsRead = false;
+            const response = nativeFetch(
+              input,
+              ignoreFirstAbort && first ? { ...init, signal: undefined } : init,
+            ).then((received) => {
+              if (first) window.__syntheticFirstReadDelivered = true;
+              return received;
+            });
+            if (first && stallFirstBody)
+              return response.then(async (received) => {
+                const text = await received.text();
+                const body = new ReadableStream({
+                  start(controller) {
+                    window.__syntheticReleaseBody = () => {
+                      controller.enqueue(new TextEncoder().encode(text));
+                      controller.close();
+                    };
+                  },
+                });
+                window.__syntheticBodyStalled = true;
+                // A real browser JSON-body read that deliberately ignores cancellation.
+                const stalled = new Response(body, {
+                  status: received.status,
+                  headers: received.headers,
+                });
+                const readJson = stalled.json.bind(stalled);
+                stalled.json = async () => {
+                  const parsed = await readJson();
+                  window.__syntheticBodyConsumed = true;
+                  return parsed;
+                };
+                return stalled;
+              });
+            return response;
           };
         },
-        { ignoreFirstAbort: options.ignoreFirstAbort },
+        { ignoreFirstAbort: options.ignoreFirstAbort, stallFirstBody: options.stallFirstBody },
       );
       await context.route("**/*", async (route) => {
         const request = route.request();
@@ -660,6 +689,200 @@ async function main() {
       },
     );
 
+    for (const viewport of viewports)
+      for (const phase of ["headers", "success-body", "error-body"]) {
+        const gate = deferred();
+        await scenario(
+          `A stalled ${phase} reaches its30second deadline and keyboard retry preserves filters ${viewport.width}px`,
+          viewport,
+          async (route, url, n) => {
+            if (n !== 1) return defaultResponse(route, url);
+            if (phase === "headers") {
+              await gate.promise;
+              return route.fulfill({ status: 401, json: {} });
+            }
+            if (phase === "error-body")
+              return route.fulfill({
+                status: 503,
+                json: { error: { message: "synthetic old failure" } },
+              });
+            const body = filteredResponse(url);
+            body.data = [event(99, { user_id: "synthetic-late" })];
+            return route.fulfill({ json: body });
+          },
+          async (page, calls, origin) => {
+            try {
+              await page.clock.install({ time: fixtureNow });
+              await page.clock.pauseAt(fixtureNow + 60_000);
+              const url = `${origin}/security/events?user_id=synthetic-match&country=JP&provider=google&period=24h&offset=50`;
+              await page.goto(url, { waitUntil: "domcontentloaded" });
+              await expect
+                .poll(() => calls.filter((call) => call.path === eventsPath).length)
+                .toBe(1);
+              if (phase !== "headers")
+                await expect
+                  .poll(() => page.evaluate(() => window.__syntheticBodyStalled))
+                  .toBe(true);
+              const historyBefore = await page.evaluate(() => history.length);
+              await page.clock.runFor(29_999);
+              await expect(page.locator("#loading")).toBeVisible();
+              await expect(page.locator("#retry-btn")).toBeDisabled();
+              await page.clock.runFor(1);
+              await expect(page.locator("#loading")).toBeHidden();
+              await expect(page.locator("#table-wrap")).toBeHidden();
+              await expect(page.locator("#pagination")).toBeHidden();
+              await expect(page.locator("#error-message")).toContainText(
+                "30秒以内に完了しませんでした",
+              );
+              await expect(page.locator("#retry-btn")).toBeEnabled();
+              assert.equal(
+                calls.filter((call) => call.path === eventsPath).length,
+                1,
+                "No automatic retry",
+              );
+              assert.equal(await page.evaluate(() => window.__syntheticAborts.length), 1);
+              await page.locator("#retry-btn").focus();
+              await expect(page.locator("#retry-btn")).toBeFocused();
+              await page.screenshot({
+                path: path.join(reportDir, `deadline-${phase}-${viewport.width}.png`),
+              });
+              await page.locator("#retry-btn").press("Enter");
+              await loaded(page, 1);
+              await assertState(page, calls, { ...matchingFilters, period: "24h", offset: 50 });
+              assert.equal(await page.evaluate(() => history.length), historyBefore);
+              assert.equal(page.url(), url);
+              assert.equal(calls.filter((call) => call.path === eventsPath).length, 2);
+              if (phase === "headers") {
+                gate.resolve();
+                await expect
+                  .poll(() => page.evaluate(() => window.__syntheticFirstReadDelivered))
+                  .toBe(true);
+              } else {
+                await page.evaluate(() => window.__syntheticReleaseBody());
+                await expect
+                  .poll(() => page.evaluate(() => window.__syntheticBodyConsumed))
+                  .toBe(true);
+              }
+              await page.clock.runFor(100);
+              await loaded(page, 1);
+              assert.equal(page.url(), url, "Late401 never redirects");
+              await expect(page.locator("#events-tbody")).not.toContainText("synthetic-late");
+              await expect(page.locator("#error-message")).toBeHidden();
+              await page.screenshot({
+                path: path.join(reportDir, `deadline-recovered-${phase}-${viewport.width}.png`),
+              });
+            } finally {
+              gate.resolve();
+            }
+          },
+          { ignoreFirstAbort: true, stallFirstBody: phase !== "headers" },
+        );
+      }
+
+    for (const status of [200, 503])
+      await scenario(
+        `JSONnull at HTTP${status} is a retryable read error, not sign-in`,
+        viewports[1],
+        (route, url, n) =>
+          n === 1
+            ? route.fulfill({ status, contentType: "application/json", body: "null" })
+            : defaultResponse(route, url),
+        async (page, calls, origin) => {
+          const url = `${origin}/security/events?period=24h`;
+          await page.goto(url);
+          await expect(page.locator("#error-message")).toBeVisible();
+          await expect(page.locator("#retry-btn")).toBeEnabled();
+          assert.equal(page.url(), url);
+          if (status === 503) await expect(page.locator("#error-message")).toHaveText("HTTP 503");
+          await page.locator("#retry-btn").press("Enter");
+          await loaded(page, 50);
+          assert.equal(calls.filter((call) => call.path === eventsPath).length, 2);
+        },
+      );
+
+    const lifecycleGate = deferred();
+    await scenario(
+      "Pagehide cancels a pending read and persisted pageshow reloads current filters",
+      viewports[1],
+      async (route, url, n) => {
+        if (n === 1) {
+          await lifecycleGate.promise;
+          return route.fulfill({ status: 401, json: {} });
+        }
+        return defaultResponse(route, url);
+      },
+      async (page, calls, origin) => {
+        try {
+          await page.clock.install({ time: fixtureNow });
+          await page.clock.pauseAt(fixtureNow + 60_000);
+          const url = `${origin}/security/events?period=7d`;
+          await page.goto(url, { waitUntil: "domcontentloaded" });
+          await expect.poll(() => calls.filter((call) => call.path === eventsPath).length).toBe(1);
+          await page.evaluate(() =>
+            window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true })),
+          );
+          assert.equal(await page.evaluate(() => window.__syntheticAborts.length), 1);
+          await page.clock.runFor(60_000);
+          await expect(page.locator("#error-message")).toBeHidden();
+          await page.evaluate(() =>
+            window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })),
+          );
+          await loaded(page, 50);
+          await assertState(page, calls, { period: "7d" });
+          lifecycleGate.resolve();
+          await expect
+            .poll(() => page.evaluate(() => window.__syntheticFirstReadDelivered))
+            .toBe(true);
+          await page.clock.runFor(100);
+          assert.equal(page.url(), url);
+          await loaded(page, 50);
+          assert.equal(calls.filter((call) => call.path === eventsPath).length, 2);
+        } finally {
+          lifecycleGate.resolve();
+        }
+      },
+      { ignoreFirstAbort: true },
+    );
+
+    const historyGate = deferred();
+    await scenario(
+      "History navigation supersedes a stalled read without an old401 redirect",
+      viewports[2],
+      async (route, url, n) => {
+        if (n === 1) {
+          await historyGate.promise;
+          return route.fulfill({ status: 401, json: {} });
+        }
+        return defaultResponse(route, url);
+      },
+      async (page, calls, origin) => {
+        try {
+          await page.goto(`${origin}/security/events?period=7d`, { waitUntil: "domcontentloaded" });
+          await expect.poll(() => calls.filter((call) => call.path === eventsPath).length).toBe(1);
+          await fillFilters(page, { ...matchingFilters, period: "24h" });
+          await page.locator("#apply-filters").click();
+          await loaded(page, 50);
+          await page.goBack();
+          await loaded(page, 50);
+          await assertState(page, calls, { period: "7d" });
+          await page.goForward();
+          await loaded(page, 50);
+          await assertState(page, calls, { ...matchingFilters, period: "24h" });
+          historyGate.resolve();
+          await expect
+            .poll(() => page.evaluate(() => window.__syntheticFirstReadDelivered))
+            .toBe(true);
+          await page.waitForTimeout(100);
+          await loaded(page, 50);
+          assert.equal(new URL(page.url()).pathname, "/security/events");
+          assert.equal(calls.filter((call) => call.path === eventsPath).length, 4);
+        } finally {
+          historyGate.resolve();
+        }
+      },
+      { ignoreFirstAbort: true },
+    );
+
     const staleGate = deferred();
     await scenario(
       "Superseded requests are aborted and stale success cannot overwrite current results",
@@ -865,6 +1088,7 @@ async function main() {
         await expect(page).toHaveURL(`${origin}/`);
         assert.equal(calls.filter((call) => call.path === eventsPath).length, 1);
       },
+      { stallFirstBody: true },
     );
 
     await scenario(
@@ -1149,8 +1373,8 @@ async function main() {
     }
     assert.equal(
       report.cases.length,
-      32,
-      "All 23 existing and 9 dashboard recovery cases must run.",
+      45,
+      "All32existing and13deadline/lifecycle/error cases must run.",
     );
     report.status = "passed";
   } catch (err) {
