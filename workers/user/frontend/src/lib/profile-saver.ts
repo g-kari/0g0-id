@@ -52,7 +52,9 @@ export function createProfileSaver(options: Options): () => Promise<void> {
         ? "送信した内容を保存しました。保存中に編集した内容は未保存です。もう一度「保存」で保存してください。"
         : "保存しました";
       status.textContent = message;
-      showMessage(message, "success");
+      // The persistent live notice carries the partial-save detail. Repeating
+      // that long text in the floating toast can obscure it on narrow screens.
+      if (!hasNewerDraft) showMessage(message, "success");
     } catch (error) {
       const message =
         error instanceof Error && error.message.trim() ? error.message : "保存に失敗しました";

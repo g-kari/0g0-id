@@ -360,6 +360,7 @@ async function main() {
               await expect(status).toContainText(
                 mode === "failure" ? "Synthetic save failure" : "未保存",
               );
+              if (mode === "later-draft") await expect(page.locator(".toast")).toHaveCount(0);
               await expect(page.locator("#user-name")).toHaveText(
                 mode === "failure" ? profile.name : "Submitted",
               );

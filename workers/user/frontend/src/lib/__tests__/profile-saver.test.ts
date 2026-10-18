@@ -91,7 +91,7 @@ describe("profile save snapshot and later draft", () => {
       expect(inputs[field].value).toBe("New unsaved synthetic value");
       if (field !== "name") expect(inputs.name.value).toBe("Submitted");
       expect(status.textContent).toContain("未保存");
-      expect(showMessage).not.toHaveBeenCalledWith("保存しました", "success");
+      expect(showMessage).not.toHaveBeenCalled();
       expect(renderSavedProfile).toHaveBeenCalledWith(profile);
       expect(button.disabled).toBe(false);
     },
