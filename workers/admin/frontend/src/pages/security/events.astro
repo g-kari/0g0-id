@@ -96,6 +96,7 @@ import { ALL_PROVIDERS, PROVIDER_DISPLAY_NAMES } from '../../lib/login-event-fil
 </style>
 
 <script>
+  import { ReadDeadlineError, readWithDeadline } from '../../lib/read-deadline';
   import { formatDatetime } from '../../lib/api';
   import { escapeHtml, truncate } from '../../lib/helpers';
   import { parseLoginEventQuery, type LoginEventQuery } from '../../lib/login-event-filters';
@@ -118,6 +119,7 @@ import { ALL_PROVIDERS, PROVIDER_DISPLAY_NAMES } from '../../lib/login-event-fil
   }
 
   const LIMIT = 50;
+  const READ_DEADLINE_MS = 30_000;
   let requestId = 0;
   let activeRequest: AbortController | undefined;
   const form = document.getElementById('filter-form') as HTMLFormElement;
@@ -174,7 +176,8 @@ import { ALL_PROVIDERS, PROVIDER_DISPLAY_NAMES } from '../../lib/login-event-fil
     const id = ++requestId;
     retryBtn.disabled = true;
     activeRequest?.abort();
-    activeRequest = new AbortController();
+    const controller = new AbortController();
+    activeRequest = controller;
     loadingEl.style.display = 'flex';
     summaryEl.textContent = '読み込み中...';
     errorEl.style.display = 'none';
@@ -196,21 +199,26 @@ import { ALL_PROVIDERS, PROVIDER_DISPLAY_NAMES } from '../../lib/login-event-fil
     params.set('offset', String(offset));
 
     try {
-      const res = await fetch(
-        `/api/security-trends/recent-events?${params}`,
-        { credentials: 'same-origin', signal: activeRequest.signal },
-      );
+      // Keep navigation/rendering outside the raced reader: ignored cancellation
+      // must never let a late response redirect or publish an older result.
+      const result = await readWithDeadline<{ unauthorized: true } | { unauthorized: false; body: RecentEventsResponse }>(async (signal) => {
+        const res = await fetch(
+          `/api/security-trends/recent-events?${params}`,
+          { credentials: 'same-origin', signal },
+        );
+        if (res.status === 401) return { unauthorized: true };
+        if (!res.ok) {
+          const error = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+          throw new Error(error?.error?.message ?? `HTTP ${res.status}`);
+        }
+        return { unauthorized: false, body: await res.json() as RecentEventsResponse };
+      }, controller, READ_DEADLINE_MS);
       if (id !== requestId) return;
-      if (res.status === 401) {
+      if (result.unauthorized) {
         window.location.href = '/';
         return;
       }
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-        throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
-      }
-      const body = (await res.json()) as RecentEventsResponse;
-      if (id !== requestId) return;
+      const body = result.body;
       // Fail closed during separate IdP/BFF deployments if an old API ignores filters.
       if (query.userId || query.country || query.provider || query.period !== 'all') {
         const applied = body.meta?.applied_filters;
@@ -258,11 +266,14 @@ import { ALL_PROVIDERS, PROVIDER_DISPLAY_NAMES } from '../../lib/login-event-fil
       paginationEl.style.display = 'flex';
     } catch (e) {
       if (id !== requestId) return;
-      showError(e instanceof Error ? e.message : 'データ取得に失敗しました');
+      showError(e instanceof ReadDeadlineError
+        ? '読み込みが30秒以内に完了しませんでした。同じ条件でもう一度読み込んでください'
+        : e instanceof Error ? e.message : 'データ取得に失敗しました');
     } finally {
       if (id === requestId) {
         loadingEl.style.display = 'none';
         retryBtn.disabled = false;
+        if (activeRequest === controller) activeRequest = undefined;
       }
     }
   }
@@ -303,5 +314,7 @@ import { ALL_PROVIDERS, PROVIDER_DISPLAY_NAMES } from '../../lib/login-event-fil
     if (!('error' in query)) navigate({ ...query, offset: query.offset + LIMIT });
   });
   window.addEventListener('popstate', () => { void loadEvents(); });
+  window.addEventListener('pagehide', () => { ++requestId; activeRequest?.abort(); });
+  window.addEventListener('pageshow', (event) => { if (event.persisted) void loadEvents(); });
   void loadEvents();
 </script>
