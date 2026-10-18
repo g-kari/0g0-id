@@ -48,6 +48,7 @@ import Base from '../layouts/Base.astro';
             <input id="address" type="text" placeholder="東京都..." />
           </div>
           <button id="save-btn" class="btn btn-primary">保存</button>
+          <p id="profile-save-status" role="status" aria-live="polite" style="font-size:0.875rem; color:var(--color-muted); overflow-wrap:anywhere;"></p>
         </div>
 
         <!-- Account -->
@@ -87,6 +88,7 @@ import Base from '../layouts/Base.astro';
   import { showToast } from '../lib/toast';
   import { escapeHtml, getInitials } from '../lib/helpers';
   import { createProfileLoader } from '../lib/profile-loader';
+  import { createProfileSaver } from '../lib/profile-saver';
   import type { MyProfile } from '@0g0-id/api-types';
 
   const loading = document.getElementById('loading')!;
@@ -109,14 +111,18 @@ import Base from '../layouts/Base.astro';
     }
   }
 
-  function populateForm(user: MyProfile) {
+  function renderSavedProfile(user: MyProfile) {
     userName.textContent = user.name ?? '—';
     userEmail.textContent = user.email;
+    renderAvatar(user);
+  }
+
+  function populateForm(user: MyProfile) {
+    renderSavedProfile(user);
     nameInput.value = user.name ?? '';
     pictureInput.value = user.picture ?? '';
     phoneInput.value = user.phone ?? '';
     addressInput.value = user.address ?? '';
-    renderAvatar(user);
   }
 
   const loadProfile = createProfileLoader({
@@ -132,28 +138,23 @@ import Base from '../layouts/Base.astro';
   });
   await loadProfile();
 
-  saveBtn.addEventListener('click', async () => {
-    saveBtn.disabled = true;
-    saveBtn.textContent = '保存中...';
-    try {
-      const updated = await apiFetch<MyProfile>('/api/me', {
-        method: 'PATCH',
-        body: JSON.stringify({
-          name: nameInput.value || null,
-          picture: pictureInput.value || null,
-          phone: phoneInput.value || null,
-          address: addressInput.value || null,
-        }),
-      });
-      populateForm(updated);
-      showToast('保存しました', 'success');
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : '保存に失敗しました', 'error');
-    } finally {
-      saveBtn.disabled = false;
-      saveBtn.textContent = '保存';
-    }
+  const saveProfile = createProfileSaver({
+    inputs: { name: nameInput, picture: pictureInput, phone: phoneInput, address: addressInput },
+    button: saveBtn,
+    status: document.getElementById('profile-save-status')!,
+    save: (draft) => apiFetch<MyProfile>('/api/me', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        name: draft.name || null,
+        picture: draft.picture || null,
+        phone: draft.phone || null,
+        address: draft.address || null,
+      }),
+    }),
+    renderSavedProfile,
+    showMessage: showToast,
   });
+  saveBtn.addEventListener('click', saveProfile);
 
   logoutBtn.addEventListener('click', async () => {
     logoutBtn.disabled = true;

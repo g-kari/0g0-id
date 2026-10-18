@@ -32,7 +32,8 @@ const report = {
   runId: process.env.GITHUB_RUN_ID || null,
   node: process.version,
   playwright: playwrightVersion,
-  scope: "Actual built static profile UI; synthetic GET responses only; exact-origin network guard",
+  scope:
+    "Actual built static profile UI; synthetic GET and explicitly intercepted profile PATCH only; exact-origin network guard; server has no writable API",
   cases: [],
   status: "running",
 };
@@ -84,7 +85,7 @@ async function main() {
     browser = await chromium.launch({ headless: true });
     report.browser = await browser.version();
 
-    async function scenario(name, viewport, respond, check) {
+    async function scenario(name, viewport, respond, check, allowProfileSave = false) {
       const context = await browser.newContext({ viewport });
       const page = await context.newPage();
       const calls = [];
@@ -102,13 +103,19 @@ async function main() {
           await route.abort();
           return;
         }
-        if (request.method() !== "GET") {
+        const isSyntheticProfileSave =
+          allowProfileSave && request.method() === "PATCH" && url.pathname === "/api/me";
+        if (request.method() !== "GET" && !isSyntheticProfileSave) {
           forbiddenWrites.push({ method: request.method(), path: url.pathname });
           await route.abort();
           return;
         }
         if (url.pathname.startsWith("/api/")) {
-          calls.push({ method: request.method(), path: url.pathname });
+          calls.push({
+            method: request.method(),
+            path: url.pathname,
+            ...(isSyntheticProfileSave ? { body: request.postDataJSON() } : {}),
+          });
           if (url.pathname === "/api/me") {
             await respond(route, calls.filter((c) => c.path === "/api/me").length);
           } else if (["/api/me/bff-sessions", "/api/me/sessions"].includes(url.pathname)) {
@@ -132,13 +139,9 @@ async function main() {
       };
       report.cases.push(caseReport);
       try {
-        await check(page, () => calls.filter((c) => c.path === "/api/me").length, origin);
-        assert.deepEqual(forbiddenWrites, [], "No account writes may occur.");
-        assert.deepEqual(
-          unexpectedReads,
-          [],
-          "Only the exact synthetic API read routes may occur.",
-        );
+        await check(page, () => calls.filter((c) => c.path === "/api/me").length, origin, calls);
+        assert.deepEqual(forbiddenWrites, [], "No non-fixture account writes may occur.");
+        assert.deepEqual(unexpectedReads, [], "Only the exact synthetic API routes may occur.");
         assert.deepEqual(pageErrors, [], "No uncaught page errors may occur.");
         caseReport.status = "passed";
       } finally {
@@ -280,6 +283,115 @@ async function main() {
         assert.equal(readCount(), 1);
       },
     );
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 1280, height: 900 },
+    ]) {
+      for (const mode of ["later-draft", "normalized", "failure"]) {
+        let finish;
+        const gate = new Promise((resolve) => {
+          finish = resolve;
+        });
+        let patches = 0;
+        const submitted = { name: " Submitted ", picture: null, phone: null, address: null };
+        const later = {
+          name: "New synthetic name",
+          picture: "https://images.example.invalid/new.png",
+          phone: "Synthetic phone",
+          address: "Synthetic address",
+        };
+        await scenario(
+          `Profile save snapshot: ${mode}`,
+          viewport,
+          async (route) => {
+            if (route.request().method() === "GET") {
+              await route.fulfill({ json: { data: profile } });
+              return;
+            }
+            patches += 1;
+            const body = route.request().postDataJSON();
+            if (patches === 1) {
+              assert.deepEqual(body, submitted);
+              await gate;
+              if (mode === "failure") {
+                await route.fulfill({
+                  status: 500,
+                  json: { error: { code: "SYNTHETIC", message: "Synthetic save failure" } },
+                });
+              } else {
+                await route.fulfill({ json: { data: { ...profile, name: "Submitted" } } });
+              }
+            } else {
+              assert.equal(patches, 2, "No duplicate or automatic PATCH retry");
+              assert.deepEqual(body, later);
+              await route.fulfill({ json: { data: { ...profile, ...later } } });
+            }
+          },
+          async (page, requestCount, origin, calls) => {
+            await page.goto(`${origin}/profile`);
+            await expect(page.locator("#content")).toBeVisible();
+            await page.locator("#name").fill(submitted.name);
+            await page.locator("#save-btn").focus();
+            await page.keyboard.press("Enter");
+            await expect.poll(() => patches).toBe(1);
+            await expect(page.locator("#save-btn")).toBeDisabled();
+            await page.evaluate(() => {
+              document.getElementById("save-btn").click();
+              document.getElementById("save-btn").click();
+            });
+            assert.equal(patches, 1);
+            if (mode !== "normalized") {
+              for (const [field, value] of Object.entries(later)) {
+                await expect(page.locator(`#${field}`)).toBeEditable();
+                await page.locator(`#${field}`).fill(value);
+              }
+            }
+            finish();
+            await expect(page.locator("#save-btn")).toBeEnabled();
+            assert.equal(patches, 1, "No automatic write after response");
+            const status = page.locator("#profile-save-status");
+            if (mode === "normalized") {
+              await expect(page.locator("#name")).toHaveValue("Submitted");
+              await expect(status).toHaveText("保存しました");
+              await expect(page.locator("#user-name")).toHaveText("Submitted");
+            } else {
+              for (const [field, value] of Object.entries(later))
+                await expect(page.locator(`#${field}`)).toHaveValue(value);
+              await expect(status).toContainText(
+                mode === "failure" ? "Synthetic save failure" : "未保存",
+              );
+              await expect(page.locator("#user-name")).toHaveText(
+                mode === "failure" ? profile.name : "Submitted",
+              );
+              await expect(page.locator("#address")).toBeFocused();
+              await status.scrollIntoViewIfNeeded();
+              assert.equal(
+                await page.evaluate(
+                  () => document.documentElement.scrollWidth <= window.innerWidth,
+                ),
+                true,
+              );
+              await page.screenshot({
+                path: path.join(reportDir, `save-${mode}-${viewport.width}.png`),
+                fullPage: true,
+              });
+              await page.locator("#save-btn").focus();
+              await page.keyboard.press("Space");
+              await expect(status).toHaveText("保存しました");
+              await expect(page.locator("#user-name")).toHaveText(later.name);
+              assert.equal(patches, 2);
+            }
+            assert.deepEqual(
+              calls.filter((call) => call.method === "PATCH").map((call) => call.body),
+              mode === "normalized" ? [submitted] : [submitted, later],
+            );
+            assert.equal(requestCount(), mode === "normalized" ? 2 : 3);
+          },
+          true,
+        );
+      }
+    }
+
     report.status = "passed";
   } catch (err) {
     report.status = "failed";
