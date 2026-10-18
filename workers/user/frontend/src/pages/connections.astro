@@ -66,8 +66,8 @@ import Base from '../layouts/Base.astro';
           <button class="btn btn-ghost btn-sm copy-sub" data-sub="${escapeHtml(c.pairwise_sub)}" style="padding: 2px 8px; font-size: 0.7rem;">コピー</button>
         </div>
         <div class="copy-recovery mt-2" hidden>
-          <label class="block text-xs">Sub ID（手動コピー用）
-            <input class="input w-full mt-1" type="text" readonly value="${escapeHtml(c.pairwise_sub)}" autocomplete="off" spellcheck="false" style="font-family: monospace; min-width: 0;" />
+          <label class="form-group text-xs">Sub ID（手動コピー用）
+            <input class="w-full mt-1" type="text" readonly value="${escapeHtml(c.pairwise_sub)}" autocomplete="off" spellcheck="false" style="font-family: monospace; min-width: 0;" />
           </label>
         </div>
         <p class="copy-status text-xs mt-2" role="status" aria-live="polite"></p>

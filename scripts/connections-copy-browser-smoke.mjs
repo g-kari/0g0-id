@@ -79,24 +79,26 @@ try {
         if (url.pathname === "/api/connections") {
           reads.push(url.pathname);
           return route.fulfill({
-            json: [
-              {
-                service_id: "synthetic-service",
-                service_name: "Synthetic service",
-                first_authorized_at: "2026-10-01T00:00:00Z",
-                pairwise_sub: sub,
-              },
-              ...(mode === "delayed"
-                ? [
-                    {
-                      service_id: "synthetic-service-two",
-                      service_name: "Synthetic service two",
-                      first_authorized_at: "2026-10-01T00:00:00Z",
-                      pairwise_sub: sub + "-two",
-                    },
-                  ]
-                : []),
-            ],
+            json: {
+              data: [
+                {
+                  service_id: "synthetic-service",
+                  service_name: "Synthetic service",
+                  first_authorized_at: "2026-10-01T00:00:00Z",
+                  pairwise_sub: sub,
+                },
+                ...(mode === "delayed"
+                  ? [
+                      {
+                        service_id: "synthetic-service-two",
+                        service_name: "Synthetic service two",
+                        first_authorized_at: "2026-10-01T00:00:00Z",
+                        pairwise_sub: sub + "-two",
+                      },
+                    ]
+                  : []),
+              ],
+            },
           });
         }
         if (url.pathname.startsWith("/api/"))
