@@ -712,8 +712,8 @@ async function main() {
           },
           async (page, calls, origin) => {
             try {
-              await page.clock.install();
-              await page.clock.pauseAt(fixtureNow);
+              await page.clock.install({ time: fixtureNow });
+              await page.clock.pauseAt(fixtureNow + 60_000);
               const url = `${origin}/security/events?user_id=synthetic-match&country=JP&provider=google&period=24h&offset=50`;
               await page.goto(url, { waitUntil: "domcontentloaded" });
               await expect
@@ -813,8 +813,8 @@ async function main() {
       },
       async (page, calls, origin) => {
         try {
-          await page.clock.install();
-          await page.clock.pauseAt(fixtureNow);
+          await page.clock.install({ time: fixtureNow });
+          await page.clock.pauseAt(fixtureNow + 60_000);
           const url = `${origin}/security/events?period=7d`;
           await page.goto(url, { waitUntil: "domcontentloaded" });
           await expect.poll(() => calls.filter((call) => call.path === eventsPath).length).toBe(1);
