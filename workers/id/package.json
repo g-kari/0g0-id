@@ -15,9 +15,9 @@
   "dependencies": {
     "@0g0-id/shared": "*",
     "hono": "4.13.13",
-    "jose": "^6.2.3",
+    "jose": "^6.2.12",
     "tldts": "^7.4.2",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.63.1",
