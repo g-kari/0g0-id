@@ -75,6 +75,9 @@ jobs:
           PROFILE_RECOVERY_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
             PROFILE_RECOVERY_REPORT_DIR="$RUNNER_TEMP/profile-recovery-ui" \
             node scripts/profile-recovery-browser-smoke.mjs
+          CONNECTIONS_COPY_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
+            CONNECTIONS_COPY_REPORT_DIR="$RUNNER_TEMP/connections-copy-ui" \
+            node scripts/connections-copy-browser-smoke.mjs
           PROVIDERS_RECOVERY_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
             PROVIDERS_RECOVERY_REPORT_DIR="$RUNNER_TEMP/providers-recovery-ui" \
             node scripts/providers-recovery-browser-smoke.mjs
@@ -97,6 +100,15 @@ jobs:
         with:
           name: profile-recovery-ui
           path: ${{ runner.temp }}/profile-recovery-ui
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: 連携サービスコピー UI の検証記録
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: connections-copy-ui
+          path: ${{ runner.temp }}/connections-copy-ui
           retention-days: 7
           if-no-files-found: warn
 
