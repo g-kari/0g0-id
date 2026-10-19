@@ -113,3 +113,50 @@ Grokレビュー後、BFF専用のdevice確認、cleanup後404と残存期限切
 認可コード/デバイスの未保存scope fallbackを明確化しました。フルアプリの合成回帰で
 413/503、Basicの無視、JSON null/非文字列scopeが既存500になる入力境界も照合しています。
 この既知の実行時制約は文書化のみで、ハンドラーは変更していません。
+
+## 管理メトリクス契約の同期（2026-10-19）
+
+Issue [#257](https://github.com/g-kari/0g0-id/issues/257) の既存未完了範囲として、IdP の
+メトリクス11 GET操作を内部仕様で照合します。欠けていた日別ログイン、サービス別、複数国、
+登録数、アクティブユーザー、日別アクティブユーザー、IP、User-Agentの8操作を補いました。
+総合メトリクスのBAN済み数・7日ログイン数・プロバイダー/国別統計と必須フィールドも補います。
+外部仕様には管理者メトリクスを追加しません。
+
+既存の生成物一致/BFF一覧チェックに加え、`scripts/check-idp-metrics-docs.ts` を
+`vp run docs:api:check` から実行します。実際にマウント済みの IdP `app.routes` の
+`/api/metrics` と配下の Method/Path を内部 OpenAPI と双方向照合します。
+メソッド/パスの追加・削除・変更・仕様だけに残った操作は失敗します。
+複数のハンドラー登録は1操作にまとめ、ALL middleware と他のパスは数えません。
+ハンドラー・DB・通信・環境変数・認証情報は使わず、ファイルを書き換えません。
+これはメトリクス family の操作一覧の検査であり、schema の意味的な自動一致や
+IdP の全ルート監査ではありません。Issue #257 は未完了のままです。
+
+### 既存の契約と制限
+
+- IdP の login-trends / user-registrations は days 1〜365、admin BFF は1〜90。
+  active-users/daily は両方1〜90。省略時30。実 parseDays は不正値を400で拒否し、クランプしません。
+- IdP suspicious-logins は parseInt による数値接頭辞、NaN の既定値、hours 1〜168 / min_countries 2〜10
+  へのクランプを使います。BFF は数字のみ・hours 1〜720 / min_countries 1〜100を検証した後で転送します。
+- BFF の不正 days は、error.message に内部の INVALID_REQUEST オブジェクトが入る既存の形です。
+  IdP の通常のREST形式や BFF の文字列 message と同一とは扱いません。
+- daily のフィールドは date / count です。active_users ではありません。
+  ログイン集計は失敗イベントも数え、0件の日は補完しません。
+- countries は文字列、国 NULL は unknown。IP/UA NULL は各集計から除外します。
+  last_seen は保存日時文字列で、SQLite形式もあり、RFC3339への正規化を保証しません。
+- 多くの期間集計は保存日時文字列と ISO 下限の比較を使用します。混在形式の期間境界、
+  実データの品質・性能・本番の正確性をこの文書変更で修正/保証するものではありません。
+
+### 検証・リリース
+
+新しい合成回帰は実 Hono ハンドラーと実 parseDays を使い、DB/トークン検証境界だけを固定します。
+通常応答を既存 Zod の JSON Schema 読み込みで照合し、必須項目・非null・days/limit境界・
+複数国の適用値・認証順序・BFFとの差を確認します。DB/本番アカウントの実証ではありません。
+既存の metrics.test.ts が parseDays をモックしている古いクランプ例を契約の根拠にしません。
+
+`vp install --frozen-lockfile`、`vp check`、`vp test run`、`vp run docs:api:generate`、
+`vp run docs:api:check`、ワークスペース型チェックと既存ビルドを最終差分に対して確認します。
+最終headのCIと独立レビュー・正式な承認条件が満たされるまでDraftを維持します。
+APIハンドラー、認証/権限、SQL/DB、依存/lockfile、CI、設定、ログ保持は変更しません。
+新しい鍵・権限・課金・本番接続は不要です。公開されたAPI文書へ反映するには既存の
+IdP静的assetsビルドを含む通常リリースが必要ですが、このPR自体ではデプロイしません。
+ロールバックはこの限定文書/検査差分をrevertし、既存の文書生成へ戻します。

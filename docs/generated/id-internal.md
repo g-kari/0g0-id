@@ -1998,7 +1998,7 @@ INTERNAL_ERROR — 監査ログ統計取得失敗
 
 システムメトリクス取得
 
-総ユーザー数・管理者数・サービス数・アクティブセッション数・直近24時間のログイン数を返す（管理者専用）。
+総ユーザー数・管理者数・BAN済み数・サービス数・有効リフレッシュトークン数・直近24時間/7日のログインイベント数・7日間のプロバイダー/国別統計を返す（管理者専用）。active_sessions は BFF セッション数ではない。ログイン統計は成功/失敗を区別しない。国 NULL は unknown として集計する。ログイン期間は保存日時文字列と ISO 下限の比較で、混在形式の境界を正規化しない。
 
 **認証**: BearerAuth
 
@@ -2013,12 +2013,22 @@ INTERNAL_ERROR — 監査ログ統計取得失敗
 | フィールド | 必須 | 型 | 制約・既定値 | 説明 |
 | --- | --- | --- | --- | --- |
 | $ |  | object |  |  |
-| data |  | object |  |  |
-| data.active_sessions | ✓ | integer |  | アクティブなリフレッシュトークン数 |
-| data.admin_users | ✓ | integer |  | 管理者ユーザー数 |
-| data.recent_logins_24h | ✓ | integer |  | 直近24時間のログイン数 |
-| data.total_services | ✓ | integer |  | 登録済みサービス数 |
-| data.total_users | ✓ | integer |  | 総ユーザー数 |
+| data | ✓ | object |  |  |
+| data.active_sessions | ✓ | integer | minimum: 0 | アクティブなリフレッシュトークン数 |
+| data.admin_users | ✓ | integer | minimum: 0 | 管理者ユーザー数 |
+| data.banned_users | ✓ | integer | minimum: 0 | BAN済みユーザー数 |
+| data.login_country_stats_7d | ✓ | array&lt;object&gt; |  |  |
+| data.login_country_stats_7d[] |  | object |  |  |
+| data.login_country_stats_7d[].count | ✓ | integer | minimum: 0 |  |
+| data.login_country_stats_7d[].country | ✓ | string |  | NULL国は unknown |
+| data.login_provider_stats_7d | ✓ | array&lt;object&gt; |  |  |
+| data.login_provider_stats_7d[] |  | object |  |  |
+| data.login_provider_stats_7d[].count | ✓ | integer | minimum: 0 |  |
+| data.login_provider_stats_7d[].provider | ✓ | string |  |  |
+| data.recent_logins_24h | ✓ | integer | minimum: 0 | 直近24時間のログイン数 |
+| data.recent_logins_7d | ✓ | integer | minimum: 0 | 直近7日のログインイベント数 |
+| data.total_services | ✓ | integer | minimum: 0 | 登録済みサービス数 |
+| data.total_users | ✓ | integer | minimum: 0 | 総ユーザー数 |
 
 #### 401
 
@@ -2027,6 +2037,169 @@ UNAUTHORIZED
 #### 403
 
 FORBIDDEN — 管理者権限なし
+
+#### 500
+
+INTERNAL_ERROR — Failed to fetch metrics
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+### GET /api/metrics/active-users
+
+アクティブユーザー数（DAU/WAU/MAU）
+
+管理者専用。IdP 向け Bearer JWT と admin ロールが必要。失効・jti 欠落・DB 上の BAN/不存在は拒否する。
+
+login_events のユニーク user_id 数。dau は直近 24 時間、wau は 7 日、mau は 30 日。暦日/暦週/月初からの集計ではない。成功/失敗を区別しない。期間判定は保存日時文字列と ISO 下限の比較で、混在形式の境界を正規化しない。
+
+**認証**: BearerAuth
+
+**レスポンス**
+
+#### 200
+
+集計結果。該当する行がない配列は空配列。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | object |  |  |
+| data.dau | ✓ | integer | minimum: 0 |  |
+| data.mau | ✓ | integer | minimum: 0 |  |
+| data.wau | ✓ | integer | minimum: 0 |  |
+
+#### 401
+
+UNAUTHORIZED — 認証失敗・失効・アカウント停止等
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["UNAUTHORIZED"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 403
+
+FORBIDDEN — 管理者権限なし
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["FORBIDDEN"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 500
+
+INTERNAL_ERROR — 集計の取得失敗。アプリ全体の環境検証失敗は MISCONFIGURATION。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["INTERNAL_ERROR", "MISCONFIGURATION"] |  |
+| error.message | ✓ | string |  |  |
+
+### GET /api/metrics/active-users/daily
+
+日別アクティブユーザー数
+
+管理者専用。IdP 向け Bearer JWT と admin ロールが必要。失効・jti 欠落・DB 上の BAN/不存在は拒否する。
+
+日ごとの login_events のユニーク user_id 数。成功/失敗を区別しない。 日付昇順。0 件の日は補完しない。days はリクエスト時刻からの期間。既存 SQL は保存日時文字列を ISO 下限と比較し、混在形式の境界を正規化しない。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| days | query |  | integer | default: 30; minimum: 1; maximum: 90 | 省略時 30。ASCII 数字のみ。空・小数・符号・範囲外は 400 INVALID_REQUEST。クランプしない。 |
+
+**レスポンス**
+
+#### 200
+
+集計結果。該当する行がない配列は空配列。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | array&lt;object&gt; |  |  |
+| data[] |  | object |  |  |
+| data[].count | ✓ | integer | minimum: 0 |  |
+| data[].date | ✓ | string | format: date |  |
+| days | ✓ | integer | default: 30; minimum: 1; maximum: 90 |  |
+
+#### 400
+
+INVALID_REQUEST — クエリー値不正
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["INVALID_REQUEST"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 401
+
+UNAUTHORIZED — 認証失敗・失効・アカウント停止等
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["UNAUTHORIZED"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 403
+
+FORBIDDEN — 管理者権限なし
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["FORBIDDEN"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 500
+
+INTERNAL_ERROR — 集計の取得失敗。アプリ全体の環境検証失敗は MISCONFIGURATION。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["INTERNAL_ERROR", "MISCONFIGURATION"] |  |
+| error.message | ✓ | string |  |  |
 
 ### GET /api/metrics/dbsc-bindings
 
@@ -2071,6 +2244,180 @@ FORBIDDEN — 管理者権限なし
 #### 500
 
 INTERNAL_ERROR
+
+### GET /api/metrics/ip-stats
+
+IP 別ログイン件数
+
+管理者専用。IdP 向け Bearer JWT と admin ロールが必要。失効・jti 欠落・DB 上の BAN/不存在は拒否する。
+
+login_events の IP 別集計。IP が NULL のイベントを除外する（空文字列は除外しない）。成功/失敗を区別しない。last_seen は保存済み created_at の MAX で、日時形式やタイムゾーンを正規化しない。 count 降順。同数時の順序は規定しない。期間判定は保存日時文字列と ISO 下限の比較で、混在形式の境界を正規化しない。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| days | query |  | integer | default: 7; minimum: 1; maximum: 365 | 省略時 7。ASCII 数字のみ。空・小数・符号・1〜365 以外は 400 INVALID_PARAMETER。クランプしない。 |
+| limit | query |  | integer | default: 20; minimum: 1; maximum: 100 | 省略時 20。ASCII 数字のみ。空・小数・符号・1〜100 以外は 400 INVALID_PARAMETER。クランプしない。 |
+
+**レスポンス**
+
+#### 200
+
+集計結果。該当する行がない配列は空配列。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | array&lt;object&gt; |  |  |
+| data[] |  | object |  |  |
+| data[].count | ✓ | integer | minimum: 0 |  |
+| data[].ip_address | ✓ | string |  |  |
+| data[].last_seen | ✓ | string |  | 保存済み日時文字列。SQLite 形式と ISO 形式があり得る。 |
+| meta | ✓ | object |  |  |
+| meta.days | ✓ | integer | default: 7; minimum: 1; maximum: 365 |  |
+| meta.limit | ✓ | integer | default: 20; minimum: 1; maximum: 100 |  |
+
+#### 400
+
+INVALID_PARAMETER — クエリー値不正
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["INVALID_PARAMETER"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 401
+
+UNAUTHORIZED — 認証失敗・失効・アカウント停止等
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["UNAUTHORIZED"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 403
+
+FORBIDDEN — 管理者権限なし
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["FORBIDDEN"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 500
+
+INTERNAL_ERROR — 集計の取得失敗。アプリ全体の環境検証失敗は MISCONFIGURATION。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["INTERNAL_ERROR", "MISCONFIGURATION"] |  |
+| error.message | ✓ | string |  |  |
+
+### GET /api/metrics/login-trends
+
+日別ログイン件数
+
+管理者専用。IdP 向け Bearer JWT と admin ロールが必要。失効・jti 欠落・DB 上の BAN/不存在は拒否する。
+
+login_events の件数（成功/失敗を区別しない）。IdP は最大 365 日。admin BFF は最大 90 日で事前検証する。 日付昇順。0 件の日は補完しない。days はリクエスト時刻からの期間。既存 SQL は保存日時文字列を ISO 下限と比較し、混在形式の境界を正規化しない。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| days | query |  | integer | default: 30; minimum: 1; maximum: 365 | 省略時 30。ASCII 数字のみ。空・小数・符号・範囲外は 400 INVALID_REQUEST。クランプしない。 |
+
+**レスポンス**
+
+#### 200
+
+集計結果。該当する行がない配列は空配列。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | array&lt;object&gt; |  |  |
+| data[] |  | object |  |  |
+| data[].count | ✓ | integer | minimum: 0 |  |
+| data[].date | ✓ | string | format: date |  |
+| days | ✓ | integer | default: 30; minimum: 1; maximum: 365 |  |
+
+#### 400
+
+INVALID_REQUEST — クエリー値不正
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["INVALID_REQUEST"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 401
+
+UNAUTHORIZED — 認証失敗・失効・アカウント停止等
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["UNAUTHORIZED"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 403
+
+FORBIDDEN — 管理者権限なし
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["FORBIDDEN"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 500
+
+INTERNAL_ERROR — 集計の取得失敗。アプリ全体の環境検証失敗は MISCONFIGURATION。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["INTERNAL_ERROR", "MISCONFIGURATION"] |  |
+| error.message | ✓ | string |  |  |
 
 ### GET /api/metrics/recent-events
 
@@ -2137,6 +2484,324 @@ FORBIDDEN — 管理者権限なし
 #### 500
 
 INTERNAL_ERROR
+
+### GET /api/metrics/services
+
+サービス別アクティブトークン統計
+
+管理者専用。IdP 向け Bearer JWT と admin ロールが必要。失効・jti 欠落・DB 上の BAN/不存在は拒否する。
+
+全サービスを返す。authorized_user_count は未失効・未期限切れのリフレッシュトークンを持つユニークユーザー数で、認可履歴の総数ではない。active_token_count は同じ条件のトークン数。authorized_user_count 降順。同数時の順序は規定しない。
+
+**認証**: BearerAuth
+
+**レスポンス**
+
+#### 200
+
+集計結果。該当する行がない配列は空配列。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | array&lt;object&gt; |  |  |
+| data[] |  | object |  |  |
+| data[].active_token_count | ✓ | integer | minimum: 0 |  |
+| data[].authorized_user_count | ✓ | integer | minimum: 0 |  |
+| data[].service_id | ✓ | string |  |  |
+| data[].service_name | ✓ | string |  |  |
+
+#### 401
+
+UNAUTHORIZED — 認証失敗・失効・アカウント停止等
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["UNAUTHORIZED"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 403
+
+FORBIDDEN — 管理者権限なし
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["FORBIDDEN"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 500
+
+INTERNAL_ERROR — 集計の取得失敗。アプリ全体の環境検証失敗は MISCONFIGURATION。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["INTERNAL_ERROR", "MISCONFIGURATION"] |  |
+| error.message | ✓ | string |  |  |
+
+### GET /api/metrics/suspicious-logins
+
+複数国ログインの集計
+
+管理者専用。IdP 向け Bearer JWT と admin ロールが必要。失効・jti 欠落・DB 上の BAN/不存在は拒否する。
+
+login_events を user_id ごとに集計し、異なる国が min_countries 以上の行を返す。成功/失敗を区別せず、国 NULL は unknown として数える。country_count 降順。countries は重複を除いたカンマ区切り文字列で順序は規定しない。疑わしい傾向の集計であり、不正アクセス確定や自動停止ではない。期間判定は保存日時文字列と ISO 下限の比較で、混在形式の境界を正規化しない。
+
+IdP は各値を parseInt(value, 10) で解釈する。非数値・空・省略は既定値、数値の接頭辞（例 24hours）は受理し、小数は整数部分になる。hours は 1〜168、min_countries は 2〜10 にクランプし、適用値を meta に返す。このため入力の範囲外を 400 で拒否しない。admin BFF は別途、数字のみ・hours 1〜720・min_countries 1〜100 を検証して転送する。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| hours | query |  | string | default: "24" | parseInt 後 1〜168 にクランプ。NaN は 24。任意文字列を受理する既存の解析規則。 |
+| min_countries | query |  | string | default: "2" | parseInt 後 2〜10 にクランプ。NaN は 2。 |
+
+**レスポンス**
+
+#### 200
+
+集計結果。該当する行がない配列は空配列。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | array&lt;object&gt; |  |  |
+| data[] |  | object |  |  |
+| data[].countries | ✓ | string |  | カンマ区切り。unknown を含み得る。 |
+| data[].country_count | ✓ | integer | minimum: 2 |  |
+| data[].user_id | ✓ | string |  |  |
+| meta | ✓ | object |  |  |
+| meta.hours | ✓ | integer | default: 24; minimum: 1; maximum: 168 |  |
+| meta.min_countries | ✓ | integer | default: 2; minimum: 2; maximum: 10 |  |
+
+#### 401
+
+UNAUTHORIZED — 認証失敗・失効・アカウント停止等
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["UNAUTHORIZED"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 403
+
+FORBIDDEN — 管理者権限なし
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["FORBIDDEN"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 500
+
+INTERNAL_ERROR — 集計の取得失敗。アプリ全体の環境検証失敗は MISCONFIGURATION。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["INTERNAL_ERROR", "MISCONFIGURATION"] |  |
+| error.message | ✓ | string |  |  |
+
+### GET /api/metrics/user-agent-stats
+
+User-Agent 別ログイン件数
+
+管理者専用。IdP 向け Bearer JWT と admin ロールが必要。失効・jti 欠落・DB 上の BAN/不存在は拒否する。
+
+login_events の User-Agent 別集計。User-Agent が NULL のイベントを除外する（空文字列は除外しない）。成功/失敗を区別しない。 count 降順。同数時の順序は規定しない。期間判定は保存日時文字列と ISO 下限の比較で、混在形式の境界を正規化しない。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| days | query |  | integer | default: 7; minimum: 1; maximum: 365 | 省略時 7。ASCII 数字のみ。空・小数・符号・1〜365 以外は 400 INVALID_PARAMETER。クランプしない。 |
+| limit | query |  | integer | default: 20; minimum: 1; maximum: 100 | 省略時 20。ASCII 数字のみ。空・小数・符号・1〜100 以外は 400 INVALID_PARAMETER。クランプしない。 |
+
+**レスポンス**
+
+#### 200
+
+集計結果。該当する行がない配列は空配列。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | array&lt;object&gt; |  |  |
+| data[] |  | object |  |  |
+| data[].count | ✓ | integer | minimum: 0 |  |
+| data[].user_agent | ✓ | string |  |  |
+| meta | ✓ | object |  |  |
+| meta.days | ✓ | integer | default: 7; minimum: 1; maximum: 365 |  |
+| meta.limit | ✓ | integer | default: 20; minimum: 1; maximum: 100 |  |
+
+#### 400
+
+INVALID_PARAMETER — クエリー値不正
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["INVALID_PARAMETER"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 401
+
+UNAUTHORIZED — 認証失敗・失効・アカウント停止等
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["UNAUTHORIZED"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 403
+
+FORBIDDEN — 管理者権限なし
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["FORBIDDEN"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 500
+
+INTERNAL_ERROR — 集計の取得失敗。アプリ全体の環境検証失敗は MISCONFIGURATION。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["INTERNAL_ERROR", "MISCONFIGURATION"] |  |
+| error.message | ✓ | string |  |  |
+
+### GET /api/metrics/user-registrations
+
+日別ユーザー登録数
+
+管理者専用。IdP 向け Bearer JWT と admin ロールが必要。失効・jti 欠落・DB 上の BAN/不存在は拒否する。
+
+users の作成日時を日別に集計する。IdP は最大 365 日。admin BFF は最大 90 日で事前検証する。 日付昇順。0 件の日は補完しない。days はリクエスト時刻からの期間。既存 SQL は保存日時文字列を ISO 下限と比較し、混在形式の境界を正規化しない。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| days | query |  | integer | default: 30; minimum: 1; maximum: 365 | 省略時 30。ASCII 数字のみ。空・小数・符号・範囲外は 400 INVALID_REQUEST。クランプしない。 |
+
+**レスポンス**
+
+#### 200
+
+集計結果。該当する行がない配列は空配列。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | array&lt;object&gt; |  |  |
+| data[] |  | object |  |  |
+| data[].count | ✓ | integer | minimum: 0 |  |
+| data[].date | ✓ | string | format: date |  |
+| days | ✓ | integer | default: 30; minimum: 1; maximum: 365 |  |
+
+#### 400
+
+INVALID_REQUEST — クエリー値不正
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["INVALID_REQUEST"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 401
+
+UNAUTHORIZED — 認証失敗・失効・アカウント停止等
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["UNAUTHORIZED"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 403
+
+FORBIDDEN — 管理者権限なし
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["FORBIDDEN"] |  |
+| error.message | ✓ | string |  |  |
+
+#### 500
+
+INTERNAL_ERROR — 集計の取得失敗。アプリ全体の環境検証失敗は MISCONFIGURATION。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | object |  |  |
+| error.code | ✓ | string | enum: ["INTERNAL_ERROR", "MISCONFIGURATION"] |  |
+| error.message | ✓ | string |  |  |
 
 ## 認証フロー
 
