@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "typescript": "6.0.3",
-    "vite-plus": "0.1.24"
+    "vite-plus": "1.2.0"
   },
   "overrides": {
     "esbuild": "^0.28.2",
