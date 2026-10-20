@@ -6,6 +6,7 @@ import {
   USERINFO_POST_OPERATION,
 } from "./standard-protocol-spec";
 import { ALL_PROVIDERS } from "@0g0-id/shared";
+import { ADDITIONAL_METRICS_PATHS } from "./metrics-spec";
 
 // IdP 内部向け全API OpenAPI 仕様
 // API 変更時はこのファイルの paths / components.schemas を更新すること
@@ -1860,12 +1861,13 @@ export const INTERNAL_OPENAPI = {
     },
     "/api/userinfo": { get: USERINFO_GET_OPERATION, post: USERINFO_POST_OPERATION },
 
+    ...ADDITIONAL_METRICS_PATHS,
     "/api/metrics": {
       get: {
         tags: ["管理者 API"],
         summary: "システムメトリクス取得",
         description:
-          "総ユーザー数・管理者数・サービス数・アクティブセッション数・直近24時間のログイン数を返す（管理者専用）。",
+          "総ユーザー数・管理者数・BAN済み数・サービス数・有効リフレッシュトークン数・直近24時間/7日のログインイベント数・7日間のプロバイダー/国別統計を返す（管理者専用）。active_sessions は BFF セッション数ではない。ログイン統計は成功/失敗を区別しない。国 NULL は unknown として集計する。ログイン期間は保存日時文字列と ISO 下限の比較で、混在形式の境界を正規化しない。",
         security: [{ BearerAuth: [] }],
         responses: {
           "200": {
@@ -1874,28 +1876,75 @@ export const INTERNAL_OPENAPI = {
               "application/json": {
                 schema: {
                   type: "object",
+                  required: ["data"],
                   properties: {
                     data: {
                       type: "object",
                       properties: {
-                        total_users: { type: "integer", description: "総ユーザー数" },
-                        admin_users: { type: "integer", description: "管理者ユーザー数" },
-                        total_services: { type: "integer", description: "登録済みサービス数" },
+                        total_users: { type: "integer", minimum: 0, description: "総ユーザー数" },
+                        admin_users: {
+                          type: "integer",
+                          minimum: 0,
+                          description: "管理者ユーザー数",
+                        },
+                        banned_users: {
+                          type: "integer",
+                          minimum: 0,
+                          description: "BAN済みユーザー数",
+                        },
+                        total_services: {
+                          type: "integer",
+                          minimum: 0,
+                          description: "登録済みサービス数",
+                        },
                         active_sessions: {
                           type: "integer",
+                          minimum: 0,
                           description: "アクティブなリフレッシュトークン数",
                         },
                         recent_logins_24h: {
                           type: "integer",
+                          minimum: 0,
                           description: "直近24時間のログイン数",
+                        },
+                        recent_logins_7d: {
+                          type: "integer",
+                          minimum: 0,
+                          description: "直近7日のログインイベント数",
+                        },
+                        login_provider_stats_7d: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            required: ["provider", "count"],
+                            properties: {
+                              provider: { type: "string" },
+                              count: { type: "integer", minimum: 0 },
+                            },
+                          },
+                        },
+                        login_country_stats_7d: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            required: ["country", "count"],
+                            properties: {
+                              country: { type: "string", description: "NULL国は unknown" },
+                              count: { type: "integer", minimum: 0 },
+                            },
+                          },
                         },
                       },
                       required: [
                         "total_users",
                         "admin_users",
+                        "banned_users",
                         "total_services",
                         "active_sessions",
                         "recent_logins_24h",
+                        "recent_logins_7d",
+                        "login_provider_stats_7d",
+                        "login_country_stats_7d",
                       ],
                     },
                   },
@@ -1904,9 +1953,13 @@ export const INTERNAL_OPENAPI = {
                   data: {
                     total_users: 42,
                     admin_users: 2,
+                    banned_users: 1,
                     total_services: 5,
                     active_sessions: 128,
                     recent_logins_24h: 17,
+                    recent_logins_7d: 60,
+                    login_provider_stats_7d: [{ provider: "google", count: 60 }],
+                    login_country_stats_7d: [{ country: "unknown", count: 60 }],
                   },
                 },
               },
@@ -1914,6 +1967,10 @@ export const INTERNAL_OPENAPI = {
           },
           "401": { description: "UNAUTHORIZED" },
           "403": { description: "FORBIDDEN — 管理者権限なし" },
+          "500": {
+            description: "INTERNAL_ERROR — Failed to fetch metrics",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
         },
       },
     },

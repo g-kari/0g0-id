@@ -144,6 +144,16 @@ user/client などのクエリ指定は 400 で拒否します。所有者・Cli
 | GET    | `/api/metrics/active-users/daily` | 同左           | 日別アクティブユーザー（`days`）                        |
 | GET    | `/api/metrics/dbsc-bindings`      | 同左           | アクティブ BFF セッションの DBSC 端末バインド集計       |
 
+days は login-trends・user-registrations・active-users/daily ともに BFF では1〜90（省略時30）です。
+直接 IdP に問い合わせる login-trends・user-registrations の上限365とは異なります。
+不正な days の BFF 応答は、既存実装では error.code が INVALID_PARAMETER、error.message が
+{code: "INVALID_REQUEST", message: "days must be an integer between 1 and 90"} というオブジェクトです。
+通常の文字列 message に補正していません。
+
+suspicious-logins は表の範囲で数字のみを検証して転送しますが、IdP はさらに hours を1〜168、
+min_countries を2〜10へクランプします。要求した値ではなく応答 meta の適用値を参照してください。
+たとえば hours=720 / min_countries=1 は成功し、meta は168 / 2になります。
+
 ## ログイン傾向（`/api/security-trends/*`）
 
 | Method | Path                                    | 転送先 (id)                     | 用途                                                                                                                             |
@@ -151,6 +161,10 @@ user/client などのクエリ指定は 400 で拒否します。所有者・Cli
 | GET    | `/api/security-trends/ip-stats`         | `/api/metrics/ip-stats`         | IP別ログイン統計（`days` 1〜365 / `limit` 1〜100）                                                                               |
 | GET    | `/api/security-trends/user-agent-stats` | `/api/metrics/user-agent-stats` | User-Agent別ログイン統計（`days` 1〜365 / `limit` 1〜100）                                                                       |
 | GET    | `/api/security-trends/recent-events`    | `/api/metrics/recent-events`    | ログインイベント一覧（`limit` / `offset` / `user_id` / `country` / `provider` / `period`）。詳細は下記「ログインイベントの調査」 |
+
+IP/UA の days 上限は365です。不正な days の BFF message は上記と同じ入れ子の形で、
+内側のメッセージの範囲が1〜365になります。limit 不正の message は文字列です。
+これらは現在の実装の記録であり、BFF の検証・認証・プロキシ処理は変更していません。
 
 ## 監査ログ（`/api/audit-logs`）
 

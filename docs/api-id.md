@@ -432,11 +432,30 @@ salt 未設定時も既存ヘルパーの互換動作を維持し、salt の変�
 
 ## 6. 運用・監視
 
-| Method | Path                    | 認証                | 用途               |
-| ------ | ----------------------- | ------------------- | ------------------ |
-| GET    | `/api/health`           | —                   | ヘルスチェック     |
-| GET    | `/api/metrics`          | BearerAuth（admin） | システムメトリクス |
-| GET    | `/api/admin/audit-logs` | BearerAuth（admin） | 監査ログ           |
+| Method | Path                              | 認証                | 用途                                                                  |
+| ------ | --------------------------------- | ------------------- | --------------------------------------------------------------------- |
+| GET    | `/api/health`                     | —                   | ヘルスチェック                                                        |
+| GET    | `/api/metrics`                    | BearerAuth（admin） | システムメトリクス                                                    |
+| GET    | `/api/metrics/login-trends`       | BearerAuth（admin） | 日別ログイン件数（days 1〜365、既定30）                               |
+| GET    | `/api/metrics/services`           | BearerAuth（admin） | サービス別の有効リフレッシュトークン・保有ユーザー数                  |
+| GET    | `/api/metrics/suspicious-logins`  | BearerAuth（admin） | 複数国ログイン（hours 1〜168、min_countries 2〜10へ適用値をクランプ） |
+| GET    | `/api/metrics/user-registrations` | BearerAuth（admin） | 日別登録数（days 1〜365、既定30）                                     |
+| GET    | `/api/metrics/active-users`       | BearerAuth（admin） | 直近24時間/7日/30日のユニークログインユーザー数                       |
+| GET    | `/api/metrics/active-users/daily` | BearerAuth（admin） | 日別ユニークログインユーザー数（days 1〜90、既定30）                  |
+| GET    | `/api/metrics/ip-stats`           | BearerAuth（admin） | IP別件数（days 1〜365/既定7、limit 1〜100/既定20）                    |
+| GET    | `/api/metrics/user-agent-stats`   | BearerAuth（admin） | User-Agent別件数（days/limit は IP別と同じ）                          |
+| GET    | `/api/metrics/recent-events`      | BearerAuth（admin） | ログインイベントの複合検索・ページング                                |
+| GET    | `/api/metrics/dbsc-bindings`      | BearerAuth（admin） | アクティブ BFF セッションの端末バインド件数                           |
+| GET    | `/api/admin/audit-logs`           | BearerAuth（admin） | 監査ログ                                                              |
+
+詳細なレスポンス・必須フィールド・エラーは [生成済み内部リファレンス](./generated/id-internal.md) を参照してください。
+総合メトリクスの active_sessions は有効なリフレッシュトークン数であり、BFF セッション数ではありません。
+ログイン系の集計は成功・失敗を区別せず、日別集計は0件の日を補完しません。
+期間の多くは保存日時文字列と ISO 下限を比較する既存 SQL のままで、混在日時形式の厳密な境界を保証しません。
+
+IdP の days は数字のみを受け付け、範囲外は 400 INVALID_REQUEST、IP/UA の days/limit は 400 INVALID_PARAMETER です。
+複数国ログインだけは parseInt の数値接頭辞・既定値・クランプを使用し、範囲外を400にはしません。
+admin BFF の事前検証は別条件です。[BFF との差・検証範囲](./api-reference-generation.md#管理メトリクス契約の同期2026-10-19) を参照してください。
 
 ## エラーレスポンス形式
 
