@@ -96,7 +96,7 @@ jobs:
 
       - name: プロフィール復旧 UI の検証記録
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: profile-recovery-ui
           path: ${{ runner.temp }}/profile-recovery-ui
@@ -105,7 +105,7 @@ jobs:
 
       - name: 連携サービスコピー UI の検証記録
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: connections-copy-ui
           path: ${{ runner.temp }}/connections-copy-ui
@@ -114,7 +114,7 @@ jobs:
 
       - name: ログイン履歴復旧 UI の検証記録
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: login-history-ui
           path: ${{ runner.temp }}/login-history-ui
@@ -123,7 +123,7 @@ jobs:
 
       - name: SNS 連携復旧 UI の検証記録
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: providers-recovery-ui
           path: ${{ runner.temp }}/providers-recovery-ui
@@ -132,7 +132,7 @@ jobs:
 
       - name: ログインイベント UI の検証記録
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: security-events-ui
           path: ${{ runner.temp }}/security-events-ui
@@ -141,7 +141,7 @@ jobs:
 
       - name: 管理者監査ログ UI の検証記録
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: audit-logs-ui
           path: ${{ runner.temp }}/audit-logs-ui
@@ -156,7 +156,7 @@ jobs:
 
       - name: ログイン統計 UI の検証記録
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: login-stats-ui
           path: ${{ runner.temp }}/login-stats-ui
