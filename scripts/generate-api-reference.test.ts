@@ -49,6 +49,38 @@ const synthetic: OpenApiSpec = {
 };
 
 describe("offline API reference generator", () => {
+  it("pins its own root tsx dependency and locks it independently of worker hoisting", () => {
+    const manifest = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf8")) as {
+      devDependencies: { tsx?: string };
+    };
+    const lock = JSON.parse(readFileSync(join(__dirname, "../package-lock.json"), "utf8")) as {
+      packages: Record<string, { version?: string; devDependencies?: { tsx?: string } }>;
+    };
+    expect(manifest.devDependencies.tsx).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(lock.packages[""].devDependencies?.tsx).toBe(manifest.devDependencies.tsx);
+    expect(lock.packages["node_modules/tsx"]?.version).toBe(manifest.devDependencies.tsx);
+  });
+
+  it("loads the declared tsx version with the same root --import used by docs scripts", () => {
+    const manifest = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf8")) as {
+      devDependencies: { tsx?: string };
+    };
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "--input-type=module",
+        "--eval",
+        'import { createRequire } from "node:module"; const require = createRequire(import.meta.url); process.stdout.write(require("tsx/package.json").version);',
+      ],
+      { cwd: join(__dirname, ".."), encoding: "utf8", timeout: 10_000 },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe(manifest.devDependencies.tsx);
+  });
+
   it("preserves identifiers and actual PKCE characters after Markdown formatting", (): void => {
     const document = readFileSync(
       new URL("../docs/standard-protocol-contracts.md", import.meta.url),
