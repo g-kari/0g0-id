@@ -24,11 +24,21 @@ export async function issueTokenPair(
   db: D1Database,
   env: IdpEnv,
   user: User,
-  options: { serviceId: string | null; clientId?: string; familyId?: string; scope?: string },
+  options: {
+    serviceId: string | null;
+    clientId?: string;
+    familyId?: string;
+    scope?: string;
+    /** RFC 8707: 指定時はこの resource URI が aud になる（clientId より優先） */
+    resource?: string | null;
+  },
 ): Promise<{ accessToken: string; refreshToken: string }> {
-  const { serviceId, clientId, familyId = crypto.randomUUID(), scope } = options;
+  const { serviceId, clientId, familyId = crypto.randomUUID(), scope, resource } = options;
   if ((serviceId !== null) !== (clientId !== undefined) || clientId === "") {
     throw new Error("Service tokens require a matching serviceId and clientId");
+  }
+  if (resource != null && clientId === undefined) {
+    throw new Error("Resource-bound tokens require a clientId");
   }
 
   const accessTokenInput: AccessTokenInput =
@@ -45,7 +55,7 @@ export async function issueTokenPair(
       : {
           iss: env.IDP_ORIGIN,
           sub: user.id,
-          aud: clientId,
+          aud: resource ?? clientId,
           scope,
           cid: clientId,
         };
@@ -73,6 +83,7 @@ export async function issueTokenPair(
     expiresAt,
     pairwiseSub,
     scope: scope || null,
+    resource: resource ?? null,
   });
 
   return { accessToken, refreshToken };

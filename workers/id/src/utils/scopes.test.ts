@@ -2,9 +2,42 @@ import { describe, it, expect } from "vite-plus/test";
 import {
   parseAllowedScopes,
   resolveEffectiveScope,
+  resolveResourceScope,
   validateNonce,
   validateCodeChallenge,
 } from "./scopes";
+
+describe("resolveResourceScope", () => {
+  const resourceScopes = '["events:read","events:subscribe","requests:read","requests:update"]';
+
+  it("リソースの許可スコープ内ならそのまま返す", () => {
+    expect(resolveResourceScope("events:read events:subscribe", resourceScopes)).toBe(
+      "events:read events:subscribe",
+    );
+  });
+
+  it("リソースの許可外スコープは除外される", () => {
+    expect(resolveResourceScope("events:read profile", resourceScopes)).toBe("events:read");
+  });
+
+  it("有効なスコープが残らなければ undefined", () => {
+    expect(resolveResourceScope("profile email", resourceScopes)).toBeUndefined();
+  });
+
+  it("スコープ未指定ならリソースの許可スコープ全体をデフォルトにする", () => {
+    expect(resolveResourceScope(undefined, resourceScopes)).toBe(
+      "events:read events:subscribe requests:read requests:update",
+    );
+    expect(resolveResourceScope(null, resourceScopes)).toBe(
+      "events:read events:subscribe requests:read requests:update",
+    );
+  });
+
+  it("リソースの許可スコープが空なら undefined（フェイルクローズド）", () => {
+    expect(resolveResourceScope("events:read", "[]")).toBeUndefined();
+    expect(resolveResourceScope(undefined, "[]")).toBeUndefined();
+  });
+});
 
 describe("parseAllowedScopes", () => {
   it("JSON配列を正しくパースする", () => {

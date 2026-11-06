@@ -277,6 +277,7 @@ async function finalizeLogin(
       codeChallengeMethod: stateData.codeChallengeMethod ?? null,
       scope: stateData.scope ?? null,
       provider: stateData.provider,
+      resource: stateData.resource ?? null,
     });
   } catch (err) {
     authLogger.error("[callback] Failed to create authorization code", err);

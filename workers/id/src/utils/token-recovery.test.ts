@@ -22,6 +22,7 @@ function makeToken(revoked_reason: string | null): RefreshToken {
     revoked_at: revoked_reason ? "2024-01-01T00:00:00Z" : null,
     revoked_reason,
     scope: null,
+    resource: null,
     pairwise_sub: null,
     expires_at: "2024-01-31T00:00:00Z",
     created_at: "2024-01-01T00:00:00Z",

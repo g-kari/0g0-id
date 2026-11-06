@@ -26,6 +26,21 @@ export interface Service {
   client_secret_hash: string;
   allowed_scopes: string;
   owner_user_id: string;
+  /** 登録経路: "admin"（管理 API）| "dcr"（RFC 7591 自己登録） */
+  source: string;
+  /** RFC 7592 クライアント構成エンドポイント用トークンの SHA-256 ハッシュ（DCR のみ） */
+  registration_access_token_hash: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** RFC 8707 リソースインジケーターの対象として登録されたリソースサーバー */
+export interface ResourceServer {
+  id: string;
+  uri: string;
+  name: string;
+  allowed_scopes: string;
+  owner_user_id: string;
   created_at: string;
   updated_at: string;
 }
@@ -62,6 +77,8 @@ export interface AuthCode {
   code_challenge_method: string | null;
   scope: string | null;
   provider: string | null;
+  /** RFC 8707: 認可リクエストで指定された resource（検証済みの正規 URI） */
+  resource: string | null;
 }
 
 export interface RefreshToken {
@@ -73,6 +90,8 @@ export interface RefreshToken {
   revoked_at: string | null;
   revoked_reason: string | null;
   scope: string | null;
+  /** RFC 8707: 発行時に束縛された resource（リフレッシュ後も aud を維持するため） */
+  resource: string | null;
   pairwise_sub: string | null;
   expires_at: string;
   created_at: string;
@@ -222,4 +241,5 @@ export interface OAuthStateCookieData {
   codeChallenge?: string;
   codeChallengeMethod?: string;
   scope?: string;
+  resource?: string;
 }

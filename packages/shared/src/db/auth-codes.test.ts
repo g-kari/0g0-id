@@ -17,6 +17,7 @@ const baseAuthCode: AuthCode = {
   code_challenge_method: null,
   scope: null,
   provider: null,
+  resource: null,
 };
 
 describe("createAuthCode", () => {
@@ -44,6 +45,7 @@ describe("createAuthCode", () => {
       null,
       null,
       null, // provider
+      null, // resource
     );
     expect(stmt.run).toHaveBeenCalled();
   });

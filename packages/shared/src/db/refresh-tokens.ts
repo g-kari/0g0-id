@@ -113,12 +113,13 @@ export async function createRefreshToken(
     expiresAt: string;
     pairwiseSub?: string | null;
     scope?: string | null;
+    resource?: string | null;
   },
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO refresh_tokens (id, user_id, service_id, token_hash, family_id, expires_at, pairwise_sub, scope)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO refresh_tokens (id, user_id, service_id, token_hash, family_id, expires_at, pairwise_sub, scope, resource)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       params.id,
@@ -129,6 +130,7 @@ export async function createRefreshToken(
       params.expiresAt,
       params.pairwiseSub ?? null,
       params.scope ?? null,
+      params.resource ?? null,
     )
     .run();
 }

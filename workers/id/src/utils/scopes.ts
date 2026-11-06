@@ -1,4 +1,29 @@
 /**
+ * RFC 8707 リソース束縛トークンのスコープを計算する。
+ *
+ * リソースサーバー側の登録スコープ（resource_servers.allowed_scopes）が
+ * そのリソースで付与できる権限の上限になる。クライアントの
+ * allowed_scopes とは独立に、リソース登録時に管理者が許可した範囲だけが
+ * 有効になる（DCR で自己登録したクライアントでも、リソース側の登録が
+ * なければ resource 向けスコープは一切付与されない）。
+ *
+ * - requestedScope がある場合: リソースの許可スコープに含まれるもののみ残す
+ * - requestedScope がない場合: リソースの許可スコープ全体をデフォルトとする
+ * - 有効なスコープが残らない場合は undefined（呼び出し側で invalid_scope）
+ */
+export function resolveResourceScope(
+  requestedScope: string | null | undefined,
+  resourceAllowedScopesJson: string,
+): string | undefined {
+  const allowed = parseAllowedScopes(resourceAllowedScopesJson);
+  if (allowed.length === 0) return undefined;
+  if (!requestedScope) return allowed.join(" ");
+  const requested = requestedScope.split(" ").filter(Boolean);
+  const valid = requested.filter((s) => allowed.includes(s));
+  return valid.length > 0 ? valid.join(" ") : undefined;
+}
+
+/**
  * サービスの allowed_scopes JSON 文字列をパースして文字列配列に変換する。
  *
  * - JSON パース失敗、または配列でない値の場合はフェイルクローズド（空配列）を返す。

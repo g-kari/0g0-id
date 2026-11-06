@@ -112,7 +112,13 @@ export async function issueTokenPairWithRecovery(
   db: D1Database,
   env: IdpEnv,
   user: User,
-  issueParams: { serviceId: string | null; clientId?: string; familyId?: string; scope?: string },
+  issueParams: {
+    serviceId: string | null;
+    clientId?: string;
+    familyId?: string;
+    scope?: string;
+    resource?: string | null;
+  },
   storedTokenId: string,
   tokenHash: string,
   logger: { error: (msg: string, extra?: unknown) => void },

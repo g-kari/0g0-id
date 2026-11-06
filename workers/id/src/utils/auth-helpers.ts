@@ -6,11 +6,18 @@ import {
   COOKIE_NAMES,
   PROVIDER_CREDENTIALS,
   findServiceByClientId,
+  findResourceServerByUri,
   normalizeRedirectUri,
   listRedirectUris,
   matchRedirectUri,
 } from "@0g0-id/shared";
-import type { IdpEnv, TokenPayload, User, OAuthStateCookieData } from "@0g0-id/shared";
+import type {
+  IdpEnv,
+  TokenPayload,
+  User,
+  OAuthStateCookieData,
+  ResourceServer,
+} from "@0g0-id/shared";
 import type { OAuthProvider } from "@0g0-id/shared";
 import { parse as parseDomain } from "tldts";
 
@@ -262,4 +269,25 @@ export async function validateServiceRedirectUri(
   if (!matched) return { ok: false, error: "redirect_uri not registered for this client" };
 
   return { ok: true, serviceId: service.id };
+}
+
+/**
+ * RFC 8707 の resource パラメータを検証する。
+ *
+ * 正規化（https 必須・fragment 禁止・既定ポート除去は redirect URI と同じ
+ * ルールを流用）したうえで、resource_servers に登録済みの URI と完全一致
+ * した場合のみ許可する。未登録の URI を aud とするトークンは発行しない。
+ * 戻り値の uri は正規化済みの正規 URI（この値が aud になる）。
+ */
+export async function validateResourceParam(
+  db: D1Database,
+  rawResource: string,
+): Promise<{ ok: true; uri: string; resource: ResourceServer } | { ok: false; error: string }> {
+  const normalized = normalizeRedirectUri(rawResource);
+  if (!normalized) return { ok: false, error: "Invalid resource parameter" };
+
+  const resource = await findResourceServerByUri(db, normalized);
+  if (!resource) return { ok: false, error: "resource is not a registered resource server" };
+
+  return { ok: true, uri: normalized, resource };
 }

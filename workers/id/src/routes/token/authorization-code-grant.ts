@@ -2,13 +2,14 @@ import {
   sha256,
   findAndConsumeAuthCode,
   findUserById,
+  findResourceServerByUri,
   generateCodeChallenge,
   timingSafeEqual,
   normalizeRedirectUri,
   matchRedirectUri,
   createLogger,
 } from "@0g0-id/shared";
-import { resolveEffectiveScope } from "../../utils/scopes";
+import { resolveEffectiveScope, resolveResourceScope } from "../../utils/scopes";
 import { issueTokenPair, buildTokenResponse, issueIdToken } from "../../utils/token-pair";
 import { type TokenHandlerContext, resolveOAuthClient } from "./utils";
 
@@ -114,6 +115,48 @@ export async function handleAuthorizationCodeGrant(
         { error: "invalid_grant", error_description: "Invalid or expired authorization code" },
         400,
       );
+    }
+
+    // RFC 8707: 認可コードに resource が束縛されている場合はリソース束縛
+    // トークンを発行する。トークンリクエスト側の resource は、指定されたら
+    // コード側と完全一致しなければならない。
+    const requestedResource = params["resource"];
+    if (authCode.resource) {
+      if (requestedResource !== undefined && requestedResource !== authCode.resource) {
+        return c.json(
+          {
+            error: "invalid_grant",
+            error_description: "resource does not match the authorization request",
+          },
+          400,
+        );
+      }
+      const resourceServer = await findResourceServerByUri(c.env.DB, authCode.resource);
+      if (!resourceServer) {
+        return c.json(
+          {
+            error: "invalid_grant",
+            error_description: "resource is no longer a registered resource server",
+          },
+          400,
+        );
+      }
+      // スコープはリソースサーバー側の登録スコープが上限
+      const resourceScope = resolveResourceScope(authCode.scope, resourceServer.allowed_scopes);
+      if (resourceScope === undefined) {
+        return c.json({ error: "invalid_scope", error_description: "No valid scope" }, 400);
+      }
+      const { accessToken, refreshToken } = await issueTokenPair(c.env.DB, c.env, user, {
+        serviceId: service.id,
+        clientId: service.client_id,
+        scope: resourceScope,
+        resource: authCode.resource,
+      });
+      const idToken = await issueIdToken(c.env, user, service, resourceScope, {
+        nonce: authCode.nonce ?? undefined,
+        amr: authCode.provider ? [authCode.provider] : undefined,
+      });
+      return c.json(buildTokenResponse(accessToken, refreshToken, resourceScope, idToken));
     }
 
     // スコープ計算

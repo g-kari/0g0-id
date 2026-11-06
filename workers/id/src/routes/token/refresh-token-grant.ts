@@ -100,6 +100,8 @@ export async function handleRefreshTokenGrant(
       clientId: service.client_id,
       familyId: storedToken.family_id,
       scope: refreshScope,
+      // RFC 8707: 発行時の resource 束縛を引き継ぎ、aud を維持する
+      resource: storedToken.resource,
     },
     storedToken.id,
     tokenHash,

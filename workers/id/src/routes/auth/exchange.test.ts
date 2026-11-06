@@ -82,6 +82,7 @@ const mockAuthCode = {
   scope: null,
   nonce: null,
   provider: null,
+  resource: null,
   code_challenge: null,
   code_challenge_method: null,
   used_at: null,
@@ -301,6 +302,8 @@ describe("POST /auth/exchange", () => {
       client_secret_hash: "hashed-secret",
       allowed_scopes: "openid profile email",
       owner_user_id: "user-1",
+      source: "admin",
+      registration_access_token_hash: null,
       created_at: "2024-01-01T00:00:00Z",
       updated_at: "2024-01-01T00:00:00Z",
     };

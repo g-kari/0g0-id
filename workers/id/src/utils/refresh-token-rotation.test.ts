@@ -39,6 +39,7 @@ function makeToken(overrides: Partial<RefreshToken> = {}): RefreshToken {
     revoked_at: null,
     revoked_reason: null,
     scope: "openid profile",
+    resource: null,
     pairwise_sub: null,
     expires_at: "2026-05-01T00:00:00Z",
     created_at: "2026-04-01T00:00:00Z",

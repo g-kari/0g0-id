@@ -78,6 +78,7 @@ const mockStoredToken = {
   scope: null,
   expires_at: "2099-01-01T00:00:00Z",
   created_at: "2024-01-01T00:00:00Z",
+  resource: null,
   pairwise_sub: null,
 };
 
@@ -280,6 +281,8 @@ describe("POST /auth/refresh", () => {
           client_secret_hash: "synthetic-hash",
           allowed_scopes: '["profile","email","phone","address"]',
           owner_user_id: mockUser.id,
+          source: "admin",
+          registration_access_token_hash: null,
           created_at: mockUser.created_at,
           updated_at: mockUser.updated_at,
         });
