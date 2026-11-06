@@ -50,7 +50,26 @@ jobs:
         run: node scripts/check-typescript-cli.mjs
 
       - name: check（lint + fmt + typecheck）
+        id: quality-check
         run: ./node_modules/.bin/vp check
+
+      # Temporary single-file formatter output; the failed check remains failed.
+      - name: Capture Vite+ formatter migration
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.number == 335 && failure() && steps.quality-check.outcome == 'failure' }}
+        id: migration-format
+        timeout-minutes: 2
+        run: |
+          ./node_modules/.bin/vp fmt workers/id/src/routes/services/crud.ts --write
+          git diff -- workers/id/src/routes/services/crud.ts
+
+      - name: Upload formatter migration for review
+        if: ${{ failure() && steps.migration-format.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: vite-plus-migration-format
+          path: workers/id/src/routes/services/crud.ts
+          retention-days: 7
+          if-no-files-found: error
 
       - name: IdP / BFF API ドキュメント同期確認（読み取り専用）
         run: ./node_modules/.bin/vp run docs:api:check
