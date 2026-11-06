@@ -34,28 +34,7 @@ jobs:
           npm --version
 
       - name: 依存パッケージインストール（ルートワークスペース）
-        id: root-install
         run: npm ci
-
-      # Temporary lockfile generation only; the failed frozen install remains failed.
-      - name: Generate coherent Vite+ migration lockfile
-        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.number == 335 && failure() && steps.root-install.outcome == 'failure' }}
-        id: migration-lockfile
-        timeout-minutes: 5
-        run: |
-          export VP_NODE_VERSION="$(node -p 'process.versions.node')"
-          . "$HOME/.config/vite-plus/env"
-          vp --version
-          vp install --lockfile-only --no-frozen-lockfile --ignore-scripts -- --no-audit --no-fund
-
-      - name: Upload migration lockfile for review
-        if: ${{ failure() && steps.migration-lockfile.outcome == 'success' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: vite-plus-migration-lockfile
-          path: package-lock.json
-          retention-days: 7
-          if-no-files-found: error
 
       - name: 依存パッケージインストール（user frontend）
         # workers/*/frontend は npm workspaces 対象外のため個別に install が必要
@@ -78,6 +57,12 @@ jobs:
 
       - name: テスト実行
         run: ./node_modules/.bin/vp test run
+
+      - name: Workspace test scripts
+        run: |
+          for workspace in packages/shared workers/admin workers/id workers/mcp workers/user; do
+            (cd "$workspace" && "$GITHUB_WORKSPACE/node_modules/.bin/vp" run test)
+          done
 
       - name: フロントエンドビルド検証（user）
         run: npm run build
