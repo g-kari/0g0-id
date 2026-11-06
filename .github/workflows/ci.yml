@@ -56,7 +56,7 @@ jobs:
             (
               cd "$frontend"
               vp install --lockfile-only --no-frozen-lockfile --ignore-scripts -- --no-audit --no-fund
-              vp pm update undici zod --package-lock-only --ignore-scripts --no-audit --no-fund
+              vp update undici zod -- --package-lock-only --ignore-scripts --no-audit --no-fund
             )
           done
           git diff --exit-code -- package.json packages/shared/package.json workers/*/package.json workers/*/frontend/package.json
