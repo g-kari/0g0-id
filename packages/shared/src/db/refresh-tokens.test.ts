@@ -37,6 +37,7 @@ const baseToken: RefreshToken = {
   revoked_reason: null,
   scope: null,
   resource: null,
+  resource_server_id: null,
   pairwise_sub: null,
   expires_at: "2025-12-31T23:59:59Z",
   created_at: "2024-01-01T00:00:00Z",
@@ -109,6 +110,7 @@ describe("createRefreshToken", () => {
       null,
       null,
       null, // resource
+      null, // resource_server_id
     );
     expect(stmt.run).toHaveBeenCalled();
   });
@@ -134,7 +136,54 @@ describe("createRefreshToken", () => {
       null,
       null,
       null, // resource
+      null, // resource_server_id
     );
+  });
+
+  it("resourceServerId 指定時は世代ガード付き INSERT になり、成功で true を返す", async () => {
+    const db = makeD1Mock(null, [], 1);
+    const created = await createRefreshToken(db, {
+      id: "token-id-3",
+      userId: "user-1",
+      serviceId: "service-1",
+      tokenHash: "hash-res",
+      familyId: "family-3",
+      expiresAt: "2025-12-31T23:59:59Z",
+      resource: "https://dots-events.0g0.xyz/mcp",
+      resourceServerId: "rs-gen-1",
+    });
+    expect(created).toBe(true);
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain("WHERE EXISTS (SELECT 1 FROM resource_servers WHERE id = ?)");
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith(
+      "token-id-3",
+      "user-1",
+      "service-1",
+      "hash-res",
+      "family-3",
+      "2025-12-31T23:59:59Z",
+      null,
+      null,
+      "https://dots-events.0g0.xyz/mcp",
+      "rs-gen-1",
+      "rs-gen-1", // 世代ガードの EXISTS 判定用
+    );
+  });
+
+  it("resourceServerId 指定時に対象行が消えている（changes=0）と false を返す", async () => {
+    const db = makeD1Mock(null, [], 0);
+    const created = await createRefreshToken(db, {
+      id: "token-id-4",
+      userId: "user-1",
+      serviceId: "service-1",
+      tokenHash: "hash-gone",
+      familyId: "family-4",
+      expiresAt: "2025-12-31T23:59:59Z",
+      resource: "https://dots-events.0g0.xyz/mcp",
+      resourceServerId: "rs-deleted",
+    });
+    expect(created).toBe(false);
   });
 });
 

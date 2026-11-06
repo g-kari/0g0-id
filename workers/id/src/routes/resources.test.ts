@@ -15,8 +15,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     findResourceServerByUri: vi.fn(),
     createResourceServer: vi.fn(),
     updateResourceServer: vi.fn(),
-    deleteResourceServer: vi.fn(),
-    revokeRefreshTokensByResource: vi.fn(),
+    deleteResourceServerWithTokenRevocation: vi.fn(),
   };
 });
 
@@ -51,8 +50,7 @@ import {
   findResourceServerByUri,
   createResourceServer,
   updateResourceServer,
-  deleteResourceServer,
-  revokeRefreshTokensByResource,
+  deleteResourceServerWithTokenRevocation,
 } from "@0g0-id/shared";
 import resourcesRoutes from "./resources";
 
@@ -162,22 +160,16 @@ describe("/api/resources", () => {
   describe("DELETE /:id", () => {
     it("削除時にその resource の refresh token を全て失効させる", async () => {
       vi.mocked(findResourceServerById).mockResolvedValue(mockResource);
-      vi.mocked(revokeRefreshTokensByResource).mockResolvedValue(3);
-      vi.mocked(deleteResourceServer).mockResolvedValue(undefined);
+      vi.mocked(deleteResourceServerWithTokenRevocation).mockResolvedValue(3);
 
       const res = await request("DELETE", "/api/resources/rs-1");
 
       expect(res.status).toBe(204);
-      expect(revokeRefreshTokensByResource).toHaveBeenCalledWith(
+      // 失効と削除は単一の原子的ヘルパーで実行される（競合防止）
+      expect(deleteResourceServerWithTokenRevocation).toHaveBeenCalledWith(
         mockEnv.DB,
-        RESOURCE_URI,
-        "resource_delete",
+        mockResource,
       );
-      expect(deleteResourceServer).toHaveBeenCalledWith(mockEnv.DB, "rs-1");
-      // 失効が削除より先に実行されること
-      const revokeOrder = vi.mocked(revokeRefreshTokensByResource).mock.invocationCallOrder[0];
-      const deleteOrder = vi.mocked(deleteResourceServer).mock.invocationCallOrder[0];
-      expect(revokeOrder).toBeLessThan(deleteOrder);
     });
 
     it("存在しない resource → 404（失効も削除もしない）", async () => {
@@ -186,8 +178,7 @@ describe("/api/resources", () => {
       const res = await request("DELETE", "/api/resources/rs-unknown");
 
       expect(res.status).toBe(404);
-      expect(revokeRefreshTokensByResource).not.toHaveBeenCalled();
-      expect(deleteResourceServer).not.toHaveBeenCalled();
+      expect(deleteResourceServerWithTokenRevocation).not.toHaveBeenCalled();
     });
   });
 });

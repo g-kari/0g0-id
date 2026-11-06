@@ -391,7 +391,8 @@ export async function countAdminUsers(db: D1Database): Promise<number> {
 
 export interface UserFilter {
   email?: string;
-  role?: "user" | "admin";
+  /** "system" は migration 0028 の内部アカウント（DCR 自己登録の所有者）用 */
+  role?: "user" | "admin" | "system";
   name?: string;
   /** true: BAN済みのみ / false: BAN済み除外 / undefined: 全件 */
   banned?: boolean;
@@ -449,8 +450,18 @@ export async function listUsers(
 
 export async function countUsers(db: D1Database, filter?: UserFilter): Promise<number> {
   const { where, params } = buildUserFilterClause(filter);
+  // role='system' の内部アカウント（例: DCR 自己登録クライアントの所有者）は
+  // ログインできないシステム専用行であり、人数統計には含めない。
+  // 一覧表示（listUsers）では識別のため引き続き表示し、role='system' を
+  // 明示的に指定した場合のみこの除外を外して数える。
+  const excludeSystem = filter?.role === undefined;
+  const whereClause = excludeSystem
+    ? where
+      ? `${where} AND role != 'system'`
+      : "WHERE role != 'system'"
+    : where;
   const result = await db
-    .prepare(`SELECT COUNT(*) as count FROM users ${where}`)
+    .prepare(`SELECT COUNT(*) as count FROM users ${whereClause}`)
     .bind(...params)
     .first<{ count: number }>();
   return result?.count ?? 0;

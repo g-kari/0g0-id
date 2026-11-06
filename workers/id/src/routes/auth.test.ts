@@ -688,7 +688,7 @@ describe("POST /auth/exchange", () => {
     vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(signAccessToken).mockResolvedValue("mock-access-token");
     vi.mocked(signIdToken).mockResolvedValue("mock-id-token");
-    vi.mocked(createRefreshToken).mockResolvedValue(undefined as never);
+    vi.mocked(createRefreshToken).mockResolvedValue(true as never);
   });
 
   it("JSONボディが不正 → 400を返す", async () => {
@@ -824,7 +824,7 @@ describe("POST /auth/refresh", () => {
     vi.mocked(findAndRevokeRefreshToken).mockResolvedValue(mockRefreshToken as never);
     vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(signAccessToken).mockResolvedValue("new-access-token");
-    vi.mocked(createRefreshToken).mockResolvedValue(undefined as never);
+    vi.mocked(createRefreshToken).mockResolvedValue(true as never);
     vi.mocked(findRefreshTokenById).mockResolvedValue(mockRefreshToken as never);
   });
 
@@ -2228,7 +2228,7 @@ describe("POST /auth/exchange (サービスOAuth)", () => {
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(signAccessToken).mockResolvedValue("mock-access-token");
     vi.mocked(signIdToken).mockResolvedValue("mock-id-token");
-    vi.mocked(createRefreshToken).mockResolvedValue(undefined as never);
+    vi.mocked(createRefreshToken).mockResolvedValue(true as never);
   });
 
   it("Authorization ヘッダーなし → 401を返す", async () => {
@@ -2700,7 +2700,7 @@ describe("Authorization Code Flow E2E (State Cookie Round-trip)", () => {
     vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(signAccessToken).mockResolvedValue("e2e-access-token");
     vi.mocked(signIdToken).mockResolvedValue("e2e-id-token");
-    vi.mocked(createRefreshToken).mockResolvedValue(undefined as never);
+    vi.mocked(createRefreshToken).mockResolvedValue(true as never);
   });
 
   it("/auth/login → /auth/callback → /auth/exchange: 完全なBFFフローでトークンが発行される", async () => {

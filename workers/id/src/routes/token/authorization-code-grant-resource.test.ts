@@ -30,6 +30,7 @@ vi.mock("../../utils/token-pair", () => ({
   issueTokenPair: vi.fn(),
   buildTokenResponse: vi.fn(),
   issueIdToken: vi.fn(),
+  ResourceRegistrationGoneError: class extends Error {},
 }));
 
 vi.mock("./utils", async (importOriginal) => {
@@ -51,7 +52,12 @@ import {
   matchRedirectUri,
 } from "@0g0-id/shared";
 import { resolveResourceScope, isSubjectAllowedForResource } from "../../utils/scopes";
-import { issueTokenPair, buildTokenResponse, issueIdToken } from "../../utils/token-pair";
+import {
+  issueTokenPair,
+  buildTokenResponse,
+  issueIdToken,
+  ResourceRegistrationGoneError,
+} from "../../utils/token-pair";
 import { resolveOAuthClient } from "./utils";
 import { handleAuthorizationCodeGrant } from "./authorization-code-grant";
 
@@ -189,10 +195,23 @@ describe("handleAuthorizationCodeGrant (RFC 8707 resource)", () => {
         clientId: "test-client",
         scope: "events:read events:subscribe",
         resource: RESOURCE_URI,
+        resourceServerId: "rs-1",
       }),
     );
     const body = await res.json<Record<string, unknown>>();
     expect(body.access_token).toBe("access-token");
+  });
+
+  it("検証通過後に resource 登録が削除された → 400 invalid_grant", async () => {
+    vi.mocked(issueTokenPair).mockRejectedValue(new ResourceRegistrationGoneError());
+    const res = await handleAuthorizationCodeGrant(createMockContext(), {
+      ...baseParams,
+      resource: RESOURCE_URI,
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<Record<string, unknown>>();
+    expect(body.error).toBe("invalid_grant");
+    expect(body.error_description).toContain("no longer a registered resource server");
   });
 
   it("トークンリクエストの resource がコードと不一致 → 400 invalid_grant", async () => {

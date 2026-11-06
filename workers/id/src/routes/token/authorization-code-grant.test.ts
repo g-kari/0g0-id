@@ -27,6 +27,7 @@ vi.mock("../../utils/token-pair", () => ({
   issueTokenPair: vi.fn(),
   buildTokenResponse: vi.fn(),
   issueIdToken: vi.fn(),
+  ResourceRegistrationGoneError: class extends Error {},
 }));
 
 vi.mock("./utils", async (importOriginal) => {

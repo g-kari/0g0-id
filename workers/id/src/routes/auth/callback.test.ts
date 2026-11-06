@@ -225,6 +225,74 @@ describe("GET /auth/callback", () => {
       const location = res.headers.get("Location")!;
       expect(location).toContain("error=access_denied");
     });
+
+    it("service フロー + 外部 callback 登録済み → BFF チェックを使わず登録 URI へエラーを返す", async () => {
+      vi.mocked(getCookie).mockReturnValue("signed-state-cookie");
+      vi.mocked(parseStateFromCookie).mockResolvedValue({
+        ...mockStateData,
+        serviceId: "svc-1",
+        redirectTo: "https://chatgpt.com/connector/oauth/callback",
+      });
+      vi.mocked(validateServiceFinalRedirect).mockResolvedValue(true);
+      // BFF 向けチェックでは落ちるドメインでも service フローでは使わない
+      vi.mocked(isAllowedRedirectTo).mockReturnValue(false);
+
+      const res = await makeRequest(
+        { error: "access_denied" },
+        { "__Host-oauth-state": "signed-state-cookie" },
+      );
+      expect(res.status).toBe(302);
+      const location = res.headers.get("Location")!;
+      expect(location).toContain("https://chatgpt.com/connector/oauth/callback");
+      expect(location).toContain("error=access_denied");
+      expect(location).toContain("error_description=Access+was+denied");
+      expect(location).toContain("state=bff-state-456");
+      expect(vi.mocked(validateServiceFinalRedirect)).toHaveBeenCalledWith(
+        mockEnv.DB,
+        "svc-1",
+        "https://chatgpt.com/connector/oauth/callback",
+      );
+    });
+
+    it("service フロー + loopback callback 登録済み → loopback へエラーを返す", async () => {
+      vi.mocked(getCookie).mockReturnValue("signed-state-cookie");
+      vi.mocked(parseStateFromCookie).mockResolvedValue({
+        ...mockStateData,
+        serviceId: "svc-1",
+        redirectTo: "http://localhost:8080/callback",
+      });
+      vi.mocked(validateServiceFinalRedirect).mockResolvedValue(true);
+      vi.mocked(isAllowedRedirectTo).mockReturnValue(false);
+
+      const res = await makeRequest(
+        { error: "access_denied" },
+        { "__Host-oauth-state": "signed-state-cookie" },
+      );
+      expect(res.status).toBe(302);
+      const location = res.headers.get("Location")!;
+      expect(location).toContain("http://localhost:8080/callback");
+      expect(location).toContain("error=access_denied");
+      expect(location).toContain("state=bff-state-456");
+    });
+
+    it("service フロー + redirect が登録 URI と一致しない → 400（オープンリダイレクトにしない）", async () => {
+      vi.mocked(getCookie).mockReturnValue("signed-state-cookie");
+      vi.mocked(parseStateFromCookie).mockResolvedValue({
+        ...mockStateData,
+        serviceId: "svc-1",
+        redirectTo: "https://evil.example/callback",
+      });
+      vi.mocked(validateServiceFinalRedirect).mockResolvedValue(false);
+      vi.mocked(isAllowedRedirectTo).mockReturnValue(true);
+
+      const res = await makeRequest(
+        { error: "access_denied" },
+        { "__Host-oauth-state": "signed-state-cookie" },
+      );
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe("OAUTH_ERROR");
+    });
   });
 
   // =====================
@@ -652,13 +720,14 @@ describe("GET /auth/callback", () => {
       updated_at: "2024-01-01T00:00:00Z",
     };
 
-    it("利用者制限で許可されていない subject → 403 FORBIDDEN（コードを発行しない）", async () => {
+    it("利用者制限で許可されていない subject → 検証済み redirect へ access_denied を返す（コードを発行しない）", async () => {
       setupSuccessPath();
       vi.mocked(parseStateFromCookie).mockResolvedValue(resourceStateData);
       vi.mocked(findResourceServerByUri).mockResolvedValue({
         ...baseResourceServer,
         allowed_subjects: '["someone-else"]',
       });
+      vi.mocked(validateServiceFinalRedirect).mockResolvedValue(true);
 
       const res = await makeRequest(
         { code: "auth-code", state: "id-state-123" },
@@ -667,9 +736,13 @@ describe("GET /auth/callback", () => {
           "__Host-oauth-pkce": "signed-pkce-cookie",
         },
       );
-      expect(res.status).toBe(403);
-      const body = await res.json<{ error: { code: string } }>();
-      expect(body.error.code).toBe("FORBIDDEN");
+      expect(res.status).toBe(302);
+      const location = res.headers.get("Location")!;
+      expect(location).toContain("https://chatgpt.com/connector/oauth/callback");
+      expect(location).toContain("error=access_denied");
+      expect(location).toContain("error_description=");
+      expect(location).toContain("state=bff-state-456");
+      expect(location).not.toContain("code=");
       expect(vi.mocked(createAuthCode)).not.toHaveBeenCalled();
     });
 
@@ -696,10 +769,33 @@ describe("GET /auth/callback", () => {
       );
     });
 
-    it("resource 登録が削除済み → 400 BAD_REQUEST（コードを発行しない）", async () => {
+    it("resource 登録が削除済み → 検証済み redirect へ invalid_target を返す（コードを発行しない）", async () => {
       setupSuccessPath();
       vi.mocked(parseStateFromCookie).mockResolvedValue(resourceStateData);
       vi.mocked(findResourceServerByUri).mockResolvedValue(null);
+      vi.mocked(validateServiceFinalRedirect).mockResolvedValue(true);
+
+      const res = await makeRequest(
+        { code: "auth-code", state: "id-state-123" },
+        {
+          "__Host-oauth-state": "signed-state-cookie",
+          "__Host-oauth-pkce": "signed-pkce-cookie",
+        },
+      );
+      expect(res.status).toBe(302);
+      const location = res.headers.get("Location")!;
+      expect(location).toContain("https://chatgpt.com/connector/oauth/callback");
+      expect(location).toContain("error=invalid_target");
+      expect(location).toContain("error_description=Resource+is+no+longer+registered");
+      expect(location).toContain("state=bff-state-456");
+      expect(vi.mocked(createAuthCode)).not.toHaveBeenCalled();
+    });
+
+    it("resource 登録が削除済み + redirect 未検証 → 400（オープンリダイレクトにしない）", async () => {
+      setupSuccessPath();
+      vi.mocked(parseStateFromCookie).mockResolvedValue(resourceStateData);
+      vi.mocked(findResourceServerByUri).mockResolvedValue(null);
+      vi.mocked(validateServiceFinalRedirect).mockResolvedValue(false);
 
       const res = await makeRequest(
         { code: "auth-code", state: "id-state-123" },
@@ -709,8 +805,35 @@ describe("GET /auth/callback", () => {
         },
       );
       expect(res.status).toBe(400);
-      const body = await res.json<{ error: { code: string } }>();
+      const body = await res.json<{ error: { code: string; message: string } }>();
       expect(body.error.code).toBe("BAD_REQUEST");
+      expect(body.error.message).toBe("Invalid redirect URL");
+      expect(vi.mocked(createAuthCode)).not.toHaveBeenCalled();
+    });
+
+    it("BFF フロー + 利用者制限で許可されていない subject → BFF の戻り先へ access_denied を返す", async () => {
+      setupSuccessPath();
+      vi.mocked(parseStateFromCookie).mockResolvedValue({
+        ...mockStateData,
+        resource: RESOURCE_URI,
+      });
+      vi.mocked(findResourceServerByUri).mockResolvedValue({
+        ...baseResourceServer,
+        allowed_subjects: '["someone-else"]',
+      });
+
+      const res = await makeRequest(
+        { code: "auth-code", state: "id-state-123" },
+        {
+          "__Host-oauth-state": "signed-state-cookie",
+          "__Host-oauth-pkce": "signed-pkce-cookie",
+        },
+      );
+      expect(res.status).toBe(302);
+      const location = res.headers.get("Location")!;
+      expect(location).toContain("https://user.0g0.xyz/callback");
+      expect(location).toContain("error=access_denied");
+      expect(location).toContain("state=bff-state-456");
       expect(vi.mocked(createAuthCode)).not.toHaveBeenCalled();
     });
   });

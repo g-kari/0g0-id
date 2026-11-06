@@ -81,6 +81,7 @@ const mockStoredToken = {
   expires_at: "2099-01-01T00:00:00Z",
   created_at: "2024-01-01T00:00:00Z",
   resource: null,
+  resource_server_id: null,
   pairwise_sub: null,
 };
 

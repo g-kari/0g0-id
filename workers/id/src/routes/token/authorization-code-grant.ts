@@ -14,7 +14,12 @@ import {
   resolveResourceScope,
   isSubjectAllowedForResource,
 } from "../../utils/scopes";
-import { issueTokenPair, buildTokenResponse, issueIdToken } from "../../utils/token-pair";
+import {
+  issueTokenPair,
+  buildTokenResponse,
+  issueIdToken,
+  ResourceRegistrationGoneError,
+} from "../../utils/token-pair";
 import { type TokenHandlerContext, resolveOAuthClient } from "./utils";
 
 const tokenLogger = createLogger("token");
@@ -166,6 +171,8 @@ export async function handleAuthorizationCodeGrant(
         clientId: service.client_id,
         scope: resourceScope,
         resource: authCode.resource,
+        // 発行は検証した登録世代への束縛で行う（削除競合時は gone エラー）
+        resourceServerId: resourceServer.id,
       });
       const idToken = await issueIdToken(c.env, user, service, resourceScope, {
         nonce: authCode.nonce ?? undefined,
@@ -196,6 +203,16 @@ export async function handleAuthorizationCodeGrant(
     // レスポンス (RFC 6749 §5.1)
     return c.json(buildTokenResponse(accessToken, refreshToken, serviceScope, idToken));
   } catch (e) {
+    if (e instanceof ResourceRegistrationGoneError) {
+      // 検証通過から発行までの間に resource 登録が削除された
+      return c.json(
+        {
+          error: "invalid_grant",
+          error_description: "resource is no longer a registered resource server",
+        },
+        400,
+      );
+    }
     tokenLogger.error("handleAuthorizationCodeGrant: unexpected error", e);
     return c.json(
       { error: "server_error", error_description: "An unexpected error occurred" },

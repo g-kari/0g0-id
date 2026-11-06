@@ -6,6 +6,7 @@ import {
   createResourceServer,
   updateResourceServer,
   deleteResourceServer,
+  deleteResourceServerWithTokenRevocation,
 } from "./resource-servers";
 import type { ResourceServer } from "../types";
 import { makeD1Mock } from "./test-helpers";
@@ -117,5 +118,31 @@ describe("deleteResourceServer", () => {
     const db = makeD1Mock(null);
     await deleteResourceServer(db, "rs-1");
     expect(db.prepare).toHaveBeenCalledWith("DELETE FROM resource_servers WHERE id = ?");
+  });
+});
+
+describe("deleteResourceServerWithTokenRevocation", () => {
+  it("失効と削除を1つの batch で実行し、失効件数を返す", async () => {
+    const preparedSql: string[] = [];
+    const db = {
+      prepare: (sql: string) => {
+        preparedSql.push(sql);
+        return { bind: (...args: unknown[]) => ({ sql, args }) };
+      },
+      batch: async (statements: { sql: string }[]) => {
+        expect(statements).toHaveLength(2);
+        return [{ meta: { changes: 3 } }, { meta: { changes: 1 } }];
+      },
+    } as unknown as D1Database;
+
+    const revoked = await deleteResourceServerWithTokenRevocation(db, {
+      id: "rs-1",
+      uri: "https://dots-events.0g0.xyz/mcp",
+    });
+
+    expect(revoked).toBe(3);
+    expect(preparedSql[0]).toContain("UPDATE refresh_tokens");
+    expect(preparedSql[0]).toContain("WHERE resource = ? AND revoked_at IS NULL");
+    expect(preparedSql[1]).toBe("DELETE FROM resource_servers WHERE id = ?");
   });
 });

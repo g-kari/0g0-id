@@ -44,21 +44,53 @@ function clearOAuthCookies(c: CallbackContext): void {
   deleteCookie(c, PKCE_COOKIE, { path: "/", secure: true });
 }
 
+/**
+ * 最終リダイレクト先の検証（成功時・エラー時で共通）。
+ * - service 付きフロー: その service に登録された redirect URI との一致で確認する
+ * - BFF フロー: 従来どおり同一登録可能ドメイン / EXTRA_BFF_ORIGINS で確認する
+ * エラー時の戻り先も成功時と同じ検証を通した宛先にだけ向け、
+ * 検証できない宛先へはリダイレクトしない（オープンリダイレクト防止）。
+ */
+async function validateFinalRedirect(
+  c: CallbackContext,
+  stateData: OAuthStateCookieData,
+): Promise<boolean> {
+  return stateData.serviceId
+    ? validateServiceFinalRedirect(c.env.DB, stateData.serviceId, stateData.redirectTo)
+    : isAllowedRedirectTo(stateData.redirectTo, c.env.IDP_ORIGIN, c.env.EXTRA_BFF_ORIGINS);
+}
+
+/**
+ * RFC 6749 §4.1.2.1 形式で、検証済みの redirect 先へエラーを返す。
+ * 呼び出し側で validateFinalRedirect を通過していることが前提。
+ */
+function redirectWithOAuthError(
+  c: CallbackContext,
+  stateData: OAuthStateCookieData,
+  error: string,
+  description: string,
+): Response {
+  const errorUrl = new URL(stateData.redirectTo);
+  errorUrl.searchParams.set("error", error);
+  errorUrl.searchParams.set("error_description", description);
+  errorUrl.searchParams.set("state", stateData.bffState);
+  return c.redirect(errorUrl.toString());
+}
+
 async function handleOAuthError(c: CallbackContext, error: string): Promise<Response> {
   const stateCookieRaw = getCookie(c, STATE_COOKIE);
   clearOAuthCookies(c);
 
   if (stateCookieRaw) {
     const stateData = await parseStateFromCookie(stateCookieRaw, c.env.COOKIE_SECRET);
-    if (
-      stateData &&
-      isAllowedRedirectTo(stateData.redirectTo, c.env.IDP_ORIGIN, c.env.EXTRA_BFF_ORIGINS)
-    ) {
+    if (stateData && (await validateFinalRedirect(c, stateData))) {
       const safeErrorCode = error in OAUTH_ERROR_MAP ? error : "access_denied";
-      const errorUrl = new URL(stateData.redirectTo);
-      errorUrl.searchParams.set("error", safeErrorCode);
-      errorUrl.searchParams.set("state", stateData.bffState);
-      return c.redirect(errorUrl.toString());
+      return redirectWithOAuthError(
+        c,
+        stateData,
+        safeErrorCode,
+        OAUTH_ERROR_MAP[safeErrorCode] ?? "Authentication failed",
+      );
     }
   }
 
@@ -263,24 +295,50 @@ async function finalizeLogin(
     authLogger.error("[login-event] Failed to record login event", err);
   }
 
+  // 最終リダイレクト先の検証はフローで分ける:
+  // - service 付きフロー: その service に登録された redirect URI との一致で確認する
+  //   （BFF 向け許可リストでは DCR で受理した外部 callback が弾かれてしまうため）
+  // - BFF フロー: 従来どおり同一登録可能ドメイン / EXTRA_BFF_ORIGINS で確認する
+  // 検証を先に行うことで、後段のエラーも検証済みの宛先へ返せるようにする。
+  const redirectAllowed = await validateFinalRedirect(c, stateData);
+  if (!redirectAllowed) {
+    authLogger.error("[callback] Redirect URL failed final check", {
+      redirectTo: stateData.redirectTo,
+      serviceId: stateData.serviceId ?? null,
+    });
+    return c.json(restErrorBody("BAD_REQUEST", "Invalid redirect URL"), 400);
+  }
+
   // RFC 8707: resource 付きフローでは、認可コードを発行する段階でも
   // リソースの現行登録と利用者制限（allowed_subjects）を照合する。
   // 認可エンドポイント時点ではユーザーが確定しないため、この最終段が
   // 認可段階の実施点になる（トークン発行・更新でも再照合する）。
+  // 宛先は検証済みのため、失敗は 400 で止めずクライアントへエラーを返す
+  // （RFC 6749 §4.1.2.1）。resource は service フローでのみ設定される。
   if (stateData.resource) {
     const resourceServer = await findResourceServerByUri(c.env.DB, stateData.resource);
     if (!resourceServer) {
       authLogger.error("[callback] Resource is no longer registered", {
         resource: stateData.resource,
       });
-      return c.json(restErrorBody("BAD_REQUEST", "Resource is no longer registered"), 400);
+      return redirectWithOAuthError(
+        c,
+        stateData,
+        "invalid_target",
+        "Resource is no longer registered",
+      );
     }
     if (!isSubjectAllowedForResource(resourceServer, user.id)) {
       authLogger.warn("[callback] Subject not allowed for resource", {
         resource: stateData.resource,
         userId: user.id,
       });
-      return c.json(restErrorBody("FORBIDDEN", "You are not allowed to use this resource"), 403);
+      return redirectWithOAuthError(
+        c,
+        stateData,
+        "access_denied",
+        "You are not allowed to use this resource",
+      );
     }
   }
 
@@ -306,21 +364,6 @@ async function finalizeLogin(
   } catch (err) {
     authLogger.error("[callback] Failed to create authorization code", err);
     return c.json(restErrorBody("INTERNAL_ERROR", "Failed to create authorization code"), 500);
-  }
-
-  // 最終リダイレクト先の確認はフローで分ける:
-  // - service 付きフロー: その service に登録された redirect URI との一致で確認する
-  //   （BFF 向け許可リストでは DCR で受理した外部 callback が弾かれてしまうため）
-  // - BFF フロー: 従来どおり同一登録可能ドメイン / EXTRA_BFF_ORIGINS で確認する
-  const redirectAllowed = stateData.serviceId
-    ? await validateServiceFinalRedirect(c.env.DB, stateData.serviceId, stateData.redirectTo)
-    : isAllowedRedirectTo(stateData.redirectTo, c.env.IDP_ORIGIN, c.env.EXTRA_BFF_ORIGINS);
-  if (!redirectAllowed) {
-    authLogger.error("[callback] Redirect URL failed final check", {
-      redirectTo: stateData.redirectTo,
-      serviceId: stateData.serviceId ?? null,
-    });
-    return c.json(restErrorBody("BAD_REQUEST", "Invalid redirect URL"), 400);
   }
 
   const callbackUrl = new URL(stateData.redirectTo);

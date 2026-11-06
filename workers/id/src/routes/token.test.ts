@@ -1093,7 +1093,7 @@ describe("POST /api/token/ — authorization_code grant", () => {
     vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(signAccessToken).mockResolvedValue("mock-access-token");
     vi.mocked(generateToken).mockReturnValue("mock-refresh-token");
-    vi.mocked(createRefreshToken).mockResolvedValue(undefined);
+    vi.mocked(createRefreshToken).mockResolvedValue(true);
     vi.mocked(signIdToken).mockResolvedValue("mock-id-token");
   });
 
@@ -1495,7 +1495,7 @@ describe("POST /api/token/ — refresh_token grant", () => {
     vi.mocked(findRefreshTokenById).mockResolvedValue(mockRefreshToken as never);
     vi.mocked(signAccessToken).mockResolvedValue("new-access-token");
     vi.mocked(generateToken).mockReturnValue("new-refresh-token");
-    vi.mocked(createRefreshToken).mockResolvedValue(undefined);
+    vi.mocked(createRefreshToken).mockResolvedValue(true);
   });
 
   it("refresh_tokenが未指定 → { error: invalid_request } + 400", async () => {

@@ -6,8 +6,7 @@ import {
   findResourceServerByUri,
   createResourceServer,
   updateResourceServer,
-  deleteResourceServer,
-  revokeRefreshTokensByResource,
+  deleteResourceServerWithTokenRevocation,
   normalizeRedirectUri,
   restErrorBody,
   parseJsonBody,
@@ -185,13 +184,11 @@ app.delete("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
     }
     // 削除と同時に、この resource に束縛された refresh token を全て失効させる。
     // 失効させないと削除後も refresh で同じ aud のトークンが新規発行され続ける。
-    // 失効は永続的なので、同 URI を再登録しても旧 grant は復活しない。
-    const revokedCount = await revokeRefreshTokensByResource(
-      c.env.DB,
-      resource.uri,
-      "resource_delete",
-    );
-    await deleteResourceServer(c.env.DB, id);
+    // 失効と削除は1トランザクションで原子的に行い、その間隙に refresh が
+    // 割り込んで後継トークンを作る余地を残さない（発行側は resource の
+    // 登録世代ガード付き INSERT で対向）。失効は永続的なので、同 URI を
+    // 再登録しても旧 grant は復活しない。
+    const revokedCount = await deleteResourceServerWithTokenRevocation(c.env.DB, resource);
     await logAdminAudit(c, {
       action: "resource.delete",
       targetType: "resource_server",

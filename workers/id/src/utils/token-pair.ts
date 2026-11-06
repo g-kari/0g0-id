@@ -11,6 +11,19 @@ import type { AccessTokenInput, IdpEnv, User } from "@0g0-id/shared";
 /** リフレッシュトークンの有効期限（30日） */
 export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+/**
+ * resource の登録世代が発行直前に消えていた場合のエラー。
+ * 検証通過後に resource 登録が削除されると、世代ガード付き INSERT が
+ * 後継トークンの作成を抑止し、このエラーになる。呼び出し側は
+ * 「resource は登録されていない」として扱い、旧トークンの復活は試みない。
+ */
+export class ResourceRegistrationGoneError extends Error {
+  constructor() {
+    super("Resource registration no longer exists");
+    this.name = "ResourceRegistrationGoneError";
+  }
+}
+
 /** アクセストークンの有効期限（秒）：15分 */
 export const ACCESS_TOKEN_TTL_SECONDS = 900;
 
@@ -31,14 +44,30 @@ export async function issueTokenPair(
     scope?: string;
     /** RFC 8707: 指定時はこの resource URI が aud になる（clientId より優先） */
     resource?: string | null;
+    /**
+     * 発行時点で検証した resource_servers 行の id（登録世代）。
+     * resource 束縛トークンでは必須。作成は世代ガード付き INSERT になり、
+     * 検証後に登録が削除されていた場合は ResourceRegistrationGoneError を投げる。
+     */
+    resourceServerId?: string | null;
   },
 ): Promise<{ accessToken: string; refreshToken: string }> {
-  const { serviceId, clientId, familyId = crypto.randomUUID(), scope, resource } = options;
+  const {
+    serviceId,
+    clientId,
+    familyId = crypto.randomUUID(),
+    scope,
+    resource,
+    resourceServerId,
+  } = options;
   if ((serviceId !== null) !== (clientId !== undefined) || clientId === "") {
     throw new Error("Service tokens require a matching serviceId and clientId");
   }
   if (resource != null && clientId === undefined) {
     throw new Error("Resource-bound tokens require a clientId");
+  }
+  if (resource != null && !resourceServerId) {
+    throw new Error("Resource-bound tokens require a resourceServerId");
   }
 
   const accessTokenInput: AccessTokenInput =
@@ -74,7 +103,7 @@ export async function issueTokenPair(
     ? await generatePairwiseSub(clientId, user.id, env.PAIRWISE_SALT)
     : null;
 
-  await createRefreshToken(db, {
+  const created = await createRefreshToken(db, {
     id: crypto.randomUUID(),
     userId: user.id,
     serviceId,
@@ -84,7 +113,13 @@ export async function issueTokenPair(
     pairwiseSub,
     scope: scope || null,
     resource: resource ?? null,
+    resourceServerId: resource != null ? resourceServerId : null,
   });
+  if (!created) {
+    // 検証から発行までの間に resource 登録が削除された。
+    // 後継トークンは作られていない（世代ガード付き INSERT が抑止した）。
+    throw new ResourceRegistrationGoneError();
+  }
 
   return { accessToken, refreshToken };
 }

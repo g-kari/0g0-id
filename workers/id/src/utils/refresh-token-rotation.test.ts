@@ -8,6 +8,7 @@ vi.mock("@0g0-id/shared", () => ({
 
 vi.mock("./token-pair", () => ({
   issueTokenPair: vi.fn(),
+  ResourceRegistrationGoneError: class extends Error {},
 }));
 
 vi.mock("./token-recovery", () => ({
@@ -19,7 +20,7 @@ import {
   findRefreshTokenByHash,
   revokeTokenFamily,
 } from "@0g0-id/shared";
-import { issueTokenPair } from "./token-pair";
+import { issueTokenPair, ResourceRegistrationGoneError } from "./token-pair";
 import { attemptUnrevokeToken } from "./token-recovery";
 import {
   validateAndRevokeRefreshToken,
@@ -40,6 +41,7 @@ function makeToken(overrides: Partial<RefreshToken> = {}): RefreshToken {
     revoked_reason: null,
     scope: "openid profile",
     resource: null,
+    resource_server_id: null,
     pairwise_sub: null,
     expires_at: "2026-05-01T00:00:00Z",
     created_at: "2026-04-01T00:00:00Z",
@@ -195,6 +197,27 @@ describe("issueTokenPairWithRecovery", () => {
       "test-ctx",
     );
     expect(result).toEqual({ ok: true, accessToken: "at-xxx", refreshToken: "rt-xxx" });
+    expect(attemptUnrevokeToken).not.toHaveBeenCalled();
+  });
+
+  it("resource 登録が削除済みの場合は RESOURCE_GONE を返し、旧トークンを復活させない", async () => {
+    vi.mocked(issueTokenPair).mockRejectedValue(new ResourceRegistrationGoneError());
+    const result = await issueTokenPairWithRecovery(
+      mockDb,
+      mockEnv,
+      mockUser,
+      {
+        ...issueParams,
+        resource: "https://dots-events.0g0.xyz/mcp",
+        resourceServerId: "rs-deleted",
+      },
+      "stored-id",
+      "hash-abc",
+      mockLogger,
+      "test-ctx",
+    );
+    expect(result).toEqual({ ok: false, reason: "RESOURCE_GONE" });
+    // 削除に伴う失効を打ち消してはいけない
     expect(attemptUnrevokeToken).not.toHaveBeenCalled();
   });
 

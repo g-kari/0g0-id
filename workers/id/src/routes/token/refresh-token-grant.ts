@@ -100,6 +100,9 @@ export async function handleRefreshTokenGrant(
 
   // RFC 8707: resource 束縛トークンは更新のたびに現在の登録状態で再検証する。
   // 発行時点の保存済み scope / resource を無条件に引き継がない。
+  // resourceServerId は再検証で確定した現在の登録世代。後継トークンの
+  // 作成はこの世代への束縛（世代ガード付き INSERT）で行う。
+  let resourceServerId: string | null = null;
   if (storedToken.resource) {
     // リクエスト側 resource が保存済みと異なる場合は明示拒否する
     // （黙って別 aud のトークンに化けることを防ぐ）。提示トークンは
@@ -127,6 +130,19 @@ export async function handleRefreshTokenGrant(
         400,
       );
     }
+    // 登録世代の照合: 発行時の resource_servers 行 id と現在の行 id が
+    // 異なれば、削除→同 URI 再登録を経ている。URI が一致しても旧登録の
+    // grant を新しい登録へ引き継がない（旧権限の復活防止）。
+    // 移行前トークン（resource_server_id が null）は現在の世代を取り込む。
+    if (storedToken.resource_server_id && storedToken.resource_server_id !== resourceServer.id) {
+      return c.json(
+        {
+          error: "invalid_grant",
+          error_description: "resource registration that issued this token no longer exists",
+        },
+        400,
+      );
+    }
     // 利用者制限（allowed_subjects）を現在の設定で照合する
     if (!isSubjectAllowedForResource(resourceServer, user.id)) {
       return c.json(
@@ -147,6 +163,7 @@ export async function handleRefreshTokenGrant(
       );
     }
     refreshScope = narrowedScope;
+    resourceServerId = resourceServer.id;
   }
 
   const issueResult = await issueTokenPairWithRecovery(
@@ -160,6 +177,7 @@ export async function handleRefreshTokenGrant(
       scope: refreshScope,
       // RFC 8707: 発行時の resource 束縛を引き継ぎ、aud を維持する
       resource: storedToken.resource,
+      resourceServerId,
     },
     storedToken.id,
     tokenHash,
@@ -169,6 +187,17 @@ export async function handleRefreshTokenGrant(
   if (!issueResult.ok) {
     if (issueResult.reason === "TOKEN_REUSE") {
       return c.json({ error: "invalid_grant", error_description: "Token reuse detected" }, 400);
+    }
+    if (issueResult.reason === "RESOURCE_GONE") {
+      // 再検証の通過後に resource 登録が削除され、世代ガードが後継トークンの
+      // 作成を抑止した。削除済み resource の grant として拒否する。
+      return c.json(
+        {
+          error: "invalid_grant",
+          error_description: "resource is no longer a registered resource server",
+        },
+        400,
+      );
     }
     return c.json({ error: "server_error", error_description: "Token operation failed" }, 500);
   }

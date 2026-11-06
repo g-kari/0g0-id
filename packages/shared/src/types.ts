@@ -98,6 +98,12 @@ export interface RefreshToken {
   scope: string | null;
   /** RFC 8707: 発行時に束縛された resource（リフレッシュ後も aud を維持するため） */
   resource: string | null;
+  /**
+   * 発行時点で検証した resource_servers 行の id（登録世代）。
+   * 同 URI の再登録は別 id になるため、旧世代のトークンは refresh 時に拒否できる。
+   * resource 束縛のないトークンと移行前のトークンでは null。
+   */
+  resource_server_id: string | null;
   pairwise_sub: string | null;
   expires_at: string;
   created_at: string;

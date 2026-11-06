@@ -107,6 +107,7 @@ const mockStoredToken = {
   expires_at: "2099-01-01T00:00:00Z",
   created_at: "2024-01-01T00:00:00Z",
   resource: null,
+  resource_server_id: null,
   pairwise_sub: null,
 };
 
@@ -526,6 +527,79 @@ describe("handleRefreshTokenGrant", () => {
       expect(body.error).toBe("invalid_grant");
       expect(body.error_description).toContain("no longer a registered resource server");
       expect(issueTokenPairWithRecovery).not.toHaveBeenCalled();
+    });
+
+    it("削除→再登録で世代が変わった旧トークン → 400 invalid_grant（復活しない）", async () => {
+      setupResourceRefresh();
+      vi.mocked(validateAndRevokeRefreshToken).mockResolvedValue({
+        ok: true,
+        storedToken: { ...mockResourceStoredToken, resource_server_id: "rs-old-generation" },
+      });
+      const c = createMockContext();
+      const res = await handleRefreshTokenGrant(c, { refresh_token: "valid-refresh-token" });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body.error).toBe("invalid_grant");
+      expect(body.error_description).toContain(
+        "resource registration that issued this token no longer exists",
+      );
+      expect(issueTokenPairWithRecovery).not.toHaveBeenCalled();
+    });
+
+    it("世代が一致する場合は resourceServerId を引き継いで発行する", async () => {
+      setupResourceRefresh();
+      vi.mocked(validateAndRevokeRefreshToken).mockResolvedValue({
+        ok: true,
+        storedToken: { ...mockResourceStoredToken, resource_server_id: "rs-1" },
+      });
+      const c = createMockContext();
+      const res = await handleRefreshTokenGrant(c, { refresh_token: "valid-refresh-token" });
+
+      expect(res.status).toBe(200);
+      expect(issueTokenPairWithRecovery).toHaveBeenCalledWith(
+        mockEnv.DB,
+        mockEnv,
+        mockUser,
+        expect.objectContaining({ resource: RESOURCE_URI, resourceServerId: "rs-1" }),
+        expect.any(String),
+        expect.any(String),
+        expect.anything(),
+        "handleRefreshTokenGrant",
+      );
+    });
+
+    it("移行前トークン（resource_server_id なし）は現世代を採用して発行する", async () => {
+      setupResourceRefresh();
+      const c = createMockContext();
+      const res = await handleRefreshTokenGrant(c, { refresh_token: "valid-refresh-token" });
+
+      expect(res.status).toBe(200);
+      expect(issueTokenPairWithRecovery).toHaveBeenCalledWith(
+        mockEnv.DB,
+        mockEnv,
+        mockUser,
+        expect.objectContaining({ resource: RESOURCE_URI, resourceServerId: "rs-1" }),
+        expect.any(String),
+        expect.any(String),
+        expect.anything(),
+        "handleRefreshTokenGrant",
+      );
+    });
+
+    it("検証通過後に削除され発行が世代ガードで止まった → 400 invalid_grant", async () => {
+      setupResourceRefresh();
+      vi.mocked(issueTokenPairWithRecovery).mockResolvedValue({
+        ok: false,
+        reason: "RESOURCE_GONE",
+      });
+      const c = createMockContext();
+      const res = await handleRefreshTokenGrant(c, { refresh_token: "valid-refresh-token" });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body.error).toBe("invalid_grant");
+      expect(body.error_description).toContain("no longer a registered resource server");
     });
 
     it("リクエストの resource が保存済みと異なる → 400 invalid_grant + トークンを戻す", async () => {

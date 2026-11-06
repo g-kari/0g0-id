@@ -613,11 +613,31 @@ describe("countUsers", () => {
     expect(stmt.bind).toHaveBeenCalledWith("admin");
   });
 
-  it("フィルターなしの場合はWHER句を含まない", async () => {
+  it("フィルターなしの場合はシステムアカウント除外のWHERE句を含む", async () => {
     const db = makeD1Mock({ count: 10 });
     await countUsers(db, {});
     const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(sql).not.toContain("WHERE");
+    // role='system'（例: DCR自己登録の所有者）は人数統計に含めない
+    expect(sql).toContain("WHERE role != 'system'");
+  });
+
+  it("role='system' を明示した場合はシステムアカウント自体を数える", async () => {
+    const db = makeD1Mock({ count: 1 });
+    const count = await countUsers(db, { role: "system" });
+    expect(count).toBe(1);
+    const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain("role = ?");
+    expect(sql).not.toContain("role !=");
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith("system");
+  });
+
+  it("bannedフィルターと併用してもシステムアカウントを除外する", async () => {
+    const db = makeD1Mock({ count: 0 });
+    await countUsers(db, { banned: true });
+    const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain("banned_at IS NOT NULL");
+    expect(sql).toContain("AND role != 'system'");
   });
 
   it("banned=trueフィルターでBAN済みユーザー数を返す", async () => {
