@@ -58,7 +58,7 @@ metadata だけを記録します。動的メッセージや他のログは対�
 ## 動作要件
 
 - **Node.js**: v22.23.4 以上（両 Astro frontend の Prism 依存を含む開発環境の要件。CI は v22.x）
-- **npm**: v11.x 以上（`packageManager` フィールドで `npm@11.12.1` に固定）
+- **npm**: v11.x 以上（`packageManager` フィールドで `npm@11.21.2` に固定）
 
 ## セットアップ
 

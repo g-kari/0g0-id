@@ -50,7 +50,7 @@ jobs:
           effective_versions="$(vp pm version --json)"
           effective_npm="$(printf '%s' "$effective_versions" | vp exec node -p 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).npm')"
           printf 'Effective npm: %s\n' "$effective_npm"
-          test "$effective_npm" = "11.12.1"
+          test "$effective_npm" = "11.21.2"
           vp install --lockfile-only --no-frozen-lockfile --ignore-scripts -- --no-audit --no-fund
           vp update miniflare undici postcss nanoid tinypool semver tslib -- --package-lock-only --ignore-scripts --no-audit --no-fund
           vp exec node -e 'const assert = require("node:assert/strict"); const { packages } = require("./package-lock.json"); assert.equal(packages["node_modules/miniflare"].version, "5.20261101.0-beta"); const entries = Object.entries(packages).filter(([path]) => /(^|\/)node_modules\/undici$/.test(path)); console.log("External Undici lock records:", entries.map(([path, pkg]) => [path, pkg.version])); assert(entries.length > 0); for (const [, pkg] of entries) assert.equal(pkg.version, "7.30.2");'

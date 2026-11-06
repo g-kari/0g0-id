@@ -19,7 +19,7 @@ try {
   const npmRoot = path.dirname(path.dirname(npmEntry));
   const npmPackage = readJson(path.join(npmRoot, "package.json"));
   assert.equal(npmPackage.name, "npm");
-  assert.equal(npmPackage.version, "11.12.1");
+  assert.equal(npmPackage.version, "11.21.2");
   const npmRequire = createRequire(npmEntry);
   const arboristEntry = npmRequire.resolve("@npmcli/arborist");
   const arboristManifest = npmRequire.resolve("@npmcli/arborist/package.json");
