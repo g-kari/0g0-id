@@ -64,6 +64,16 @@ jobs:
           done
           git diff --exit-code -- package.json packages/shared/package.json workers/*/package.json workers/*/frontend/package.json
 
+      - name: Inspect failed lock override resolution (read-only)
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.number == 335 && failure() && steps.migration-lockfiles.outcome == 'failure' }}
+        timeout-minutes: 1
+        run: |
+          export VP_NODE_VERSION="$(node -p 'process.versions.node')"
+          . "$HOME/.config/vite-plus/env"
+          npm_selection="$(vp env which npm)"
+          npm_binary="$(printf '%s\n' "$npm_selection" | head -n 1)"
+          vp exec node scripts/ci-lock-override-diagnostic.mjs "$npm_binary"
+
       - name: Upload three migration lockfiles for review
         if: ${{ failure() && steps.migration-lockfiles.outcome == 'success' }}
         uses: actions/upload-artifact@v7
