@@ -166,6 +166,25 @@ describe("POST /auth/exchange", () => {
       const body = await res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe("INVALID_CODE");
     });
+
+    it("resource 束縛コード → 400 INVALID_REQUEST（aud が client_id に化けないよう明示拒否）", async () => {
+      vi.mocked(parseJsonBody).mockResolvedValue({
+        ok: true,
+        data: { code: "valid-code", redirect_to: "https://user.0g0.xyz/callback" },
+      } as never);
+      vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
+        ...mockAuthCode,
+        service_id: "svc-1",
+        resource: "https://dots-events.0g0.xyz/mcp",
+      });
+
+      const res = await makeRequest("{}");
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string; message: string } }>();
+      expect(body.error.code).toBe("INVALID_REQUEST");
+      expect(body.error.message).toContain("standard token endpoint");
+      expect(vi.mocked(issueTokenPair)).not.toHaveBeenCalled();
+    });
   });
 
   // =====================

@@ -11,6 +11,7 @@ export type RevokeReason =
   | "reuse_detected"
   | "service_delete"
   | "service_revoke"
+  | "resource_delete"
   | "rotation"
   | "security_event"
   | "admin_action"
@@ -414,6 +415,28 @@ export async function revokeAllServiceTokens(
        WHERE service_id = ? AND revoked_at IS NULL`,
     )
     .bind(reason ?? null, serviceId)
+    .run();
+  return result.meta.changes ?? 0;
+}
+
+/**
+ * 特定のリソースサーバー（RFC 8707 の resource URI）に束縛された
+ * アクティブなリフレッシュトークンを全て失効させる。
+ * リソース登録の削除時に呼び出し、削除後も refresh で新規発行が
+ * 続くことを防ぐ。失効は取り消し不可なので、同 URI を再登録しても
+ * 旧 grant は復活しない。失効したトークン数を返す。
+ */
+export async function revokeRefreshTokensByResource(
+  db: D1Database,
+  resourceUri: string,
+  reason?: RevokeReason,
+): Promise<number> {
+  const result = await db
+    .prepare(
+      `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ?
+       WHERE resource = ? AND revoked_at IS NULL`,
+    )
+    .bind(reason ?? null, resourceUri)
     .run();
   return result.meta.changes ?? 0;
 }

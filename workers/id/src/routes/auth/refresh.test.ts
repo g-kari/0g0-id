@@ -9,6 +9,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     ...original,
     parseJsonBody: vi.fn(),
     sha256: vi.fn(),
+    findRefreshTokenByHash: vi.fn(),
     findUserById: vi.fn(),
     findServiceById: vi.fn(),
     generatePairwiseSub: vi.fn(),
@@ -34,6 +35,7 @@ vi.mock("../../utils/refresh-token-rotation", () => ({
 import {
   parseJsonBody,
   sha256,
+  findRefreshTokenByHash,
   findUserById,
   findServiceById,
   generatePairwiseSub,
@@ -387,5 +389,51 @@ describe("POST /auth/refresh", () => {
       const body = await res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe("INTERNAL_ERROR");
     });
+  });
+});
+
+describe("POST /auth/refresh — resource 束縛トークンの明示拒否", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(sha256).mockResolvedValue("hashed-token");
+    vi.mocked(parseJsonBody).mockResolvedValue({
+      ok: true,
+      data: { refresh_token: "valid-token" },
+    } as never);
+  });
+
+  it("resource 束縛トークン → 400 INVALID_REQUEST（失効処理に進まない）", async () => {
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue({
+      ...mockStoredToken,
+      service_id: "svc-1",
+      resource: "https://dots-events.0g0.xyz/mcp",
+    } as never);
+
+    const res = await makeRequest();
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("INVALID_REQUEST");
+    expect(body.error.message).toContain("standard token endpoint");
+    // 提示トークンを消費していないこと（標準エンドポイントで引き続き使える）
+    expect(vi.mocked(validateAndRevokeRefreshToken)).not.toHaveBeenCalled();
+    expect(vi.mocked(issueTokenPairWithRecovery)).not.toHaveBeenCalled();
+  });
+
+  it("無 resource のトークンは従来どおり処理される", async () => {
+    vi.mocked(findRefreshTokenByHash).mockResolvedValue(mockStoredToken as never);
+    vi.mocked(validateAndRevokeRefreshToken).mockResolvedValue({
+      ok: true,
+      storedToken: mockStoredToken,
+    });
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(issueTokenPairWithRecovery).mockResolvedValue({
+      ok: true,
+      accessToken: "new-access-token",
+      refreshToken: "new-refresh-token",
+    });
+
+    const res = await makeRequest();
+    expect(res.status).toBe(200);
+    expect(vi.mocked(validateAndRevokeRefreshToken)).toHaveBeenCalled();
   });
 });

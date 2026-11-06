@@ -39,19 +39,49 @@ export async function createResourceServer(
     uri: string;
     name: string;
     allowedScopes: string;
+    /** 利用を許可するユーザーIDの JSON 配列（省略時は制限なし） */
+    allowedSubjects?: string;
     ownerUserId: string;
   },
 ): Promise<ResourceServer> {
   const resource = await db
     .prepare(
-      `INSERT INTO resource_servers (id, uri, name, allowed_scopes, owner_user_id)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO resource_servers (id, uri, name, allowed_scopes, allowed_subjects, owner_user_id)
+       VALUES (?, ?, ?, ?, ?, ?)
        RETURNING *`,
     )
-    .bind(params.id, params.uri, params.name, params.allowedScopes, params.ownerUserId)
+    .bind(
+      params.id,
+      params.uri,
+      params.name,
+      params.allowedScopes,
+      params.allowedSubjects ?? "[]",
+      params.ownerUserId,
+    )
     .first<ResourceServer>();
   if (!resource) throw new Error("Failed to create resource server");
   return resource;
+}
+
+export async function updateResourceServer(
+  db: D1Database,
+  id: string,
+  params: {
+    name: string;
+    allowedScopes: string;
+    allowedSubjects: string;
+  },
+): Promise<ResourceServer | null> {
+  return db
+    .prepare(
+      `UPDATE resource_servers
+       SET name = ?, allowed_scopes = ?, allowed_subjects = ?,
+           updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+       WHERE id = ?
+       RETURNING *`,
+    )
+    .bind(params.name, params.allowedScopes, params.allowedSubjects, id)
+    .first<ResourceServer>();
 }
 
 export async function deleteResourceServer(db: D1Database, id: string): Promise<void> {

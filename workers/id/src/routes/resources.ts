@@ -5,7 +5,9 @@ import {
   findResourceServerById,
   findResourceServerByUri,
   createResourceServer,
+  updateResourceServer,
   deleteResourceServer,
+  revokeRefreshTokensByResource,
   normalizeRedirectUri,
   restErrorBody,
   parseJsonBody,
@@ -35,10 +37,23 @@ const ScopeToken = z
   .regex(/^[\w:.-]+$/, "scope must match RFC 6749 scope-token characters")
   .max(100);
 
+const SubjectId = z
+  .string()
+  .min(1, "allowed_subjects entries must not be empty")
+  .max(128, "allowed_subjects entries must be 128 characters or less");
+
 const CreateResourceSchema = z.object({
   uri: z.string().min(1, "uri is required").max(2048, "uri must be 2048 characters or less"),
   name: z.string().min(1, "name is required").max(100, "name must be 100 characters or less"),
   allowed_scopes: z.array(ScopeToken).min(1, "allowed_scopes must not be empty").max(50),
+  // 利用を許可するユーザーID（sub）。省略・空配列は制限なし
+  allowed_subjects: z.array(SubjectId).max(100).optional(),
+});
+
+const UpdateResourceSchema = z.object({
+  name: z.string().min(1, "name is required").max(100, "name must be 100 characters or less"),
+  allowed_scopes: z.array(ScopeToken).min(1, "allowed_scopes must not be empty").max(50),
+  allowed_subjects: z.array(SubjectId).max(100),
 });
 
 function toResponse(resource: ResourceServer) {
@@ -47,6 +62,7 @@ function toResponse(resource: ResourceServer) {
     uri: resource.uri,
     name: resource.name,
     allowed_scopes: resource.allowed_scopes,
+    allowed_subjects: resource.allowed_subjects,
     owner_user_id: resource.owner_user_id,
     created_at: resource.created_at,
     updated_at: resource.updated_at,
@@ -102,17 +118,59 @@ app.post("/", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
       uri: normalized,
       name: body.name.trim(),
       allowedScopes: JSON.stringify(body.allowed_scopes),
+      allowedSubjects: JSON.stringify(body.allowed_subjects ?? []),
       ownerUserId: c.get("user").sub,
     });
     await logAdminAudit(c, {
       action: "resource.create",
       targetType: "resource_server",
       targetId: resource.id,
-      details: { uri: resource.uri, allowed_scopes: body.allowed_scopes },
+      details: {
+        uri: resource.uri,
+        allowed_scopes: body.allowed_scopes,
+        allowed_subjects: body.allowed_subjects ?? [],
+      },
     });
     return c.json({ data: toResponse(resource) }, 201);
   } catch (err) {
     resourcesLogger.error("[resources] Failed to create resource server", err);
+    return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
+  }
+});
+
+// PUT /api/resources/:id
+app.put("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) => {
+  const id = c.req.param("id");
+  const result = await parseJsonBody(c, UpdateResourceSchema);
+  if (!result.ok) return result.response;
+  const body = result.data;
+
+  try {
+    const existing = await findResourceServerById(c.env.DB, id);
+    if (!existing) {
+      return c.json(restErrorBody("NOT_FOUND", "Resource server not found"), 404);
+    }
+    const resource = await updateResourceServer(c.env.DB, id, {
+      name: body.name.trim(),
+      allowedScopes: JSON.stringify(body.allowed_scopes),
+      allowedSubjects: JSON.stringify(body.allowed_subjects),
+    });
+    if (!resource) {
+      return c.json(restErrorBody("NOT_FOUND", "Resource server not found"), 404);
+    }
+    await logAdminAudit(c, {
+      action: "resource.update",
+      targetType: "resource_server",
+      targetId: id,
+      details: {
+        uri: resource.uri,
+        allowed_scopes: body.allowed_scopes,
+        allowed_subjects: body.allowed_subjects,
+      },
+    });
+    return c.json({ data: toResponse(resource) });
+  } catch (err) {
+    resourcesLogger.error("[resources] Failed to update resource server", err);
     return c.json(restErrorBody("INTERNAL_ERROR", "Internal server error"), 500);
   }
 });
@@ -125,12 +183,20 @@ app.delete("/:id", authMiddleware, adminMiddleware, csrfMiddleware, async (c) =>
     if (!resource) {
       return c.json(restErrorBody("NOT_FOUND", "Resource server not found"), 404);
     }
+    // 削除と同時に、この resource に束縛された refresh token を全て失効させる。
+    // 失効させないと削除後も refresh で同じ aud のトークンが新規発行され続ける。
+    // 失効は永続的なので、同 URI を再登録しても旧 grant は復活しない。
+    const revokedCount = await revokeRefreshTokensByResource(
+      c.env.DB,
+      resource.uri,
+      "resource_delete",
+    );
     await deleteResourceServer(c.env.DB, id);
     await logAdminAudit(c, {
       action: "resource.delete",
       targetType: "resource_server",
       targetId: id,
-      details: { uri: resource.uri },
+      details: { uri: resource.uri, revoked_refresh_tokens: revokedCount },
     });
     return c.body(null, 204);
   } catch (err) {

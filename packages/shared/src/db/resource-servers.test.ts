@@ -4,6 +4,7 @@ import {
   findResourceServerByUri,
   listResourceServers,
   createResourceServer,
+  updateResourceServer,
   deleteResourceServer,
 } from "./resource-servers";
 import type { ResourceServer } from "../types";
@@ -14,6 +15,7 @@ const baseResource: ResourceServer = {
   uri: "https://dots-events.0g0.xyz/mcp",
   name: "dots-events",
   allowed_scopes: '["events:read","events:subscribe"]',
+  allowed_subjects: "[]",
   owner_user_id: "user-1",
   created_at: "2024-01-01T00:00:00Z",
   updated_at: "2024-01-01T00:00:00Z",
@@ -61,6 +63,52 @@ describe("createResourceServer", () => {
       ownerUserId: "user-1",
     });
     expect(result).toEqual(baseResource);
+  });
+
+  it("allowedSubjects を指定すると INSERT に含まれる", async () => {
+    const restricted: ResourceServer = { ...baseResource, allowed_subjects: '["user-1"]' };
+    const db = makeD1Mock(restricted);
+    const result = await createResourceServer(db, {
+      id: "rs-1",
+      uri: "https://dots-events.0g0.xyz/mcp",
+      name: "dots-events",
+      allowedScopes: '["events:read","events:subscribe"]',
+      allowedSubjects: '["user-1"]',
+      ownerUserId: "user-1",
+    });
+    expect(result.allowed_subjects).toBe('["user-1"]');
+    expect(db._stmt.bind).toHaveBeenCalledWith(
+      "rs-1",
+      "https://dots-events.0g0.xyz/mcp",
+      "dots-events",
+      '["events:read","events:subscribe"]',
+      '["user-1"]',
+      "user-1",
+    );
+  });
+});
+
+describe("updateResourceServer", () => {
+  it("name / allowed_scopes / allowed_subjects を更新して返す", async () => {
+    const updated: ResourceServer = {
+      ...baseResource,
+      name: "renamed",
+      allowed_scopes: '["events:read"]',
+      allowed_subjects: '["user-1","user-2"]',
+    };
+    const db = makeD1Mock(updated);
+    const result = await updateResourceServer(db, "rs-1", {
+      name: "renamed",
+      allowedScopes: '["events:read"]',
+      allowedSubjects: '["user-1","user-2"]',
+    });
+    expect(result).toEqual(updated);
+    expect(db._stmt.bind).toHaveBeenCalledWith(
+      "renamed",
+      '["events:read"]',
+      '["user-1","user-2"]',
+      "rs-1",
+    );
   });
 });
 

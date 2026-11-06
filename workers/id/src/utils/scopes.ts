@@ -8,7 +8,9 @@
  * なければ resource 向けスコープは一切付与されない）。
  *
  * - requestedScope がある場合: リソースの許可スコープに含まれるもののみ残す
- * - requestedScope がない場合: リソースの許可スコープ全体をデフォルトとする
+ * - requestedScope がない場合: resource スコープは付与しない（undefined）。
+ *   省略を理由にリソースの全スコープを既定付与することはしない
+ *   （resource スコープは明示的に要求されたものだけが付与される）。
  * - 有効なスコープが残らない場合は undefined（呼び出し側で invalid_scope）
  */
 export function resolveResourceScope(
@@ -17,10 +19,49 @@ export function resolveResourceScope(
 ): string | undefined {
   const allowed = parseAllowedScopes(resourceAllowedScopesJson);
   if (allowed.length === 0) return undefined;
-  if (!requestedScope) return allowed.join(" ");
+  if (!requestedScope) return undefined;
   const requested = requestedScope.split(" ").filter(Boolean);
+  if (requested.length === 0) return undefined;
   const valid = requested.filter((s) => allowed.includes(s));
   return valid.length > 0 ? valid.join(" ") : undefined;
+}
+
+/**
+ * resource_servers.allowed_subjects（JSON 配列文字列）をパースする。
+ *
+ * - 空配列は「制限なし」を表す（parseAllowedSubjects の戻り値も空配列）。
+ * - JSON パース失敗・配列でない値・文字列でない要素が混ざる場合は
+ *   null を返し、呼び出し側でフェイルクローズドに扱う。
+ */
+export function parseAllowedSubjects(
+  allowedSubjectsJson: string | null | undefined,
+): string[] | null {
+  if (allowedSubjectsJson == null) return [];
+  try {
+    const subjects = JSON.parse(allowedSubjectsJson) as unknown;
+    if (!Array.isArray(subjects)) return null;
+    if (!subjects.every((s): s is string => typeof s === "string" && s.length > 0)) return null;
+    return subjects;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * リソースサーバーの利用者制限（allowed_subjects）に対して subject を照合する。
+ *
+ * - allowed_subjects が空（未設定）なら制限なし → 全ユーザーを許可
+ * - 設定されている場合は、配列に含まれる subject（ユーザー ID）のみ許可
+ * - 壊れた設定値はフェイルクローズド（誰も許可しない）
+ */
+export function isSubjectAllowedForResource(
+  resource: { allowed_subjects?: string | null },
+  subject: string,
+): boolean {
+  const subjects = parseAllowedSubjects(resource.allowed_subjects);
+  if (subjects === null) return false;
+  if (subjects.length === 0) return true;
+  return subjects.includes(subject);
 }
 
 /**

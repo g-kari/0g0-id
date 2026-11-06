@@ -18,6 +18,7 @@ import {
   countUsersAuthorizedForService,
   revokeUserServiceTokens,
   revokeAllServiceTokens,
+  revokeRefreshTokensByResource,
   listActiveSessionsByUserId,
   revokeOtherUserTokens,
   getServiceTokenStats,
@@ -474,6 +475,33 @@ describe("revokeAllServiceTokens", () => {
     await revokeAllServiceTokens(db, "service-1", "service_delete");
     const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
     expect(stmt.bind).toHaveBeenCalledWith("service_delete", "service-1");
+  });
+});
+
+describe("revokeRefreshTokensByResource", () => {
+  it("失効したトークン数を返す", async () => {
+    const db = makeD1Mock(null, [], 3);
+    const result = await revokeRefreshTokensByResource(
+      db,
+      "https://dots-events.0g0.xyz/mcp",
+      "resource_delete",
+    );
+    expect(result).toBe(3);
+  });
+
+  it("SQLは resource = ? かつ revoked_at IS NULL で対象を絞る（既失効は触らない）", async () => {
+    const db = makeD1Mock(null, [], 1);
+    await revokeRefreshTokensByResource(db, "https://dots-events.0g0.xyz/mcp");
+    const sql: string = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sql).toContain("resource = ?");
+    expect(sql).toContain("revoked_at IS NULL");
+  });
+
+  it("reason と resource URI で bind を呼ぶ", async () => {
+    const db = makeD1Mock(null, [], 2);
+    await revokeRefreshTokensByResource(db, "https://dots-events.0g0.xyz/mcp", "resource_delete");
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith("resource_delete", "https://dots-events.0g0.xyz/mcp");
   });
 });
 

@@ -1,5 +1,12 @@
-import { sha256, findRefreshTokenByHash, findUserById, createLogger } from "@0g0-id/shared";
+import {
+  sha256,
+  findRefreshTokenByHash,
+  findUserById,
+  findResourceServerByUri,
+  createLogger,
+} from "@0g0-id/shared";
 import { buildTokenResponse } from "../../utils/token-pair";
+import { resolveResourceScope, isSubjectAllowedForResource } from "../../utils/scopes";
 import { attemptUnrevokeToken } from "../../utils/token-recovery";
 import {
   validateAndRevokeRefreshToken,
@@ -89,7 +96,58 @@ export async function handleRefreshTokenGrant(
 
   // スコープ引き継ぎ
   // A service capability is not a user grant. Missing/empty legacy scope stays minimal.
-  const refreshScope = storedToken.scope || "openid";
+  let refreshScope = storedToken.scope || "openid";
+
+  // RFC 8707: resource 束縛トークンは更新のたびに現在の登録状態で再検証する。
+  // 発行時点の保存済み scope / resource を無条件に引き継がない。
+  if (storedToken.resource) {
+    // リクエスト側 resource が保存済みと異なる場合は明示拒否する
+    // （黙って別 aud のトークンに化けることを防ぐ）。提示トークンは
+    // クライアントの誤りで消費されただけなので失効を取り消して返す。
+    const requestedResource = params["resource"];
+    if (requestedResource !== undefined && requestedResource !== storedToken.resource) {
+      await attemptUnrevokeToken(c.env.DB, storedToken.id, "[token] resource mismatch 後");
+      return c.json(
+        {
+          error: "invalid_grant",
+          error_description: "resource does not match the granted resource",
+        },
+        400,
+      );
+    }
+    // resource 登録が削除されていたら新規発行しない
+    // （削除時は該当トークンも失効されるが、二重に防御する）
+    const resourceServer = await findResourceServerByUri(c.env.DB, storedToken.resource);
+    if (!resourceServer) {
+      return c.json(
+        {
+          error: "invalid_grant",
+          error_description: "resource is no longer a registered resource server",
+        },
+        400,
+      );
+    }
+    // 利用者制限（allowed_subjects）を現在の設定で照合する
+    if (!isSubjectAllowedForResource(resourceServer, user.id)) {
+      return c.json(
+        {
+          error: "invalid_grant",
+          error_description: "subject is not allowed to use this resource",
+        },
+        400,
+      );
+    }
+    // scope は現在の allowed_scopes を上限として切り詰める。
+    // 有効な scope が残らなければ発行しない。
+    const narrowedScope = resolveResourceScope(storedToken.scope, resourceServer.allowed_scopes);
+    if (narrowedScope === undefined) {
+      return c.json(
+        { error: "invalid_scope", error_description: "No valid scope for this resource" },
+        400,
+      );
+    }
+    refreshScope = narrowedScope;
+  }
 
   const issueResult = await issueTokenPairWithRecovery(
     c.env.DB,

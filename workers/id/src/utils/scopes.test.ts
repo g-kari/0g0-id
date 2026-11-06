@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vite-plus/test";
 import {
   parseAllowedScopes,
+  parseAllowedSubjects,
+  isSubjectAllowedForResource,
   resolveEffectiveScope,
   resolveResourceScope,
   validateNonce,
@@ -24,18 +26,60 @@ describe("resolveResourceScope", () => {
     expect(resolveResourceScope("profile email", resourceScopes)).toBeUndefined();
   });
 
-  it("スコープ未指定ならリソースの許可スコープ全体をデフォルトにする", () => {
-    expect(resolveResourceScope(undefined, resourceScopes)).toBe(
-      "events:read events:subscribe requests:read requests:update",
-    );
-    expect(resolveResourceScope(null, resourceScopes)).toBe(
-      "events:read events:subscribe requests:read requests:update",
-    );
+  it("スコープ未指定では resource スコープを付与しない（全スコープ既定付与の廃止）", () => {
+    expect(resolveResourceScope(undefined, resourceScopes)).toBeUndefined();
+    expect(resolveResourceScope(null, resourceScopes)).toBeUndefined();
+    expect(resolveResourceScope("", resourceScopes)).toBeUndefined();
+    expect(resolveResourceScope("   ", resourceScopes)).toBeUndefined();
   });
 
   it("リソースの許可スコープが空なら undefined（フェイルクローズド）", () => {
     expect(resolveResourceScope("events:read", "[]")).toBeUndefined();
     expect(resolveResourceScope(undefined, "[]")).toBeUndefined();
+  });
+});
+
+describe("parseAllowedSubjects", () => {
+  it("JSON配列をパースする", () => {
+    expect(parseAllowedSubjects('["user-1","user-2"]')).toEqual(["user-1", "user-2"]);
+  });
+
+  it("空配列は制限なしとして空配列を返す", () => {
+    expect(parseAllowedSubjects("[]")).toEqual([]);
+  });
+
+  it("null / undefined は制限なしとして空配列を返す", () => {
+    expect(parseAllowedSubjects(null)).toEqual([]);
+    expect(parseAllowedSubjects(undefined)).toEqual([]);
+  });
+
+  it("不正な値は null を返す（フェイルクローズド判定用）", () => {
+    expect(parseAllowedSubjects("invalid")).toBeNull();
+    expect(parseAllowedSubjects('"user-1"')).toBeNull();
+    expect(parseAllowedSubjects('["user-1", 42]')).toBeNull();
+    expect(parseAllowedSubjects('[""]')).toBeNull();
+  });
+});
+
+describe("isSubjectAllowedForResource", () => {
+  it("allowed_subjects が空なら全ユーザーを許可する", () => {
+    expect(isSubjectAllowedForResource({ allowed_subjects: "[]" }, "user-9")).toBe(true);
+    expect(isSubjectAllowedForResource({ allowed_subjects: null }, "user-9")).toBe(true);
+    expect(isSubjectAllowedForResource({}, "user-9")).toBe(true);
+  });
+
+  it("制限付き resource では許可された subject のみ通す", () => {
+    const resource = { allowed_subjects: '["user-1","user-2"]' };
+    expect(isSubjectAllowedForResource(resource, "user-1")).toBe(true);
+    expect(isSubjectAllowedForResource(resource, "user-2")).toBe(true);
+    expect(isSubjectAllowedForResource(resource, "user-3")).toBe(false);
+  });
+
+  it("壊れた allowed_subjects はフェイルクローズド（誰も許可しない）", () => {
+    expect(isSubjectAllowedForResource({ allowed_subjects: "not-json" }, "user-1")).toBe(false);
+    expect(isSubjectAllowedForResource({ allowed_subjects: '["user-1", 42]' }, "user-1")).toBe(
+      false,
+    );
   });
 });
 

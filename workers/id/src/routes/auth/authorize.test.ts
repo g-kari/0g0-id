@@ -70,6 +70,7 @@ describe("GET /auth/authorize", () => {
         uri: "https://dots-events.0g0.xyz/mcp",
         name: "dots-events",
         allowed_scopes: '["events:read","events:subscribe"]',
+        allowed_subjects: "[]",
         owner_user_id: "user-1",
         created_at: "2024-01-01T00:00:00Z",
         updated_at: "2024-01-01T00:00:00Z",

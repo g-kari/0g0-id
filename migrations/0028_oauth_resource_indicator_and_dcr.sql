@@ -14,6 +14,9 @@ CREATE TABLE resource_servers (
   uri TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
   allowed_scopes TEXT NOT NULL DEFAULT '[]',
+  -- 利用を許可するユーザーID（sub）の JSON 配列。空配列は制限なし。
+  -- 設定時は認可・トークン発行・更新の各段階で subject を照合する。
+  allowed_subjects TEXT NOT NULL DEFAULT '[]',
   owner_user_id TEXT NOT NULL REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))

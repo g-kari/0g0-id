@@ -12,6 +12,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
       .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
     timingSafeEqual: vi.fn(),
     findUserById: vi.fn(),
+    findResourceServerByUri: vi.fn(),
     tryBootstrapAdmin: vi.fn(),
     generateToken: vi.fn(),
     sha256: vi.fn(),
@@ -53,11 +54,13 @@ vi.mock("../../utils/auth-helpers", () => ({
   handleProviderLink: vi.fn(),
   validateProviderCredentials: vi.fn(),
   isAllowedRedirectTo: vi.fn(),
+  validateServiceFinalRedirect: vi.fn(),
 }));
 
 import {
   timingSafeEqual,
   findUserById,
+  findResourceServerByUri,
   tryBootstrapAdmin,
   generateToken,
   sha256,
@@ -76,6 +79,7 @@ import {
   handleProviderLink,
   validateProviderCredentials,
   isAllowedRedirectTo,
+  validateServiceFinalRedirect,
 } from "../../utils/auth-helpers";
 import { handleCallback } from "./callback";
 
@@ -550,6 +554,164 @@ describe("GET /auth/callback", () => {
       const body = await res.json<{ error: { code: string; message: string } }>();
       expect(body.error.code).toBe("BAD_REQUEST");
       expect(body.error.message).toBe("Invalid redirect URL");
+    });
+  });
+
+  // =====================
+  // service 付きフローの最終リダイレクト確認
+  // =====================
+  describe("service 付きフロー（finalizeLogin）", () => {
+    const serviceStateData = {
+      ...mockStateData,
+      serviceId: "svc-1",
+      redirectTo: "https://chatgpt.com/connector/oauth/callback",
+    };
+
+    it("外部 HTTPS callback（登録済み）→ BFF チェックを使わず 302 で通る", async () => {
+      setupSuccessPath();
+      vi.mocked(parseStateFromCookie).mockResolvedValue(serviceStateData);
+      vi.mocked(validateServiceFinalRedirect).mockResolvedValue(true);
+      // BFF 向けチェックなら落ちるドメインでも、service フローでは使わない
+      vi.mocked(isAllowedRedirectTo).mockReturnValue(false);
+
+      const res = await makeRequest(
+        { code: "auth-code", state: "id-state-123" },
+        {
+          "__Host-oauth-state": "signed-state-cookie",
+          "__Host-oauth-pkce": "signed-pkce-cookie",
+        },
+      );
+      expect(res.status).toBe(302);
+      const location = res.headers.get("Location")!;
+      expect(location).toContain("https://chatgpt.com/connector/oauth/callback");
+      expect(location).toContain("code=auth-code-token");
+      expect(vi.mocked(validateServiceFinalRedirect)).toHaveBeenCalledWith(
+        mockEnv.DB,
+        "svc-1",
+        "https://chatgpt.com/connector/oauth/callback",
+      );
+    });
+
+    it("loopback http callback（登録済み）→ 302 で通る", async () => {
+      setupSuccessPath();
+      vi.mocked(parseStateFromCookie).mockResolvedValue({
+        ...serviceStateData,
+        redirectTo: "http://localhost:8080/callback",
+      });
+      vi.mocked(validateServiceFinalRedirect).mockResolvedValue(true);
+
+      const res = await makeRequest(
+        { code: "auth-code", state: "id-state-123" },
+        {
+          "__Host-oauth-state": "signed-state-cookie",
+          "__Host-oauth-pkce": "signed-pkce-cookie",
+        },
+      );
+      expect(res.status).toBe(302);
+      const location = res.headers.get("Location")!;
+      expect(location).toContain("http://localhost:8080/callback");
+    });
+
+    it("service の登録 URI と一致しない → 400 BAD_REQUEST", async () => {
+      setupSuccessPath();
+      vi.mocked(parseStateFromCookie).mockResolvedValue(serviceStateData);
+      vi.mocked(validateServiceFinalRedirect).mockResolvedValue(false);
+
+      const res = await makeRequest(
+        { code: "auth-code", state: "id-state-123" },
+        {
+          "__Host-oauth-state": "signed-state-cookie",
+          "__Host-oauth-pkce": "signed-pkce-cookie",
+        },
+      );
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string; message: string } }>();
+      expect(body.error.code).toBe("BAD_REQUEST");
+      expect(body.error.message).toBe("Invalid redirect URL");
+    });
+  });
+
+  // =====================
+  // resource 付きフローの subject 照合（認可段階）
+  // =====================
+  describe("resource 付きフロー（finalizeLogin）", () => {
+    const RESOURCE_URI = "https://dots-events.0g0.xyz/mcp";
+    const resourceStateData = {
+      ...mockStateData,
+      serviceId: "svc-1",
+      redirectTo: "https://chatgpt.com/connector/oauth/callback",
+      resource: RESOURCE_URI,
+    };
+    const baseResourceServer = {
+      id: "rs-1",
+      uri: RESOURCE_URI,
+      name: "dots-events",
+      allowed_scopes: '["events:read","events:subscribe"]',
+      owner_user_id: "admin-1",
+      created_at: "2024-01-01T00:00:00Z",
+      updated_at: "2024-01-01T00:00:00Z",
+    };
+
+    it("利用者制限で許可されていない subject → 403 FORBIDDEN（コードを発行しない）", async () => {
+      setupSuccessPath();
+      vi.mocked(parseStateFromCookie).mockResolvedValue(resourceStateData);
+      vi.mocked(findResourceServerByUri).mockResolvedValue({
+        ...baseResourceServer,
+        allowed_subjects: '["someone-else"]',
+      });
+
+      const res = await makeRequest(
+        { code: "auth-code", state: "id-state-123" },
+        {
+          "__Host-oauth-state": "signed-state-cookie",
+          "__Host-oauth-pkce": "signed-pkce-cookie",
+        },
+      );
+      expect(res.status).toBe(403);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe("FORBIDDEN");
+      expect(vi.mocked(createAuthCode)).not.toHaveBeenCalled();
+    });
+
+    it("利用者制限で許可された subject → コードを発行して 302", async () => {
+      setupSuccessPath();
+      vi.mocked(parseStateFromCookie).mockResolvedValue(resourceStateData);
+      vi.mocked(findResourceServerByUri).mockResolvedValue({
+        ...baseResourceServer,
+        allowed_subjects: '["user-1"]',
+      });
+      vi.mocked(validateServiceFinalRedirect).mockResolvedValue(true);
+
+      const res = await makeRequest(
+        { code: "auth-code", state: "id-state-123" },
+        {
+          "__Host-oauth-state": "signed-state-cookie",
+          "__Host-oauth-pkce": "signed-pkce-cookie",
+        },
+      );
+      expect(res.status).toBe(302);
+      expect(vi.mocked(createAuthCode)).toHaveBeenCalledWith(
+        mockEnv.DB,
+        expect.objectContaining({ resource: RESOURCE_URI }),
+      );
+    });
+
+    it("resource 登録が削除済み → 400 BAD_REQUEST（コードを発行しない）", async () => {
+      setupSuccessPath();
+      vi.mocked(parseStateFromCookie).mockResolvedValue(resourceStateData);
+      vi.mocked(findResourceServerByUri).mockResolvedValue(null);
+
+      const res = await makeRequest(
+        { code: "auth-code", state: "id-state-123" },
+        {
+          "__Host-oauth-state": "signed-state-cookie",
+          "__Host-oauth-pkce": "signed-pkce-cookie",
+        },
+      );
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string } }>();
+      expect(body.error.code).toBe("BAD_REQUEST");
+      expect(vi.mocked(createAuthCode)).not.toHaveBeenCalled();
     });
   });
 

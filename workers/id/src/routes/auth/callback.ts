@@ -4,6 +4,7 @@ import type { IdpEnv, OAuthStateCookieData, TokenPayload, User } from "@0g0-id/s
 import {
   timingSafeEqual,
   findUserById,
+  findResourceServerByUri,
   tryBootstrapAdmin,
   generateToken,
   sha256,
@@ -27,7 +28,9 @@ import {
   handleProviderLink,
   validateProviderCredentials,
   isAllowedRedirectTo,
+  validateServiceFinalRedirect,
 } from "../../utils/auth-helpers";
+import { isSubjectAllowedForResource } from "../../utils/scopes";
 
 const authLogger = createLogger("auth");
 
@@ -260,6 +263,27 @@ async function finalizeLogin(
     authLogger.error("[login-event] Failed to record login event", err);
   }
 
+  // RFC 8707: resource 付きフローでは、認可コードを発行する段階でも
+  // リソースの現行登録と利用者制限（allowed_subjects）を照合する。
+  // 認可エンドポイント時点ではユーザーが確定しないため、この最終段が
+  // 認可段階の実施点になる（トークン発行・更新でも再照合する）。
+  if (stateData.resource) {
+    const resourceServer = await findResourceServerByUri(c.env.DB, stateData.resource);
+    if (!resourceServer) {
+      authLogger.error("[callback] Resource is no longer registered", {
+        resource: stateData.resource,
+      });
+      return c.json(restErrorBody("BAD_REQUEST", "Resource is no longer registered"), 400);
+    }
+    if (!isSubjectAllowedForResource(resourceServer, user.id)) {
+      authLogger.warn("[callback] Subject not allowed for resource", {
+        resource: stateData.resource,
+        userId: user.id,
+      });
+      return c.json(restErrorBody("FORBIDDEN", "You are not allowed to use this resource"), 403);
+    }
+  }
+
   const authCode = generateToken(32);
   const codeHash = await sha256(authCode);
   const expiresAt = new Date(Date.now() + 60 * 1000).toISOString();
@@ -284,9 +308,17 @@ async function finalizeLogin(
     return c.json(restErrorBody("INTERNAL_ERROR", "Failed to create authorization code"), 500);
   }
 
-  if (!isAllowedRedirectTo(stateData.redirectTo, c.env.IDP_ORIGIN, c.env.EXTRA_BFF_ORIGINS)) {
-    authLogger.error("[callback] Redirect URL failed allowlist check", {
+  // 最終リダイレクト先の確認はフローで分ける:
+  // - service 付きフロー: その service に登録された redirect URI との一致で確認する
+  //   （BFF 向け許可リストでは DCR で受理した外部 callback が弾かれてしまうため）
+  // - BFF フロー: 従来どおり同一登録可能ドメイン / EXTRA_BFF_ORIGINS で確認する
+  const redirectAllowed = stateData.serviceId
+    ? await validateServiceFinalRedirect(c.env.DB, stateData.serviceId, stateData.redirectTo)
+    : isAllowedRedirectTo(stateData.redirectTo, c.env.IDP_ORIGIN, c.env.EXTRA_BFF_ORIGINS);
+  if (!redirectAllowed) {
+    authLogger.error("[callback] Redirect URL failed final check", {
       redirectTo: stateData.redirectTo,
+      serviceId: stateData.serviceId ?? null,
     });
     return c.json(restErrorBody("BAD_REQUEST", "Invalid redirect URL"), 400);
   }

@@ -23,6 +23,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
 vi.mock("../../utils/scopes", () => ({
   resolveEffectiveScope: vi.fn(),
   resolveResourceScope: vi.fn(),
+  isSubjectAllowedForResource: vi.fn(),
 }));
 
 vi.mock("../../utils/token-pair", () => ({
@@ -49,7 +50,7 @@ import {
   normalizeRedirectUri,
   matchRedirectUri,
 } from "@0g0-id/shared";
-import { resolveResourceScope } from "../../utils/scopes";
+import { resolveResourceScope, isSubjectAllowedForResource } from "../../utils/scopes";
 import { issueTokenPair, buildTokenResponse, issueIdToken } from "../../utils/token-pair";
 import { resolveOAuthClient } from "./utils";
 import { handleAuthorizationCodeGrant } from "./authorization-code-grant";
@@ -97,6 +98,7 @@ const mockResourceServer = {
   uri: RESOURCE_URI,
   name: "dots-events",
   allowed_scopes: '["events:read","events:subscribe","requests:read","requests:update"]',
+  allowed_subjects: "[]",
   owner_user_id: "user-1",
   created_at: "2024-01-01T00:00:00Z",
   updated_at: "2024-01-01T00:00:00Z",
@@ -156,6 +158,7 @@ describe("handleAuthorizationCodeGrant (RFC 8707 resource)", () => {
     vi.mocked(generateCodeChallenge).mockResolvedValue("challenge-value");
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(findResourceServerByUri).mockResolvedValue(mockResourceServer);
+    vi.mocked(isSubjectAllowedForResource).mockReturnValue(true);
     vi.mocked(resolveResourceScope).mockReturnValue("events:read events:subscribe");
     vi.mocked(issueTokenPair).mockResolvedValue({
       accessToken: "access-token",
@@ -225,5 +228,40 @@ describe("handleAuthorizationCodeGrant (RFC 8707 resource)", () => {
     const body = await res.json<Record<string, unknown>>();
     expect(body.error).toBe("invalid_scope");
     expect(issueTokenPair).not.toHaveBeenCalled();
+  });
+
+  it("利用者制限で許可されていない subject → 400 invalid_grant（発行しない）", async () => {
+    vi.mocked(findResourceServerByUri).mockResolvedValue({
+      ...mockResourceServer,
+      allowed_subjects: '["someone-else"]',
+    });
+    vi.mocked(isSubjectAllowedForResource).mockReturnValue(false);
+    const res = await handleAuthorizationCodeGrant(createMockContext(), {
+      ...baseParams,
+      resource: RESOURCE_URI,
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<Record<string, unknown>>();
+    expect(body.error).toBe("invalid_grant");
+    expect(body.error_description).toContain("subject is not allowed");
+    expect(isSubjectAllowedForResource).toHaveBeenCalledWith(
+      expect.objectContaining({ allowed_subjects: '["someone-else"]' }),
+      "user-1",
+    );
+    expect(issueTokenPair).not.toHaveBeenCalled();
+  });
+
+  it("利用者制限で許可された subject → 通常どおり発行する", async () => {
+    vi.mocked(findResourceServerByUri).mockResolvedValue({
+      ...mockResourceServer,
+      allowed_subjects: '["user-1"]',
+    });
+    vi.mocked(isSubjectAllowedForResource).mockReturnValue(true);
+    const res = await handleAuthorizationCodeGrant(createMockContext(), {
+      ...baseParams,
+      resource: RESOURCE_URI,
+    });
+    expect(res.status).toBe(200);
+    expect(issueTokenPair).toHaveBeenCalled();
   });
 });

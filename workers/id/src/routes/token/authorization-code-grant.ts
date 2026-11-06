@@ -9,7 +9,11 @@ import {
   matchRedirectUri,
   createLogger,
 } from "@0g0-id/shared";
-import { resolveEffectiveScope, resolveResourceScope } from "../../utils/scopes";
+import {
+  resolveEffectiveScope,
+  resolveResourceScope,
+  isSubjectAllowedForResource,
+} from "../../utils/scopes";
 import { issueTokenPair, buildTokenResponse, issueIdToken } from "../../utils/token-pair";
 import { type TokenHandlerContext, resolveOAuthClient } from "./utils";
 
@@ -137,6 +141,17 @@ export async function handleAuthorizationCodeGrant(
           {
             error: "invalid_grant",
             error_description: "resource is no longer a registered resource server",
+          },
+          400,
+        );
+      }
+      // 利用者制限（allowed_subjects）が設定されているリソースでは、
+      // 許可された subject 以外には発行しない（登録＝全員許可にしない）
+      if (!isSubjectAllowedForResource(resourceServer, user.id)) {
+        return c.json(
+          {
+            error: "invalid_grant",
+            error_description: "subject is not allowed to use this resource",
           },
           400,
         );

@@ -40,6 +40,12 @@ export interface ResourceServer {
   uri: string;
   name: string;
   allowed_scopes: string;
+  /**
+   * 利用を許可するユーザーの ID（sub）の JSON 配列。
+   * 空配列は「制限なし」（全ユーザーが利用可）。
+   * 設定されている場合、認可・トークン発行・更新の各段階で照合される。
+   */
+  allowed_subjects: string;
   owner_user_id: string;
   created_at: string;
   updated_at: string;

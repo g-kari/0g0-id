@@ -23,6 +23,7 @@ export type AuditAction =
   | "service.owner_transferred"
   | "service.user_access_revoked"
   | "resource.create"
+  | "resource.update"
   | "resource.delete"
   | "user.lockout_clear";
 
