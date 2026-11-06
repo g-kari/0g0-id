@@ -51,16 +51,14 @@ app.get(
     }
 
     return c.json({
-      data: services.map(
-        (s): ServiceSummary => ({
-          id: s.id,
-          name: s.name,
-          client_id: s.client_id,
-          allowed_scopes: s.allowed_scopes,
-          owner_user_id: s.owner_user_id,
-          created_at: s.created_at,
-        }),
-      ),
+      data: services.map((s): ServiceSummary => ({
+        id: s.id,
+        name: s.name,
+        client_id: s.client_id,
+        allowed_scopes: s.allowed_scopes,
+        owner_user_id: s.owner_user_id,
+        created_at: s.created_at,
+      })),
       total,
       limit,
       offset,
