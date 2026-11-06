@@ -420,6 +420,8 @@ describe("handleRefreshTokenGrant", () => {
       ...mockStoredToken,
       scope: "events:read requests:update",
       resource: RESOURCE_URI,
+      // 現行形式のトークンは発行時の登録世代（mockResourceServer の rs-1）に固定されている
+      resource_server_id: "rs-1",
     };
     const mockResourceServer = {
       id: "rs-1",
@@ -569,22 +571,24 @@ describe("handleRefreshTokenGrant", () => {
       );
     });
 
-    it("移行前トークン（resource_server_id なし）は現世代を採用して発行する", async () => {
+    it("旧形式トークン（resource_server_id なし）→ 400 invalid_grant（現世代を採用しない）", async () => {
       setupResourceRefresh();
+      // 削除→再登録後に残った旧形式トークンを想定: 現在の登録は rs-1 だが
+      // トークン側に世代が固定されていないため、結びつけを許さない
+      vi.mocked(validateAndRevokeRefreshToken).mockResolvedValue({
+        ok: true,
+        storedToken: { ...mockResourceStoredToken, resource_server_id: null },
+      });
       const c = createMockContext();
       const res = await handleRefreshTokenGrant(c, { refresh_token: "valid-refresh-token" });
 
-      expect(res.status).toBe(200);
-      expect(issueTokenPairWithRecovery).toHaveBeenCalledWith(
-        mockEnv.DB,
-        mockEnv,
-        mockUser,
-        expect.objectContaining({ resource: RESOURCE_URI, resourceServerId: "rs-1" }),
-        expect.any(String),
-        expect.any(String),
-        expect.anything(),
-        "handleRefreshTokenGrant",
+      expect(res.status).toBe(400);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body.error).toBe("invalid_grant");
+      expect(body.error_description).toContain(
+        "resource registration that issued this token no longer exists",
       );
+      expect(issueTokenPairWithRecovery).not.toHaveBeenCalled();
     });
 
     it("検証通過後に削除され発行が世代ガードで止まった → 400 invalid_grant", async () => {

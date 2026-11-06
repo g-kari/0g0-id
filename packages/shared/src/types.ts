@@ -85,6 +85,12 @@ export interface AuthCode {
   provider: string | null;
   /** RFC 8707: 認可リクエストで指定された resource（検証済みの正規 URI） */
   resource: string | null;
+  /**
+   * 発行時点で検証した resource_servers 行の id（登録世代）。
+   * 交換時は現在の行 id と一致しなければ拒否し、削除→同 URI 再登録を
+   * 経たコードから新しい登録向けのトークンを発行させない。
+   */
+  resource_server_id: string | null;
 }
 
 export interface RefreshToken {

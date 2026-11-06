@@ -150,6 +150,22 @@ export async function handleAuthorizationCodeGrant(
           400,
         );
       }
+      // 登録世代の照合: コード発行時の resource_servers 行 id と現在の
+      // 行 id が異なれば、削除→同 URI 再登録を経ている。URI が一致しても
+      // 削除前のコードから新しい登録向けのトークンを発行しない
+      // （削除時点を失効境界にする）。
+      // 世代が記録されていない旧形式コード（resource あり・世代なし）も
+      // 照合できないため安全側で拒否する。コードの有効期間は60秒のため、
+      // 移行時に失効するのは最大で60秒分の未交換コードに限られる。
+      if (authCode.resource_server_id !== resourceServer.id) {
+        return c.json(
+          {
+            error: "invalid_grant",
+            error_description: "resource registration that issued this code no longer exists",
+          },
+          400,
+        );
+      }
       // 利用者制限（allowed_subjects）が設定されているリソースでは、
       // 許可された subject 以外には発行しない（登録＝全員許可にしない）
       if (!isSubjectAllowedForResource(resourceServer, user.id)) {

@@ -765,7 +765,8 @@ describe("GET /auth/callback", () => {
       expect(res.status).toBe(302);
       expect(vi.mocked(createAuthCode)).toHaveBeenCalledWith(
         mockEnv.DB,
-        expect.objectContaining({ resource: RESOURCE_URI }),
+        // 検証した登録世代（rs-1）がコードに固定される
+        expect.objectContaining({ resource: RESOURCE_URI, resourceServerId: "rs-1" }),
       );
     });
 

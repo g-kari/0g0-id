@@ -133,8 +133,17 @@ export async function handleRefreshTokenGrant(
     // 登録世代の照合: 発行時の resource_servers 行 id と現在の行 id が
     // 異なれば、削除→同 URI 再登録を経ている。URI が一致しても旧登録の
     // grant を新しい登録へ引き継がない（旧権限の復活防止）。
-    // 移行前トークン（resource_server_id が null）は現在の世代を取り込む。
-    if (storedToken.resource_server_id && storedToken.resource_server_id !== resourceServer.id) {
+    // 世代が記録されていない旧形式トークン（resource_server_id が null）も
+    // 拒否する。従来は「現世代を取り込む」扱いだったが、削除は通常は
+    // URI 単位の失効で旧トークンを止める一方、refresh 実行中に削除→再登録が
+    // 割り込む競合（提示トークンが rotation 失効済みで削除側の失効 sweep を
+    // すり抜け、再読込で新しい行を引く）では、取り込みが削除境界を越えて
+    // 旧 grant を新登録へ結びつけてしまうため、安全側に締める。
+    // 0028・0029 を同時に適用する初回デプロイでは resource 束縛トークン
+    // 自体が存在せず（resource 列は 0028 で新設され、発行側の issueTokenPair
+    // は世代なしの resource 束縛トークンを作らない）、影響を受けるのは
+    // 0028 のみを先行適用した環境のトークンに限られ、再認可で回復できる。
+    if (storedToken.resource_server_id !== resourceServer.id) {
       return c.json(
         {
           error: "invalid_grant",

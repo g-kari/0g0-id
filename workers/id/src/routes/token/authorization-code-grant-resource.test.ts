@@ -122,6 +122,7 @@ const mockAuthCode = {
   nonce: null,
   provider: "google",
   resource: RESOURCE_URI,
+  resource_server_id: "rs-1",
   used_at: null,
   expires_at: "2099-01-01T00:00:00Z",
   created_at: "2024-01-01T00:00:00Z",
@@ -222,6 +223,44 @@ describe("handleAuthorizationCodeGrant (RFC 8707 resource)", () => {
     expect(res.status).toBe(400);
     const body = await res.json<Record<string, unknown>>();
     expect(body.error).toBe("invalid_grant");
+    expect(issueTokenPair).not.toHaveBeenCalled();
+  });
+
+  it("コード発行後に削除→同 URI 再登録（世代が変化）→ 400 invalid_grant（新登録向けに発行しない）", async () => {
+    // コードは旧世代 rs-1 に固定されているが、現在の登録は再登録後の rs-2
+    vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
+      ...mockAuthCode,
+      resource_server_id: "rs-1",
+    });
+    vi.mocked(findResourceServerByUri).mockResolvedValue({ ...mockResourceServer, id: "rs-2" });
+    const res = await handleAuthorizationCodeGrant(createMockContext(), {
+      ...baseParams,
+      resource: RESOURCE_URI,
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<Record<string, unknown>>();
+    expect(body.error).toBe("invalid_grant");
+    expect(body.error_description).toContain(
+      "resource registration that issued this code no longer exists",
+    );
+    expect(issueTokenPair).not.toHaveBeenCalled();
+  });
+
+  it("旧形式コード（resource あり・登録世代なし）→ 400 invalid_grant（安全側で拒否）", async () => {
+    vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
+      ...mockAuthCode,
+      resource_server_id: null,
+    });
+    const res = await handleAuthorizationCodeGrant(createMockContext(), {
+      ...baseParams,
+      resource: RESOURCE_URI,
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<Record<string, unknown>>();
+    expect(body.error).toBe("invalid_grant");
+    expect(body.error_description).toContain(
+      "resource registration that issued this code no longer exists",
+    );
     expect(issueTokenPair).not.toHaveBeenCalled();
   });
 

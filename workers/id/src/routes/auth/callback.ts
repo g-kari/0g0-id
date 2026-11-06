@@ -315,6 +315,10 @@ async function finalizeLogin(
   // 認可段階の実施点になる（トークン発行・更新でも再照合する）。
   // 宛先は検証済みのため、失敗は 400 で止めずクライアントへエラーを返す
   // （RFC 6749 §4.1.2.1）。resource は service フローでのみ設定される。
+  // 認可コードへ固定する登録世代（resource 付きフローのみ）。
+  // 検証した resource_servers 行の id をコードに保存し、交換時に現在の
+  // 行と照合することで、削除→同 URI 再登録を経たコードを無効化する。
+  let resourceServerId: string | null = null;
   if (stateData.resource) {
     const resourceServer = await findResourceServerByUri(c.env.DB, stateData.resource);
     if (!resourceServer) {
@@ -340,6 +344,7 @@ async function finalizeLogin(
         "You are not allowed to use this resource",
       );
     }
+    resourceServerId = resourceServer.id;
   }
 
   const authCode = generateToken(32);
@@ -360,6 +365,7 @@ async function finalizeLogin(
       scope: stateData.scope ?? null,
       provider: stateData.provider,
       resource: stateData.resource ?? null,
+      resourceServerId,
     });
   } catch (err) {
     authLogger.error("[callback] Failed to create authorization code", err);

@@ -83,6 +83,7 @@ const mockAuthCode = {
   nonce: null,
   provider: null,
   resource: null,
+  resource_server_id: null,
   code_challenge: null,
   code_challenge_method: null,
   used_at: null,
