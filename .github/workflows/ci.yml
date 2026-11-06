@@ -34,7 +34,43 @@ jobs:
           npm --version
 
       - name: 依存パッケージインストール（ルートワークスペース）
+        id: root-install
         run: npm ci
+
+      # Temporary lock generation only; the failed frozen install remains failed.
+      - name: Generate reviewed dependency migration lockfiles
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.number == 335 && failure() && steps.root-install.outcome == 'failure' }}
+        id: migration-lockfiles
+        timeout-minutes: 5
+        run: |
+          export VP_NODE_VERSION="$(node -p 'process.versions.node')"
+          . "$HOME/.config/vite-plus/env"
+          vp --version
+          vp exec node -e 'const assert = require("node:assert/strict"); const [major, minor, patch] = process.versions.node.split(".").map(Number); console.log("Effective Node:", process.versions.node); assert(major > 22 || (major === 22 && (minor > 23 || (minor === 23 && patch >= 4))), "Node >=22.23.4 required");'
+          effective_npm="$(vp pm --version)"
+          printf 'Effective npm: %s\n' "$effective_npm"
+          test "$effective_npm" = "11.12.1"
+          vp install --lockfile-only --no-frozen-lockfile --ignore-scripts -- --no-audit --no-fund
+          for frontend in workers/admin/frontend workers/user/frontend; do
+            (
+              cd "$frontend"
+              vp install --lockfile-only --no-frozen-lockfile --ignore-scripts -- --no-audit --no-fund
+              vp pm update undici zod --package-lock-only --ignore-scripts --no-audit --no-fund
+            )
+          done
+          git diff --exit-code -- package.json packages/shared/package.json workers/*/package.json workers/*/frontend/package.json
+
+      - name: Upload three migration lockfiles for review
+        if: ${{ failure() && steps.migration-lockfiles.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: reviewed-dependency-migration-lockfiles
+          path: |
+            package-lock.json
+            workers/admin/frontend/package-lock.json
+            workers/user/frontend/package-lock.json
+          retention-days: 7
+          if-no-files-found: error
 
       - name: 依存パッケージインストール（user frontend）
         # workers/*/frontend は npm workspaces 対象外のため個別に install が必要
@@ -45,6 +81,13 @@ jobs:
       - name: 依存パッケージインストール（admin frontend）
         run: npm ci
         working-directory: workers/admin/frontend
+
+      - name: Frontend Markdown security and compatibility regression
+        timeout-minutes: 3
+        run: |
+          for frontend in admin user; do
+            ./node_modules/.bin/vp exec node scripts/check-frontend-markdown.mjs "$frontend"
+          done
 
       - name: TypeScript CLI versions and workspace checks (Node22 / TS6+TS7 isolation)
         run: node scripts/check-typescript-cli.mjs
@@ -157,8 +200,8 @@ jobs:
       - name: Cloudflare 実アプリ統合スモーク（ローカル・使い捨て状態）
         timeout-minutes: 8
         run: |
-          ./node_modules/.bin/vp exec tsx scripts/ci-app-smoke.ts --self-test
-          ./node_modules/.bin/vp exec tsx scripts/ci-app-smoke.ts
+          ./node_modules/.bin/vp exec node --import tsx scripts/ci-app-smoke.ts --self-test
+          ./node_modules/.bin/vp exec node --import tsx scripts/ci-app-smoke.ts
 
       - name: ログイン統計 UI の検証記録
         if: always()
