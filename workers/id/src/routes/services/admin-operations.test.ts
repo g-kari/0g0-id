@@ -91,6 +91,8 @@ const mockService = {
   client_secret_hash: "hash_test",
   allowed_scopes: '["profile","email"]',
   owner_user_id: "admin-001",
+  source: "admin",
+  registration_access_token_hash: null,
   created_at: "2024-01-01T00:00:00Z",
   updated_at: "2024-01-01T00:00:00Z",
 };
@@ -248,6 +250,8 @@ describe("Services Admin Operations API", () => {
       vi.mocked(transferServiceOwnership).mockResolvedValue({
         ...mockService,
         owner_user_id: USER_ID,
+        source: "admin",
+        registration_access_token_hash: null,
         updated_at: "2024-06-01T00:00:00Z",
       });
 

@@ -65,12 +65,16 @@ export async function createService(
     clientSecretHash: string;
     allowedScopes: string;
     ownerUserId: string;
+    /** 登録経路（省略時は "admin"）。RFC 7591 自己登録は "dcr" */
+    source?: string;
+    /** RFC 7592 管理用トークンのハッシュ（DCR のみ） */
+    registrationAccessTokenHash?: string | null;
   },
 ): Promise<Service> {
   const service = await db
     .prepare(
-      `INSERT INTO services (id, name, client_id, client_secret_hash, allowed_scopes, owner_user_id)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO services (id, name, client_id, client_secret_hash, allowed_scopes, owner_user_id, source, registration_access_token_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`,
     )
     .bind(
@@ -80,9 +84,48 @@ export async function createService(
       params.clientSecretHash,
       params.allowedScopes,
       params.ownerUserId,
+      params.source ?? "admin",
+      params.registrationAccessTokenHash ?? null,
     )
     .first<Service>();
   if (!service) throw new Error("Failed to create service");
+  cachePut(service);
+  return service;
+}
+
+/**
+ * RFC 7592 のクライアント構成エンドポイント用に、DCR クライアントの
+ * 表示名と許可スコープを更新する。対象は source = 'dcr' のサービスのみ。
+ */
+export async function updateDcrClientFields(
+  db: D1Database,
+  id: string,
+  fields: { name?: string; allowedScopes?: string },
+): Promise<Service | null> {
+  const sets: string[] = [];
+  const binds: unknown[] = [];
+
+  if (fields.name !== undefined) {
+    sets.push("name = ?");
+    binds.push(fields.name);
+  }
+  if (fields.allowedScopes !== undefined) {
+    sets.push("allowed_scopes = ?");
+    binds.push(fields.allowedScopes);
+  }
+  if (sets.length === 0) return null;
+
+  binds.push(id);
+  const service = await db
+    .prepare(
+      `UPDATE services SET ${sets.join(", ")}, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+       WHERE id = ? AND source = 'dcr'
+       RETURNING *`,
+    )
+    .bind(...binds)
+    .first<Service>();
+
+  if (service) cachePut(service);
   return service;
 }
 

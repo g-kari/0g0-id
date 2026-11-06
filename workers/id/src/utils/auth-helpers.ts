@@ -6,11 +6,19 @@ import {
   COOKIE_NAMES,
   PROVIDER_CREDENTIALS,
   findServiceByClientId,
+  findResourceServerByUri,
   normalizeRedirectUri,
+  isLoopbackHost,
   listRedirectUris,
   matchRedirectUri,
 } from "@0g0-id/shared";
-import type { IdpEnv, TokenPayload, User, OAuthStateCookieData } from "@0g0-id/shared";
+import type {
+  IdpEnv,
+  TokenPayload,
+  User,
+  OAuthStateCookieData,
+  ResourceServer,
+} from "@0g0-id/shared";
 import type { OAuthProvider } from "@0g0-id/shared";
 import { parse as parseDomain } from "tldts";
 
@@ -262,4 +270,63 @@ export async function validateServiceRedirectUri(
   if (!matched) return { ok: false, error: "redirect_uri not registered for this client" };
 
   return { ok: true, serviceId: service.id };
+}
+
+/**
+ * service 付きフロー（外部サービス OAuth）の最終リダイレクト先確認。
+ *
+ * BFF フロー向けの isAllowedRedirectTo（同一登録可能ドメイン / EXTRA_BFF_ORIGINS）
+ * とは判定を分ける。こちらは「その service に登録された redirect URI との一致」
+ * だけを根拠にするため、DCR で受理した外部ドメインの HTTPS callback も、
+ * 登録済みであればそのまま通る。
+ *
+ * scheme の制限は維持する:
+ * - https は登録 URI と一致すれば許可
+ * - http は明示した loopback（localhost / 127.0.0.1 / ::1）の登録 URI のみ許可
+ * - それ以外の scheme は許可しない
+ * 最終チェック自体は削除しない（オープンリダイレクト防止）。
+ */
+export async function validateServiceFinalRedirect(
+  db: D1Database,
+  serviceId: string,
+  redirectTo: string,
+): Promise<boolean> {
+  const normalized = normalizeRedirectUri(redirectTo);
+  if (!normalized) return false;
+
+  let url: URL;
+  try {
+    url = new URL(normalized);
+  } catch {
+    return false;
+  }
+  if (url.protocol === "http:") {
+    if (!isLoopbackHost(url.hostname)) return false;
+  } else if (url.protocol !== "https:") {
+    return false;
+  }
+
+  const registeredUris = await listRedirectUris(db, serviceId);
+  return registeredUris.some((ru) => matchRedirectUri(ru.uri, normalized));
+}
+
+/**
+ * RFC 8707 の resource パラメータを検証する。
+ *
+ * 正規化（https 必須・fragment 禁止・既定ポート除去は redirect URI と同じ
+ * ルールを流用）したうえで、resource_servers に登録済みの URI と完全一致
+ * した場合のみ許可する。未登録の URI を aud とするトークンは発行しない。
+ * 戻り値の uri は正規化済みの正規 URI（この値が aud になる）。
+ */
+export async function validateResourceParam(
+  db: D1Database,
+  rawResource: string,
+): Promise<{ ok: true; uri: string; resource: ResourceServer } | { ok: false; error: string }> {
+  const normalized = normalizeRedirectUri(rawResource);
+  if (!normalized) return { ok: false, error: "Invalid resource parameter" };
+
+  const resource = await findResourceServerByUri(db, normalized);
+  if (!resource) return { ok: false, error: "resource is not a registered resource server" };
+
+  return { ok: true, uri: normalized, resource };
 }
