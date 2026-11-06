@@ -43,6 +43,8 @@ jobs:
         id: migration-lockfile
         timeout-minutes: 5
         run: |
+          export VP_NODE_VERSION="$(node -p 'process.versions.node')"
+          . "$HOME/.config/vite-plus/env"
           vp --version
           vp install --lockfile-only --no-frozen-lockfile --ignore-scripts -- --no-audit --no-fund
 
