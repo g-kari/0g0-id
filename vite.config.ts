@@ -1,6 +1,7 @@
 import { defineConfig } from "vite-plus";
 
 export default defineConfig({
+  test: { clearMocks: false },
   staged: {
     "*.{ts,tsx,js,jsx}": "vp check --fix",
   },
