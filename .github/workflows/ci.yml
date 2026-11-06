@@ -52,11 +52,14 @@ jobs:
           printf 'Effective npm: %s\n' "$effective_npm"
           test "$effective_npm" = "11.12.1"
           vp install --lockfile-only --no-frozen-lockfile --ignore-scripts -- --no-audit --no-fund
+          vp update miniflare undici postcss nanoid tinypool semver tslib -- --package-lock-only --ignore-scripts --no-audit --no-fund
+          vp exec node -e 'const assert = require("node:assert/strict"); const { packages } = require("./package-lock.json"); assert.equal(packages["node_modules/miniflare"].version, "5.20261101.0-beta"); const entries = Object.entries(packages).filter(([path]) => /(^|\/)node_modules\/undici$/.test(path)); console.log("External Undici lock records:", entries.map(([path, pkg]) => [path, pkg.version])); assert(entries.length > 0); for (const [, pkg] of entries) assert.equal(pkg.version, "7.30.2");'
           for frontend in workers/admin/frontend workers/user/frontend; do
             (
               cd "$frontend"
               vp install --lockfile-only --no-frozen-lockfile --ignore-scripts -- --no-audit --no-fund
-              vp update undici zod -- --package-lock-only --ignore-scripts --no-audit --no-fund
+              vp update undici zod astro magic-string -- --package-lock-only --ignore-scripts --no-audit --no-fund
+              vp exec node -e 'const assert = require("node:assert/strict"); const path = require("node:path/posix"); const { packages } = require("./package-lock.json"); const astroPath = "node_modules/astro"; assert.equal(packages[astroPath].version, "7.4.3"); let resolved; for (let directory = astroPath; ; directory = path.dirname(directory)) { if (path.basename(directory) !== "node_modules") { const candidate = path.join(directory, "node_modules", "magic-string"); if (packages[candidate]) { resolved = candidate; break; } } if (directory === ".") break; } assert(resolved, "Astro magic-string must resolve in generated lock"); console.log("Astro magic-string lock resolution:", resolved, packages[resolved].version); assert.equal(packages[resolved].version, "1.4.3");'
             )
           done
           git diff --exit-code -- package.json packages/shared/package.json workers/*/package.json workers/*/frontend/package.json
