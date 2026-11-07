@@ -1,5 +1,5 @@
 import type { HonoRequest } from "hono";
-import type { IdpEnv, User, Service } from "@0g0-id/shared";
+import type { IdpEnv, Service } from "@0g0-id/shared";
 import { findServiceByClientId, createLogger } from "@0g0-id/shared";
 import { parseRequestBody } from "../../utils/body-parser";
 import { authenticateService } from "../../utils/service-auth";
@@ -35,31 +35,6 @@ export async function parseTokenBody(
     token_type_hint:
       typeof body["token_type_hint"] === "string" ? body["token_type_hint"] : undefined,
   };
-}
-
-/**
- * スコープに基づいてイントロスペクションレスポンスへユーザークレームを付与する。
- * refresh_token / access_token の両ブランチで共通利用。
- */
-export function applyUserClaims(
-  claims: Record<string, unknown>,
-  user: User,
-  scopes: string[],
-): void {
-  if (scopes.includes("profile")) {
-    claims["name"] = user.name;
-    claims["picture"] = user.picture;
-  }
-  if (scopes.includes("email")) {
-    claims["email"] = user.email;
-    claims["email_verified"] = user.email_verified === 1;
-  }
-  if (scopes.includes("phone")) {
-    claims["phone"] = user.phone;
-  }
-  if (scopes.includes("address")) {
-    claims["address"] = user.address;
-  }
 }
 
 /**

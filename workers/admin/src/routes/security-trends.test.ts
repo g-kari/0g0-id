@@ -220,5 +220,42 @@ describe("admin BFF — /api/security-trends", () => {
       expect(body.error.code).toBe("INVALID_PARAMETER");
       expect(idpFetch).not.toHaveBeenCalled();
     });
+    it("forwards combined filters and preserves count/paging metadata", async () => {
+      const idpFetch = mockIdp(200, { data: [], meta: { total: 51, limit: 50, offset: 50 } });
+      const app = buildApp(idpFetch);
+      const query = "user_id=user-1&country=unknown&provider=github&period=7d&limit=50&offset=50";
+      const res = await app.request(`/api/security-trends/recent-events?${query}`, {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ data: [], meta: { total: 51, limit: 50, offset: 50 } });
+      expect(new URL(vi.mocked(idpFetch).mock.calls[0][0].url).search.slice(1)).toBe(query);
+    });
+    it.each([
+      "country=bad",
+      "provider=bad",
+      "period=bad",
+      "user_id=",
+      "country=JP&country=US",
+      "offset=9007199254740992",
+      `user_id=${"a".repeat(129)}`,
+      "user=typo",
+    ])("rejects invalid filters without calling IdP: %s", async (query) => {
+      const idpFetch = vi.fn();
+      const app = buildApp(idpFetch);
+      const res = await app.request(`/api/security-trends/recent-events?${query}`, {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },
+      });
+      expect(res.status).toBe(400);
+      expect(idpFetch).not.toHaveBeenCalled();
+    });
+    it("preserves the IdP non-admin 403 response", async () => {
+      const idpFetch = mockIdp(403, { error: { code: "FORBIDDEN", message: "Admin required" } });
+      const app = buildApp(idpFetch);
+      const res = await app.request("/api/security-trends/recent-events?country=JP", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie("user")}` },
+      });
+      expect(res.status).toBe(403);
+    });
   });
 });

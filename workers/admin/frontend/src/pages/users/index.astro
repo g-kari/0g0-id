@@ -124,15 +124,19 @@ import Admin from '../../layouts/Admin.astro';
     }
   }
 
+  let usersRequestId = 0;
+
   async function loadUsers(): Promise<void> {
+    const requestId = ++usersRequestId;
     loadingEl.style.display = 'flex';
     errorEl.style.display = 'none';
     tableWrap.style.display = 'none';
 
     try {
       const status = filterEl.value;
-      const params = status !== 'all' ? `?status=${status}` : '';
+      const params = status === 'active' ? '?banned=false' : status === 'banned' ? '?banned=true' : '';
       const raw = await apiFetch<AdminUserSummary[]>(`/api/users${params}`);
+      if (requestId !== usersRequestId) return;
       const users: UserRow[] = (raw as AdminUserSummary[]).map((u) => ({
         ...u,
         status: u.banned_at ? 'banned' as const : 'active' as const,
@@ -158,10 +162,11 @@ import Admin from '../../layouts/Admin.astro';
       emptyMsg.style.display = users.length === 0 ? '' : 'none';
       tableWrap.style.display = '';
     } catch (e) {
+      if (requestId !== usersRequestId) return;
       errorEl.textContent = e instanceof Error ? e.message : '読み込みに失敗しました';
       errorEl.style.display = '';
     } finally {
-      loadingEl.style.display = 'none';
+      if (requestId === usersRequestId) loadingEl.style.display = 'none';
     }
   }
 

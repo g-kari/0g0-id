@@ -28,7 +28,6 @@ vi.mock("./utils", async (importOriginal) => {
   return {
     ...actual,
     parseTokenBody: vi.fn(),
-    applyUserClaims: vi.fn(),
   };
 });
 
@@ -41,7 +40,7 @@ import {
   isAccessTokenRevoked,
 } from "@0g0-id/shared";
 import { authenticateService } from "../../utils/service-auth";
-import { parseTokenBody, applyUserClaims } from "./utils";
+import { parseTokenBody } from "./utils";
 import { handleIntrospect } from "./introspect";
 
 // --- テスト用定数 ---
@@ -55,6 +54,8 @@ const mockService = {
   client_secret_hash: "hashed-secret",
   allowed_scopes: "openid profile email",
   owner_user_id: "user-1",
+  source: "admin",
+  registration_access_token_hash: null,
   created_at: "2024-01-01T00:00:00Z",
   updated_at: "2024-01-01T00:00:00Z",
 };
@@ -89,6 +90,8 @@ const mockRefreshToken = {
   scope: "openid profile email",
   expires_at: "2099-01-01T00:00:00Z",
   created_at: "2024-01-01T00:00:00Z",
+  resource: null,
+  resource_server_id: null,
   pairwise_sub: null,
 };
 
@@ -203,7 +206,9 @@ describe("POST /api/token/introspect", () => {
       expect(body.sub).toBe("pairwise-sub-1");
       expect(body.token_type).toBe("access_token");
       expect(body.scope).toBe("openid profile email");
-      expect(applyUserClaims).toHaveBeenCalled();
+      for (const field of ["email", "email_verified", "name", "picture", "phone", "address"]) {
+        expect(body).not.toHaveProperty(field);
+      }
     });
 
     it("JWT が revoked → {active:false}", async () => {
@@ -302,7 +307,9 @@ describe("POST /api/token/introspect", () => {
       expect(body.token_type).toBe("refresh_token");
       expect(body.scope).toBe("openid profile email");
       expect(generatePairwiseSub).toHaveBeenCalledWith("test-client", "user-1", undefined);
-      expect(applyUserClaims).toHaveBeenCalled();
+      for (const field of ["email", "email_verified", "name", "picture", "phone", "address"]) {
+        expect(body).not.toHaveProperty(field);
+      }
     });
 
     it("トークンが存在しない → null（JWTへフォールスルー）", async () => {

@@ -230,63 +230,100 @@ describe("fetchWithAuth", () => {
     expect(vi.mocked(deleteCookie)).not.toHaveBeenCalled();
   });
 
-  it("初回・refresh・retry の 3 応答すべてに Deprecation が付いていれば warn を 3 回出す", async () => {
-    // 401→refresh→retry の 3 箇所すべてで logUpstreamDeprecation が通る不変量を固定化（issue #156 Phase 5）。
+  it("初回・refresh・retry の Deprecation は詳細を省いて固定 warn を 3 回出す", async () => {
+    // 401→refresh→retry の通知を保ち、実 logger が legacy extra を出力しないことを検証する。
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const cookie = await encodeSession(mockSession, TEST_SECRET);
-    vi.mocked(getCookie).mockReturnValue(cookie);
+    try {
+      const canary = "synthetic-deprecation-person@example.invalid";
+      const oldAccessToken = "synthetic-old-access-token";
+      const oldRefreshToken = "synthetic-old-refresh-token";
+      const newAccessToken = "synthetic-new-access-token";
+      const newRefreshToken = "synthetic-new-refresh-token";
+      const session = {
+        ...mockSession,
+        access_token: oldAccessToken,
+        refresh_token: oldRefreshToken,
+        user: { ...mockSession.user, email: canary },
+      };
+      const cookie = await encodeSession(session, TEST_SECRET);
+      vi.mocked(getCookie).mockReturnValue(cookie);
 
-    const deprecationHeaders = {
-      Deprecation: "true",
-      Link: '<https://github.com/g-kari/0g0-id/issues/156>; rel="deprecation"',
-    } as const;
+      const deprecationHeaders = {
+        Deprecation: "@1792062000",
+        Link: `<https://example.invalid/deprecation?private=${canary}>; rel="deprecation"`,
+      } as const;
+      const url = `https://id.0g0.xyz/api/users/${encodeURIComponent(canary)}?private=${canary}`;
+      const { fetchWithAuth } = await import("./bff");
+      const idpFetch = vi
+        .fn()
+        // 初回: 401 + Deprecation
+        .mockResolvedValueOnce(
+          new Response("Unauthorized", { status: 401, headers: deprecationHeaders }),
+        )
+        // refresh: 200 + 新トークン + Deprecation
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              data: {
+                access_token: newAccessToken,
+                refresh_token: newRefreshToken,
+                user: session.user,
+              },
+            }),
+            { status: 200, headers: deprecationHeaders },
+          ),
+        )
+        // retry: 200 + Deprecation
+        .mockResolvedValueOnce(
+          new Response('{"data":"ok"}', { status: 200, headers: deprecationHeaders }),
+        );
+      const ctx = {
+        req: {},
+        env: {
+          IDP: { fetch: idpFetch },
+          IDP_ORIGIN: "https://id.0g0.xyz",
+          SESSION_SECRET: TEST_SECRET,
+        },
+      } as unknown as Parameters<typeof fetchWithAuth>[0];
 
-    const { fetchWithAuth } = await import("./bff");
-    const idpFetch = vi
-      .fn()
-      // 初回: 401 + Deprecation
-      .mockResolvedValueOnce(
-        new Response("Unauthorized", { status: 401, headers: deprecationHeaders }),
-      )
-      // refresh: 200 + 新トークン + Deprecation
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            data: {
-              access_token: "new-at",
-              refresh_token: "new-rt",
-              user: mockSession.user,
-            },
-          }),
-          { status: 200, headers: deprecationHeaders },
-        ),
-      )
-      // retry: 200 + Deprecation
-      .mockResolvedValueOnce(
-        new Response('{"data":"ok"}', { status: 200, headers: deprecationHeaders }),
-      );
-    const ctx = {
-      req: {},
-      env: {
-        IDP: { fetch: idpFetch },
-        IDP_ORIGIN: "https://id.0g0.xyz",
-        SESSION_SECRET: TEST_SECRET,
-      },
-    } as unknown as Parameters<typeof fetchWithAuth>[0];
+      const result = await fetchWithAuth(ctx, "__session", url);
+      expect(result.status).toBe(200);
+      expect(await result.json()).toEqual({ data: "ok" });
+      expect(idpFetch).toHaveBeenCalledTimes(3);
+      const [initial, refresh, retry] = idpFetch.mock.calls.map(([request]) => request as Request);
+      expect(initial.url).toBe(url);
+      expect(initial.headers.get("Authorization")).toBe(`Bearer ${oldAccessToken}`);
+      expect(refresh.url).toBe("https://id.0g0.xyz/auth/refresh");
+      expect(refresh.method).toBe("POST");
+      expect(await refresh.json()).toEqual({ refresh_token: oldRefreshToken });
+      expect(retry.url).toBe(url);
+      expect(retry.headers.get("Authorization")).toBe(`Bearer ${newAccessToken}`);
 
-    const result = await fetchWithAuth(ctx, "__session", "https://id.0g0.xyz/api/me");
-    expect(result.status).toBe(200);
-    const deprecationWarns = warnSpy.mock.calls.filter((call) => {
-      const payload = String(call[0] ?? "");
-      return payload.includes("upstream deprecation notice from id worker");
-    });
-    expect(deprecationWarns).toHaveLength(3);
-    // refresh の warn は path="/auth/refresh" で明示的に記録されていること
-    const refreshWarn = deprecationWarns.find((call) =>
-      String(call[0] ?? "").includes('"path":"/auth/refresh"'),
-    );
-    expect(refreshWarn).toBeDefined();
-    warnSpy.mockRestore();
+      const fixedWarn = JSON.stringify({
+        level: "warn",
+        ctx: "bff-upstream-deprecation",
+        msg: "upstream deprecation notice from id worker",
+      });
+      expect(warnSpy.mock.calls).toEqual([[fixedWarn], [fixedWarn], [fixedWarn]]);
+      const output = JSON.stringify(warnSpy.mock.calls);
+      for (const omitted of [
+        canary,
+        encodeURIComponent(canary),
+        url,
+        "/api/users/",
+        "/auth/refresh",
+        deprecationHeaders.Deprecation,
+        deprecationHeaders.Link,
+        oldAccessToken,
+        oldRefreshToken,
+        newAccessToken,
+        newRefreshToken,
+      ]) {
+        expect(output).not.toContain(omitted);
+      }
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
 

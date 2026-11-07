@@ -4,7 +4,7 @@ export default defineConfig({
   staged: {
     "*.{ts,tsx,js,jsx}": "vp check --fix",
   },
-  fmt: {},
+  fmt: { ignorePatterns: ["docs/generated/**"] },
   lint: {
     options: { typeAware: true, typeCheck: true },
     ignorePatterns: ["workers/*/frontend/.astro/**"],

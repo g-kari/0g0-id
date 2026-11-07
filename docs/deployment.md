@@ -38,9 +38,13 @@ npm run deploy:mcp     # mcp Worker（Claude Code 連携）
 | `JWT_PRIVATE_KEY`               | ES256 署名用秘密鍵（PEM）               |       —        |
 | `JWT_PUBLIC_KEY`                | ES256 検証用公開鍵（PEM）               |       —        |
 | `COOKIE_SECRET`                 | Cookie 署名鍵                           |       —        |
-| `BOOTSTRAP_ADMIN_EMAIL`         | 初回管理者メールアドレス                |       —        |
+| `BOOTSTRAP_ADMIN_EMAIL`         | 初回管理者作成用（確認後に削除）        |       —        |
 | `INTERNAL_SERVICE_SECRET_USER`  | user BFF からの Service Binding 認証用  |       ✅       |
 | `INTERNAL_SERVICE_SECRET_ADMIN` | admin BFF からの Service Binding 認証用 |       ✅       |
+
+> ⚠️ `BOOTSTRAP_ADMIN_EMAIL` は初回管理者の作成と管理者ログインの確認後に削除します。
+> 対象 Worker / 環境の確認、即時デプロイの影響、設定の再投入防止は
+> [初回管理者の作成後](./environment-variables.md#初回管理者の作成後) を参照してください。
 
 ### user Worker（user.0g0.xyz）
 

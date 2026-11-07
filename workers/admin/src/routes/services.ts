@@ -15,6 +15,11 @@ import type { BffEnv } from "@0g0-id/shared";
 
 const app = new Hono<{ Bindings: BffEnv }>();
 
+app.use("/:id/owner-sub", async (c, next): Promise<void> => {
+  c.header("Cache-Control", "no-store");
+  await next();
+});
+
 // サービスID形式検証ミドルウェア（:id パラメータを持つすべてのルートに適用）
 app.use("/:id", uuidParamMiddleware("id", { label: "service ID" }));
 app.use("/:id/*", uuidParamMiddleware("id", { label: "service ID" }));
@@ -41,6 +46,19 @@ app.get(
     (c) => `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}`,
   ),
 );
+
+// GET /api/services/:id/owner-sub — fixed current-owner lookup; no caller-selected subject.
+app.get("/:id/owner-sub", async (c): Promise<Response> => {
+  if (new URL(c.req.url).searchParams.size > 0) {
+    return c.json(restErrorBody("BAD_REQUEST", "Query parameters are not supported"), 400);
+  }
+  const res = await fetchWithAuth(
+    c,
+    COOKIE_NAMES.ADMIN_SESSION,
+    `${c.env.IDP_ORIGIN}/api/services/${c.req.param("id")}/owner-sub`,
+  );
+  return proxyResponse(res);
+});
 
 // POST /api/services
 app.post("/", async (c) => {

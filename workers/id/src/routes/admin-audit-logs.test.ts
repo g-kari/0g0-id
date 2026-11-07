@@ -218,6 +218,36 @@ describe("GET /api/admin/audit-logs", () => {
     );
   });
 
+  it("3条件を同時にDBに渡し、固定50件ページの空結果と件数を返す", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
+    vi.mocked(listAdminAuditLogs).mockResolvedValue({ logs: [], total: 0 });
+    const adminUserId = "00000000-0000-0000-0000-000000000099";
+    const targetId = "00000000-0000-0000-0000-000000000001";
+    const query = new URLSearchParams({
+      admin_user_id: adminUserId,
+      target_id: targetId,
+      action: "user.ban",
+      limit: "50",
+      offset: "50",
+    });
+
+    const res = await createApp().request(
+      makeRequest(`/api/admin/audit-logs?${query.toString()}`),
+      undefined,
+      mockEnv,
+    );
+
+    expect(res.status).toBe(200);
+    expect(listAdminAuditLogs).toHaveBeenCalledOnce();
+    expect(listAdminAuditLogs).toHaveBeenCalledWith(
+      mockEnv.DB,
+      50,
+      50,
+      expect.objectContaining({ adminUserId, targetId, action: "user.ban" }),
+    );
+    expect(await res.json()).toEqual({ data: [], pagination: { total: 0, limit: 50, offset: 50 } });
+  });
+
   it("ページネーションパラメータが渡される", async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
     vi.mocked(listAdminAuditLogs).mockResolvedValue({ logs: [], total: 0 });
@@ -244,6 +274,7 @@ describe("GET /api/admin/audit-logs", () => {
     const res = await app.request(makeRequest("/api/admin/audit-logs"), undefined, mockEnv);
 
     expect(res.status).toBe(403);
+    expect(listAdminAuditLogs).not.toHaveBeenCalled();
   });
 
   it("未認証は 401 を返す", async () => {
@@ -257,6 +288,7 @@ describe("GET /api/admin/audit-logs", () => {
     );
 
     expect(res.status).toBe(401);
+    expect(listAdminAuditLogs).not.toHaveBeenCalled();
   });
 });
 

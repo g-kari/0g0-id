@@ -1,10 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 
-vi.mock("@0g0-id/shared", () => ({
-  createLogger: vi
-    .fn()
-    .mockReturnValue({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
-}));
+vi.mock("@0g0-id/shared", async () => {
+  const { createLogger } = await import("../../../packages/shared/src/lib/logger");
+  return { createLogger };
+});
 
 vi.mock("./middleware/auth", () => ({
   mcpAuthMiddleware: vi.fn(async (_c: unknown, next: () => Promise<void>) => next()),
@@ -140,4 +139,69 @@ describe("onError ハンドラ", () => {
     expect(body.error.code).toBe("INTERNAL_ERROR");
     expect(body.error.message).toBe("Internal server error");
   });
+});
+
+describe("onError の実 logger 統合 privacy 回帰", () => {
+  const canary = "synthetic-only@example.invalid token=SYNTHETIC-ONLY-TOKEN";
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "debug").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function requestFailure(error: Error): Promise<Response> {
+    vi.mocked(mcpRateLimitMiddleware).mockImplementation(async (_c, next) => next());
+    vi.mocked(mcpAuthMiddleware).mockImplementationOnce(async () => {
+      throw error;
+    });
+    return app.request(
+      "https://mcp.0g0.xyz/mcp/test",
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+      mockEnv as unknown as Record<string, string>,
+    );
+  }
+
+  async function expectFixedFailure(error: Error): Promise<void> {
+    const response = await requestFailure(error);
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: { code: "INTERNAL_ERROR", message: "Internal server error" },
+    });
+    expect(console.error).toHaveBeenCalledExactlyOnceWith(
+      JSON.stringify({ level: "error", ctx: "mcp", msg: "Unhandled error" }),
+    );
+    expect(console.warn).not.toHaveBeenCalled();
+    expect(console.log).not.toHaveBeenCalled();
+    expect(console.debug).not.toHaveBeenCalled();
+    const output = JSON.stringify(vi.mocked(console.error).mock.calls);
+    expect(output).not.toContain(canary);
+  }
+
+  it("例外の message・stack・cause・任意extraをconsoleへ渡さない", async () => {
+    const error = new Error(canary, { cause: new Error(canary) });
+    error.stack = `${canary}\n    at synthetic-only.invalid`;
+    Object.assign(error, { details: { email: canary }, self: error });
+    await expectFixedFailure(error);
+  });
+
+  it.each(["message", "stack", "cause", "name", "toJSON", "details"])(
+    "例外の %s getterを参照せず固定500を返す",
+    async (field) => {
+      const error = new Error("Synthetic failure");
+      error.stack = "Synthetic stack";
+      const getter = vi.fn(() => {
+        throw new Error(canary);
+      });
+      Object.defineProperty(error, field, { get: getter, configurable: true });
+      await expectFixedFailure(error);
+      expect(getter).not.toHaveBeenCalled();
+    },
+  );
 });

@@ -24,11 +24,14 @@ import Base from '../layouts/Base.astro';
         </div>
       </div>
 
-      <div id="loading" class="card flex items-center justify-center gap-2 py-8" style="color: var(--color-muted)">
-        <span class="spinner"></span>
-        <span>読み込み中...</span>
+      <div id="loading" class="card flex items-center justify-center gap-2 py-8" style="color: var(--color-muted)" role="status" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        <span>ログイン統計を読み込み中...</span>
       </div>
-      <div id="error" class="card alert alert-error" style="display:none"></div>
+      <div id="error" class="card alert alert-error" style="display:none">
+        <p id="stats-error-message" role="alert"></p>
+        <button id="stats-retry-btn" type="button" class="btn btn-primary mt-3">もう一度読み込む</button>
+      </div>
       <div id="empty" class="card text-center py-8" style="color: var(--color-muted); display:none">
         ログイン履歴がありません
       </div>
@@ -63,10 +66,14 @@ import Base from '../layouts/Base.astro';
   import { apiFetch, formatDate } from '../lib/api';
   import { escapeHtml } from '../lib/helpers';
   import type { LoginProviderStat, DailyLoginStat } from '@0g0-id/api-types';
+  import { createLoginStatsLoader } from '../lib/login-stats-loader';
+  import type { LoginStatsData, LoginStatsPeriod } from '../lib/login-stats-loader';
 
   const daysSelect = document.getElementById('days-select') as HTMLSelectElement;
   const loadingEl = document.getElementById('loading')!;
   const errorEl = document.getElementById('error')!;
+  const errorMessageEl = document.getElementById('stats-error-message')!;
+  const retryButton = document.getElementById('stats-retry-btn') as HTMLButtonElement;
   const emptyEl = document.getElementById('empty')!;
   const providersCardEl = document.getElementById('providers-card')!;
   const providersListEl = document.getElementById('providers-list')!;
@@ -77,35 +84,9 @@ import Base from '../layouts/Base.astro';
   const trendsListEl = document.getElementById('trends-list')!;
   const trendsEmptyEl = document.getElementById('trends-empty')!;
 
-  async function load(days: number) {
-    loadingEl.style.display = '';
-    errorEl.style.display = 'none';
-    emptyEl.style.display = 'none';
-    providersCardEl.style.display = 'none';
-    trendsCardEl.style.display = 'none';
-
-    let providers: LoginProviderStat[];
-    let trends: DailyLoginStat[];
-    try {
-      [providers, trends] = await Promise.all([
-        apiFetch<LoginProviderStat[]>(`/api/me/login-stats?days=${days}`),
-        apiFetch<DailyLoginStat[]>(`/api/me/security/login-trends?days=${days}`),
-      ]);
-    } catch {
-      loadingEl.style.display = 'none';
-      errorEl.textContent = 'ログイン統計の取得に失敗しました';
-      errorEl.style.display = '';
-      return;
-    }
-
-    loadingEl.style.display = 'none';
-
-    providers = providers.slice().sort((a, b) => b.count - a.count);
-
-    if (providers.length === 0 && trends.length === 0) {
-      emptyEl.style.display = '';
-      return;
-    }
+  function renderStats(data: LoginStatsData, days: LoginStatsPeriod): void {
+    const providers = data.providers.slice().sort((a, b) => b.count - a.count);
+    const trends = data.trends;
 
     // プロバイダー別セクション
     if (providers.length === 0) {
@@ -137,8 +118,6 @@ import Base from '../layouts/Base.astro';
           </div>`;
       }).join('');
     }
-    providersCardEl.style.display = '';
-
     // 日別トレンドセクション
     trendsTitleEl.textContent = `直近 ${days}日のトレンド`;
     if (trends.length === 0) {
@@ -165,13 +144,36 @@ import Base from '../layouts/Base.astro';
           </div>`;
       }).join('');
     }
-    trendsCardEl.style.display = '';
   }
 
-  daysSelect.addEventListener('change', () => {
-    const days = Number(daysSelect.value) || 30;
-    void load(days);
+  const statsLoader = createLoginStatsLoader({
+    daysSelect,
+    loading: loadingEl,
+    error: errorEl,
+    errorMessage: errorMessageEl,
+    empty: emptyEl,
+    providersCard: providersCardEl,
+    trendsCard: trendsCardEl,
+    retryButton,
+    read: async (days: LoginStatsPeriod): Promise<LoginStatsData> => {
+      const [providers, trends] = await Promise.all([
+        apiFetch<LoginProviderStat[]>(`/api/me/login-stats?days=${days}`),
+        apiFetch<DailyLoginStat[]>(`/api/me/security/login-trends?days=${days}`),
+      ]);
+      return { providers, trends };
+    },
+    render: renderStats,
   });
 
-  await load(Number(daysSelect.value) || 30);
+  daysSelect.addEventListener('change', () => {
+    void statsLoader.load();
+  });
+  retryButton.addEventListener('click', () => {
+    void statsLoader.retry();
+  });
+  window.addEventListener('pageshow', () => {
+    void statsLoader.reconcile();
+  });
+
+  await statsLoader.load();
 </script>

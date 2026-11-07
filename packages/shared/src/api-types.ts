@@ -73,6 +73,14 @@ export interface ServiceSummary {
   created_at: string;
 }
 
+/** GET /api/services/:id/owner-sub — current owner's service-specific subject */
+export interface ServiceOwnerSub {
+  service_id: string;
+  client_id: string;
+  owner_user_id: string;
+  sub: string;
+}
+
 /** サービス新規作成レスポンス（POST /api/services） — client_secret は作成時のみ */
 export interface NewServiceResult {
   id: string;

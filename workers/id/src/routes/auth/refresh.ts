@@ -4,10 +4,13 @@ import type { IdpEnv, Service, TokenPayload } from "@0g0-id/shared";
 import {
   parseJsonBody,
   sha256,
+  findRefreshTokenByHash,
   findUserById,
   findServiceById,
   createLogger,
   restErrorBody,
+  generatePairwiseSub,
+  createLegacyRelyingPartyUser,
 } from "@0g0-id/shared";
 import { resolveEffectiveScope } from "../../utils/scopes";
 import { ACCESS_TOKEN_TTL_SECONDS } from "../../utils/token-pair";
@@ -32,6 +35,21 @@ export async function handleRefresh(c: Context<{ Bindings: IdpEnv; Variables: Va
   if (!result.ok) return result.response;
 
   const tokenHash = await sha256(result.data.refresh_token);
+
+  // RFC 8707: resource 束縛トークンはこの legacy 経路では扱わない。
+  // ここで更新すると resource を落として aud が client_id に化けてしまうため、
+  // 標準トークンエンドポイントへ明示的に誘導して拒否する。
+  // 失効処理の前に読み取り専用で確認し、提示トークン自体は消費しない。
+  const peekedToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
+  if (peekedToken?.resource) {
+    return c.json(
+      restErrorBody(
+        "INVALID_REQUEST",
+        "Resource-bound refresh tokens must be refreshed at the standard token endpoint",
+      ),
+      400,
+    );
+  }
 
   const validationResult = await validateAndRevokeRefreshToken(c.env.DB, tokenHash);
   if (!validationResult.ok) {
@@ -74,8 +92,8 @@ export async function handleRefresh(c: Context<{ Bindings: IdpEnv; Variables: Va
       return c.json(restErrorBody("INVALID_TOKEN", "Service no longer exists"), 401);
     }
     // 保存済みスコープがあればそれを引き継ぐ（スコープ昇格防止）
-    // 保存済みスコープがない（マイグレーション前のトークン）場合はallowed_scopesにフォールバック
-    refreshScope = storedToken.scope ?? resolveEffectiveScope(null, refreshService.allowed_scopes);
+    // Missing/empty legacy scope never grants the service configuration wholesale.
+    refreshScope = storedToken.scope || resolveEffectiveScope(null, refreshService.allowed_scopes);
   }
 
   const issueResult = await issueTokenPairWithRecovery(
@@ -108,12 +126,11 @@ export async function handleRefresh(c: Context<{ Bindings: IdpEnv; Variables: Va
       refresh_token: newRefreshTokenRaw,
       token_type: "Bearer",
       expires_in: ACCESS_TOKEN_TTL_SECONDS,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
+      user: refreshService
+        ? createLegacyRelyingPartyUser(
+            await generatePairwiseSub(refreshService.client_id, user.id, c.env.PAIRWISE_SALT),
+          )
+        : { id: user.id, email: user.email, name: user.name, role: user.role },
     },
   });
 }

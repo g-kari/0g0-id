@@ -136,21 +136,14 @@ describe("logAdminAudit", () => {
     // auditLogger.error が呼ばれたことを確認
     const logger =
       (createLogger as ReturnType<typeof vi.fn>).mock.results[0]?.value ?? mockAuditLogger;
-    expect(logger.error).toHaveBeenCalledWith(
-      "Failed to create admin audit log",
-      expect.objectContaining({
-        action: "user.session_revoked",
-        targetType: "user",
-        targetId: "target-user-4",
-      }),
-    );
+    expect(logger.error).toHaveBeenCalledWith("Failed to create admin audit log");
   });
 });
 
 describe("extractErrorMessage", () => {
-  it("Error オブジェクト → message を返す", () => {
+  it("Error オブジェクト → 固定の診断情報を返す", () => {
     const err = new Error("something went wrong");
-    expect(extractErrorMessage(err)).toBe("something went wrong");
+    expect(extractErrorMessage(err)).toBe("Unknown error");
   });
 
   it("非Error → 'Unknown error' を返す", () => {
