@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import { readFileSync } from "node:fs";
+import { URL as NodeURL, fileURLToPath } from "node:url";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { isoBase64URL } from "@simplewebauthn/server/helpers";
@@ -67,7 +68,9 @@ describe("unconnected real verifier to atomic storage flow (SQLite)", () => {
     );
     sqlite.exec(
       readFileSync(
-        new URL("../../../../docs/proposals/passkey-schema.sql", import.meta.url),
+        fileURLToPath(
+          new NodeURL("../../../../docs/proposals/passkey-schema.sql", import.meta.url),
+        ),
         "utf8",
       ),
     );
