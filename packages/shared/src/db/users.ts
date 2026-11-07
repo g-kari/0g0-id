@@ -391,7 +391,8 @@ export async function countAdminUsers(db: D1Database): Promise<number> {
 
 export interface UserFilter {
   email?: string;
-  role?: "user" | "admin";
+  /** "system" は migration 0028 の内部アカウント（DCR 自己登録の所有者）用 */
+  role?: "user" | "admin" | "system";
   name?: string;
   /** true: BAN済みのみ / false: BAN済み除外 / undefined: 全件 */
   banned?: boolean;
@@ -433,6 +434,18 @@ function buildUserFilterClause(filter?: UserFilter): { where: string; params: un
   };
 }
 
+/**
+ * role='system' の内部アカウント（例: DCR 自己登録クライアントの所有者）は
+ * ログインできないシステム専用行であり、既定の一覧・件数には含めない。
+ * role='system' を明示的に指定した場合のみ対象にする。
+ * listUsers と countUsers で同じ規則を適用し、一覧の件数と total が
+ * 一致することを保証する。
+ */
+function withSystemExclusion(where: string, filter?: UserFilter): string {
+  if (filter?.role !== undefined) return where;
+  return where ? `${where} AND role != 'system'` : "WHERE role != 'system'";
+}
+
 export async function listUsers(
   db: D1Database,
   limit: number = 50,
@@ -440,8 +453,9 @@ export async function listUsers(
   filter?: UserFilter,
 ): Promise<User[]> {
   const { where, params } = buildUserFilterClause(filter);
+  const whereClause = withSystemExclusion(where, filter);
   const result = await db
-    .prepare(`SELECT * FROM users ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+    .prepare(`SELECT * FROM users ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
     .bind(...params, limit, offset)
     .all<User>();
   return result.results;
@@ -449,8 +463,9 @@ export async function listUsers(
 
 export async function countUsers(db: D1Database, filter?: UserFilter): Promise<number> {
   const { where, params } = buildUserFilterClause(filter);
+  const whereClause = withSystemExclusion(where, filter);
   const result = await db
-    .prepare(`SELECT COUNT(*) as count FROM users ${where}`)
+    .prepare(`SELECT COUNT(*) as count FROM users ${whereClause}`)
     .bind(...params)
     .first<{ count: number }>();
   return result?.count ?? 0;

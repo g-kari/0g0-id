@@ -12,11 +12,13 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     sha256: vi.fn(),
     findRefreshTokenByHash: vi.fn(),
     findUserById: vi.fn(),
+    findResourceServerByUri: vi.fn(),
   };
 });
 
 vi.mock("../../utils/scopes", () => ({
-  parseAllowedScopes: vi.fn(),
+  resolveResourceScopeOrDefault: vi.fn(),
+  isSubjectAllowedForResource: vi.fn(),
 }));
 
 vi.mock("../../utils/token-pair", () => ({
@@ -40,8 +42,13 @@ vi.mock("./utils", async (importOriginal) => {
   };
 });
 
-import { sha256, findRefreshTokenByHash, findUserById } from "@0g0-id/shared";
-import { parseAllowedScopes } from "../../utils/scopes";
+import {
+  sha256,
+  findRefreshTokenByHash,
+  findUserById,
+  findResourceServerByUri,
+} from "@0g0-id/shared";
+import { resolveResourceScopeOrDefault, isSubjectAllowedForResource } from "../../utils/scopes";
 import { buildTokenResponse } from "../../utils/token-pair";
 import { attemptUnrevokeToken } from "../../utils/token-recovery";
 import {
@@ -63,6 +70,8 @@ const mockService = {
   client_secret_hash: "hashed-secret",
   allowed_scopes: '["openid","profile","email"]',
   owner_user_id: "user-1",
+  source: "admin",
+  registration_access_token_hash: null,
   created_at: "2024-01-01T00:00:00Z",
   updated_at: "2024-01-01T00:00:00Z",
 };
@@ -97,6 +106,8 @@ const mockStoredToken = {
   scope: "openid profile email",
   expires_at: "2099-01-01T00:00:00Z",
   created_at: "2024-01-01T00:00:00Z",
+  resource: null,
+  resource_server_id: null,
   pairwise_sub: null,
 };
 
@@ -359,7 +370,7 @@ describe("handleRefreshTokenGrant", () => {
       expect(body.scope).toBe("openid profile email");
     });
 
-    it("storedToken.scope が null → parseAllowedScopes で fallback", async () => {
+    it.each([null, ""])("scope=%s falls back to openid without widening", async (scope) => {
       vi.mocked(resolveOAuthClient).mockResolvedValue({
         ok: true,
         service: mockService,
@@ -367,10 +378,9 @@ describe("handleRefreshTokenGrant", () => {
       });
       vi.mocked(validateAndRevokeRefreshToken).mockResolvedValue({
         ok: true,
-        storedToken: { ...mockStoredToken, scope: null },
+        storedToken: { ...mockStoredToken, scope },
       });
       vi.mocked(findUserById).mockResolvedValue(mockUser);
-      vi.mocked(parseAllowedScopes).mockReturnValue(["openid", "profile"]);
       vi.mocked(issueTokenPairWithRecovery).mockResolvedValue({
         ok: true,
         accessToken: "at",
@@ -381,14 +391,264 @@ describe("handleRefreshTokenGrant", () => {
         token_type: "Bearer",
         expires_in: 900,
         refresh_token: "rt",
-        scope: "openid profile",
+        scope: "openid",
       });
 
       const c = createMockContext("Basic dGVzdDp0ZXN0");
       const res = await handleRefreshTokenGrant(c, { refresh_token: "test-rt" });
 
       expect(res.status).toBe(200);
-      expect(parseAllowedScopes).toHaveBeenCalledWith(mockService.allowed_scopes);
+      expect(issueTokenPairWithRecovery).toHaveBeenCalledWith(
+        mockEnv.DB,
+        mockEnv,
+        mockUser,
+        expect.objectContaining({ scope: "openid" }),
+        expect.any(String),
+        expect.any(String),
+        expect.anything(),
+        "handleRefreshTokenGrant",
+      );
+    });
+  });
+
+  // =====================
+  // RFC 8707 resource 束縛トークンの更新時再検証
+  // =====================
+  describe("RFC 8707 resource 束縛トークン", () => {
+    const RESOURCE_URI = "https://dots-events.0g0.xyz/mcp";
+    const mockResourceStoredToken = {
+      ...mockStoredToken,
+      scope: "events:read requests:update",
+      resource: RESOURCE_URI,
+      // 現行形式のトークンは発行時の登録世代（mockResourceServer の rs-1）に固定されている
+      resource_server_id: "rs-1",
+    };
+    const mockResourceServer = {
+      id: "rs-1",
+      uri: RESOURCE_URI,
+      name: "dots-events",
+      allowed_scopes: '["events:read","events:subscribe","requests:read","requests:update"]',
+      allowed_subjects: "[]",
+      owner_user_id: "user-1",
+      created_at: "2024-01-01T00:00:00Z",
+      updated_at: "2024-01-01T00:00:00Z",
+    };
+
+    function setupResourceRefresh() {
+      vi.mocked(resolveOAuthClient).mockResolvedValue({
+        ok: true,
+        service: mockService,
+        isPublicClient: true,
+      });
+      vi.mocked(validateAndRevokeRefreshToken).mockResolvedValue({
+        ok: true,
+        storedToken: mockResourceStoredToken,
+      });
+      vi.mocked(findUserById).mockResolvedValue(mockUser);
+      vi.mocked(findResourceServerByUri).mockResolvedValue(mockResourceServer);
+      vi.mocked(isSubjectAllowedForResource).mockReturnValue(true);
+      vi.mocked(resolveResourceScopeOrDefault).mockReturnValue("events:read requests:update");
+      vi.mocked(issueTokenPairWithRecovery).mockResolvedValue({
+        ok: true,
+        accessToken: "new-access-token",
+        refreshToken: "new-refresh-token",
+      });
+      vi.mocked(buildTokenResponse).mockImplementation(
+        (accessToken: string, refreshToken: string, scope?: string) => ({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          scope,
+        }),
+      );
+    }
+
+    it("正常系: resource と scope を引き継いで発行する", async () => {
+      setupResourceRefresh();
+      const c = createMockContext();
+      const res = await handleRefreshTokenGrant(c, { refresh_token: "test-rt" });
+
+      expect(res.status).toBe(200);
+      expect(issueTokenPairWithRecovery).toHaveBeenCalledWith(
+        mockEnv.DB,
+        mockEnv,
+        mockUser,
+        expect.objectContaining({ scope: "events:read requests:update", resource: RESOURCE_URI }),
+        expect.any(String),
+        expect.any(String),
+        expect.anything(),
+        "handleRefreshTokenGrant",
+      );
+    });
+
+    it("scope は現在の allowed_scopes 上限で切り詰められる", async () => {
+      setupResourceRefresh();
+      // 管理者が allowed_scopes を狭めた想定
+      vi.mocked(resolveResourceScopeOrDefault).mockReturnValue("events:read");
+      const c = createMockContext();
+      const res = await handleRefreshTokenGrant(c, { refresh_token: "test-rt" });
+
+      expect(res.status).toBe(200);
+      expect(resolveResourceScopeOrDefault).toHaveBeenCalledWith(
+        "events:read requests:update",
+        mockResourceServer.allowed_scopes,
+      );
+      expect(issueTokenPairWithRecovery).toHaveBeenCalledWith(
+        mockEnv.DB,
+        mockEnv,
+        mockUser,
+        expect.objectContaining({ scope: "events:read" }),
+        expect.any(String),
+        expect.any(String),
+        expect.anything(),
+        "handleRefreshTokenGrant",
+      );
+      const body = await res.json<Record<string, unknown>>();
+      expect(body.scope).toBe("events:read");
+    });
+
+    it("切り詰めの結果 scope が残らない → 400 invalid_scope", async () => {
+      setupResourceRefresh();
+      vi.mocked(resolveResourceScopeOrDefault).mockReturnValue(undefined);
+      const c = createMockContext();
+      const res = await handleRefreshTokenGrant(c, { refresh_token: "test-rt" });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body.error).toBe("invalid_scope");
+      expect(issueTokenPairWithRecovery).not.toHaveBeenCalled();
+    });
+
+    it("resource 登録が削除済み → 400 invalid_grant（新規発行しない）", async () => {
+      setupResourceRefresh();
+      vi.mocked(findResourceServerByUri).mockResolvedValue(null);
+      const c = createMockContext();
+      const res = await handleRefreshTokenGrant(c, { refresh_token: "test-rt" });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body.error).toBe("invalid_grant");
+      expect(body.error_description).toContain("no longer a registered resource server");
+      expect(issueTokenPairWithRecovery).not.toHaveBeenCalled();
+    });
+
+    it("削除→再登録で世代が変わった旧トークン → 400 invalid_grant（復活しない）", async () => {
+      setupResourceRefresh();
+      vi.mocked(validateAndRevokeRefreshToken).mockResolvedValue({
+        ok: true,
+        storedToken: { ...mockResourceStoredToken, resource_server_id: "rs-old-generation" },
+      });
+      const c = createMockContext();
+      const res = await handleRefreshTokenGrant(c, { refresh_token: "valid-refresh-token" });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body.error).toBe("invalid_grant");
+      expect(body.error_description).toContain(
+        "resource registration that issued this token no longer exists",
+      );
+      expect(issueTokenPairWithRecovery).not.toHaveBeenCalled();
+    });
+
+    it("世代が一致する場合は resourceServerId を引き継いで発行する", async () => {
+      setupResourceRefresh();
+      vi.mocked(validateAndRevokeRefreshToken).mockResolvedValue({
+        ok: true,
+        storedToken: { ...mockResourceStoredToken, resource_server_id: "rs-1" },
+      });
+      const c = createMockContext();
+      const res = await handleRefreshTokenGrant(c, { refresh_token: "valid-refresh-token" });
+
+      expect(res.status).toBe(200);
+      expect(issueTokenPairWithRecovery).toHaveBeenCalledWith(
+        mockEnv.DB,
+        mockEnv,
+        mockUser,
+        expect.objectContaining({ resource: RESOURCE_URI, resourceServerId: "rs-1" }),
+        expect.any(String),
+        expect.any(String),
+        expect.anything(),
+        "handleRefreshTokenGrant",
+      );
+    });
+
+    it("旧形式トークン（resource_server_id なし）→ 400 invalid_grant（現世代を採用しない）", async () => {
+      setupResourceRefresh();
+      // 削除→再登録後に残った旧形式トークンを想定: 現在の登録は rs-1 だが
+      // トークン側に世代が固定されていないため、結びつけを許さない
+      vi.mocked(validateAndRevokeRefreshToken).mockResolvedValue({
+        ok: true,
+        storedToken: { ...mockResourceStoredToken, resource_server_id: null },
+      });
+      const c = createMockContext();
+      const res = await handleRefreshTokenGrant(c, { refresh_token: "valid-refresh-token" });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body.error).toBe("invalid_grant");
+      expect(body.error_description).toContain(
+        "resource registration that issued this token no longer exists",
+      );
+      expect(issueTokenPairWithRecovery).not.toHaveBeenCalled();
+    });
+
+    it("検証通過後に削除され発行が世代ガードで止まった → 400 invalid_grant", async () => {
+      setupResourceRefresh();
+      vi.mocked(issueTokenPairWithRecovery).mockResolvedValue({
+        ok: false,
+        reason: "RESOURCE_GONE",
+      });
+      const c = createMockContext();
+      const res = await handleRefreshTokenGrant(c, { refresh_token: "valid-refresh-token" });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body.error).toBe("invalid_grant");
+      expect(body.error_description).toContain("no longer a registered resource server");
+    });
+
+    it("リクエストの resource が保存済みと異なる → 400 invalid_grant + トークンを戻す", async () => {
+      setupResourceRefresh();
+      const c = createMockContext();
+      const res = await handleRefreshTokenGrant(c, {
+        refresh_token: "test-rt",
+        resource: "https://other.example/mcp",
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body.error).toBe("invalid_grant");
+      expect(body.error_description).toContain("does not match");
+      expect(attemptUnrevokeToken).toHaveBeenCalled();
+      expect(issueTokenPairWithRecovery).not.toHaveBeenCalled();
+    });
+
+    it("リクエストの resource が保存済みと一致 → 通常どおり発行する", async () => {
+      setupResourceRefresh();
+      const c = createMockContext();
+      const res = await handleRefreshTokenGrant(c, {
+        refresh_token: "test-rt",
+        resource: RESOURCE_URI,
+      });
+
+      expect(res.status).toBe(200);
+      expect(issueTokenPairWithRecovery).toHaveBeenCalled();
+    });
+
+    it("利用者制限で許可されていない subject → 400 invalid_grant", async () => {
+      setupResourceRefresh();
+      vi.mocked(findResourceServerByUri).mockResolvedValue({
+        ...mockResourceServer,
+        allowed_subjects: '["someone-else"]',
+      });
+      vi.mocked(isSubjectAllowedForResource).mockReturnValue(false);
+      const c = createMockContext();
+      const res = await handleRefreshTokenGrant(c, { refresh_token: "test-rt" });
+
+      expect(res.status).toBe(400);
+      const body = await res.json<Record<string, unknown>>();
+      expect(body.error).toBe("invalid_grant");
+      expect(body.error_description).toContain("subject is not allowed");
+      expect(issueTokenPairWithRecovery).not.toHaveBeenCalled();
     });
   });
 

@@ -45,7 +45,7 @@ export function buildGoogleAuthUrl(params: {
 }
 
 import { fetchWithRetry } from "./fetch-retry";
-import { createLogger } from "./logger";
+import { createLogger, httpStatusMetadata } from "./logger";
 
 const logger = createLogger("oauth-google");
 
@@ -74,8 +74,8 @@ export async function exchangeGoogleCode(params: {
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    logger.error(`Google token exchange failed (${response.status})`, error);
+    // Provider error bodies can contain personal data or echoed credentials.
+    logger.error("Google token exchange failed", httpStatusMetadata(response.status));
     throw new Error("Google token exchange failed");
   }
 

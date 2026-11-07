@@ -1,7 +1,6 @@
 import { createMiddleware } from "hono/factory";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { z } from "zod";
-import type { TokenPayload } from "@0g0-id/shared";
 import { findUserById, isAccessTokenRevoked, jsonRpcErrorBody } from "@0g0-id/shared";
 
 type McpEnv = {
@@ -12,7 +11,7 @@ type McpEnv = {
     MCP_ORIGIN: string;
   };
   Variables: {
-    user: TokenPayload;
+    user: McpTokenPayload;
   };
 };
 
@@ -29,6 +28,9 @@ const tokenPayloadSchema = z.object({
   scope: z.string().optional(),
   cid: z.string().optional(),
 });
+
+/** MCPの既存schemaで検証した値。一般RP decode型へprofile必須を持ち込まない。 */
+export type McpTokenPayload = z.infer<typeof tokenPayloadSchema>;
 
 const JWKS_CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -85,7 +87,7 @@ export const mcpAuthMiddleware = createMiddleware<McpEnv>(
         );
         return c.json(jsonRpcErrorBody(-32001, "Invalid token payload"), 401);
       }
-      const user: TokenPayload = parsed.data;
+      const user: McpTokenPayload = parsed.data;
 
       if (user.jti && (await isAccessTokenRevoked(c.env.DB, user.jti))) {
         c.header(

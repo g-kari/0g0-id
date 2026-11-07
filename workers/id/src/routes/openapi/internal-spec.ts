@@ -1,3 +1,13 @@
+import {
+  STANDARD_TOKEN_OPERATION,
+  DEVICE_CODE_OPERATION,
+  DEVICE_VERIFY_OPERATION,
+  USERINFO_GET_OPERATION,
+  USERINFO_POST_OPERATION,
+} from "./standard-protocol-spec";
+import { ALL_PROVIDERS } from "@0g0-id/shared";
+import { ADDITIONAL_METRICS_PATHS } from "./metrics-spec";
+
 // IdP 内部向け全API OpenAPI 仕様
 // API 変更時はこのファイルの paths / components.schemas を更新すること
 
@@ -38,14 +48,101 @@ export const INTERNAL_OPENAPI = {
           },
         },
       },
+      AdminAuditLog: {
+        type: "object",
+        description: "管理者操作の監査ログ。details は JSON オブジェクトではなく JSON 文字列。",
+        required: [
+          "id",
+          "admin_user_id",
+          "action",
+          "target_type",
+          "target_id",
+          "details",
+          "ip_address",
+          "status",
+          "created_at",
+        ],
+        properties: {
+          id: { type: "string" },
+          admin_user_id: { type: "string" },
+          action: { type: "string", example: "user.role_change" },
+          target_type: { type: "string", example: "user" },
+          target_id: { type: "string" },
+          details: {
+            type: ["string", "null"],
+            description: "JSON エンコードされた操作詳細。詳細がない場合は null。",
+          },
+          ip_address: { type: ["string", "null"] },
+          status: { type: "string", enum: ["success", "failure"] },
+          created_at: {
+            type: "string",
+            description: "DB に保存された日時文字列（SQLite datetime 形式）。",
+            example: "2026-03-27 12:00:00",
+          },
+        },
+      },
+      AdminAuditLogPagination: {
+        type: "object",
+        required: ["total", "limit", "offset"],
+        properties: {
+          total: { type: "integer", minimum: 0, description: "同じ検索条件に一致する総件数" },
+          limit: { type: "integer", minimum: 1, maximum: 100, description: "適用された取得件数" },
+          offset: { type: "integer", minimum: 0 },
+        },
+      },
+      AdminAuditLogStats: {
+        type: "object",
+        required: ["action_stats", "admin_stats", "daily_stats"],
+        properties: {
+          action_stats: {
+            type: "array",
+            description: "全期間のアクション別件数。件数降順。days の対象外。",
+            items: {
+              type: "object",
+              required: ["action", "count"],
+              properties: {
+                action: { type: "string" },
+                count: { type: "integer", minimum: 0 },
+              },
+            },
+          },
+          admin_stats: {
+            type: "array",
+            description: "全期間の管理者別件数。件数降順。days の対象外。",
+            items: {
+              type: "object",
+              required: ["admin_user_id", "count"],
+              properties: {
+                admin_user_id: { type: "string" },
+                count: { type: "integer", minimum: 0 },
+              },
+            },
+          },
+          daily_stats: {
+            type: "array",
+            description:
+              "直近 days 日の日時以降のログを日別集計。日付降順。ログのない日は含まない。",
+            items: {
+              type: "object",
+              required: ["date", "count"],
+              properties: {
+                date: { type: "string", format: "date" },
+                count: { type: "integer", minimum: 0 },
+              },
+            },
+          },
+        },
+      },
       LoginEvent: {
         type: "object",
         properties: {
           id: { type: "string" },
           user_id: { type: "string" },
-          provider: { type: "string", enum: ["google", "line", "twitch", "github", "x"] },
+          provider: { type: "string", enum: ALL_PROVIDERS },
           ip_address: { type: "string", nullable: true },
           user_agent: { type: "string", nullable: true },
+          country: { type: "string", nullable: true },
+          success: { type: "integer", enum: [0, 1] },
           created_at: { type: "string", format: "date-time" },
         },
         required: ["id", "user_id", "provider", "created_at"],
@@ -74,6 +171,17 @@ export const INTERNAL_OPENAPI = {
           created_at: { type: "string", format: "date-time" },
         },
       },
+      ServiceOwnerSub: {
+        type: "object",
+        additionalProperties: false,
+        required: ["service_id", "client_id", "owner_user_id", "sub"],
+        properties: {
+          service_id: { type: "string", format: "uuid" },
+          client_id: { type: "string" },
+          owner_user_id: { type: "string", format: "uuid" },
+          sub: { type: "string", pattern: "^[a-f0-9]{64}$" },
+        },
+      },
       TokenPair: {
         type: "object",
         properties: {
@@ -92,6 +200,261 @@ export const INTERNAL_OPENAPI = {
     },
   },
   paths: {
+    "/api/token": { post: STANDARD_TOKEN_OPERATION },
+    "/api/device/code": { post: DEVICE_CODE_OPERATION },
+    "/api/device/verify": { post: DEVICE_VERIFY_OPERATION },
+    "/api/admin/audit-logs": {
+      get: {
+        tags: ["管理者 API"],
+        summary: "管理者操作の監査ログ一覧",
+        description:
+          "管理者専用。Bearer JWT の管理者ロール・jti・失効状態を確認し、DB 上のアカウントが存在して BAN されていないことを確認する。\n\n" +
+          "admin_user_id・target_id・action を完全一致の AND 条件で絞り込む。HTTP API で指定できるフィルターはこの3種類。\n\n" +
+          "created_at 降順、同じ日時では id 降順で返す。総件数にも同じ検索条件を適用する。",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "admin_user_id",
+            in: "query",
+            required: false,
+            description: "操作した管理者の ID。UUID 形式（大文字・小文字を許可）。",
+            schema: {
+              type: "string",
+              pattern:
+                "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+            },
+          },
+          {
+            name: "target_id",
+            in: "query",
+            required: false,
+            description: "操作対象の ID。UUID 形式（大文字・小文字を許可）。",
+            schema: {
+              type: "string",
+              pattern:
+                "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+            },
+          },
+          {
+            name: "action",
+            in: "query",
+            required: false,
+            description: "小文字の種別と操作名をドットでつないだ形式。例: user.role_change。",
+            schema: { type: "string", pattern: "^[a-z]+\\.[a-z_]+$", example: "user.role_change" },
+          },
+          {
+            name: "limit",
+            in: "query",
+            required: false,
+            description: "取得件数。数字のみの1以上の整数。100を超える値は100に切り詰める。",
+            schema: { type: "integer", minimum: 1, default: 50 },
+          },
+          {
+            name: "offset",
+            in: "query",
+            required: false,
+            description: "先頭からスキップする件数。数字のみの0以上の整数。",
+            schema: { type: "integer", minimum: 0, default: 0 },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "監査ログ一覧とページネーション。該当ログがない場合は data が空配列。",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["data", "pagination"],
+                  properties: {
+                    data: { type: "array", items: { $ref: "#/components/schemas/AdminAuditLog" } },
+                    pagination: { $ref: "#/components/schemas/AdminAuditLogPagination" },
+                  },
+                },
+                example: {
+                  data: [
+                    {
+                      id: "00000000-0000-0000-0000-000000000001",
+                      admin_user_id: "00000000-0000-0000-0000-000000000002",
+                      action: "user.role_change",
+                      target_type: "user",
+                      target_id: "00000000-0000-0000-0000-000000000003",
+                      details: '{"role":"user"}',
+                      ip_address: "192.0.2.1",
+                      status: "success",
+                      created_at: "2026-03-27 12:00:00",
+                    },
+                  ],
+                  pagination: { total: 1, limit: 50, offset: 0 },
+                },
+              },
+            },
+          },
+          "400": {
+            description: "BAD_REQUEST — limit / offset または3種類の検索条件の形式不正",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                examples: {
+                  invalidLimit: {
+                    value: {
+                      error: {
+                        code: "BAD_REQUEST",
+                        message: "limit は1以上の整数で指定してください",
+                      },
+                    },
+                  },
+                  invalidOffset: {
+                    value: {
+                      error: {
+                        code: "BAD_REQUEST",
+                        message: "offset は0以上の整数で指定してください",
+                      },
+                    },
+                  },
+                  invalidAdminUserId: {
+                    value: {
+                      error: { code: "BAD_REQUEST", message: "Invalid admin_user_id format" },
+                    },
+                  },
+                  invalidTargetId: {
+                    value: { error: { code: "BAD_REQUEST", message: "Invalid target_id format" } },
+                  },
+                  invalidAction: {
+                    value: { error: { code: "BAD_REQUEST", message: "Invalid action format" } },
+                  },
+                },
+              },
+            },
+          },
+          "401": {
+            description:
+              "UNAUTHORIZED — Authorization ヘッダー不正、JWT 無効・期限切れ・失効済み、jti なし、BFF セッション失効、または管理者アカウントが BAN 済み・存在しない",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                example: {
+                  error: {
+                    code: "UNAUTHORIZED",
+                    message: "Missing or invalid Authorization header",
+                  },
+                },
+              },
+            },
+          },
+          "403": {
+            description: "FORBIDDEN — JWT の管理者ロールなし",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                example: { error: { code: "FORBIDDEN", message: "Admin access required" } },
+              },
+            },
+          },
+          "500": {
+            description: "INTERNAL_ERROR — 監査ログ取得失敗",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                example: { error: { code: "INTERNAL_ERROR", message: "Internal server error" } },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/admin/audit-logs/stats": {
+      get: {
+        tags: ["管理者 API"],
+        summary: "管理者操作の監査ログ統計",
+        description:
+          "管理者専用。監査ログ一覧と同じ Bearer JWT・管理者チェックを行う。\n\n" +
+          "アクション別と管理者別は全期間の集計。days は日別集計にだけ適用し、現在時刻から指定日数前の日時以降を集計する。",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "days",
+            in: "query",
+            required: false,
+            description: "日別集計の対象日数。数字のみの1〜90の整数。範囲外は切り詰めず400。",
+            schema: { type: "integer", minimum: 1, maximum: 90, default: 30 },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "監査ログ統計と適用した days。データがない集計は空配列。",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["data", "days"],
+                  properties: {
+                    data: { $ref: "#/components/schemas/AdminAuditLogStats" },
+                    days: { type: "integer", minimum: 1, maximum: 90 },
+                  },
+                },
+                example: {
+                  data: {
+                    action_stats: [{ action: "user.role_change", count: 4 }],
+                    admin_stats: [
+                      { admin_user_id: "00000000-0000-0000-0000-000000000002", count: 4 },
+                    ],
+                    daily_stats: [{ date: "2026-03-27", count: 1 }],
+                  },
+                  days: 30,
+                },
+              },
+            },
+          },
+          "400": {
+            description: "INVALID_REQUEST — days の形式不正または1〜90の範囲外",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                example: {
+                  error: {
+                    code: "INVALID_REQUEST",
+                    message: "days must be an integer between 1 and 90",
+                  },
+                },
+              },
+            },
+          },
+          "401": {
+            description:
+              "UNAUTHORIZED — Authorization ヘッダー不正、JWT 無効・期限切れ・失効済み、jti なし、BFF セッション失効、または管理者アカウントが BAN 済み・存在しない",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                example: {
+                  error: {
+                    code: "UNAUTHORIZED",
+                    message: "Missing or invalid Authorization header",
+                  },
+                },
+              },
+            },
+          },
+          "403": {
+            description: "FORBIDDEN — JWT の管理者ロールなし",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                example: { error: { code: "FORBIDDEN", message: "Admin access required" } },
+              },
+            },
+          },
+          "500": {
+            description: "INTERNAL_ERROR — 監査ログ統計取得失敗",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                example: { error: { code: "INTERNAL_ERROR", message: "Internal server error" } },
+              },
+            },
+          },
+        },
+      },
+    },
     "/auth/login": {
       get: {
         tags: ["認証フロー"],
@@ -477,7 +840,7 @@ export const INTERNAL_OPENAPI = {
                         properties: {
                           provider: {
                             type: "string",
-                            enum: ["google", "line", "twitch", "github", "x"],
+                            enum: ALL_PROVIDERS,
                           },
                           connected: { type: "boolean" },
                         },
@@ -505,7 +868,7 @@ export const INTERNAL_OPENAPI = {
             name: "provider",
             in: "path",
             required: true,
-            schema: { type: "string", enum: ["google", "line", "twitch", "github", "x"] },
+            schema: { type: "string", enum: ALL_PROVIDERS },
             description: "SNSプロバイダー名",
           },
         ],
@@ -683,7 +1046,7 @@ export const INTERNAL_OPENAPI = {
                         properties: {
                           provider: {
                             type: "string",
-                            enum: ["google", "line", "twitch", "github", "x"],
+                            enum: ALL_PROVIDERS,
                           },
                           connected: { type: "boolean" },
                         },
@@ -955,6 +1318,40 @@ export const INTERNAL_OPENAPI = {
           "401": { description: "UNAUTHORIZED" },
           "403": { description: "FORBIDDEN — 管理者権限なし、またはオリジン不正" },
           "404": { description: "NOT_FOUND — サービス未存在" },
+        },
+      },
+    },
+    "/api/services/{id}/owner-sub": {
+      get: {
+        tags: ["サービス管理 API (管理者)"],
+        summary: "サービスオーナーの Pairwise Sub ID 取得",
+        description:
+          "管理者専用。現在の service.owner_user_id をサーバーで解決し、既存の generatePairwiseSub(client_id, owner.id, PAIRWISE_SALT) で算出する。" +
+          "初回認可・アクティブなリフレッシュトークンは不要。クエリは受け付けず、リクエストボディも参照しない。任意の user/client は指定できない。" +
+          "DB更新・トークン発行・連携作成は行わない。値は所有者・client_id・salt の変更で変わる。",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        ],
+        responses: {
+          "200": {
+            description: "現在のオーナーに限定した識別子",
+            headers: { "Cache-Control": { schema: { type: "string", const: "no-store" } } },
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["data"],
+                  properties: { data: { $ref: "#/components/schemas/ServiceOwnerSub" } },
+                },
+              },
+            },
+          },
+          "400": { description: "BAD_REQUEST — 不正なサービスUUIDまたはクエリ指定" },
+          "401": { description: "UNAUTHORIZED — 未認証・失効・BAN・管理者未存在" },
+          "403": { description: "FORBIDDEN — 管理者権限なし" },
+          "404": { description: "NOT_FOUND — サービスまたは現在のオーナーが未存在" },
+          "500": { description: "INTERNAL_ERROR — 詳細や識別子を含まない固定エラー" },
         },
       },
     },
@@ -1422,105 +1819,55 @@ export const INTERNAL_OPENAPI = {
         },
       },
     },
-    "/api/external/users/{id}": {
+    "/api/external/users/{sub}": {
       get: {
         tags: ["外部サービス向け API"],
-        summary: "IDによるユーザー取得",
+        summary: "ペアワイズ sub によるユーザー取得",
         description:
-          "指定したIDのユーザーを完全一致で取得する。IDOR防止のため、そのサービスを認可済みのユーザーのみ返す。",
+          "認証したサービスに固有のペアワイズ sub（64桁の16進文字列）で完全一致検索する。同じサービスの /api/external/users 一覧で返された sub を使い、内部ユーザーIDは検索に使わない。認可済みでBANされていないユーザーのみ返す。",
         security: [{ BasicAuth: [] }],
         parameters: [
           {
-            name: "id",
+            name: "sub",
             in: "path",
             required: true,
-            schema: { type: "string" },
-            description: "ユーザーID",
+            schema: { type: "string", minLength: 64, maxLength: 64, pattern: "^[0-9a-fA-F]{64}$" },
+            description: "認証したサービス固有のペアワイズ sub（64桁の16進文字列）",
           },
         ],
         responses: {
           "200": { description: "ユーザー情報（ペアワイズsub含む）" },
-          "401": { description: "UNAUTHORIZED" },
-          "404": { description: "NOT_FOUND — 未認可または存在しないユーザー" },
-        },
-      },
-    },
-    "/api/userinfo": {
-      get: {
-        tags: ["OIDC"],
-        summary: "UserInfo エンドポイント",
-        description:
-          "OIDC Core 1.0 Section 5.3 準拠のUserInfoエンドポイント。\n\n" +
-          "アクセストークンのスコープに応じたクレームを返す。\n\n" +
-          "- `scope` なし（BFFセッション）: 全クレームを返す\n" +
-          "- `profile` スコープ: `name`, `picture`\n" +
-          "- `email` スコープ: `email`, `email_verified`\n" +
-          "- `phone` スコープ: `phone_number`\n" +
-          "- `address` スコープ: `address`",
-        security: [{ BearerAuth: [] }],
-        responses: {
-          "200": {
-            description: "スコープに応じたユーザークレーム",
+          "400": {
+            description: "sub が64桁の16進文字列ではない",
             content: {
               "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    sub: {
-                      type: "string",
-                      description: "ユーザー識別子（サービストークンはペアワイズsub）",
-                    },
-                    name: { type: "string", description: "表示名（profileスコープ）" },
-                    picture: {
-                      type: "string",
-                      nullable: true,
-                      description: "プロフィール画像URL（profileスコープ）",
-                    },
-                    email: { type: "string", description: "メールアドレス（emailスコープ）" },
-                    email_verified: {
-                      type: "boolean",
-                      description: "メール認証済みフラグ（emailスコープ）",
-                    },
-                    phone_number: {
-                      type: "string",
-                      nullable: true,
-                      description: "電話番号（phoneスコープ）",
-                    },
-                    address: {
-                      type: "object",
-                      nullable: true,
-                      description: "住所（addressスコープ）",
-                      properties: { formatted: { type: "string" } },
-                    },
-                    updated_at: { type: "integer", description: "最終更新日時（Unix timestamp）" },
-                  },
-                  required: ["sub", "updated_at"],
-                },
-                examples: {
-                  full: {
-                    value: {
-                      sub: "user_abc123",
-                      name: "山田 太郎",
-                      picture: "https://example.com/photo.jpg",
-                      email: "taro@example.com",
-                      email_verified: true,
-                      updated_at: 1735689600,
-                    },
-                  },
-                },
+                schema: { $ref: "#/components/schemas/Error" },
+                example: { error: { code: "BAD_REQUEST", message: "Invalid sub format" } },
               },
             },
           },
-          "401": { description: "UNAUTHORIZED — トークン無効または期限切れ" },
+          "401": { description: "UNAUTHORIZED" },
+          "404": {
+            description: "NOT_FOUND — 未認可、存在しない、またはBAN済みのユーザー",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                example: { error: { code: "NOT_FOUND", message: "User not found" } },
+              },
+            },
+          },
         },
       },
     },
+    "/api/userinfo": { get: USERINFO_GET_OPERATION, post: USERINFO_POST_OPERATION },
+
+    ...ADDITIONAL_METRICS_PATHS,
     "/api/metrics": {
       get: {
         tags: ["管理者 API"],
         summary: "システムメトリクス取得",
         description:
-          "総ユーザー数・管理者数・サービス数・アクティブセッション数・直近24時間のログイン数を返す（管理者専用）。",
+          "総ユーザー数・管理者数・BAN済み数・サービス数・有効リフレッシュトークン数・直近24時間/7日のログインイベント数・7日間のプロバイダー/国別統計を返す（管理者専用）。active_sessions は BFF セッション数ではない。ログイン統計は成功/失敗を区別しない。国 NULL は unknown として集計する。ログイン期間は保存日時文字列と ISO 下限の比較で、混在形式の境界を正規化しない。",
         security: [{ BearerAuth: [] }],
         responses: {
           "200": {
@@ -1529,28 +1876,75 @@ export const INTERNAL_OPENAPI = {
               "application/json": {
                 schema: {
                   type: "object",
+                  required: ["data"],
                   properties: {
                     data: {
                       type: "object",
                       properties: {
-                        total_users: { type: "integer", description: "総ユーザー数" },
-                        admin_users: { type: "integer", description: "管理者ユーザー数" },
-                        total_services: { type: "integer", description: "登録済みサービス数" },
+                        total_users: { type: "integer", minimum: 0, description: "総ユーザー数" },
+                        admin_users: {
+                          type: "integer",
+                          minimum: 0,
+                          description: "管理者ユーザー数",
+                        },
+                        banned_users: {
+                          type: "integer",
+                          minimum: 0,
+                          description: "BAN済みユーザー数",
+                        },
+                        total_services: {
+                          type: "integer",
+                          minimum: 0,
+                          description: "登録済みサービス数",
+                        },
                         active_sessions: {
                           type: "integer",
+                          minimum: 0,
                           description: "アクティブなリフレッシュトークン数",
                         },
                         recent_logins_24h: {
                           type: "integer",
+                          minimum: 0,
                           description: "直近24時間のログイン数",
+                        },
+                        recent_logins_7d: {
+                          type: "integer",
+                          minimum: 0,
+                          description: "直近7日のログインイベント数",
+                        },
+                        login_provider_stats_7d: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            required: ["provider", "count"],
+                            properties: {
+                              provider: { type: "string" },
+                              count: { type: "integer", minimum: 0 },
+                            },
+                          },
+                        },
+                        login_country_stats_7d: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            required: ["country", "count"],
+                            properties: {
+                              country: { type: "string", description: "NULL国は unknown" },
+                              count: { type: "integer", minimum: 0 },
+                            },
+                          },
                         },
                       },
                       required: [
                         "total_users",
                         "admin_users",
+                        "banned_users",
                         "total_services",
                         "active_sessions",
                         "recent_logins_24h",
+                        "recent_logins_7d",
+                        "login_provider_stats_7d",
+                        "login_country_stats_7d",
                       ],
                     },
                   },
@@ -1559,9 +1953,13 @@ export const INTERNAL_OPENAPI = {
                   data: {
                     total_users: 42,
                     admin_users: 2,
+                    banned_users: 1,
                     total_services: 5,
                     active_sessions: 128,
                     recent_logins_24h: 17,
+                    recent_logins_7d: 60,
+                    login_provider_stats_7d: [{ provider: "google", count: 60 }],
+                    login_country_stats_7d: [{ country: "unknown", count: 60 }],
                   },
                 },
               },
@@ -1569,6 +1967,93 @@ export const INTERNAL_OPENAPI = {
           },
           "401": { description: "UNAUTHORIZED" },
           "403": { description: "FORBIDDEN — 管理者権限なし" },
+          "500": {
+            description: "INTERNAL_ERROR — Failed to fetch metrics",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
+        },
+      },
+    },
+    "/api/metrics/recent-events": {
+      get: {
+        tags: ["管理者 API"],
+        summary: "ログインイベント調査（複合フィルター・ページング）",
+        description:
+          "全条件を AND 結合。期間はリクエスト時刻からの UTC 経過時間で下限を含む。フィルター未指定は全件。重複・未知のキー・空の明示値・2048文字超のクエリーは400。created_at DESC, id DESC 順。",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "user_id",
+            in: "query",
+            schema: { type: "string", pattern: "^[A-Za-z0-9_-]{1,128}$" },
+            description: "ユーザーID完全一致",
+          },
+          {
+            name: "country",
+            in: "query",
+            schema: { type: "string", pattern: "^(?:[A-Z]{2}|unknown)$" },
+            description: "国コード。unknown は国未取得（NULL）",
+          },
+          {
+            name: "provider",
+            in: "query",
+            schema: { type: "string", enum: ALL_PROVIDERS },
+          },
+          {
+            name: "period",
+            in: "query",
+            schema: { type: "string", enum: ["all", "24h", "7d", "30d"], default: "all" },
+          },
+          {
+            name: "limit",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 50 },
+          },
+          {
+            name: "offset",
+            in: "query",
+            schema: { type: "integer", minimum: 0, maximum: 9007199254740991, default: 0 },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "同じ条件で絞り込んだイベントと総件数",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["data", "meta"],
+                  properties: {
+                    data: { type: "array", items: { $ref: "#/components/schemas/LoginEvent" } },
+                    meta: {
+                      type: "object",
+                      required: ["limit", "offset", "total"],
+                      properties: {
+                        limit: { type: "integer" },
+                        offset: { type: "integer" },
+                        total: { type: "integer" },
+                        applied_filters: {
+                          type: "object",
+                          description: "フィルター指定時のみ。画面は要求条件と照合する。",
+                          required: ["user_id", "country", "provider", "period"],
+                          properties: {
+                            user_id: { type: "string", nullable: true },
+                            country: { type: "string", nullable: true },
+                            provider: { type: "string", nullable: true },
+                            period: { type: "string", enum: ["all", "24h", "7d", "30d"] },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "400": { description: "INVALID_PARAMETER — 検索条件不正" },
+          "401": { description: "UNAUTHORIZED" },
+          "403": { description: "FORBIDDEN — 管理者権限なし" },
+          "500": { description: "INTERNAL_ERROR" },
         },
       },
     },

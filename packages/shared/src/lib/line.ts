@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { fetchWithRetry } from "./fetch-retry";
-import { createLogger } from "./logger";
+import { createLogger, httpStatusMetadata } from "./logger";
 
 const logger = createLogger("oauth-line");
 
@@ -75,8 +75,8 @@ export async function exchangeLineCode(params: {
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    logger.error(`LINE token exchange failed (${response.status})`, error);
+    // Provider error bodies can contain personal data or echoed credentials.
+    logger.error("LINE token exchange failed", httpStatusMetadata(response.status));
     throw new Error("LINE token exchange failed");
   }
 

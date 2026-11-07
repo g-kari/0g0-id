@@ -23,7 +23,8 @@ const defaultLogger = createLogger("bff-upstream-deprecation");
  * id worker からの Response に `Deprecation` ヘッダが付与されていれば warn ログを出す。
  *
  * - ヘッダが無ければ no-op（検知対象外）
- * - ヘッダ値と Link ヘッダ値はそのまま構造化ログに載せる
+ * - 共有 logger は固定イベントだけを記録し、ヘッダ等の legacy extra は出力しない。
+ *   注入 logger には従来どおり extra が渡るため、独自 sink の privacy は呼び出し元の責務。
  * - レスポンスボディには一切触れない（ストリーム消費を避ける）
  *
  * @param res id worker からの Response

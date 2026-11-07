@@ -192,6 +192,20 @@ describe("admin BFF — /api/audit-logs", () => {
       expect(res.status).toBe(404);
     });
 
+    it("IdP が管理者権限を拒否した場合は403をプロキシし、一覧として扱わない", async () => {
+      const denial = { error: { code: "FORBIDDEN", message: "Admin access required" } };
+      const idpFetch = mockIdp(403, denial);
+      const app = buildApp(idpFetch);
+
+      const res = await app.request("/api/audit-logs", {
+        headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie("user")}` },
+      });
+
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual(denial);
+      expect(idpFetch).toHaveBeenCalledOnce();
+    });
+
     it("IdP が500を返した場合は500をプロキシする", async () => {
       const idpFetch = mockIdp(500, { error: { code: "INTERNAL_ERROR", message: "Server error" } });
       const app = buildApp(idpFetch);

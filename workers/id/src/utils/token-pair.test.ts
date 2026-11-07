@@ -19,6 +19,7 @@ import type { IdpEnv, User } from "@0g0-id/shared";
 import {
   issueTokenPair,
   buildTokenResponse,
+  ResourceRegistrationGoneError,
   REFRESH_TOKEN_TTL_MS,
   ACCESS_TOKEN_TTL_SECONDS,
 } from "./token-pair";
@@ -43,14 +44,24 @@ describe("issueTokenPair", () => {
     vi.mocked(signAccessToken).mockResolvedValue("mock-access-token");
     vi.mocked(generateToken).mockReturnValue("mock-refresh-token");
     vi.mocked(sha256).mockResolvedValue("mock-hash");
-    vi.mocked(createRefreshToken).mockResolvedValue(undefined);
+    vi.mocked(createRefreshToken).mockResolvedValue(true);
     vi.spyOn(crypto, "randomUUID").mockReturnValue(
       "mock-uuid-1234" as ReturnType<typeof crypto.randomUUID>,
     );
   });
 
+  it.each([
+    { serviceId: "service-1" },
+    { serviceId: "service-1", clientId: "" },
+    { serviceId: null, clientId: "client-abc" },
+  ])("不正なservice/client結合は発行やDB保存前に拒否: %j", async (options) => {
+    await expect(issueTokenPair(mockDb, mockEnv, mockUser, options)).rejects.toThrow();
+    expect(signAccessToken).not.toHaveBeenCalled();
+    expect(createRefreshToken).not.toHaveBeenCalled();
+  });
+
   it("accessToken と refreshToken を返す", async () => {
-    const result = await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: "service-1" });
+    const result = await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: null });
 
     expect(result.accessToken).toBe("mock-access-token");
     expect(result.refreshToken).toBe("mock-refresh-token");
@@ -85,6 +96,9 @@ describe("issueTokenPair", () => {
       expect.any(String),
       expect.any(String),
     );
+    const input = vi.mocked(signAccessToken).mock.calls[0][0];
+    expect(input).not.toHaveProperty("email");
+    expect(input).not.toHaveProperty("role");
   });
 
   it("clientId が指定された場合、aud に clientId がセットされる", async () => {
@@ -102,7 +116,7 @@ describe("issueTokenPair", () => {
 
   it("scope が指定された場合は signAccessToken に渡す", async () => {
     await issueTokenPair(mockDb, mockEnv, mockUser, {
-      serviceId: "service-1",
+      serviceId: null,
       scope: "openid profile",
     });
 
@@ -129,8 +143,8 @@ describe("issueTokenPair", () => {
     );
   });
 
-  it("clientId がない場合は pairwiseSub が null になる", async () => {
-    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: "service-1" });
+  it("BFF tokenでは pairwiseSub が null になる", async () => {
+    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: null });
 
     expect(createRefreshToken).toHaveBeenCalledWith(
       mockDb,
@@ -139,7 +153,7 @@ describe("issueTokenPair", () => {
   });
 
   it("familyId が指定されていない場合は crypto.randomUUID() で生成する", async () => {
-    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: "service-1" });
+    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: null });
 
     expect(createRefreshToken).toHaveBeenCalledWith(
       mockDb,
@@ -149,7 +163,7 @@ describe("issueTokenPair", () => {
 
   it("familyId が指定された場合はそれを使う", async () => {
     await issueTokenPair(mockDb, mockEnv, mockUser, {
-      serviceId: "service-1",
+      serviceId: null,
       familyId: "existing-family",
     });
 
@@ -169,7 +183,7 @@ describe("issueTokenPair", () => {
   });
 
   it("scope が未指定の場合 createRefreshToken に scope: null を渡す", async () => {
-    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: "service-1" });
+    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: null });
 
     expect(createRefreshToken).toHaveBeenCalledWith(
       mockDb,
@@ -179,7 +193,7 @@ describe("issueTokenPair", () => {
 
   it("scope が指定された場合 createRefreshToken にそれを渡す", async () => {
     await issueTokenPair(mockDb, mockEnv, mockUser, {
-      serviceId: "service-1",
+      serviceId: null,
       scope: "openid email",
     });
 
@@ -193,7 +207,7 @@ describe("issueTokenPair", () => {
     const now = Date.now();
     vi.spyOn(Date, "now").mockReturnValue(now);
 
-    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: "service-1" });
+    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: null });
 
     const expectedExpiresAt = new Date(now + REFRESH_TOKEN_TTL_MS).toISOString();
     expect(createRefreshToken).toHaveBeenCalledWith(
@@ -206,13 +220,54 @@ describe("issueTokenPair", () => {
     vi.mocked(generateToken).mockReturnValue("plain-refresh-token");
     vi.mocked(sha256).mockResolvedValue("hashed-refresh-token");
 
-    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: "service-1" });
+    await issueTokenPair(mockDb, mockEnv, mockUser, { serviceId: null });
 
     expect(sha256).toHaveBeenCalledWith("plain-refresh-token");
     expect(createRefreshToken).toHaveBeenCalledWith(
       mockDb,
       expect.objectContaining({ tokenHash: "hashed-refresh-token" }),
     );
+  });
+
+  it("resource 指定時は resourceServerId を createRefreshToken へ渡す", async () => {
+    await issueTokenPair(mockDb, mockEnv, mockUser, {
+      serviceId: "service-1",
+      clientId: "client-abc",
+      resource: "https://dots-events.0g0.xyz/mcp",
+      resourceServerId: "rs-gen-1",
+    });
+
+    expect(createRefreshToken).toHaveBeenCalledWith(
+      mockDb,
+      expect.objectContaining({
+        resource: "https://dots-events.0g0.xyz/mcp",
+        resourceServerId: "rs-gen-1",
+      }),
+    );
+  });
+
+  it("resource 指定時に resourceServerId が無いと発行前に拒否する", async () => {
+    await expect(
+      issueTokenPair(mockDb, mockEnv, mockUser, {
+        serviceId: "service-1",
+        clientId: "client-abc",
+        resource: "https://dots-events.0g0.xyz/mcp",
+      }),
+    ).rejects.toThrow(/require a resourceServerId/);
+    expect(createRefreshToken).not.toHaveBeenCalled();
+  });
+
+  it("登録が削除済みで createRefreshToken が false を返すと ResourceRegistrationGoneError を投げる", async () => {
+    vi.mocked(createRefreshToken).mockResolvedValue(false);
+
+    await expect(
+      issueTokenPair(mockDb, mockEnv, mockUser, {
+        serviceId: "service-1",
+        clientId: "client-abc",
+        resource: "https://dots-events.0g0.xyz/mcp",
+        resourceServerId: "rs-deleted",
+      }),
+    ).rejects.toBeInstanceOf(ResourceRegistrationGoneError);
   });
 });
 

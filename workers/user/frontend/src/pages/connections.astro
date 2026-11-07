@@ -29,6 +29,7 @@ import Base from '../layouts/Base.astro';
   import { apiFetch, formatDate } from '../lib/api';
   import { escapeHtml } from '../lib/helpers';
   import { showToast } from '../lib/toast';
+  import { setupConnectionCopy } from '../lib/connection-copy';
   import type { UserConnection } from '@0g0-id/api-types';
 
   const loadingEl = document.getElementById('loading')!;
@@ -64,9 +65,24 @@ import Base from '../layouts/Base.astro';
           <code class="text-xs flex-1 min-w-0 truncate" style="font-family: monospace; color: var(--color-text);" title="${escapeHtml(c.pairwise_sub)}">${escapeHtml(c.pairwise_sub)}</code>
           <button class="btn btn-ghost btn-sm copy-sub" data-sub="${escapeHtml(c.pairwise_sub)}" style="padding: 2px 8px; font-size: 0.7rem;">コピー</button>
         </div>
+        <div class="copy-recovery mt-2" hidden>
+          <label class="form-group text-xs">Sub ID（手動コピー用）
+            <input class="w-full mt-1" type="text" readonly value="${escapeHtml(c.pairwise_sub)}" autocomplete="off" spellcheck="false" style="font-family: monospace; min-width: 0;" />
+          </label>
+        </div>
+        <p class="copy-status text-xs mt-2" role="status" aria-live="polite"></p>
         ` : ''}
       </div>
     `).join('');
+    listEl.querySelectorAll<HTMLButtonElement>('.copy-sub').forEach(button => {
+      const row = button.parentElement!.parentElement!;
+      setupConnectionCopy({
+        button,
+        recovery: row.querySelector<HTMLElement>('.copy-recovery')!,
+        input: row.querySelector<HTMLInputElement>('.copy-recovery input')!,
+        status: row.querySelector<HTMLElement>('.copy-status')!,
+      }, () => showToast('Sub ID をコピーしました', 'success'));
+    });
     listEl.style.display = '';
     } catch (err) {
       loadingEl.style.display = 'none';
@@ -76,12 +92,7 @@ import Base from '../layouts/Base.astro';
   }
 
   listEl.addEventListener('click', async (e) => {
-    const copyBtn = (e.target as HTMLElement).closest('.copy-sub') as HTMLElement | null;
-    if (copyBtn) {
-      await navigator.clipboard.writeText(copyBtn.dataset.sub!);
-      showToast('Sub ID をコピーしました', 'success');
-      return;
-    }
+    if ((e.target as HTMLElement).closest('.copy-sub, .copy-recovery')) return;
     const btn = (e.target as HTMLElement).closest('[data-disconnect]') as HTMLElement | null;
     if (!btn) return;
     const id = btn.dataset.disconnect!;

@@ -6,6 +6,7 @@ import {
   securityHeaders,
   bodyLimitMiddleware,
   createLogger,
+  deletedCountMetadata,
   cleanupExpiredAuthCodes,
   deleteExpiredDeviceCodes,
   cleanupExpiredMcpSessions,
@@ -18,6 +19,8 @@ import authRoutes from "./routes/auth";
 import usersRoutes from "./routes/users";
 import tokenRoutes from "./routes/token";
 import servicesRoutes from "./routes/services";
+import registerRoutes from "./routes/register";
+import resourcesRoutes from "./routes/resources";
 import metricsRoutes from "./routes/metrics";
 import wellKnownRoutes from "./routes/well-known";
 import docsRoutes from "./routes/docs";
@@ -54,6 +57,8 @@ app.route("/.well-known", wellKnownRoutes);
 app.route("/api/users", usersRoutes);
 app.route("/api/token", tokenRoutes);
 app.route("/api/services", servicesRoutes);
+app.route("/api/register", registerRoutes);
+app.route("/api/resources", resourcesRoutes);
 app.route("/api/metrics", metricsRoutes);
 app.route("/api/external", externalRoutes);
 app.route("/api/userinfo", userInfoRoutes);
@@ -67,8 +72,9 @@ app.get("/api/health", (c) => {
 });
 
 // エラーハンドリング
-app.onError((err, c) => {
-  appLogger.error("Unhandled error", err);
+app.onError((_err, c) => {
+  // 例外には個人情報やtokenが含まれ得るため、固定イベントだけを記録する。
+  appLogger.error("Unhandled error");
   return c.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
 });
 
@@ -84,7 +90,7 @@ export default {
     ctx.waitUntil(
       (async () => {
         const deleted = await cleanupExpiredAuthCodes(env.DB);
-        appLogger.info("認可コードクリーンアップ完了", { deletedCount: deleted });
+        appLogger.info("認可コードクリーンアップ完了", deletedCountMetadata(deleted));
 
         await deleteExpiredDeviceCodes(env.DB);
         appLogger.info("デバイスコードクリーンアップ完了");
@@ -93,12 +99,16 @@ export default {
         appLogger.info("MCPセッションクリーンアップ完了");
 
         const revokedDeleted = await cleanupExpiredRevokedAccessTokens(env.DB);
-        appLogger.info("失効アクセストークンクリーンアップ完了", { deletedCount: revokedDeleted });
+        appLogger.info(
+          "失効アクセストークンクリーンアップ完了",
+          deletedCountMetadata(revokedDeleted),
+        );
 
         const refreshDeleted = await deleteExpiredRefreshTokens(env.DB);
-        appLogger.info("期限切れリフレッシュトークンクリーンアップ完了", {
-          deletedCount: refreshDeleted,
-        });
+        appLogger.info(
+          "期限切れリフレッシュトークンクリーンアップ完了",
+          deletedCountMetadata(refreshDeleted),
+        );
 
         await cleanupStaleDbscChallenges(env.DB);
         appLogger.info("DBSCチャレンジクリーンアップ完了");

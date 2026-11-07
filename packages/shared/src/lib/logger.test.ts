@@ -1,115 +1,161 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { createLogger } from "./logger";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { createLogger, type LogLevel } from "./logger";
 
-describe("createLogger", () => {
-  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
-  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
-  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+const CANARY = "synthetic-private-token-person@example.invalid";
+const levels: LogLevel[] = ["debug", "info", "warn", "error"];
+
+function hostileProperties(): { extra: unknown; reads: () => number } {
+  let reads = 0;
+  const extra = Object.create(Error.prototype) as object;
+  for (const key of ["message", "stack", "cause", "name", "toJSON", "status", "deletedCount"]) {
+    Object.defineProperty(extra, key, {
+      get() {
+        reads++;
+        throw new Error(`must not inspect ${key}: ${CANARY}`);
+      },
+    });
+  }
+  return { extra, reads: () => reads };
+}
+
+function hostileProxy(): { extra: unknown; reads: () => number } {
+  let reads = 0;
+  const trap = (): never => {
+    reads++;
+    throw new Error(CANARY);
+  };
+  return {
+    extra: new Proxy(
+      {},
+      {
+        get: trap,
+        getPrototypeOf: trap,
+        ownKeys: trap,
+        getOwnPropertyDescriptor: trap,
+        has: trap,
+      },
+    ),
+    reads: () => reads,
+  };
+}
+
+const legacyExtras = [
+  { name: "ordinary Error", create: () => new Error(CANARY, { cause: CANARY }) },
+  { name: "thrown string", create: () => CANARY },
+  { name: "thrown object", create: () => ({ reason: CANARY, userId: CANARY, failedAttempts: 3 }) },
+  { name: "legacy status object", create: () => ({ status: 503 }) },
+  { name: "legacy cleanup object", create: () => ({ deletedCount: 42 }) },
+  { name: "large string", create: () => CANARY.repeat(2048) },
+  { name: "number", create: () => 42 },
+  { name: "boolean", create: () => true },
+  { name: "null", create: () => null },
+  { name: "undefined", create: () => undefined },
+  { name: "bigint", create: () => 42n },
+  { name: "symbol", create: () => Symbol(CANARY) },
+  { name: "function", create: () => () => CANARY },
+  { name: "array", create: () => [CANARY] },
+  {
+    name: "cycle",
+    create: () => {
+      const extra: { secret: string; self?: unknown } = { secret: CANARY };
+      extra.self = extra;
+      return extra;
+    },
+  },
+  {
+    name: "revoked Proxy",
+    create: () => {
+      const { proxy, revoke } = Proxy.revocable({}, {});
+      revoke();
+      return proxy;
+    },
+  },
+  {
+    name: "forged token",
+    create: () =>
+      Object.assign(Object.create(null) as object, { data: { status: 503 }, status: 503 }),
+  },
+] as const;
+
+describe("createLogger privacy boundary", () => {
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("createLogger でロガーインスタンスを生成できる", () => {
-    const logger = createLogger("test");
-    expect(logger).toHaveProperty("debug");
-    expect(logger).toHaveProperty("info");
-    expect(logger).toHaveProperty("warn");
-    expect(logger).toHaveProperty("error");
+  function expectFixedEntry(level: LogLevel): void {
+    const sink = level === "error" ? errorSpy : level === "warn" ? warnSpy : logSpy;
+    expect(sink).toHaveBeenCalledExactlyOnceWith(
+      JSON.stringify({ level, ctx: "test-context", msg: "fixed event" }),
+    );
+    expect(logSpy.mock.calls.length + warnSpy.mock.calls.length + errorSpy.mock.calls.length).toBe(
+      1,
+    );
+  }
+
+  it.each(levels)("preserves %s context/message and console routing", (level) => {
+    createLogger("test-context")[level]("fixed event");
+    expectFixedEntry(level);
   });
 
-  it("info ログが console.log に JSON 形式で出力される", () => {
-    const logger = createLogger("auth");
-    logger.info("ログインしました");
-    expect(consoleLogSpy).toHaveBeenCalledOnce();
-    const output = JSON.parse(consoleLogSpy.mock.calls[0][0] as string);
-    expect(output.level).toBe("info");
-    expect(output.ctx).toBe("auth");
-    expect(output.msg).toBe("ログインしました");
+  describe.each(levels)("%s extras", (level) => {
+    it.each(legacyExtras)("ignores $name without serializing it", ({ create }) => {
+      const extra: unknown = create();
+      expect(() => createLogger("test-context")[level]("fixed event", extra)).not.toThrow();
+      expectFixedEntry(level);
+    });
+
+    it("does not read hostile Error message/stack/cause/name or metadata getters", () => {
+      const { extra, reads } = hostileProperties();
+      expect(() => createLogger("test-context")[level]("fixed event", extra)).not.toThrow();
+      expect(reads()).toBe(0);
+      expectFixedEntry(level);
+    });
+
+    it("does not trigger Proxy inspection traps", () => {
+      const { extra, reads } = hostileProxy();
+      expect(() => createLogger("test-context")[level]("fixed event", extra)).not.toThrow();
+      expect(reads()).toBe(0);
+      expectFixedEntry(level);
+    });
+
+    it("never calls extra toJSON or primitive conversion hooks", () => {
+      const hook = vi.fn(() => {
+        throw new Error(CANARY);
+      });
+      const extra = { toJSON: hook, toString: hook, valueOf: hook, [Symbol.toPrimitive]: hook };
+      expect(() => createLogger("test-context")[level]("fixed event", extra)).not.toThrow();
+      expect(hook).not.toHaveBeenCalled();
+      expectFixedEntry(level);
+    });
   });
 
-  it("debug ログが console.log に出力される", () => {
-    const logger = createLogger("token");
-    logger.debug("デバッグ情報");
-    expect(consoleLogSpy).toHaveBeenCalledOnce();
-    const output = JSON.parse(consoleLogSpy.mock.calls[0][0] as string);
-    expect(output.level).toBe("debug");
-    expect(output.ctx).toBe("token");
-    expect(output.msg).toBe("デバッグ情報");
-  });
-
-  it("warn ログが console.warn に出力される", () => {
-    const logger = createLogger("service");
-    logger.warn("警告メッセージ");
-    expect(consoleWarnSpy).toHaveBeenCalledOnce();
-    const output = JSON.parse(consoleWarnSpy.mock.calls[0][0] as string);
-    expect(output.level).toBe("warn");
-    expect(output.ctx).toBe("service");
-    expect(output.msg).toBe("警告メッセージ");
-  });
-
-  it("error ログが console.error に出力される", () => {
-    const logger = createLogger("db");
-    logger.error("エラーが発生しました");
-    expect(consoleErrorSpy).toHaveBeenCalledOnce();
-    const output = JSON.parse(consoleErrorSpy.mock.calls[0][0] as string);
-    expect(output.level).toBe("error");
-    expect(output.ctx).toBe("db");
-    expect(output.msg).toBe("エラーが発生しました");
-  });
-
-  it("Error オブジェクトを渡すと err と stack が設定される", () => {
-    const logger = createLogger("token-introspect");
-    const error = new Error("DB接続エラー");
-    logger.error("エラー詳細", error);
-    const output = JSON.parse(consoleErrorSpy.mock.calls[0][0] as string);
-    expect(output.err).toBe("DB接続エラー");
-    expect(output.stack).toContain("DB接続エラー");
-    expect(output.data).toBeUndefined();
-  });
-
-  it("非 Error オブジェクトを渡すと data に設定される", () => {
-    const logger = createLogger("oauth-google");
-    const extra = { userId: "user-123", scope: "openid" };
-    logger.info("ユーザー情報", extra);
-    const output = JSON.parse(consoleLogSpy.mock.calls[0][0] as string);
-    expect(output.data).toEqual(extra);
-    expect(output.err).toBeUndefined();
-  });
-
-  it("extra を渡さない場合は data/err/stack が含まれない", () => {
-    const logger = createLogger("id");
-    logger.info("シンプルなログ");
-    const output = JSON.parse(consoleLogSpy.mock.calls[0][0] as string);
-    expect(output.data).toBeUndefined();
-    expect(output.err).toBeUndefined();
-    expect(output.stack).toBeUndefined();
-  });
-
-  it("コンテキスト文字列が出力に反映される", () => {
-    const logger = createLogger("token-pair");
-    logger.info("テスト");
-    const output = JSON.parse(consoleLogSpy.mock.calls[0][0] as string);
-    expect(output.ctx).toBe("token-pair");
-  });
-
-  it("数値を extra として渡すと data に設定される", () => {
-    const logger = createLogger("metrics");
-    logger.debug("カウント", 42);
-    const output = JSON.parse(consoleLogSpy.mock.calls[0][0] as string);
-    expect(output.data).toBe(42);
-  });
-
-  it("null を extra として渡すと data に設定される", () => {
-    const logger = createLogger("test");
-    logger.warn("null値", null);
-    const output = JSON.parse(consoleWarnSpy.mock.calls[0][0] as string);
-    expect(output.data).toBeNull();
+  it("uses a null-prototype entry so inherited toJSON cannot inspect log records", () => {
+    const hook = vi.fn(() => {
+      throw new Error(CANARY);
+    });
+    let thrown: unknown;
+    const previous = Object.getOwnPropertyDescriptor(Object.prototype, "toJSON");
+    Object.defineProperty(Object.prototype, "toJSON", { configurable: true, get: hook });
+    try {
+      createLogger("test-context").info("fixed event", hostileProperties().extra);
+    } catch (error) {
+      thrown = error;
+    } finally {
+      if (previous) Object.defineProperty(Object.prototype, "toJSON", previous);
+      else Reflect.deleteProperty(Object.prototype, "toJSON");
+    }
+    expect(thrown).toBeUndefined();
+    expect(hook).not.toHaveBeenCalled();
+    expectFixedEntry("info");
   });
 });

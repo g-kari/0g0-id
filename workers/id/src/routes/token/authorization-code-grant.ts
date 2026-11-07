@@ -2,14 +2,24 @@ import {
   sha256,
   findAndConsumeAuthCode,
   findUserById,
+  findResourceServerByUri,
   generateCodeChallenge,
   timingSafeEqual,
   normalizeRedirectUri,
   matchRedirectUri,
   createLogger,
 } from "@0g0-id/shared";
-import { resolveEffectiveScope } from "../../utils/scopes";
-import { issueTokenPair, buildTokenResponse, issueIdToken } from "../../utils/token-pair";
+import {
+  resolveEffectiveScope,
+  resolveResourceScopeOrDefault,
+  isSubjectAllowedForResource,
+} from "../../utils/scopes";
+import {
+  issueTokenPair,
+  buildTokenResponse,
+  issueIdToken,
+  ResourceRegistrationGoneError,
+} from "../../utils/token-pair";
 import { type TokenHandlerContext, resolveOAuthClient } from "./utils";
 
 const tokenLogger = createLogger("token");
@@ -116,6 +126,82 @@ export async function handleAuthorizationCodeGrant(
       );
     }
 
+    // RFC 8707: 認可コードに resource が束縛されている場合はリソース束縛
+    // トークンを発行する。トークンリクエスト側の resource は、指定されたら
+    // コード側と完全一致しなければならない。
+    const requestedResource = params["resource"];
+    if (authCode.resource) {
+      if (requestedResource !== undefined && requestedResource !== authCode.resource) {
+        return c.json(
+          {
+            error: "invalid_grant",
+            error_description: "resource does not match the authorization request",
+          },
+          400,
+        );
+      }
+      const resourceServer = await findResourceServerByUri(c.env.DB, authCode.resource);
+      if (!resourceServer) {
+        return c.json(
+          {
+            error: "invalid_grant",
+            error_description: "resource is no longer a registered resource server",
+          },
+          400,
+        );
+      }
+      // 登録世代の照合: コード発行時の resource_servers 行 id と現在の
+      // 行 id が異なれば、削除→同 URI 再登録を経ている。URI が一致しても
+      // 削除前のコードから新しい登録向けのトークンを発行しない
+      // （削除時点を失効境界にする）。
+      // 世代が記録されていない旧形式コード（resource あり・世代なし）も
+      // 照合できないため安全側で拒否する。コードの有効期間は60秒のため、
+      // 移行時に失効するのは最大で60秒分の未交換コードに限られる。
+      if (authCode.resource_server_id !== resourceServer.id) {
+        return c.json(
+          {
+            error: "invalid_grant",
+            error_description: "resource registration that issued this code no longer exists",
+          },
+          400,
+        );
+      }
+      // 利用者制限（allowed_subjects）が設定されているリソースでは、
+      // 許可された subject 以外には発行しない（登録＝全員許可にしない）
+      if (!isSubjectAllowedForResource(resourceServer, user.id)) {
+        return c.json(
+          {
+            error: "invalid_grant",
+            error_description: "subject is not allowed to use this resource",
+          },
+          400,
+        );
+      }
+      // スコープはリソースサーバー側の登録スコープが上限。
+      // クライアントがリソース用スコープを要求していない場合（OIDC
+      // スコープのみの場合）は、登録済みの許可スコープをすべて付与する
+      const resourceScope = resolveResourceScopeOrDefault(
+        authCode.scope,
+        resourceServer.allowed_scopes,
+      );
+      if (resourceScope === undefined) {
+        return c.json({ error: "invalid_scope", error_description: "No valid scope" }, 400);
+      }
+      const { accessToken, refreshToken } = await issueTokenPair(c.env.DB, c.env, user, {
+        serviceId: service.id,
+        clientId: service.client_id,
+        scope: resourceScope,
+        resource: authCode.resource,
+        // 発行は検証した登録世代への束縛で行う（削除競合時は gone エラー）
+        resourceServerId: resourceServer.id,
+      });
+      const idToken = await issueIdToken(c.env, user, service, resourceScope, {
+        nonce: authCode.nonce ?? undefined,
+        amr: authCode.provider ? [authCode.provider] : undefined,
+      });
+      return c.json(buildTokenResponse(accessToken, refreshToken, resourceScope, idToken));
+    }
+
     // スコープ計算
     const serviceScope = resolveEffectiveScope(authCode.scope, service.allowed_scopes);
     if (serviceScope === undefined) {
@@ -138,6 +224,16 @@ export async function handleAuthorizationCodeGrant(
     // レスポンス (RFC 6749 §5.1)
     return c.json(buildTokenResponse(accessToken, refreshToken, serviceScope, idToken));
   } catch (e) {
+    if (e instanceof ResourceRegistrationGoneError) {
+      // 検証通過から発行までの間に resource 登録が削除された
+      return c.json(
+        {
+          error: "invalid_grant",
+          error_description: "resource is no longer a registered resource server",
+        },
+        400,
+      );
+    }
     tokenLogger.error("handleAuthorizationCodeGrant: unexpected error", e);
     return c.json(
       { error: "server_error", error_description: "An unexpected error occurred" },

@@ -4,8 +4,14 @@ import type { ServiceAppEnv } from "./_shared";
 import crudRoutes from "./crud";
 import redirectUriRoutes from "./redirect-uris";
 import adminOperationsRoutes from "./admin-operations";
+import ownerSubRoutes from "./owner-sub";
 
 const app = new Hono<ServiceAppEnv>();
+
+app.use("/:id/owner-sub", async (c, next): Promise<void> => {
+  c.header("Cache-Control", "no-store");
+  await next();
+});
 
 // サービスID形式検証ミドルウェア（:id パラメータを持つすべてのルートに適用）
 app.use("/:id", uuidParamMiddleware("id", { label: "service ID" }));
@@ -15,5 +21,6 @@ app.use("/:id/*", uuidParamMiddleware("id", { label: "service ID" }));
 app.route("/", crudRoutes);
 app.route("/", redirectUriRoutes);
 app.route("/", adminOperationsRoutes);
+app.route("/", ownerSubRoutes);
 
 export default app;

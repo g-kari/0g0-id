@@ -5,7 +5,7 @@ import {
 } from "@0g0-id/shared";
 import type { IdpEnv, User, RefreshToken } from "@0g0-id/shared";
 import { attemptUnrevokeToken } from "./token-recovery";
-import { issueTokenPair } from "./token-pair";
+import { issueTokenPair, ResourceRegistrationGoneError } from "./token-pair";
 
 /**
  * リフレッシュトークン・ローテーション 状態遷移図
@@ -98,7 +98,7 @@ export async function validateAndRevokeRefreshToken(
 /** 新トークンペア発行結果 */
 export type IssueWithRecoveryResult =
   | { ok: true; accessToken: string; refreshToken: string }
-  | { ok: false; reason: "TOKEN_REUSE" | "INTERNAL_ERROR" };
+  | { ok: false; reason: "TOKEN_REUSE" | "INTERNAL_ERROR" | "RESOURCE_GONE" };
 
 /**
  * 新しいアクセストークン・リフレッシュトークンを発行し、
@@ -112,7 +112,14 @@ export async function issueTokenPairWithRecovery(
   db: D1Database,
   env: IdpEnv,
   user: User,
-  issueParams: { serviceId: string | null; clientId?: string; familyId?: string; scope?: string },
+  issueParams: {
+    serviceId: string | null;
+    clientId?: string;
+    familyId?: string;
+    scope?: string;
+    resource?: string | null;
+    resourceServerId?: string | null;
+  },
   storedTokenId: string,
   tokenHash: string,
   logger: { error: (msg: string, extra?: unknown) => void },
@@ -122,6 +129,13 @@ export async function issueTokenPairWithRecovery(
     const tokens = await issueTokenPair(db, env, user, issueParams);
     return { ok: true, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
   } catch (e) {
+    if (e instanceof ResourceRegistrationGoneError) {
+      // 検証後に resource 登録が削除され、世代ガードが後継トークンの作成を
+      // 抑止した。旧トークンを復活させても同じ世代に束縛され使い道がない
+      // ため、unrevoke はせず RESOURCE_GONE として返す。
+      logger.error(`${context}: resource registration deleted during issuance`, e);
+      return { ok: false, reason: "RESOURCE_GONE" };
+    }
     logger.error(`${context}: issueTokenPair failed`, e);
     const currentToken = await findRefreshTokenByHash(db, tokenHash);
     if (currentToken && currentToken.revoked_reason === "reuse_detected") {
