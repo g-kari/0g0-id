@@ -2,7 +2,7 @@
 
 ## 現在の到達点
 
-現行の Google、LINE、Twitch、GitHub、X 認証は変更しない。追加プロバイダー名は未確定であり、既存要望の GitHub / X / LINE / Twitch を新規要望と取り違えない。
+現行の Google、LINE、Twitch、GitHub、X の認証経路とプロバイダー設定は維持する。callbackの最終ポリシー処理を共通関数へ抽出し、bootstrap昇格には検証済みメールを明示的に要求する。追加プロバイダー名は未確定であり、既存要望の GitHub / X / LINE / Twitch を新規要望と取り違えない。
 
 この変更は **未接続の認証ストレージとメール配送基盤** を追加する。アプリのルート登録、環境変数、OAuth プロバイダー型、既存 DB、既存ログイン UI は変更しない。検証器のruntime依存に `@simplewebauthn/server` 14.0.3を正規lockfileと共に追加する。実際のメール登録・パスキーログインはまだ利用できない。
 
@@ -14,14 +14,16 @@
 - `packages/shared/src/db/passkey-signup.ts`: 短命pending subjectと32byte WebAuthn user handle、検証後のauthority消費・一般user・handle・公開鍵作成を同一batchで完了する未接続helper。
 - `workers/id/src/utils/webauthn.ts`: SimpleWebAuthnのoptions/verify adapter。UP/UV、exact origin/RP ID、所有者・handle・credential ID・登録時BEを検証し、解析・署名はライブラリーに委譲する。
 - `workers/id/src/utils/verification-email.ts`: 未接続の Cloudflare Email Sending adapter と確認メールテンプレート。詳細は [配送設計](./email-delivery.md)。binding・送信元・公開 route は設定しない。
+- `workers/id/src/utils/passkey-flow.ts`: 実検証器とDB helperを結ぶ未接続の登録・認証フロー。同じpendingのoptions応答喪失からの再開、検証済み公開鍵の原子登録、認証challengeの一回消費と登録世代/counter CASを扱う。
+- `workers/id/src/routes/auth/finalize.ts`: OAuth callbackから共通化した最終ポリシーと既存認可コード発行。lockout、redirect、service/resource制限、state/PKCE/nonceを維持する。呼出し元が信頼できる認証結果と最新userのban等を確認してから使う。
 
 これらの関数は shared の公開 barrel に export しない。署名検証器の代替でもなく、成功を返しただけで登録・ログインを認可するものでもない。
 
 ## 完成までの必須事項
 
 1. メール所有確認の配送手段、送信元アドレス、利用可能な既存契約を決める。Cloudflare Email Sending の未接続 adapter は追加したが、公開経路・本番の送信設定は未実装であり、メールproofのstorage helperを実際の所有確認フローとしては接続していない。配送サービスの認証や本番設定を先に作ったことにはしない。
-2. Workers 対応のSimpleWebAuthn 14.0.3 adapterを追加した。公開routeへ接続する前に、optionsと検証snapshot・DB更新の一体試験を完了する。CBOR / COSE / attestation / 署名の独自実装はしない。
-3. メールintent、pending record、最終authority消費とuser/公開鍵保存の原子helperは追加した。既存ユーザー用challengeとpending用challengeを混同せず、署名検証に使った同じpending snapshotだけを最終batchへ渡す公開接続が必要。
+2. Workers 対応のSimpleWebAuthn 14.0.3 adapterを追加し、未接続flowではoptions・実署名検証・DB更新の一体試験を行った。公開route、実認証器、ブラウザーの試験は残る。CBOR / COSE / attestation / 署名の独自実装はしない。
+3. メールintent、pending record、最終authority消費とuser/公開鍵保存の原子helperと検証器接続flowは追加した。公開handlerは、既存ユーザー用challengeとpending用challengeを混同せず、cookie由来のbrowser bindingと内部authorityだけを渡す必要がある。
 4. IdP origin に登録・認証 UI を置き、BFF と標準 OAuth の既存認可コード発行処理へ接続する。メール＋パスキーを外部 OAuth プロバイダーとして偽装しない。
 5. 因子追加・失効・最終因子の保護・復旧方針を実装し、既存のプロバイダー解除処理との整合性を確認する。
 6. 必須の全体チェック、ブラウザーによる WebAuthn 試験、独立セキュリティレビューを完了する。migration と本番有効化は別の導入段階で行う。
@@ -102,3 +104,5 @@ pendingのuser IDはメールと無関係な予約UUID、WebAuthn user handleは
 commit結果不明はreceiptによる読取照合を行う。照合結果だけでログインを許可しない。また照合nullはban・削除・検証取消でも起きるため、「ユーザーが作られなかった」証明にはしない。別の新規userを作る再送へ置き換えない。
 
 ローカルD1では、30既存migrationからnode:sqliteで生成した最終schemaとseedを転記し、7提案tableとの整合、二重claim、原子登録、途中衝突/最終assert失敗のrollback、並行完了、commit応答喪失を確認した。正式migrationをD1へ直接適用した試験でも、remote D1試験でもない。WebAuthnは公開の合成fixtureおよびメモリー内一時鍵で実ライブラリーを検証し、ローカルworkerdでも登録・認証陽性と拒否を確認した。実認証器・実メール・ブラウザー・公開routeのE2Eは未検証である。
+
+接続flowの一体試験は、メールproofからUP/UV付き登録、一般user/handle/公開鍵の原子保存、署名付き認証、replay・並行完了・登録世代の変更・ban/メール検証取消を対象とする。共通finalizeの試験では、native methodでも既存の標準認可コードだけを発行し、サービスredirect、lockout、resource制限と登録世代を再確認する。未検証メールは通常の既存ログインを一律拒否しないが、bootstrap昇格には使わない。これらはHTTP公開経路やsession issuerを新設したことにはならない。
