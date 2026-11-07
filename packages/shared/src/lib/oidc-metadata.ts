@@ -10,6 +10,7 @@ export interface BaseOidcMetadata {
   issuer: string;
   authorization_endpoint: string;
   token_endpoint: string;
+  registration_endpoint: string;
   jwks_uri: string;
   scopes_supported: string[];
   response_types_supported: string[];
@@ -35,6 +36,7 @@ export function buildBaseOidcMetadata(issuer: string): BaseOidcMetadata {
     issuer,
     authorization_endpoint: `${issuer}/auth/authorize`,
     token_endpoint: `${issuer}/api/token`,
+    registration_endpoint: `${issuer}/api/register`,
     jwks_uri: `${issuer}/.well-known/jwks.json`,
     scopes_supported: ["openid", "profile", "email", "phone", "address"],
     response_types_supported: ["code"],

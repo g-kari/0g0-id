@@ -22,10 +22,13 @@ export type AuditAction =
   | "service.secret_rotated"
   | "service.owner_transferred"
   | "service.user_access_revoked"
+  | "resource.create"
+  | "resource.update"
+  | "resource.delete"
   | "user.lockout_clear";
 
 /** 監査ログ対象リソースの種別。 */
-export type AuditTargetType = "user" | "service";
+export type AuditTargetType = "user" | "service" | "resource_server";
 
 /** 監査ログ生成結果のステータス。 */
 export type AuditStatus = "success" | "failure";

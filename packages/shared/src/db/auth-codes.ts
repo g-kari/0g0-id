@@ -14,12 +14,15 @@ export async function createAuthCode(
     codeChallengeMethod?: string | null;
     scope?: string | null;
     provider?: string | null;
+    resource?: string | null;
+    /** 発行時点で検証した resource_servers 行の id（登録世代） */
+    resourceServerId?: string | null;
   },
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO auth_codes (id, user_id, service_id, code_hash, redirect_to, expires_at, nonce, code_challenge, code_challenge_method, scope, provider)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO auth_codes (id, user_id, service_id, code_hash, redirect_to, expires_at, nonce, code_challenge, code_challenge_method, scope, provider, resource, resource_server_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       params.id,
@@ -33,6 +36,8 @@ export async function createAuthCode(
       params.codeChallengeMethod ?? null,
       params.scope ?? null,
       params.provider ?? null,
+      params.resource ?? null,
+      params.resourceServerId ?? null,
     )
     .run();
 }

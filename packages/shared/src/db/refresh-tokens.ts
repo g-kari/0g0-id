@@ -11,6 +11,7 @@ export type RevokeReason =
   | "reuse_detected"
   | "service_delete"
   | "service_revoke"
+  | "resource_delete"
   | "rotation"
   | "security_event"
   | "admin_action"
@@ -102,6 +103,16 @@ export async function deleteExpiredRefreshTokens(db: D1Database): Promise<number
   return result.meta.changes ?? 0;
 }
 
+/**
+ * リフレッシュトークンを新規作成する。
+ *
+ * resourceServerId（resource の登録世代）を指定した場合は、対象の
+ * resource_servers 行が存在する間だけ挿入が成功する条件付き INSERT を使う。
+ * resource の検証から発行までの間に削除が割り込んでも、削除完了後に
+ * 後継トークンが作られることはない（単一ステートメントで原子的に判定する）。
+ *
+ * @returns 挿入できた場合は true。世代ガードで挿入が抑止された場合は false。
+ */
 export async function createRefreshToken(
   db: D1Database,
   params: {
@@ -113,24 +124,44 @@ export async function createRefreshToken(
     expiresAt: string;
     pairwiseSub?: string | null;
     scope?: string | null;
+    resource?: string | null;
+    /** 発行時点で検証した resource_servers 行の id（登録世代） */
+    resourceServerId?: string | null;
   },
-): Promise<void> {
+): Promise<boolean> {
+  const values = [
+    params.id,
+    params.userId,
+    params.serviceId,
+    params.tokenHash,
+    params.familyId,
+    params.expiresAt,
+    params.pairwiseSub ?? null,
+    params.scope ?? null,
+    params.resource ?? null,
+    params.resourceServerId ?? null,
+  ] as const;
+
+  if (params.resourceServerId) {
+    const result = await db
+      .prepare(
+        `INSERT INTO refresh_tokens (id, user_id, service_id, token_hash, family_id, expires_at, pairwise_sub, scope, resource, resource_server_id)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (SELECT 1 FROM resource_servers WHERE id = ?)`,
+      )
+      .bind(...values, params.resourceServerId)
+      .run();
+    return (result.meta.changes ?? 0) > 0;
+  }
+
   await db
     .prepare(
-      `INSERT INTO refresh_tokens (id, user_id, service_id, token_hash, family_id, expires_at, pairwise_sub, scope)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO refresh_tokens (id, user_id, service_id, token_hash, family_id, expires_at, pairwise_sub, scope, resource, resource_server_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(
-      params.id,
-      params.userId,
-      params.serviceId,
-      params.tokenHash,
-      params.familyId,
-      params.expiresAt,
-      params.pairwiseSub ?? null,
-      params.scope ?? null,
-    )
+    .bind(...values)
     .run();
+  return true;
 }
 
 /** ペアワイズsubからユーザーIDを逆引きする（外部API用） */
@@ -412,6 +443,28 @@ export async function revokeAllServiceTokens(
        WHERE service_id = ? AND revoked_at IS NULL`,
     )
     .bind(reason ?? null, serviceId)
+    .run();
+  return result.meta.changes ?? 0;
+}
+
+/**
+ * 特定のリソースサーバー（RFC 8707 の resource URI）に束縛された
+ * アクティブなリフレッシュトークンを全て失効させる。
+ * リソース登録の削除時に呼び出し、削除後も refresh で新規発行が
+ * 続くことを防ぐ。失効は取り消し不可なので、同 URI を再登録しても
+ * 旧 grant は復活しない。失効したトークン数を返す。
+ */
+export async function revokeRefreshTokensByResource(
+  db: D1Database,
+  resourceUri: string,
+  reason?: RevokeReason,
+): Promise<number> {
+  const result = await db
+    .prepare(
+      `UPDATE refresh_tokens SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), revoked_reason = ?
+       WHERE resource = ? AND revoked_at IS NULL`,
+    )
+    .bind(reason ?? null, resourceUri)
     .run();
   return result.meta.changes ?? 0;
 }

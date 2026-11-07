@@ -17,6 +17,8 @@ const baseAuthCode: AuthCode = {
   code_challenge_method: null,
   scope: null,
   provider: null,
+  resource: null,
+  resource_server_id: null,
 };
 
 describe("createAuthCode", () => {
@@ -44,6 +46,39 @@ describe("createAuthCode", () => {
       null,
       null,
       null, // provider
+      null, // resource
+      null, // resource_server_id
+    );
+    expect(stmt.run).toHaveBeenCalled();
+  });
+
+  it("resourceServerId（登録世代）を保存する", async () => {
+    const db = makeD1Mock(null);
+    await createAuthCode(db, {
+      id: "code-id-3",
+      userId: "user-1",
+      codeHash: "hash-rs",
+      redirectTo: "https://chatgpt.com/connector/oauth/callback",
+      expiresAt: "2025-01-01T00:01:00Z",
+      resource: "https://dots-events.0g0.xyz/mcp",
+      resourceServerId: "rs-gen-1",
+    });
+
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith(
+      "code-id-3",
+      "user-1",
+      null,
+      "hash-rs",
+      "https://chatgpt.com/connector/oauth/callback",
+      "2025-01-01T00:01:00Z",
+      null,
+      null,
+      null,
+      null,
+      null, // provider
+      "https://dots-events.0g0.xyz/mcp",
+      "rs-gen-1",
     );
     expect(stmt.run).toHaveBeenCalled();
   });
