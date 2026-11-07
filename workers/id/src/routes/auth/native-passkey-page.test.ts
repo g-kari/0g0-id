@@ -27,20 +27,18 @@ function page() {
     ok: true,
     json: async () => ({ options: { challenge: "AQID", rpId: "id.example.test" } }),
   }));
-  const get = vi.fn(
-    async (_options: unknown): Promise<unknown> => ({
-      id: "-_8",
-      rawId: new Uint8Array([251, 255]).buffer,
-      type: "public-key",
-      getClientExtensionResults: () => ({}),
-      response: {
-        authenticatorData: new Uint8Array([1]).buffer,
-        clientDataJSON: new Uint8Array([2]).buffer,
-        signature: new Uint8Array([3]).buffer,
-        userHandle: new Uint8Array([4]).buffer,
-      },
-    }),
-  );
+  const get = vi.fn(async (_options: unknown): Promise<unknown> => ({
+    id: "-_8",
+    rawId: new Uint8Array([251, 255]).buffer,
+    type: "public-key",
+    getClientExtensionResults: () => ({}),
+    response: {
+      authenticatorData: new Uint8Array([1]).buffer,
+      clientDataJSON: new Uint8Array([2]).buffer,
+      signature: new Uint8Array([3]).buffer,
+      userHandle: new Uint8Array([4]).buffer,
+    },
+  }));
   const reload = vi.fn();
   const html = nativePasskeyPage("A".repeat(43), "B".repeat(22));
   const script = html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)![1];
