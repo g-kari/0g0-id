@@ -6,63 +6,103 @@ interface Props {
 }
 const { title } = Astro.props;
 const pathname = Astro.url.pathname;
-
+const pageName = title.split(' — ')[0];
 const links = [
-  { href: '/dashboard', matcher: '/dashboard', label: 'ダッシュボード', icon: '📊' },
-  { href: '/security/dashboard', matcher: '/security', label: 'セキュリティ', icon: '🛡️' },
-  { href: '/users', matcher: '/users', label: 'ユーザー管理', icon: '👥' },
-  { href: '/services', matcher: '/services', label: 'サービス管理', icon: '🔧' },
+  { href: '/dashboard', matcher: '/dashboard', label: 'ダッシュボード', icon: 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z' },
+  { href: '/security/dashboard', matcher: '/security', label: 'セキュリティ', icon: 'M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6z M9 12l2 2 4-4' },
+  { href: '/users', matcher: '/users', label: 'ユーザー管理', icon: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M16 4a4 4 0 0 1 0 8 M22 21v-2a4 4 0 0 0-3-3.87 M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0' },
+  { href: '/services', matcher: '/services', label: 'サービス管理', icon: 'M3 4h18v16H3z M3 9h18 M9 9v11' },
 ];
 ---
 <Base title={title}>
+  <a class="skip-link" href="#main-content">本文へ移動</a>
   <div class="admin-layout">
-    <button class="hamburger" id="hamburger" type="button" aria-label="メニューを開く" aria-controls="sidebar" aria-expanded="false">
-      <span></span><span></span><span></span>
-    </button>
-    <div class="sidebar-overlay" id="sidebar-overlay"></div>
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-logo">
-        <span class="brand-mark">0g0</span><span>管理コンソール</span>
-      </div>
-      <nav class="sidebar-nav">
+    <div class="sidebar-overlay" id="sidebar-overlay" aria-hidden="true"></div>
+    <aside class="sidebar" id="sidebar" aria-label="管理メニュー">
+      <a class="sidebar-logo" href="/dashboard" aria-label="0g0 ID 管理コンソール">
+        <span class="brand-mark">0g0</span>
+        <span class="sidebar-brand-name">0g0 ID<span>管理コンソール</span></span>
+      </a>
+      <button class="sidebar-close" id="sidebar-close" type="button" aria-label="メニューを閉じる">閉じる</button>
+      <nav class="sidebar-nav" aria-label="メインナビゲーション">
         {links.map(link => (
           <a
             href={link.href}
             class:list={['sidebar-link', { active: pathname.startsWith(link.matcher) }]}
             aria-current={pathname.startsWith(link.matcher) ? 'page' : undefined}
           >
-            <span>{link.icon}</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={link.icon} /></svg>
             <span>{link.label}</span>
           </a>
         ))}
       </nav>
       <div class="sidebar-footer">
         <form method="post" action="/auth/logout">
-          <button type="submit" class="sidebar-link" style="width:100%; background:none; border:none; cursor:pointer; text-align:left;">
-            <span>🚪</span>
+          <button type="submit" class="sidebar-link sidebar-logout">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H4V3h5 M9 12h12 M17 8l4 4-4 4" /></svg>
             <span>ログアウト</span>
           </button>
         </form>
       </div>
     </aside>
-    <main class="main-content">
-      <slot />
-    </main>
+    <div class="admin-workspace" id="admin-workspace">
+      <header class="admin-topbar">
+        <button class="hamburger" id="hamburger" type="button" aria-label="メニューを開く" aria-controls="sidebar" aria-expanded="false">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16 M4 12h16 M4 18h16" /></svg>
+        </button>
+        <nav class="admin-breadcrumb" aria-label="現在の位置"><a href="/dashboard">0g0 ID</a><span aria-hidden="true">/</span><span>{pageName}</span></nav>
+      </header>
+      <main class="main-content" id="main-content" tabindex="-1">
+        <slot />
+      </main>
+    </div>
   </div>
   <script>
     const hamburger = document.getElementById('hamburger')!;
     const sidebar = document.getElementById('sidebar')!;
+    const closeButton = document.getElementById('sidebar-close')!;
     const overlay = document.getElementById('sidebar-overlay')!;
-    function setOpen(open: boolean) {
-      sidebar.classList.toggle('open', open);
-      overlay.classList.toggle('open', open);
-      hamburger.setAttribute('aria-expanded', String(open));
-      hamburger.setAttribute('aria-label', open ? 'メニューを閉じる' : 'メニューを開く');
+    const workspace = document.getElementById('admin-workspace')!;
+    const mobile = window.matchMedia('(max-width: 767px)');
+    let isOpen = false;
+
+    function setOpen(open: boolean, restoreFocus = false) {
+      const focusWasInMenu = sidebar.contains(document.activeElement);
+      isOpen = mobile.matches && open;
+      sidebar.classList.toggle('open', isOpen);
+      overlay.classList.toggle('open', isOpen);
+      sidebar.inert = mobile.matches && !isOpen;
+      workspace.inert = isOpen;
+      document.body.classList.toggle('menu-open', isOpen);
+      hamburger.setAttribute('aria-expanded', String(isOpen));
+      if (isOpen) closeButton.focus();
+      else if (mobile.matches && (restoreFocus || focusWasInMenu)) hamburger.focus();
+      else if (!mobile.matches && (document.activeElement === closeButton || document.activeElement === hamburger)) {
+        sidebar.querySelector<HTMLElement>('[aria-current="page"], a[href]')?.focus();
+      }
     }
-    hamburger.addEventListener('click', () => setOpen(!sidebar.classList.contains('open')));
-    overlay.addEventListener('click', () => { setOpen(false); hamburger.focus(); });
+    hamburger.addEventListener('click', () => setOpen(!isOpen));
+    closeButton.addEventListener('click', () => setOpen(false, true));
+    overlay.addEventListener('click', () => setOpen(false, true));
+    mobile.addEventListener('change', () => setOpen(false));
+    window.addEventListener('pageshow', () => setOpen(false));
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && sidebar.classList.contains('open')) { setOpen(false); hamburger.focus(); }
+      if (!isOpen) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setOpen(false, true);
+      }
+      if (event.key === 'Tab') {
+        const controls = Array.from(sidebar.querySelectorAll<HTMLElement>('a[href], button:not([disabled])'));
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault(); last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault(); first?.focus();
+        }
+      }
     });
+    setOpen(false);
   </script>
 </Base>

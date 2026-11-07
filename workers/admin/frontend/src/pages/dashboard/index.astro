@@ -2,16 +2,43 @@
 import Admin from '../../layouts/Admin.astro';
 ---
 <Admin title="ダッシュボード — 0g0 Admin">
-  <div class="page-header">
+  <div class="page-header dashboard-header">
     <h1 class="page-title">ダッシュボード</h1>
-    <p class="page-subtitle">システム概況</p>
+    <button id="refresh-metrics" type="button" class="btn btn-ghost">データを更新</button>
   </div>
 
-  <div id="loading" style="display:flex; justify-content:center; padding:3rem;">
-    <div class="spinner"></div>
+  <div id="loading" role="status" style="display:flex; align-items:center; justify-content:center; gap:8px; padding:2rem;">
+    <div class="spinner" aria-hidden="true"></div><span>読み込み中...</span>
   </div>
-  <div id="error" class="alert alert-error" style="display:none;" aria-live="polite"></div>
-  <div id="cards" style="display:none;"></div>
+  <div id="error" class="alert alert-error" style="display:none;" role="alert"></div>
+  <div id="cards" style="display:none;" aria-busy="true">
+    <h2 class="dashboard-section-title">システム概況</h2>
+    <dl class="dashboard-summary">
+      <div class="dashboard-metric"><dt>総ユーザー数</dt><dd id="total-users">—</dd></div>
+      <div class="dashboard-metric"><dt>アクティブセッション</dt><dd id="active-sessions">—</dd></div>
+      <div class="dashboard-metric"><dt>登録サービス数</dt><dd id="total-services">—</dd></div>
+      <div class="dashboard-metric"><dt>管理者数</dt><dd id="admin-users">—</dd></div>
+    </dl>
+    <div class="dashboard-details">
+      <section aria-labelledby="activity-title">
+        <h2 id="activity-title">ログインアクティビティ</h2>
+        <dl class="dashboard-activity">
+          <div><dt>直近24時間</dt><dd id="recent-logins-24h">—</dd></div>
+          <div><dt>直近7日間</dt><dd id="recent-logins-7d">—</dd></div>
+        </dl>
+      </section>
+      <section aria-labelledby="restrictions-title">
+        <h2 id="restrictions-title">アカウント制限</h2>
+        <div id="banned-users" class="dashboard-restrictions">—</div>
+        <p style="font-size:12px; color:var(--color-muted);">BAN中のユーザー数</p>
+        <a href="/users" class="dashboard-link">ユーザーを確認する</a>
+      </section>
+    </div>
+    <h2 class="dashboard-section-title">クイックアクセス</h2>
+    <nav class="dashboard-quick-links" aria-label="管理機能">
+      <a href="/users">ユーザー管理</a><a href="/services">サービス管理</a><a href="/security/dashboard">セキュリティ</a>
+    </nav>
+  </div>
 </Admin>
 
 <script>
@@ -21,36 +48,41 @@ import Admin from '../../layouts/Admin.astro';
   const loadingEl = document.getElementById('loading')!;
   const errorEl = document.getElementById('error')!;
   const cardsEl = document.getElementById('cards')!;
+  const refreshButton = document.getElementById('refresh-metrics') as HTMLButtonElement;
+  let loading = false;
 
-  try {
-    const metrics = await apiFetch<AdminMetrics>('/api/metrics');
-    const cards = [
-      { label: '総ユーザー数', value: metrics.total_users, icon: '👥' },
-      { label: '管理者数', value: metrics.admin_users, icon: '🛡️' },
-      { label: '登録サービス数', value: metrics.total_services, icon: '🔧' },
-      { label: 'アクティブセッション', value: metrics.active_sessions, icon: '🟢' },
-      { label: 'BANユーザー', value: metrics.banned_users, icon: '🚫' },
-      { label: '24時間ログイン', value: metrics.recent_logins_24h, icon: '📈' },
-      { label: '7日間ログイン', value: metrics.recent_logins_7d, icon: '📊' },
-    ];
-
-    cardsEl.style.display = '';
-    cardsEl.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:1rem;';
-    cardsEl.innerHTML = cards
-      .map(
-        (card) => `
-      <div class="card" style="text-align:center;">
-        <div style="font-size:2rem; margin-bottom:0.5rem;">${card.icon}</div>
-        <div style="font-size:2rem; font-weight:700; color:var(--color-text);">${card.value.toLocaleString()}</div>
-        <div style="color:var(--color-muted); font-size:0.875rem; margin-top:4px;">${card.label}</div>
-      </div>
-    `,
-      )
-      .join('');
-  } catch (e) {
-    errorEl.textContent = e instanceof Error ? e.message : '読み込みに失敗しました';
-    errorEl.style.display = '';
-  } finally {
-    loadingEl.style.display = 'none';
+  async function loadMetrics() {
+    if (loading) return;
+    loading = true;
+    refreshButton.disabled = true;
+    cardsEl.setAttribute('aria-busy', 'true');
+    loadingEl.style.display = 'flex';
+    errorEl.style.display = 'none';
+    try {
+      const metrics = await apiFetch<AdminMetrics>('/api/metrics');
+      const fields: [string, number][] = [
+        ['total-users', metrics.total_users],
+        ['active-sessions', metrics.active_sessions],
+        ['total-services', metrics.total_services],
+        ['admin-users', metrics.admin_users],
+        ['recent-logins-24h', metrics.recent_logins_24h],
+        ['recent-logins-7d', metrics.recent_logins_7d],
+        ['banned-users', metrics.banned_users],
+      ];
+      for (const [id, value] of fields) {
+        document.getElementById(id)!.textContent = value.toLocaleString('ja-JP');
+      }
+      cardsEl.style.display = '';
+    } catch (e) {
+      errorEl.textContent = e instanceof Error ? e.message : '読み込みに失敗しました';
+      errorEl.style.display = '';
+    } finally {
+      loadingEl.style.display = 'none';
+      cardsEl.setAttribute('aria-busy', 'false');
+      refreshButton.disabled = false;
+      loading = false;
+    }
   }
+  refreshButton.addEventListener('click', loadMetrics);
+  await loadMetrics();
 </script>

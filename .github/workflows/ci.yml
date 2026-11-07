@@ -156,6 +156,18 @@ jobs:
           LOGIN_STATS_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
             LOGIN_STATS_REPORT_DIR="$RUNNER_TEMP/login-stats-ui" \
             node scripts/login-stats-browser-smoke.mjs
+          UI_REFERENCE_PLAYWRIGHT_MODULE="$tools/node_modules/@playwright/test" \
+            UI_REFERENCE_REPORT_DIR="$RUNNER_TEMP/ui-reference" \
+            node scripts/ui-reference-browser-smoke.mjs
+
+      - name: 管理 UI デザインの検証記録
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-reference
+          path: ${{ runner.temp }}/ui-reference
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: プロフィール復旧 UI の検証記録
         if: always()
