@@ -25,6 +25,7 @@ import {
   updateUserRoleWithRevocation,
 } from "./users";
 import type { User } from "../types";
+import type { UserFilter } from "./users";
 import { makeD1Mock } from "./test-helpers";
 
 const baseUser: User = {
@@ -533,7 +534,7 @@ describe("listUsers", () => {
     expect(stmt.bind).toHaveBeenCalledWith("%example%", "admin", 10, 0);
   });
 
-  it("フィルターなしの場合はWHER句を含まない", async () => {
+  it("フィルターなしの場合はシステムアカウント除外のWHERE句を含む（countUsers と一致）", async () => {
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
@@ -541,7 +542,50 @@ describe("listUsers", () => {
     const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
     await listUsers(db, 10, 0, {});
     const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(sql).not.toContain("WHERE");
+    // role='system'（例: DCR自己登録の所有者）は既定の一覧に含めない
+    expect(sql).toContain("WHERE role != 'system'");
+  });
+
+  it("role='system' を明示した場合はシステムアカウント自体を一覧に含める", async () => {
+    const stmt = {
+      bind: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue({ results: [] }),
+    };
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+    await listUsers(db, 10, 0, { role: "system" });
+    const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain("role = ?");
+    expect(sql).not.toContain("role !=");
+    expect(stmt.bind).toHaveBeenCalledWith("system", 10, 0);
+  });
+
+  it("listUsers と countUsers の WHERE 句が同じ規則になる（一覧件数と total の一致）", async () => {
+    const filters: (UserFilter | undefined)[] = [
+      undefined,
+      {},
+      { email: "example" },
+      { role: "admin" },
+      { role: "system" },
+      { banned: false },
+    ];
+    for (const filter of filters) {
+      const listStmt = {
+        bind: vi.fn().mockReturnThis(),
+        all: vi.fn().mockResolvedValue({ results: [] }),
+      };
+      const listDb = { prepare: vi.fn().mockReturnValue(listStmt) } as unknown as D1Database;
+      await listUsers(listDb, 10, 0, filter);
+      const listSql = (listDb.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      const listWhere = listSql.slice(listSql.indexOf(" FROM users ") + " FROM users ".length);
+      const listCondition = listWhere.replace(/ ORDER BY[\s\S]*$/, "");
+
+      const countDb = makeD1Mock({ count: 0 });
+      await countUsers(countDb, filter);
+      const countSql = (countDb.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      const countCondition = countSql.replace(/^SELECT COUNT\(\*\) as count FROM users\s*/, "");
+
+      expect(listCondition).toBe(countCondition);
+    }
   });
 
   it("banned=trueフィルターでBAN済みユーザーのみ検索する", async () => {
@@ -613,11 +657,31 @@ describe("countUsers", () => {
     expect(stmt.bind).toHaveBeenCalledWith("admin");
   });
 
-  it("フィルターなしの場合はWHER句を含まない", async () => {
+  it("フィルターなしの場合はシステムアカウント除外のWHERE句を含む", async () => {
     const db = makeD1Mock({ count: 10 });
     await countUsers(db, {});
     const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(sql).not.toContain("WHERE");
+    // role='system'（例: DCR自己登録の所有者）は人数統計に含めない
+    expect(sql).toContain("WHERE role != 'system'");
+  });
+
+  it("role='system' を明示した場合はシステムアカウント自体を数える", async () => {
+    const db = makeD1Mock({ count: 1 });
+    const count = await countUsers(db, { role: "system" });
+    expect(count).toBe(1);
+    const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain("role = ?");
+    expect(sql).not.toContain("role !=");
+    const stmt = (db.prepare as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(stmt.bind).toHaveBeenCalledWith("system");
+  });
+
+  it("bannedフィルターと併用してもシステムアカウントを除外する", async () => {
+    const db = makeD1Mock({ count: 0 });
+    await countUsers(db, { banned: true });
+    const sql = (db.prepare as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain("banned_at IS NOT NULL");
+    expect(sql).toContain("AND role != 'system'");
   });
 
   it("banned=trueフィルターでBAN済みユーザー数を返す", async () => {

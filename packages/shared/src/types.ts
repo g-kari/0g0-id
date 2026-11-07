@@ -26,6 +26,27 @@ export interface Service {
   client_secret_hash: string;
   allowed_scopes: string;
   owner_user_id: string;
+  /** 登録経路: "admin"（管理 API）| "dcr"（RFC 7591 自己登録） */
+  source: string;
+  /** RFC 7592 クライアント構成エンドポイント用トークンの SHA-256 ハッシュ（DCR のみ） */
+  registration_access_token_hash: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** RFC 8707 リソースインジケーターの対象として登録されたリソースサーバー */
+export interface ResourceServer {
+  id: string;
+  uri: string;
+  name: string;
+  allowed_scopes: string;
+  /**
+   * 利用を許可するユーザーの ID（sub）の JSON 配列。
+   * 空配列は「制限なし」（全ユーザーが利用可）。
+   * 設定されている場合、認可・トークン発行・更新の各段階で照合される。
+   */
+  allowed_subjects: string;
+  owner_user_id: string;
   created_at: string;
   updated_at: string;
 }
@@ -62,6 +83,14 @@ export interface AuthCode {
   code_challenge_method: string | null;
   scope: string | null;
   provider: string | null;
+  /** RFC 8707: 認可リクエストで指定された resource（検証済みの正規 URI） */
+  resource: string | null;
+  /**
+   * 発行時点で検証した resource_servers 行の id（登録世代）。
+   * 交換時は現在の行 id と一致しなければ拒否し、削除→同 URI 再登録を
+   * 経たコードから新しい登録向けのトークンを発行させない。
+   */
+  resource_server_id: string | null;
 }
 
 export interface RefreshToken {
@@ -73,6 +102,14 @@ export interface RefreshToken {
   revoked_at: string | null;
   revoked_reason: string | null;
   scope: string | null;
+  /** RFC 8707: 発行時に束縛された resource（リフレッシュ後も aud を維持するため） */
+  resource: string | null;
+  /**
+   * 発行時点で検証した resource_servers 行の id（登録世代）。
+   * 同 URI の再登録は別 id になるため、旧世代のトークンは refresh 時に拒否できる。
+   * resource 束縛のないトークンと移行前のトークンでは null。
+   */
+  resource_server_id: string | null;
   pairwise_sub: string | null;
   expires_at: string;
   created_at: string;
@@ -222,4 +259,5 @@ export interface OAuthStateCookieData {
   codeChallenge?: string;
   codeChallengeMethod?: string;
   scope?: string;
+  resource?: string;
 }

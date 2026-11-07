@@ -82,6 +82,8 @@ const mockAuthCode = {
   scope: null,
   nonce: null,
   provider: null,
+  resource: null,
+  resource_server_id: null,
   code_challenge: null,
   code_challenge_method: null,
   used_at: null,
@@ -164,6 +166,25 @@ describe("POST /auth/exchange", () => {
       expect(res.status).toBe(400);
       const body = await res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe("INVALID_CODE");
+    });
+
+    it("resource 束縛コード → 400 INVALID_REQUEST（aud が client_id に化けないよう明示拒否）", async () => {
+      vi.mocked(parseJsonBody).mockResolvedValue({
+        ok: true,
+        data: { code: "valid-code", redirect_to: "https://user.0g0.xyz/callback" },
+      } as never);
+      vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
+        ...mockAuthCode,
+        service_id: "svc-1",
+        resource: "https://dots-events.0g0.xyz/mcp",
+      });
+
+      const res = await makeRequest("{}");
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string; message: string } }>();
+      expect(body.error.code).toBe("INVALID_REQUEST");
+      expect(body.error.message).toContain("standard token endpoint");
+      expect(vi.mocked(issueTokenPair)).not.toHaveBeenCalled();
     });
   });
 
@@ -301,6 +322,8 @@ describe("POST /auth/exchange", () => {
       client_secret_hash: "hashed-secret",
       allowed_scopes: "openid profile email",
       owner_user_id: "user-1",
+      source: "admin",
+      registration_access_token_hash: null,
       created_at: "2024-01-01T00:00:00Z",
       updated_at: "2024-01-01T00:00:00Z",
     };
