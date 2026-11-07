@@ -111,14 +111,16 @@ try {
           await route.fulfill({
             status: 503,
             contentType: "application/json",
-            body: JSON.stringify({ error: "synthetic_unavailable" }),
+            body: JSON.stringify({
+              error: { code: "SYNTHETIC_UNAVAILABLE", message: "synthetic_unavailable" },
+            }),
           });
           return;
         }
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify(metrics),
+          body: JSON.stringify({ data: metrics }),
         });
         return;
       }
@@ -126,7 +128,7 @@ try {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify([]),
+          body: JSON.stringify({ data: [] }),
         });
         return;
       }
