@@ -186,6 +186,8 @@ export interface RateLimitBinding {
 }
 
 export interface IdpEnv {
+  /** Native passkey login is disabled unless this is exactly the string "true". */
+  PASSKEY_LOGIN_ENABLED?: string;
   DB: D1Database;
   /** link_token JTI のワンタイム消費チェック用 KV。未設定時はチェックをスキップ（段階的導入）。 */
   LINK_TOKEN_KV?: KVNamespace;
@@ -228,6 +230,8 @@ export interface IdpEnv {
 }
 
 export interface BffEnv {
+  /** Reveal native passkey entry points only when this is exactly "true". */
+  PASSKEY_LOGIN_ENABLED?: string;
   IDP: Fetcher;
   IDP_ORIGIN: string;
   /** BFF自身のオリジン（例: "https://user.0g0.xyz"）。CORS/CSRF検証に使用。 */

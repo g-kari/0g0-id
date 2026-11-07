@@ -107,6 +107,89 @@ describe("email signup intent and delivery ledger (SQLite)", () => {
     expect(sqlite.prepare("SELECT count(*) n FROM email_signup_intents").get()?.n).toBe(0);
   });
 
+  it("creates only one intent and delivery token for a stable server request", async () => {
+    const serverIntentId = crypto.randomUUID();
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () => createEmailSignupIntent(db, { ...request, serverIntentId })),
+    );
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(results.find(Boolean)?.intentId).toBe(serverIntentId);
+    expect(sqlite.prepare("SELECT count(*) n FROM email_signup_intents").get()?.n).toBe(1);
+    expect(sqlite.prepare("SELECT count(*) n FROM email_signup_outbox").get()?.n).toBe(1);
+  });
+
+  it("does not overwrite an existing request with a different recipient or binding", async () => {
+    const serverIntentId = crypto.randomUUID();
+    await createEmailSignupIntent(db, { ...request, serverIntentId });
+    const before = intent(serverIntentId);
+    expect(
+      await createEmailSignupIntent(db, {
+        ...request,
+        serverIntentId,
+        email: "other@example.test",
+        browserBinding: "B".repeat(43),
+        idpOrigin: "https://other.example.test",
+      }),
+    ).toBeNull();
+    expect(intent(serverIntentId)).toEqual(before);
+    expect(outbox(serverIntentId)?.state).toBe("queued");
+  });
+
+  it("does not reset an accepted delivery or a verified authority on request replay", async () => {
+    const serverIntentId = crypto.randomUUID();
+    const value = (await createEmailSignupIntent(db, { ...request, serverIntentId }))!;
+    await deliverEmailSignupIntent(db, { ...binding, ...value }, async () => ({
+      outcome: "accepted",
+      messageId: "one-send",
+    }));
+    const accepted = outbox(serverIntentId);
+    expect(await createEmailSignupIntent(db, { ...request, serverIntentId })).toBeNull();
+    expect(outbox(serverIntentId)).toEqual(accepted);
+    const verified = await verifyEmailSignupIntent(db, { ...binding, ...value });
+    expect(verified).not.toBeNull();
+    const before = intent(serverIntentId);
+    expect(await createEmailSignupIntent(db, { ...request, serverIntentId })).toBeNull();
+    expect(intent(serverIntentId)).toEqual(before);
+    expect(outbox(serverIntentId)).toEqual(accepted);
+  });
+
+  it("does not repair a missing delivery ledger or extend expiry on replay", async () => {
+    const serverIntentId = crypto.randomUUID();
+    await createEmailSignupIntent(db, { ...request, serverIntentId });
+    const before = intent(serverIntentId);
+    sqlite.prepare("DELETE FROM email_signup_outbox WHERE intent_id = ?").run(serverIntentId);
+    vi.advanceTimersByTime(901_000);
+    expect(await createEmailSignupIntent(db, { ...request, serverIntentId })).toBeNull();
+    expect(intent(serverIntentId)).toEqual(before);
+    expect(outbox(serverIntentId)).toBeUndefined();
+  });
+
+  it("does not return a replacement token after a committed response is lost", async () => {
+    const serverIntentId = crypto.randomUUID();
+    const uncertain = {
+      prepare: db.prepare.bind(db),
+      async batch(statements: Parameters<D1Database["batch"]>[0]) {
+        await db.batch(statements);
+        throw new Error("Synthetic transport loss after commit");
+      },
+    } as unknown as D1Database;
+    await expect(
+      createEmailSignupIntent(uncertain, { ...request, serverIntentId }),
+    ).rejects.toThrow();
+    const before = intent(serverIntentId);
+    expect(await createEmailSignupIntent(db, { ...request, serverIntentId })).toBeNull();
+    expect(intent(serverIntentId)).toEqual(before);
+    expect(outbox(serverIntentId)?.state).toBe("queued");
+  });
+
+  it.each(["", "not-a-uuid", "12345678-1234-7234-8234-123456789abc"])(
+    "rejects malformed server-only request IDs: %s",
+    async (serverIntentId) => {
+      await expect(createEmailSignupIntent(db, { ...request, serverIntentId })).rejects.toThrow();
+      expect(sqlite.prepare("SELECT count(*) n FROM email_signup_intents").get()?.n).toBe(0);
+    },
+  );
+
   it.each(["existing@example.test", "EXISTING@example.test"])(
     "never creates a proof for existing account %s",
     async (email) => {

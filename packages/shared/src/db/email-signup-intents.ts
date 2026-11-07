@@ -63,12 +63,23 @@ async function binding(input: EmailSignupBinding): Promise<[string, string]> {
  */
 export async function createEmailSignupIntent(
   db: D1Database,
-  input: EmailSignupBinding & { email: string },
+  input: EmailSignupBinding & {
+    email: string;
+    /** Optional UUIDv4 reserved in encrypted server state before the POST.
+     * Reuse for the SAME request on transport loss/replay; never copy from an
+     * arbitrary body. Validate short-lived server-state expiry first; never
+     * accept an old ID after intent retention/cleanup. A duplicate returns no
+     * new token and must not resend. */
+    serverIntentId?: string;
+  },
 ): Promise<{ intentId: string; recipient: string; token: string; expiresAt: number } | null> {
   const email = normalizeEmail(input.email);
   const [browserHash, origin] = await binding(input);
-  const id = crypto.randomUUID();
+  const id = input.serverIntentId ?? crypto.randomUUID();
+  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(id))
+    throw new Error("Invalid signup request");
   const token = generateToken(32);
+  const tokenHash = await sha256(token);
   const now = Math.floor(Date.now() / 1000);
   const results = await db.batch([
     db
@@ -77,11 +88,12 @@ export async function createEmailSignupIntent(
       SELECT ?, ?, 'signup', ?, ?, ?, ?, ?
        WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = ? COLLATE NOCASE)
          AND (SELECT count(*) FROM email_signup_intents WHERE email = ? COLLATE NOCASE AND created_at >= ?) < 3
-         AND (SELECT count(*) FROM email_signup_intents WHERE browser_binding_hash = ? AND created_at >= ?) < 5`)
+         AND (SELECT count(*) FROM email_signup_intents WHERE browser_binding_hash = ? AND created_at >= ?) < 5
+      ON CONFLICT(id) DO NOTHING`)
       .bind(
         id,
         email,
-        await sha256(token),
+        tokenHash,
         browserHash,
         origin,
         now,
@@ -94,8 +106,10 @@ export async function createEmailSignupIntent(
       ),
     db
       .prepare(`INSERT INTO email_signup_outbox (intent_id, state, created_at)
-      SELECT id, 'queued', created_at FROM email_signup_intents WHERE id = ?`)
-      .bind(id),
+      SELECT id, 'queued', created_at FROM email_signup_intents
+       WHERE id = ? AND token_hash = ? AND verified_at IS NULL
+      ON CONFLICT(intent_id) DO NOTHING`)
+      .bind(id, tokenHash),
   ]);
   return results[0].meta.changes === 1 && results[1].meta.changes === 1
     ? { intentId: id, recipient: email, token, expiresAt: now + TTL_SECONDS }

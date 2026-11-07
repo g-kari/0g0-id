@@ -4,7 +4,7 @@
 
 現行の Google、LINE、Twitch、GitHub、X の認証経路とプロバイダー設定は維持する。callbackの最終ポリシー処理を共通関数へ抽出し、bootstrap昇格には検証済みメールを明示的に要求する。追加プロバイダー名は未確定であり、既存要望の GitHub / X / LINE / Twitch を新規要望と取り違えない。
 
-この変更は **未接続の認証ストレージとメール配送基盤** を追加する。アプリのルート登録、環境変数、OAuth プロバイダー型、既存 DB、既存ログイン UI は変更しない。検証器のruntime依存に `@simplewebauthn/server` 14.0.3を正規lockfileと共に追加する。実際のメール登録・パスキーログインはまだ利用できない。
+この変更は **認証ストレージ、未接続のメール配送基盤、default-offのパスキーログインHTTP/UI** を追加する。ログインrouteとoptional設定型、BFFの非表示リンクを追加するが、有効化する環境変数・binding・既存DB・OAuthプロバイダー型は変更しない。検証器のruntime依存に `@simplewebauthn/server` 14.0.3を正規lockfileと共に追加する。公開メール登録/所有確認は未接続で、schemaの適用と有効化もしていないため、実際のメール登録・パスキーログインはまだ利用できない。
 
 - `packages/shared/src/db/passkey-challenges.ts`: 256 bit challenge、5分期限、用途・ユーザー・ブラウザー・設定された origin / RP ID の束縛と原子的な一回消費。
 - `packages/shared/src/db/passkey-credentials.ts`: 検証済み公開鍵の保存、所有者と不変な登録世代の一致、署名カウンターの compare-and-swap。credential ID の upsert や他アカウントへの移管はしない。
@@ -16,15 +16,16 @@
 - `workers/id/src/utils/verification-email.ts`: 未接続の Cloudflare Email Sending adapter と確認メールテンプレート。詳細は [配送設計](./email-delivery.md)。binding・送信元・公開 route は設定しない。
 - `workers/id/src/utils/passkey-flow.ts`: 実検証器とDB helperを結ぶ未接続の登録・認証フロー。同じpendingのoptions応答喪失からの再開、検証済み公開鍵の原子登録、認証challengeの一回消費と登録世代/counter CASを扱う。
 - `workers/id/src/routes/auth/finalize.ts`: OAuth callbackから共通化した最終ポリシーと既存認可コード発行。lockout、redirect、service/resource制限、state/PKCE/nonceを維持する。呼出し元が信頼できる認証結果と最新userのban等を確認してから使う。
+- `workers/id/src/routes/auth/native-passkey.ts`: メール検索を公開しないdiscoverableログイン。独立した暗号cookie、明示POST、Origin/CSRF/総body上限、署名検証と一回claim、現在のuser/continuation制限を通して共有finalizeへ接続する。IdP/BFFでliteral設定がない限り無効。詳細と未検証条件は [nativeログイン設計](./native-passkey-login.md)。
 
 これらの関数は shared の公開 barrel に export しない。署名検証器の代替でもなく、成功を返しただけで登録・ログインを認可するものでもない。
 
 ## 完成までの必須事項
 
-1. メール所有確認の配送手段、送信元アドレス、利用可能な既存契約を決める。Cloudflare Email Sending の未接続 adapter は追加したが、公開経路・本番の送信設定は未実装であり、メールproofのstorage helperを実際の所有確認フローとしては接続していない。配送サービスの認証や本番設定を先に作ったことにはしない。
-2. Workers 対応のSimpleWebAuthn 14.0.3 adapterを追加し、未接続flowではoptions・実署名検証・DB更新の一体試験を行った。公開route、実認証器、ブラウザーの試験は残る。CBOR / COSE / attestation / 署名の独自実装はしない。
+1. 送信元はnoreply@id.0g0.xyzで確定し、Workers Paidは本人申告として把握した。Cloudflare Email Sendingのadapterは未接続であり、公開メール所有確認・送信設定・配送の濫用/予算制御は残る。配送サービスの認証、domain/DNS/bindingや本番設定を先に作ったことにはしない。
+2. Workers対応のSimpleWebAuthn 14.0.3 adapterを追加し、flowおよびdefault-offログインhandlerではoptions・実署名検証・DB更新の一体試験を行った。実認証器、実Workers/D1の公開経路、ブラウザーの試験は残る。CBOR / COSE / attestation / 署名の独自実装はしない。
 3. メールintent、pending record、最終authority消費とuser/公開鍵保存の原子helperと検証器接続flowは追加した。公開handlerは、既存ユーザー用challengeとpending用challengeを混同せず、cookie由来のbrowser bindingと内部authorityだけを渡す必要がある。
-4. IdP origin に登録・認証 UI を置き、BFF と標準 OAuth の既存認可コード発行処理へ接続する。メール＋パスキーを外部 OAuth プロバイダーとして偽装しない。
+4. IdP originの認証UIとBFF/標準OAuthの認可コード接続はdefault-offで追加した。公開メール所有確認と登録UI/routeは残る。登録完了やreceiptだけではcodeを発行せず、続く新しい署名付き認証を要求する。メール＋パスキーを外部OAuthプロバイダーとして偽装しない。
 5. 因子追加・失効・最終因子の保護・復旧方針を実装し、既存のプロバイダー解除処理との整合性を確認する。
 6. 必須の全体チェック、ブラウザーによる WebAuthn 試験、独立セキュリティレビューを完了する。migration と本番有効化は別の導入段階で行う。
 
@@ -33,6 +34,7 @@
 希望するメールアドレスを入力しただけでは、ユーザー作成、email_verified の設定、既存アカウントへの連携、管理者の bootstrap を許可しない。
 
 - メール確認用 token は十分長い乱数で発行し、DB にはハッシュと短い期限を保存する。メール送信は非同期化し、要求側へは存在有無が分からない一定の応答を返す。配送失敗時も内部エラーや宛先を外部応答へ含めない。
+- 同じメールPOSTの再送には、事前に暗号化server stateへ予約したUUIDv4を`serverIntentId`として使う。同じIDから新tokenは返さず、既存intent/outbox・期限・配送結果を上書きしない。呼出し元はその短命stateの期限を先に検証し、保存期間後に古いIDを再利用しない。これはメールの自動再送機能ではない。
 - メール確認の試行と送信回数を IP・対象単位で制限する。ログには入力メール、確認 token、challenge response、cookie を残さない。入力された宛先の共有先は選択した配送サービスだけとする。
 - メール確認 intent は同じブラウザーの Secure / HttpOnly / SameSite cookie と登録目的に束縛する。リンクの scanner / prefetch だけで intent を消費したりログインしたりしない。確認に続く明示操作で処理する。
 - 既存 OAuth アカウントに同じメールがあっても、それだけでパスキーを連携しない。既存アカウントでの新しい再認証と因子追加操作を要求する。

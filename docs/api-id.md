@@ -477,3 +477,16 @@ OAuth 2.0 標準エンドポイント（`/auth/authorize` / `/api/token` 等）�
 `GET /api/metrics/recent-events` は `user_id` / `country` / `provider` / `period` の
 複合条件と `limit` / `offset` を受け付けます。Bearer 認証と管理者権限が必要です。
 仕様・制限・期間境界は [ログインイベントの絞り込み](./login-event-filters.md#api) を参照。
+
+## ネイティブパスキーログイン（既定無効）
+
+`PASSKEY_LOGIN_ENABLED` が文字列 `"true"` の場合だけ有効。DBスキーマ・設定・本番bindingはこのコード追加で適用されない。
+
+| Method | Path                    | 認証                               | 説明                                                                                                                         |
+| ------ | ----------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/auth/passkey/start`   | —                                  | 登録済みcallback、state、サービスPKCEなどを再検証し、短命暗号cookieを設定。proof消費なし。                                   |
+| GET    | `/auth/passkey`         | browser/continuation cookie        | IdPオリジン上の明示操作UI。自動認証なし。                                                                                    |
+| POST   | `/auth/passkey/options` | exact Origin + CSRF + 明示確認     | 32KiB上限。アカウント検索を行わないdiscoverable challenge。                                                                  |
+| POST   | `/auth/passkey/verify`  | exact Origin + CSRF + WebAuthn署名 | 32KiB上限。UP/UV・userHandle・RP・origin・challenge・登録世代CASを検証し、現在の利用権限を再照合して通常の認可コードへ合流。 |
+
+メール登録・復旧・既存アカウントへのパスキー追加は接続されていない。失敗は汎用応答、内部authority/receiptは返さない。期限切れchallenge清掃は明示フラグとtable存在確認の後だけ実行し、未導入スキーマを通常の無効構成から参照しない。[設計・未検証範囲](./proposals/native-passkey-login.md)を参照。

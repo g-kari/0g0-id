@@ -32,6 +32,8 @@ export type LoginFinalizationState = Pick<
   | "resource"
 > & {
   /** Historical auth_codes method label, not OAuth provider configuration. */ provider?: string;
+  /** Optional pre-authentication resource generation binding for native login. */
+  expectedResourceServerId?: string;
 };
 type FinalizationContext = Context<{ Bindings: IdpEnv; Variables: { user: TokenPayload } }>;
 const authLogger = createLogger("auth");
@@ -161,7 +163,11 @@ export async function finalizeLogin(
   let resourceServerId: string | null = null;
   if (stateData.resource) {
     const resourceServer = await findResourceServerByUri(c.env.DB, stateData.resource);
-    if (!resourceServer) {
+    if (
+      !resourceServer ||
+      (stateData.expectedResourceServerId !== undefined &&
+        resourceServer.id !== stateData.expectedResourceServerId)
+    ) {
       authLogger.error("[callback] Resource is no longer registered", {
         resource: stateData.resource,
       });
