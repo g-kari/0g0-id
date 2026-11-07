@@ -40,8 +40,8 @@ for (const worker of ["admin", "user"]) {
     /^\^?6\./,
     "frontend typescript range must stay on the 6.x line",
   );
-  const lockVersion =
-    read(join(frontend, "package-lock.json")).packages["node_modules/typescript"].version;
+  const lockVersion = read(join(frontend, "package-lock.json")).packages["node_modules/typescript"]
+    .version;
   assert.match(lockVersion, /^6\./, "frontend lockfile typescript must stay on the 6.x line");
   const installedVersion = localRequire("typescript").version;
   assert.match(installedVersion, /^6\./, "frontend installed typescript must stay on the 6.x line");
