@@ -33,7 +33,7 @@
     "nanoid": "3.3.20",
     "postcss": "8.5.32",
     "rolldown": "1.2.14",
-    "semver": "7.8.5",
+    "semver": "7.8.6",
     "sharp": "0.35.5",
     "shiki": "4.5.0",
     "smol-toml": "1.9.1",
