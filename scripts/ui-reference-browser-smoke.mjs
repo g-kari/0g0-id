@@ -17,6 +17,8 @@ const metrics = {
   banned_users: 12,
   recent_logins_24h: 438,
   recent_logins_7d: 2916,
+  login_provider_stats_7d: [{ provider: "google", count: 2916 }],
+  login_country_stats_7d: [{ country: "JP", count: 2916 }],
 };
 const report = {
   status: "running",
@@ -69,6 +71,47 @@ try {
       : {}),
   });
   report.browser = browser.version();
+  const fixtureNow = Date.now();
+  const createdAt = new Date(fixtureNow - 3_600_000).toISOString();
+  const expiresAt = new Date(fixtureNow + 86_400_000).toISOString();
+  const adminFixtures = {
+    "/api/users": [
+      {
+        id: "synthetic-user",
+        name: "Synthetic profile",
+        email: "synthetic@example.invalid",
+        picture: null,
+        role: "user",
+        banned_at: null,
+        created_at: createdAt,
+      },
+    ],
+    "/api/services": [
+      {
+        id: "synthetic-service",
+        name: "Synthetic service",
+        client_id: "synthetic-client",
+        allowed_scopes: "openid profile",
+        owner_user_id: "synthetic-user",
+        created_at: createdAt,
+      },
+    ],
+    "/api/metrics/dbsc-bindings": {
+      total: 12,
+      device_bound: 8,
+      unbound: 4,
+      by_bff_origin: [{ bff_origin: origin, total: 12, device_bound: 8, unbound: 4 }],
+    },
+    "/api/metrics/login-trends": Array.from({ length: 7 }, (_, index) => ({
+      date: new Date(fixtureNow - (6 - index) * 86_400_000).toISOString().slice(0, 10),
+      count: 8 + index * 3,
+    })),
+    "/api/metrics/suspicious-logins": [
+      { user_id: "synthetic-user", country_count: 2, countries: "JP, US" },
+    ],
+    "/api/security-trends/ip-stats": [{ ip_address: "192.0.2.1", count: 12, last_seen: createdAt }],
+    "/api/security-trends/user-agent-stats": [{ user_agent: "Synthetic browser", count: 12 }],
+  };
   for (const viewport of [
     { width: 1280, height: 900 },
     { width: 390, height: 844 },
@@ -88,7 +131,8 @@ try {
     });
     const errors = [],
       blockedOrigins = [],
-      unexpectedWrites = [];
+      unexpectedWrites = [],
+      unexpectedReads = [];
     let metricsCalls = 0,
       metricMode = "success",
       holdMetrics;
@@ -130,10 +174,14 @@ try {
         return;
       }
       if (url.pathname.startsWith("/api/")) {
+        if (!Object.hasOwn(adminFixtures, url.pathname)) {
+          unexpectedReads.push(url.pathname);
+          return route.abort();
+        }
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({ data: [] }),
+          body: JSON.stringify({ data: adminFixtures[url.pathname] }),
         });
         return;
       }
@@ -317,15 +365,50 @@ try {
         );
       }
     }
+    for (const route of [
+      { path: "/users", ready: ["#user-tbody tr", "#dbsc-summary"], label: "ユーザー管理" },
+      { path: "/services", ready: ["#service-tbody tr"], label: "サービス管理" },
+      {
+        path: "/security/dashboard",
+        ready: ["#trends-chart svg", "#suspicious-tbody tr", "#ip-tbody tr", "#ua-tbody tr"],
+        label: "セキュリティ",
+      },
+    ]) {
+      await page.goto(`${origin}${route.path}`);
+      for (const ready of route.ready) await page.locator(ready).waitFor({ state: "visible" });
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth),
+        false,
+        `${route.path} must not overflow the viewport`,
+      );
+      assert.equal(await page.locator('.sidebar-link[aria-current="page"]').count(), 1);
+      assert.equal(
+        (await page.locator('.sidebar-link[aria-current="page"]').textContent()).trim(),
+        route.label,
+      );
+      for (const scrollRegion of await page.locator(".table-wrap").all()) {
+        await scrollRegion.focus();
+        assert.equal(await scrollRegion.evaluate((el) => el === document.activeElement), true);
+      }
+      await page.locator(".page-title").click();
+      await page.screenshot({
+        path: path.join(
+          reportDir,
+          `admin${route.path.replaceAll("/", "-")}-${viewport.width}x${viewport.height}.png`,
+        ),
+        fullPage: true,
+      });
+      report.cases.push(
+        `admin ${route.path} populated layout at ${viewport.width}x${viewport.height}px`,
+      );
+    }
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpectedWrites, []);
+    assert.deepEqual(unexpectedReads, []);
     assert.deepEqual(blockedOrigins, []);
     await context.close();
   }
   staticRoot = path.resolve("workers/user/dist/client");
-  const fixtureNow = Date.now();
-  const createdAt = new Date(fixtureNow - 3_600_000).toISOString();
-  const expiresAt = new Date(fixtureNow + 86_400_000).toISOString();
   const userFixtures = {
     "/api/me": {
       id: "synthetic-user",
@@ -433,6 +516,20 @@ try {
       await route.continue();
     });
     for (const route of userRoutes) {
+      const waitForCurrentTab = () =>
+        page.waitForFunction(
+          () => {
+            const nav = document.querySelector(".account-nav");
+            const current = nav?.querySelector('[aria-current="page"]');
+            if (!nav?.clientWidth || !current) return false;
+            const bounds = nav.getBoundingClientRect();
+            const item = current.getBoundingClientRect();
+            const left = bounds.left + nav.clientLeft;
+            return item.left >= left - 1 && item.right <= left + nav.clientWidth + 1;
+          },
+          null,
+          { timeout: 3000 },
+        );
       await page.goto(`${origin}${route.path}`);
       for (const ready of route.ready) await page.locator(ready).waitFor({ state: "visible" });
       assert.equal(
@@ -441,6 +538,7 @@ try {
         `${route.path} must not overflow the viewport`,
       );
       if (route.path !== "/device") {
+        await waitForCurrentTab();
         assert.equal(await page.locator('.account-nav [aria-current="page"]').count(), 1);
         assert.equal(await page.locator(".user-intro h1").textContent(), "アカウント設定");
         assert.deepEqual(
@@ -473,6 +571,49 @@ try {
           await page.locator("#main-content").evaluate((el) => el === document.activeElement),
           true,
         );
+        if (viewport.width <= 720) {
+          const beforeRestore = await page.evaluate(() => {
+            document.querySelector(".account-nav").scrollLeft = 0;
+            const before = {
+              x: window.scrollX,
+              y: window.scrollY,
+              focus: document.activeElement.id,
+            };
+            // Synthetic handler check, not an observed BFCache restoration.
+            window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+            return before;
+          });
+          await page.evaluate(
+            () =>
+              new Promise((resolve) =>
+                window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)),
+              ),
+          );
+          await waitForCurrentTab();
+          assert.deepEqual(
+            await page.evaluate(() => ({
+              x: window.scrollX,
+              y: window.scrollY,
+              focus: document.activeElement.id,
+            })),
+            beforeRestore,
+            "Revealing the current tab on pageshow must preserve focus and page scroll",
+          );
+          if (route.path === "/providers" && viewport.width === 390) {
+            await page.setViewportSize({ width: 1280, height: 900 });
+            await page.waitForFunction(() => !window.matchMedia("(max-width: 720px)").matches);
+            await page.setViewportSize(viewport);
+            await page.waitForFunction(
+              () => window.matchMedia("(max-width: 720px)").matches,
+              null,
+              { timeout: 3000 },
+            );
+            await waitForCurrentTab();
+            report.cases.push(
+              "user /providers current tab revealed after desktop-to-mobile resize",
+            );
+          }
+        }
       }
       report.cases.push(
         `user ${route.path} populated layout at ${viewport.width}x${viewport.height}px`,

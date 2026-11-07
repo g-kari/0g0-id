@@ -40,7 +40,7 @@ import Admin from '../../layouts/Admin.astro';
     </div>
     <p id="suspicious-status" class="visually-hidden" role="status"></p>
     <div id="suspicious-wrap" style="display:none; overflow:hidden;">
-      <div class="table-wrap"><table class="data-table">
+      <div class="table-wrap" tabindex="0" role="region" aria-label="疑わしい多国間ログイン一覧（横スクロールできます）"><table class="data-table">
         <caption class="visually-hidden">疑わしい多国間ログイン一覧</caption>
         <thead>
           <tr>
@@ -68,7 +68,7 @@ import Admin from '../../layouts/Admin.astro';
     </div>
     <p id="ip-status" class="visually-hidden" role="status"></p>
     <div id="ip-wrap" style="display:none; overflow:hidden;">
-      <div class="table-wrap"><table class="data-table">
+      <div class="table-wrap" tabindex="0" role="region" aria-label="IP別ログイン集計（横スクロールできます）"><table class="data-table">
         <caption class="visually-hidden">IP別ログイン集計</caption>
         <thead>
           <tr>
@@ -95,7 +95,7 @@ import Admin from '../../layouts/Admin.astro';
     </div>
     <p id="ua-status" class="visually-hidden" role="status"></p>
     <div id="ua-wrap" style="display:none; overflow:hidden;">
-      <div class="table-wrap"><table class="data-table">
+      <div class="table-wrap" tabindex="0" role="region" aria-label="User-Agent別ログイン集計（横スクロールできます）"><table class="data-table">
         <caption class="visually-hidden">User-Agent別ログイン集計</caption>
         <thead>
           <tr>

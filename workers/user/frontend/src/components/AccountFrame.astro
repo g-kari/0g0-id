@@ -37,3 +37,36 @@ const navigation = [
     <footer class="user-footer">© 0g0 ID</footer>
   </main>
 </div>
+
+<script>
+  const nav = document.querySelector<HTMLElement>('.account-nav');
+  if (nav) {
+    const mobile = window.matchMedia('(max-width: 720px)');
+    let scheduled = false;
+    function revealCurrentTab() {
+      if (!nav || !mobile.matches || !nav.clientWidth) return;
+      const current = nav.querySelector<HTMLElement>('[aria-current="page"]');
+      if (!current) return;
+      const bounds = nav.getBoundingClientRect();
+      const item = current.getBoundingClientRect();
+      const left = bounds.left + nav.clientLeft;
+      const right = left + nav.clientWidth;
+      // Change only this nav's horizontal position, preserving page scroll and focus.
+      if (item.left < left) nav.scrollLeft -= left - item.left;
+      else if (item.right > right) nav.scrollLeft += item.right - right;
+    }
+    function scheduleReveal() {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(() => {
+        scheduled = false;
+        revealCurrentTab();
+      });
+    }
+    scheduleReveal();
+    window.addEventListener('pageshow', scheduleReveal);
+    mobile.addEventListener('change', scheduleReveal);
+    // Profile content is initially hidden while its existing loader reads the account.
+    new ResizeObserver(scheduleReveal).observe(nav);
+  }
+</script>

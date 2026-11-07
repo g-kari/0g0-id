@@ -20,7 +20,7 @@ import Admin from '../../layouts/Admin.astro';
   <!-- DBSC バインド集計サマリ（issue #155 Phase 3: Chrome 非対応環境の棚卸し用） -->
   <div id="dbsc-summary" class="card" style="display:none; margin-bottom:16px; padding:16px;">
     <h3 style="margin:0 0 8px; font-size:0.9rem; color:var(--color-muted);">BFF セッションの DBSC 端末バインド状況</h3>
-    <div id="dbsc-summary-body" style="font-size:0.875rem;"></div>
+    <div id="dbsc-summary-body" class="table-wrap" tabindex="0" role="region" aria-label="DBSC端末バインド集計（横スクロールできます）" style="font-size:0.875rem;"></div>
   </div>
 
   <div id="loading" style="display:flex; justify-content:center; padding:3rem;">
