@@ -6,7 +6,7 @@ import {
   createLogger,
 } from "@0g0-id/shared";
 import { buildTokenResponse } from "../../utils/token-pair";
-import { resolveResourceScope, isSubjectAllowedForResource } from "../../utils/scopes";
+import { resolveResourceScopeOrDefault, isSubjectAllowedForResource } from "../../utils/scopes";
 import { attemptUnrevokeToken } from "../../utils/token-recovery";
 import {
   validateAndRevokeRefreshToken,
@@ -163,8 +163,13 @@ export async function handleRefreshTokenGrant(
       );
     }
     // scope は現在の allowed_scopes を上限として切り詰める。
-    // 有効な scope が残らなければ発行しない。
-    const narrowedScope = resolveResourceScope(storedToken.scope, resourceServer.allowed_scopes);
+    // 有効な scope が残らなければ発行しない。保存済み scope は通常は
+    // リソース用スコープのみのため切り詰めとして働くが、リソース用
+    // スコープを含まない場合は認可コード交換と同じ既定付与に揃える。
+    const narrowedScope = resolveResourceScopeOrDefault(
+      storedToken.scope,
+      resourceServer.allowed_scopes,
+    );
     if (narrowedScope === undefined) {
       return c.json(
         { error: "invalid_scope", error_description: "No valid scope for this resource" },

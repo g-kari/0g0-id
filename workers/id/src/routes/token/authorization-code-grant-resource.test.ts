@@ -22,7 +22,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
 
 vi.mock("../../utils/scopes", () => ({
   resolveEffectiveScope: vi.fn(),
-  resolveResourceScope: vi.fn(),
+  resolveResourceScopeOrDefault: vi.fn(),
   isSubjectAllowedForResource: vi.fn(),
 }));
 
@@ -51,7 +51,7 @@ import {
   normalizeRedirectUri,
   matchRedirectUri,
 } from "@0g0-id/shared";
-import { resolveResourceScope, isSubjectAllowedForResource } from "../../utils/scopes";
+import { resolveResourceScopeOrDefault, isSubjectAllowedForResource } from "../../utils/scopes";
 import {
   issueTokenPair,
   buildTokenResponse,
@@ -166,7 +166,7 @@ describe("handleAuthorizationCodeGrant (RFC 8707 resource)", () => {
     vi.mocked(timingSafeEqual).mockReturnValue(true);
     vi.mocked(findResourceServerByUri).mockResolvedValue(mockResourceServer);
     vi.mocked(isSubjectAllowedForResource).mockReturnValue(true);
-    vi.mocked(resolveResourceScope).mockReturnValue("events:read events:subscribe");
+    vi.mocked(resolveResourceScopeOrDefault).mockReturnValue("events:read events:subscribe");
     vi.mocked(issueTokenPair).mockResolvedValue({
       accessToken: "access-token",
       refreshToken: "refresh-token",
@@ -276,8 +276,37 @@ describe("handleAuthorizationCodeGrant (RFC 8707 resource)", () => {
     expect(issueTokenPair).not.toHaveBeenCalled();
   });
 
+  it("コードの scope が OIDC のみ（ChatGPT の実挙動）→ 既定付与されたスコープで発行する", async () => {
+    vi.mocked(findAndConsumeAuthCode).mockResolvedValue({
+      ...mockAuthCode,
+      scope: "openid email profile",
+    });
+    vi.mocked(resolveResourceScopeOrDefault).mockReturnValue(
+      "events:read events:subscribe requests:read requests:update",
+    );
+    const res = await handleAuthorizationCodeGrant(createMockContext(), {
+      ...baseParams,
+      resource: RESOURCE_URI,
+    });
+    expect(res.status).toBe(200);
+    expect(resolveResourceScopeOrDefault).toHaveBeenCalledWith(
+      "openid email profile",
+      mockResourceServer.allowed_scopes,
+    );
+    expect(issueTokenPair).toHaveBeenCalledWith(
+      mockEnv.DB,
+      mockEnv,
+      mockUser,
+      expect.objectContaining({
+        scope: "events:read events:subscribe requests:read requests:update",
+        resource: RESOURCE_URI,
+        resourceServerId: "rs-1",
+      }),
+    );
+  });
+
   it("有効スコープが残らない → 400 invalid_scope", async () => {
-    vi.mocked(resolveResourceScope).mockReturnValue(undefined);
+    vi.mocked(resolveResourceScopeOrDefault).mockReturnValue(undefined);
     const res = await handleAuthorizationCodeGrant(createMockContext(), {
       ...baseParams,
       resource: RESOURCE_URI,
