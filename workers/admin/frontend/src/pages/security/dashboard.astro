@@ -131,29 +131,29 @@ import Admin from '../../layouts/Admin.astro';
     clip: rect(0 0 0 0);
     border: 0;
   }
-  .trend-chart-svg {
+  #trends-chart :global(.trend-chart-svg) {
     width: 100%;
     height: auto;
     display: block;
   }
-  .trend-axis-label {
-    font-size: 10px;
+  #trends-chart :global(.trend-axis-label) {
+    font-size: 12px;
     fill: var(--color-muted);
   }
-  .trend-line {
+  #trends-chart :global(.trend-line) {
     fill: none;
     stroke: var(--color-accent);
     stroke-width: 2;
   }
-  .trend-area {
+  #trends-chart :global(.trend-area) {
     fill: var(--color-accent);
     fill-opacity: 0.12;
     stroke: none;
   }
-  .trend-dot {
+  #trends-chart :global(.trend-dot) {
     fill: var(--color-accent);
   }
-  .trend-grid {
+  #trends-chart :global(.trend-grid) {
     stroke: var(--color-border, #e5e7eb);
     stroke-width: 1;
     stroke-dasharray: 2 2;
@@ -242,19 +242,35 @@ import Admin from '../../layouts/Admin.astro';
   }
 
   // 日別ログイン推移 — 簡易SVGラインチャート
+  let cachedTrendData: DailyLoginStat[] | null = null;
+  let renderedTrendWidth = 0;
+
   async function renderTrends(): Promise<void> {
     const emptyEl = document.getElementById('trends-empty')!;
     const chartEl = document.getElementById('trends-chart')!;
+    cachedTrendData = null;
     const data = await apiFetch<DailyLoginStat[]>('/api/metrics/login-trends?days=30');
     if (!data || data.length === 0) {
       emptyEl.style.display = '';
       return;
     }
+    cachedTrendData = data;
+    chartEl.style.display = '';
+    drawTrends(data);
+  }
+
+  function drawTrends(data: DailyLoginStat[]): void {
+    const chartEl = document.getElementById('trends-chart')!;
+    const w = chartEl.clientWidth;
+    if (!w) return;
     const max = Math.max(...data.map((d) => d.count), 1);
-    const w = 800;
+    const yTicks = [0, Math.round(max / 2), max];
+    const tickLabels = yTicks.map((value) => value.toLocaleString('ja-JP', { notation: 'compact', maximumSignificantDigits: 3 }));
     const h = 220;
-    const padLeft = 40;
-    const padRight = 12;
+    const measure = document.createElement('canvas').getContext('2d');
+    if (measure) measure.font = `12px ${getComputedStyle(chartEl).fontFamily}`;
+    const padLeft = Math.max(40, ...tickLabels.map((label) => Math.ceil(measure?.measureText(label).width ?? label.length * 12) + 12));
+    const padRight = 28;
     const padTop = 12;
     const padBottom = 28;
     const plotW = w - padLeft - padRight;
@@ -276,12 +292,11 @@ import Admin from '../../layouts/Admin.astro';
     ].join(' ');
 
     // Y軸目盛り（0, max/2, max）
-    const yTicks = [0, Math.round(max / 2), max];
     const gridLines = yTicks
-      .map((v) => {
+      .map((v, index) => {
         const y = padTop + plotH - (v / max) * plotH;
         return `<line class="trend-grid" x1="${padLeft}" y1="${y.toFixed(1)}" x2="${(w - padRight).toFixed(1)}" y2="${y.toFixed(1)}"></line>
-                <text class="trend-axis-label" x="${padLeft - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end">${v}</text>`;
+                <text class="trend-axis-label" x="${padLeft - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end">${tickLabels[index]}</text>`;
       })
       .join('');
 
@@ -294,7 +309,8 @@ import Admin from '../../layouts/Admin.astro';
       .map((i) => {
         const p = points[i];
         const label = p.d.date.slice(5); // MM-DD
-        return `<text class="trend-axis-label" x="${p.x.toFixed(1)}" y="${(padTop + plotH + 16).toFixed(1)}" text-anchor="middle">${label}</text>`;
+        const anchor = i === 0 ? 'start' : i === data.length - 1 ? 'end' : 'middle';
+        return `<text class="trend-axis-label" x="${p.x.toFixed(1)}" y="${(padTop + plotH + 16).toFixed(1)}" text-anchor="${anchor}">${label}</text>`;
       })
       .join('');
 
@@ -304,6 +320,7 @@ import Admin from '../../layouts/Admin.astro';
       )
       .join('');
 
+    renderedTrendWidth = w;
     chartEl.innerHTML = `
       <svg class="trend-chart-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="日別ログイン推移グラフ">
         ${gridLines}
@@ -313,8 +330,18 @@ import Admin from '../../layouts/Admin.astro';
         ${xLabels}
       </svg>
     `;
-    chartEl.style.display = '';
   }
+
+  const observedTrendChart = document.getElementById('trends-chart')!;
+  let trendResizeScheduled = false;
+  new ResizeObserver(() => {
+    if (!cachedTrendData || !observedTrendChart.clientWidth || observedTrendChart.clientWidth === renderedTrendWidth || trendResizeScheduled) return;
+    trendResizeScheduled = true;
+    requestAnimationFrame(() => {
+      trendResizeScheduled = false;
+      if (cachedTrendData && observedTrendChart.clientWidth && observedTrendChart.clientWidth !== renderedTrendWidth) drawTrends(cachedTrendData);
+    });
+  }).observe(observedTrendChart);
 
   // 疑わしい多国間ログイン
   async function renderSuspicious(): Promise<void> {

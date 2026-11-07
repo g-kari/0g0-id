@@ -132,7 +132,8 @@ try {
     const errors = [],
       blockedOrigins = [],
       unexpectedWrites = [],
-      unexpectedReads = [];
+      unexpectedReads = [],
+      adminApiReads = [];
     let metricsCalls = 0,
       metricMode = "success",
       holdMetrics;
@@ -150,6 +151,7 @@ try {
         await route.abort();
         return;
       }
+      if (url.pathname.startsWith("/api/")) adminApiReads.push(url.pathname);
       if (url.pathname === "/api/metrics") {
         metricsCalls++;
         if (metricMode === "hold")
@@ -386,6 +388,90 @@ try {
         (await page.locator('.sidebar-link[aria-current="page"]').textContent()).trim(),
         route.label,
       );
+      if (route.path === "/security/dashboard") {
+        assert.deepEqual(
+          await page.locator("#trends-chart .trend-line").evaluate((line) => ({
+            fill: getComputedStyle(line).fill,
+            stroke: getComputedStyle(line).stroke,
+          })),
+          { fill: "none", stroke: "rgb(40, 103, 90)" },
+        );
+        assert.deepEqual(
+          await page.locator("#trends-chart .trend-area").evaluate((area) => ({
+            fill: getComputedStyle(area).fill,
+            opacity: getComputedStyle(area).fillOpacity,
+          })),
+          { fill: "rgb(40, 103, 90)", opacity: "0.12" },
+        );
+        assert.equal(
+          await page
+            .locator("#trends-chart .trend-axis-label")
+            .first()
+            .evaluate((label) => getComputedStyle(label).fontSize),
+          "12px",
+        );
+        const waitForChartWidth = (expectedWidth = viewport.width) =>
+          page.waitForFunction(
+            (width) => {
+              const chart = document.querySelector("#trends-chart");
+              const svg = chart?.querySelector("svg");
+              return (
+                window.innerWidth === width &&
+                chart?.clientWidth > 0 &&
+                svg &&
+                Math.abs(svg.viewBox.baseVal.width - chart.clientWidth) <= 1
+              );
+            },
+            expectedWidth,
+            { timeout: 3000 },
+          );
+        await waitForChartWidth();
+        const effectiveFontSize = await page
+          .locator("#trends-chart .trend-axis-label")
+          .first()
+          .evaluate((label) => {
+            const svg = label.ownerSVGElement;
+            return (
+              (parseFloat(getComputedStyle(label).fontSize) * svg.getBoundingClientRect().width) /
+              svg.viewBox.baseVal.width
+            );
+          });
+        assert.ok(
+          effectiveFontSize >= 11.5 && effectiveFontSize <= 12.5,
+          "Chart labels must remain readable at the rendered scale",
+        );
+        if (viewport.width === 1280) {
+          const readsBeforeResize = adminApiReads.length;
+          await page.setViewportSize({ width: 390, height: 844 });
+          await waitForChartWidth(390);
+          await page.setViewportSize(viewport);
+          await waitForChartWidth();
+          assert.equal(
+            adminApiReads.length,
+            readsBeforeResize,
+            "Chart resizing must redraw cached data without API requests",
+          );
+          report.cases.push(
+            "admin trend chart responsive redraw preserves cached data without extra reads",
+          );
+        }
+        assert.equal(
+          await page.locator("#trends-chart svg").evaluate((svg) => {
+            const viewBox = svg.viewBox.baseVal;
+            return [...svg.querySelectorAll("text")].every((label) => {
+              const bounds = label.getBBox();
+              return (
+                bounds.x >= viewBox.x &&
+                bounds.y >= viewBox.y &&
+                bounds.x + bounds.width <= viewBox.x + viewBox.width &&
+                bounds.y + bounds.height <= viewBox.y + viewBox.height
+              );
+            });
+          }),
+          true,
+          "All trend-axis labels must fit within the SVG viewBox",
+        );
+      }
       for (const scrollRegion of await page.locator(".table-wrap").all()) {
         await scrollRegion.focus();
         assert.equal(await scrollRegion.evaluate((el) => el === document.activeElement), true);
