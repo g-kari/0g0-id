@@ -138,7 +138,7 @@ try {
         await expect(copy).toBeDisabled();
         await copy.dispatchEvent("click");
         assert.deepEqual(await page.evaluate(() => window.__copyCalls), [sub]);
-        const back = page.getByRole("link", { name: "← プロフィール" });
+        const back = page.getByRole("link", { name: "プロフィール", exact: true });
         await back.focus();
         await page.evaluate(() =>
           window.__rejectCopy(new DOMException("Synthetic", "NotAllowedError")),
