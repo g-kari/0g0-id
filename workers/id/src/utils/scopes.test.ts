@@ -5,6 +5,7 @@ import {
   isSubjectAllowedForResource,
   resolveEffectiveScope,
   resolveResourceScope,
+  resolveResourceScopeOrDefault,
   validateNonce,
   validateCodeChallenge,
 } from "./scopes";
@@ -36,6 +37,43 @@ describe("resolveResourceScope", () => {
   it("リソースの許可スコープが空なら undefined（フェイルクローズド）", () => {
     expect(resolveResourceScope("events:read", "[]")).toBeUndefined();
     expect(resolveResourceScope(undefined, "[]")).toBeUndefined();
+  });
+});
+
+describe("resolveResourceScopeOrDefault", () => {
+  const resourceScopes = '["events:read","events:subscribe","requests:read","requests:update"]';
+  const allScopes = "events:read events:subscribe requests:read requests:update";
+
+  it("OIDC スコープのみのリクエストでは許可スコープをすべて付与する（ChatGPT の実挙動）", () => {
+    expect(resolveResourceScopeOrDefault("openid email profile", resourceScopes)).toBe(allScopes);
+    expect(resolveResourceScopeOrDefault("openid", resourceScopes)).toBe(allScopes);
+  });
+
+  it("スコープ未指定・空では許可スコープをすべて付与する", () => {
+    expect(resolveResourceScopeOrDefault(undefined, resourceScopes)).toBe(allScopes);
+    expect(resolveResourceScopeOrDefault(null, resourceScopes)).toBe(allScopes);
+    expect(resolveResourceScopeOrDefault("", resourceScopes)).toBe(allScopes);
+    expect(resolveResourceScopeOrDefault("   ", resourceScopes)).toBe(allScopes);
+  });
+
+  it("リソース用スコープが含まれていれば厳密な絞り込み結果を使う", () => {
+    expect(resolveResourceScopeOrDefault("events:read events:subscribe", resourceScopes)).toBe(
+      "events:read events:subscribe",
+    );
+    expect(resolveResourceScopeOrDefault("events:read profile", resourceScopes)).toBe(
+      "events:read",
+    );
+  });
+
+  it("許可外のリソース用スコープだけを要求した場合は undefined（既定付与しない）", () => {
+    expect(resolveResourceScopeOrDefault("events:admin", resourceScopes)).toBeUndefined();
+    expect(resolveResourceScopeOrDefault("openid events:admin", resourceScopes)).toBeUndefined();
+  });
+
+  it("リソースの許可スコープが空なら undefined（フェイルクローズド）", () => {
+    expect(resolveResourceScopeOrDefault("openid email profile", "[]")).toBeUndefined();
+    expect(resolveResourceScopeOrDefault(undefined, "[]")).toBeUndefined();
+    expect(resolveResourceScopeOrDefault("events:read", "[]")).toBeUndefined();
   });
 });
 

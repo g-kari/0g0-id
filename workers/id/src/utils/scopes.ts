@@ -27,6 +27,43 @@ export function resolveResourceScope(
 }
 
 /**
+ * 標準の OIDC スコープ。AS メタデータ（scopes_supported）で広告している
+ * スコープで、リソース用スコープではない。これらは「リソース用スコープの
+ * 要求なし」の判定から除外する。
+ */
+const OIDC_SCOPES = ["openid", "profile", "email", "phone", "address", "offline_access"];
+
+/**
+ * リソース束縛トークンのスコープを、未要求時の既定付与つきで計算する。
+ *
+ * ChatGPT など一部のクライアントは、認可リクエストで AS メタデータの
+ * OIDC スコープ（openid email profile）だけを送り、リソース用スコープを
+ * 一切要求しない。そのまま resolveResourceScope に通すと交わりが空になり
+ * invalid_scope で落ち、リソース側で接続を許可したクライアントでも
+ * トークン交換が必ず失敗する。そこで:
+ *
+ * - リクエストに OIDC 以外のスコープが含まれていれば、resolveResourceScope の
+ *   厳密な絞り込み結果を使う（許可済みリソース用スコープだけが残り、
+ *   許可外だけを要求した場合は従来どおり undefined）
+ * - リクエストが OIDC スコープのみ（または空）なら「リソース用スコープの
+ *   要求なし」とみなし、リソース登録の許可スコープをすべて付与する
+ * - リソースの許可スコープが空なら undefined（フェイルクローズド）
+ */
+export function resolveResourceScopeOrDefault(
+  requestedScope: string | null | undefined,
+  resourceAllowedScopesJson: string,
+): string | undefined {
+  const allowed = parseAllowedScopes(resourceAllowedScopesJson);
+  if (allowed.length === 0) return undefined;
+  const requested = (requestedScope ?? "").split(" ").filter(Boolean);
+  const nonOidc = requested.filter((s) => !OIDC_SCOPES.includes(s));
+  if (nonOidc.length > 0) {
+    return resolveResourceScope(requestedScope, resourceAllowedScopesJson);
+  }
+  return allowed.join(" ");
+}
+
+/**
  * resource_servers.allowed_subjects（JSON 配列文字列）をパースする。
  *
  * - 空配列は「制限なし」を表す（parseAllowedSubjects の戻り値も空配列）。
