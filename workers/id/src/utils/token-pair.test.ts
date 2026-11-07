@@ -19,6 +19,7 @@ import type { IdpEnv, User } from "@0g0-id/shared";
 import {
   issueTokenPair,
   buildTokenResponse,
+  ResourceRegistrationGoneError,
   REFRESH_TOKEN_TTL_MS,
   ACCESS_TOKEN_TTL_SECONDS,
 } from "./token-pair";
@@ -43,7 +44,7 @@ describe("issueTokenPair", () => {
     vi.mocked(signAccessToken).mockResolvedValue("mock-access-token");
     vi.mocked(generateToken).mockReturnValue("mock-refresh-token");
     vi.mocked(sha256).mockResolvedValue("mock-hash");
-    vi.mocked(createRefreshToken).mockResolvedValue(undefined);
+    vi.mocked(createRefreshToken).mockResolvedValue(true);
     vi.spyOn(crypto, "randomUUID").mockReturnValue(
       "mock-uuid-1234" as ReturnType<typeof crypto.randomUUID>,
     );
@@ -226,6 +227,47 @@ describe("issueTokenPair", () => {
       mockDb,
       expect.objectContaining({ tokenHash: "hashed-refresh-token" }),
     );
+  });
+
+  it("resource 指定時は resourceServerId を createRefreshToken へ渡す", async () => {
+    await issueTokenPair(mockDb, mockEnv, mockUser, {
+      serviceId: "service-1",
+      clientId: "client-abc",
+      resource: "https://dots-events.0g0.xyz/mcp",
+      resourceServerId: "rs-gen-1",
+    });
+
+    expect(createRefreshToken).toHaveBeenCalledWith(
+      mockDb,
+      expect.objectContaining({
+        resource: "https://dots-events.0g0.xyz/mcp",
+        resourceServerId: "rs-gen-1",
+      }),
+    );
+  });
+
+  it("resource 指定時に resourceServerId が無いと発行前に拒否する", async () => {
+    await expect(
+      issueTokenPair(mockDb, mockEnv, mockUser, {
+        serviceId: "service-1",
+        clientId: "client-abc",
+        resource: "https://dots-events.0g0.xyz/mcp",
+      }),
+    ).rejects.toThrow(/require a resourceServerId/);
+    expect(createRefreshToken).not.toHaveBeenCalled();
+  });
+
+  it("登録が削除済みで createRefreshToken が false を返すと ResourceRegistrationGoneError を投げる", async () => {
+    vi.mocked(createRefreshToken).mockResolvedValue(false);
+
+    await expect(
+      issueTokenPair(mockDb, mockEnv, mockUser, {
+        serviceId: "service-1",
+        clientId: "client-abc",
+        resource: "https://dots-events.0g0.xyz/mcp",
+        resourceServerId: "rs-deleted",
+      }),
+    ).rejects.toBeInstanceOf(ResourceRegistrationGoneError);
   });
 });
 

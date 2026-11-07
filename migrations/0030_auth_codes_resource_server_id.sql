@@ -1,0 +1,14 @@
+-- 認可コードにも resource の「登録世代」を固定する（0029 の refresh_tokens と対）。
+--
+-- auth_codes.resource は URI 文字列のため、resource を削除して同じ URI を
+-- コードの有効期間（60秒）以内に再登録すると、削除前に発行された未使用コードと
+-- 区別できず、交換時に新しい登録へ紐づくトークンを発行できてしまう
+-- （subject・scope は交換時に再検証されるため新しい利用制限の突破にはならないが、
+-- 「削除した時点でそれ以前の grant は失効する」という境界が不完全になる）。
+--
+-- resource_server_id には認可コード発行時点で検証した resource_servers 行の
+-- id（登録ごとに発行される UUID = 登録世代）を記録する。交換時は現在の行 id と
+-- 一致する場合のみ発行を許可する。世代が記録されていない旧形式コード
+-- （resource あり・resource_server_id なし）の交換は安全側で拒否する
+-- （コードの有効期間は60秒のため、移行時に失効するコードは最大で60秒分）。
+ALTER TABLE auth_codes ADD COLUMN resource_server_id TEXT;

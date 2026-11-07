@@ -55,6 +55,22 @@ export async function handleExchange(c: Context<{ Bindings: IdpEnv; Variables: V
     return c.json({ error: { code: "INVALID_CODE", message: "redirect_to mismatch" } }, 400);
   }
 
+  // RFC 8707: resource 束縛コードはこの legacy 経路では扱わない。
+  // ここで交換すると resource を落として aud が client_id に化けてしまうため、
+  // 標準トークンエンドポイントへ明示的に誘導して拒否する。
+  if (authCode.resource) {
+    return c.json(
+      {
+        error: {
+          code: "INVALID_REQUEST",
+          message:
+            "Resource-bound authorization codes must be exchanged at the standard token endpoint",
+        },
+      },
+      400,
+    );
+  }
+
   // 下流 PKCE 検証（RFC 7636 / OAuth 2.1）
   if (authCode.code_challenge) {
     if (!body.code_verifier) {
