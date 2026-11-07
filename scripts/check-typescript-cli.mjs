@@ -35,14 +35,18 @@ console.log(`Root and Vite+ compiler API resolve TypeScript ${coreTs.version}`);
 for (const worker of ["admin", "user"]) {
   const frontend = join(root, "workers", worker, "frontend");
   const localRequire = createRequire(join(frontend, "package.json"));
-  assert.equal(read(join(frontend, "package.json")).devDependencies.typescript, "^6.0.2");
-  assert.equal(
-    read(join(frontend, "package-lock.json")).packages["node_modules/typescript"].version,
-    "6.0.2",
+  assert.match(
+    read(join(frontend, "package.json")).devDependencies.typescript,
+    /^\^?6\./,
+    "frontend typescript range must stay on the 6.x line",
   );
-  assert.equal(localRequire("typescript").version, "6.0.2");
+  const lockVersion =
+    read(join(frontend, "package-lock.json")).packages["node_modules/typescript"].version;
+  assert.match(lockVersion, /^6\./, "frontend lockfile typescript must stay on the 6.x line");
+  const installedVersion = localRequire("typescript").version;
+  assert.match(installedVersion, /^6\./, "frontend installed typescript must stay on the 6.x line");
   assert.equal(typeof localRequire("typescript").createProgram, "function");
-  console.log(`${worker} frontend remains on TypeScript 6.0.2`);
+  console.log(`${worker} frontend remains on TypeScript ${installedVersion}`);
 }
 
 const workspaces = [
