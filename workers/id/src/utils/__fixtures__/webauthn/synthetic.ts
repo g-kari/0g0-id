@@ -17,14 +17,18 @@ export async function syntheticAuthenticator() {
     false,
     ["sign", "verify"],
   );
+  if (!("publicKey" in keys) || !("privateKey" in keys))
+    throw new Error("Expected synthetic key pair");
   // Only the public key is exported; the private key is non-extractable.
   const jwk = await crypto.subtle.exportKey("jwk", keys.publicKey);
+  if (jwk instanceof ArrayBuffer || typeof jwk.n !== "string" || typeof jwk.e !== "string")
+    throw new Error("Expected synthetic RSA public JWK");
   const publicKey = isoCBOR.encode(
     new Map<number, number | Uint8Array>([
       [1, 3],
       [3, -257],
-      [-1, isoBase64URL.toBuffer(jwk.n!)],
-      [-2, isoBase64URL.toBuffer(jwk.e!)],
+      [-1, isoBase64URL.toBuffer(jwk.n)],
+      [-2, isoBase64URL.toBuffer(jwk.e)],
     ]),
   );
   const credentialID = isoBase64URL.fromBuffer(crypto.getRandomValues(new Uint8Array(32)));
