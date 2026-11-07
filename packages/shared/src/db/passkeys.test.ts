@@ -232,8 +232,13 @@ describe("passkey storage (SQLite)", () => {
   );
 
   it("updates a verified counter only if its previous snapshot still matches", async () => {
-    await storeVerifiedPasskey(db, credential);
-    const input = { ...credential, previousCounter: 1, newCounter: 2 };
+    const stored = (await storeVerifiedPasskey(db, credential))!;
+    const input = {
+      ...credential,
+      registrationId: stored.registration_id,
+      previousCounter: 1,
+      newCounter: 2,
+    };
     expect(await recordVerifiedPasskeyAuthentication(db, input)).toBe(true);
     expect(await recordVerifiedPasskeyAuthentication(db, input)).toBe(false);
     expect((await findPasskeyCredential(db, credential))?.sign_count).toBe(2);
@@ -241,9 +246,10 @@ describe("passkey storage (SQLite)", () => {
   });
 
   it.each([0, 1])("does not accept a non-increasing nonzero counter (%s)", async (newCounter) => {
-    await storeVerifiedPasskey(db, credential);
+    const stored = (await storeVerifiedPasskey(db, credential))!;
     expect(
       await recordVerifiedPasskeyAuthentication(db, {
+        registrationId: stored.registration_id,
         ...credential,
         previousCounter: 1,
         newCounter,
@@ -252,9 +258,10 @@ describe("passkey storage (SQLite)", () => {
   });
 
   it("supports authenticators whose counters stay zero", async () => {
-    await storeVerifiedPasskey(db, { ...credential, counter: 0 });
+    const stored = (await storeVerifiedPasskey(db, { ...credential, counter: 0 }))!;
     expect(
       await recordVerifiedPasskeyAuthentication(db, {
+        registrationId: stored.registration_id,
         ...credential,
         previousCounter: 0,
         newCounter: 0,
@@ -263,9 +270,10 @@ describe("passkey storage (SQLite)", () => {
   });
 
   it.each([1, 0xffffffff])("allows a zero counter to advance to %s", async (newCounter) => {
-    await storeVerifiedPasskey(db, { ...credential, counter: 0 });
+    const stored = (await storeVerifiedPasskey(db, { ...credential, counter: 0 }))!;
     expect(
       await recordVerifiedPasskeyAuthentication(db, {
+        registrationId: stored.registration_id,
         ...credential,
         previousCounter: 0,
         newCounter,
@@ -275,9 +283,10 @@ describe("passkey storage (SQLite)", () => {
   });
 
   it("rejects an invalid previous counter", async () => {
-    await storeVerifiedPasskey(db, credential);
+    const stored = (await storeVerifiedPasskey(db, credential))!;
     await expect(
       recordVerifiedPasskeyAuthentication(db, {
+        registrationId: stored.registration_id,
         ...credential,
         previousCounter: -1,
         newCounter: 2,
@@ -286,12 +295,13 @@ describe("passkey storage (SQLite)", () => {
   });
 
   it("does not record a login after credential deletion", async () => {
-    await storeVerifiedPasskey(db, credential);
+    const stored = (await storeVerifiedPasskey(db, credential))!;
     sqlite
       .prepare("DELETE FROM passkey_credentials WHERE credential_id = ?")
       .run(credential.credentialId);
     expect(
       await recordVerifiedPasskeyAuthentication(db, {
+        registrationId: stored.registration_id,
         ...credential,
         previousCounter: 1,
         newCounter: 2,
@@ -300,10 +310,11 @@ describe("passkey storage (SQLite)", () => {
   });
 
   it("does not record a login after email verification is revoked", async () => {
-    await storeVerifiedPasskey(db, credential);
+    const stored = (await storeVerifiedPasskey(db, credential))!;
     sqlite.prepare("UPDATE users SET email_verified = 0 WHERE id = ?").run(credential.userId);
     expect(
       await recordVerifiedPasskeyAuthentication(db, {
+        registrationId: stored.registration_id,
         ...credential,
         previousCounter: 1,
         newCounter: 2,
@@ -317,6 +328,7 @@ describe("passkey storage (SQLite)", () => {
       await expect(storeVerifiedPasskey(db, { ...credential, counter })).rejects.toThrow();
       await expect(
         recordVerifiedPasskeyAuthentication(db, {
+          registrationId: "no-persisted-row",
           ...credential,
           previousCounter: 0,
           newCounter: counter,
@@ -326,8 +338,13 @@ describe("passkey storage (SQLite)", () => {
   );
 
   it("does not record a login for a deleted, banned or mismatched account", async () => {
-    await storeVerifiedPasskey(db, credential);
-    const input = { ...credential, previousCounter: 1, newCounter: 2 };
+    const stored = (await storeVerifiedPasskey(db, credential))!;
+    const input = {
+      ...credential,
+      registrationId: stored.registration_id,
+      previousCounter: 1,
+      newCounter: 2,
+    };
     expect(await recordVerifiedPasskeyAuthentication(db, { ...input, userId: "other-user" })).toBe(
       false,
     );
@@ -345,4 +362,31 @@ describe("passkey storage (SQLite)", () => {
     expect(await consumePasskeyChallenge(db, input)).toBeNull();
     expect(await findPasskeyCredential(db, credential)).toBeNull();
   });
+  it.each([0, 1])(
+    "rejects a stale snapshot after delete/reinsert with counter %s",
+    async (counter) => {
+      const old = (await storeVerifiedPasskey(db, { ...credential, counter }))!;
+      sqlite
+        .prepare("DELETE FROM passkey_credentials WHERE credential_id = ?")
+        .run(credential.credentialId);
+      const current = (await storeVerifiedPasskey(db, { ...credential, counter }))!;
+      expect(current.registration_id).not.toBe(old.registration_id);
+      expect(
+        await recordVerifiedPasskeyAuthentication(db, {
+          ...credential,
+          registrationId: old.registration_id,
+          previousCounter: counter,
+          newCounter: counter === 0 ? 0 : 2,
+        }),
+      ).toBe(false);
+      expect(
+        await recordVerifiedPasskeyAuthentication(db, {
+          ...credential,
+          registrationId: current.registration_id,
+          previousCounter: counter,
+          newCounter: counter === 0 ? 0 : 2,
+        }),
+      ).toBe(true);
+    },
+  );
 });

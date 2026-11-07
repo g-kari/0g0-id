@@ -4,21 +4,24 @@
 
 現行の Google、LINE、Twitch、GitHub、X 認証は変更しない。追加プロバイダー名は未確定であり、既存要望の GitHub / X / LINE / Twitch を新規要望と取り違えない。
 
-この変更は **未接続の認証ストレージとメール配送基盤** を追加する。アプリのルート登録、環境変数、依存パッケージ、OAuth プロバイダー型、既存 DB、既存ログイン UI は変更しない。実際のメール登録・パスキーログインはまだ利用できない。
+この変更は **未接続の認証ストレージとメール配送基盤** を追加する。アプリのルート登録、環境変数、OAuth プロバイダー型、既存 DB、既存ログイン UI は変更しない。検証器のruntime依存に `@simplewebauthn/server` 14.0.3を正規lockfileと共に追加する。実際のメール登録・パスキーログインはまだ利用できない。
 
 - `packages/shared/src/db/passkey-challenges.ts`: 256 bit challenge、5分期限、用途・ユーザー・ブラウザー・設定された origin / RP ID の束縛と原子的な一回消費。
-- `packages/shared/src/db/passkey-credentials.ts`: 検証済み公開鍵の保存、所有者の一致、署名カウンターの compare-and-swap。credential ID の upsert や他アカウントへの移管はしない。
-- `docs/proposals/passkey-schema.sql`: 2テーブルの案。通常の migration ディレクトリには置かず、デプロイにも適用しない。
+- `packages/shared/src/db/passkey-credentials.ts`: 検証済み公開鍵の保存、所有者と不変な登録世代の一致、署名カウンターの compare-and-swap。credential ID の upsert や他アカウントへの移管はしない。
+- `docs/proposals/passkey-schema.sql`: 7テーブルの案。通常の migration ディレクトリには置かず、デプロイにも適用しない。
 - `packages/shared/src/db/passkeys.test.ts`: 実 SQLite による SQL・制約・期限・競合・削除連動の回帰テスト。
+- `packages/shared/src/db/email-signup-intents.ts`: signup専用proof、短命authority、配送ledgerと一回claim。tokenは内部配送用メモリーのみで、DBにはhashを保存する。公開応答へ返さない。
+- `packages/shared/src/db/passkey-signup.ts`: 短命pending subjectと32byte WebAuthn user handle、検証後のauthority消費・一般user・handle・公開鍵作成を同一batchで完了する未接続helper。
+- `workers/id/src/utils/webauthn.ts`: SimpleWebAuthnのoptions/verify adapter。UP/UV、exact origin/RP ID、所有者・handle・credential ID・登録時BEを検証し、解析・署名はライブラリーに委譲する。
 - `workers/id/src/utils/verification-email.ts`: 未接続の Cloudflare Email Sending adapter と確認メールテンプレート。詳細は [配送設計](./email-delivery.md)。binding・送信元・公開 route は設定しない。
 
 これらの関数は shared の公開 barrel に export しない。署名検証器の代替でもなく、成功を返しただけで登録・ログインを認可するものでもない。
 
 ## 完成までの必須事項
 
-1. メール所有確認の配送手段、送信元アドレス、利用可能な既存契約を決める。Cloudflare Email Sending の未接続 adapter は追加したが、公開経路・本番の送信設定・メール所有確認は未実装である。配送サービスの認証や本番設定を先に作ったことにはしない。
-2. Workers 対応の監査可能な WebAuthn 実装を採用し、正確なバージョンと lockfile を固定する。CBOR / COSE / attestation / 署名の独自実装はしない。
-3. 新規登録用の検証済みメール intent と登録 pending record を実装する。今回の登録 challenge helper は既存の検証済みユーザー用であり、まだ存在しない pending subject には対応しない。新規ユーザー作成・公開鍵保存・intent消費を原子的に結び付ける拡張が必要。
+1. メール所有確認の配送手段、送信元アドレス、利用可能な既存契約を決める。Cloudflare Email Sending の未接続 adapter は追加したが、公開経路・本番の送信設定は未実装であり、メールproofのstorage helperを実際の所有確認フローとしては接続していない。配送サービスの認証や本番設定を先に作ったことにはしない。
+2. Workers 対応のSimpleWebAuthn 14.0.3 adapterを追加した。公開routeへ接続する前に、optionsと検証snapshot・DB更新の一体試験を完了する。CBOR / COSE / attestation / 署名の独自実装はしない。
+3. メールintent、pending record、最終authority消費とuser/公開鍵保存の原子helperは追加した。既存ユーザー用challengeとpending用challengeを混同せず、署名検証に使った同じpending snapshotだけを最終batchへ渡す公開接続が必要。
 4. IdP origin に登録・認証 UI を置き、BFF と標準 OAuth の既存認可コード発行処理へ接続する。メール＋パスキーを外部 OAuth プロバイダーとして偽装しない。
 5. 因子追加・失効・最終因子の保護・復旧方針を実装し、既存のプロバイダー解除処理との整合性を確認する。
 6. 必須の全体チェック、ブラウザーによる WebAuthn 試験、独立セキュリティレビューを完了する。migration と本番有効化は別の導入段階で行う。
@@ -55,9 +58,9 @@
 
 パスキー検証後も user の ban、lockout、現在の権限、サービス / resource の利用制限、許可された redirect URI を再検証する。既存の callback finalize 処理を共通化して、認可コードの有効期限、PKCE、state、nonce、resource server の登録世代を維持する。BFF cookie や refresh token を新たな別経路で直接発行しない。admin bootstrap は検証済み email のみを対象とする。
 
-メール検証が取り消されたユーザーは、今回の認証記録 helper でも拒否する。因子失効・再登録を公開する前には credential の不変な登録世代を追加し、削除→同じ ID / counter で再作成した credential へ古い検証結果を適用できないようにする。ゼロカウンターは世代識別には使えない。
+メール検証が取り消されたユーザーは、今回の認証記録 helper でも拒否する。credential の不変な登録世代を保存して照合し、削除→同じ ID / counter で再作成した credential へ古い検証結果を適用できないようにする。ゼロカウンターは世代識別には使えない。
 
-今回の persistence helper は factor 管理、token 発行、lockout、メール照合、WebAuthn 署名検証を実施しない。呼び出し側でそれらを省略できる公開経路を作らない。
+今回の persistence helper は factor 管理、ログイン用 token 発行、lockout、WebAuthn 署名検証を実施しない。signup用メールproof発行と既存メール衝突確認は行う。呼び出し側でそれらを省略できる公開経路を作らない。
 
 ## 因子の管理・復旧
 
@@ -87,3 +90,15 @@ DB schema 案を migration へ昇格する前に、pending registration、メー
 - [OWASP Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html)
 
 これらの仕様・ライブラリーの最新版と Workers 互換性は、実際の verifier を採用する段階で再確認する。
+
+## 追加した検証器と原子登録の境界
+
+WebAuthnの登録はnone attestation、resident keyとUVをrequired、ES256/RS256だけを生成・検証する。認証ではUP/UV、credential ID、userHandle、登録時のbackup eligibilityを照合する。backup stateは変化可能として固定しない。counterと登録世代の最終CASはDB側で行い、成功前にsessionを発行しない。外部JSONから所有者・公開鍵・counter・登録世代を組み立てない。解析前に各証明フィールドのサイズを制限し、公開route側でも総body上限を設ける。
+
+pendingのuser IDはメールと無関係な予約UUID、WebAuthn user handleは独立した32byte乱数である。登録完了時にuser単位の永続mappingへ同じhandleを保存し、pending削除後も認証・追加因子で同じhandleを使う。
+
+最終登録batchは、最初のNOT NULL guardにauthority・pending・用途・challenge・owner/handle・browser・設定origin/RP ID・期限・既存メール非衝突を集約する。user/handle/keyの作成、intent消費、pending削除の後、最終guardで全結果をassertする。主要処理が0行になってもNULL制約により先行書込みをrollbackする。guard cleanupだけが異常な場合はcommit後に結果不明となり得るが、残ったguardは登録権限として再利用しない。
+
+commit結果不明はreceiptによる読取照合を行う。照合結果だけでログインを許可しない。また照合nullはban・削除・検証取消でも起きるため、「ユーザーが作られなかった」証明にはしない。別の新規userを作る再送へ置き換えない。
+
+ローカルD1では、30既存migrationからnode:sqliteで生成した最終schemaとseedを転記し、7提案tableとの整合、二重claim、原子登録、途中衝突/最終assert失敗のrollback、並行完了、commit応答喪失を確認した。正式migrationをD1へ直接適用した試験でも、remote D1試験でもない。WebAuthnは公開の合成fixtureおよびメモリー内一時鍵で実ライブラリーを検証し、ローカルworkerdでも登録・認証陽性と拒否を確認した。実認証器・実メール・ブラウザー・公開routeのE2Eは未検証である。

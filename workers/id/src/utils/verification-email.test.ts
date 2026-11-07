@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
+  VERIFICATION_EMAIL_SENDER,
   buildVerificationEmail,
   sendVerificationEmail,
   type VerificationEmailConfig,
@@ -7,7 +8,7 @@ import {
 
 const config = {
   enabled: true,
-  sender: "noreply@id.example.test",
+  sender: VERIFICATION_EMAIL_SENDER,
   idpOrigin: "https://id.example.test",
 };
 const input = {
@@ -46,6 +47,12 @@ describe("buildVerificationEmail", () => {
     expect(url.search).toBe("");
     expect(url.hash).toBe(`#token=${input.token}`);
     expect(message.html).toContain(`href="${link}"`);
+  });
+
+  it("rejects a different configured sender even when its mailbox is valid", () => {
+    expect(() =>
+      buildVerificationEmail({ ...config, sender: "other@example.test" }, input),
+    ).toThrow();
   });
 
   it.each([

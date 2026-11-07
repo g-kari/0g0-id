@@ -4,6 +4,8 @@
  */
 export interface PasskeyCredential {
   credential_id: string;
+  /** Immutable server-generated enrollment generation; prevents delete/reinsert ABA. */
+  registration_id: string;
   user_id: string;
   /** Base64url-encoded COSE public key, not a private key or a JWK secret. */
   public_key: string;
@@ -37,13 +39,14 @@ export async function storeVerifiedPasskey(
   return db
     .prepare(
       `INSERT INTO passkey_credentials
-         (credential_id, user_id, public_key, sign_count, device_type, backed_up, created_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?
+         (credential_id, registration_id, user_id, public_key, sign_count, device_type, backed_up, created_at)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?
         WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND email_verified = 1 AND banned_at IS NULL)
        RETURNING *`,
     )
     .bind(
       input.credentialId,
+      crypto.randomUUID(),
       input.userId,
       input.publicKey,
       input.counter,
@@ -70,13 +73,19 @@ export async function findPasskeyCredential(
  * Call only after a successful verifier result and atomic challenge claim. The
  * compare-and-swap rejects a changed nonzero counter or a missing credential.
  * A zero counter is not a version number: replay protection comes from the
- * challenge claim. Before implementing revocation/re-enrollment, add an immutable
- * credential generation to prevent deletion/reinsertion with an old snapshot.
+ * challenge claim. The immutable enrollment generation rejects snapshots from
+ * a deleted/reinserted credential, including zero-counter authenticators.
  * A nonzero counter must increase; a rollback never silently enables zero-mode.
  */
 export async function recordVerifiedPasskeyAuthentication(
   db: D1Database,
-  input: { credentialId: string; userId: string; previousCounter: number; newCounter: number },
+  input: {
+    credentialId: string;
+    registrationId: string;
+    userId: string;
+    previousCounter: number;
+    newCounter: number;
+  },
 ): Promise<boolean> {
   validateCounter(input.previousCounter);
   validateCounter(input.newCounter);
@@ -89,7 +98,7 @@ export async function recordVerifiedPasskeyAuthentication(
   const row = await db
     .prepare(
       `UPDATE passkey_credentials SET sign_count = ?, last_used_at = ?
-        WHERE credential_id = ? AND user_id = ? AND sign_count = ?
+        WHERE credential_id = ? AND registration_id = ? AND user_id = ? AND sign_count = ?
           AND EXISTS (SELECT 1 FROM users WHERE id = ? AND email_verified = 1 AND banned_at IS NULL)
        RETURNING credential_id`,
     )
@@ -97,6 +106,7 @@ export async function recordVerifiedPasskeyAuthentication(
       input.newCounter,
       Math.floor(Date.now() / 1000),
       input.credentialId,
+      input.registrationId,
       input.userId,
       input.previousCounter,
       input.userId,

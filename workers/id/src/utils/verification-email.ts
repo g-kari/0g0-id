@@ -2,6 +2,9 @@
  * Unconnected Cloudflare Email Sending adapter. No route, binding or sender is
  * enabled by this module. SendEmail is supplied by the Workers runtime types.
  */
+/** Approved sender; domain/binding activation is a separate deployment step. */
+export const VERIFICATION_EMAIL_SENDER = "noreply@id.0g0.xyz";
+
 export interface VerificationEmailInput {
   recipient: string;
   /** Opaque, random, single-purpose proof token. Not an access/session token. */
@@ -72,7 +75,7 @@ export function buildVerificationEmail(
   input: VerificationEmailInput,
 ): EmailBuilder {
   if (
-    !config.sender ||
+    config.sender !== VERIFICATION_EMAIL_SENDER ||
     !isSingleMailbox(config.sender) ||
     !isSingleMailbox(input.recipient) ||
     !TOKEN_RE.test(input.token)
