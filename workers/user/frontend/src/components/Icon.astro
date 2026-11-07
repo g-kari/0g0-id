@@ -1,0 +1,18 @@
+---
+interface Props {
+  name: 'user' | 'shield' | 'link' | 'clock' | 'chart' | 'monitor' | 'logout' | 'chevron';
+  class?: string;
+}
+const { name, class: className = '' } = Astro.props;
+const paths = {
+  user: 'M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
+  shield: 'M12 2 20 6v6c0 5-3.2 8.1-8 10-4.8-1.9-8-5-8-10V6zM9 12l2 2 4-4',
+  link: 'M10 13a5 5 0 0 0 8 .6l2-2a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-8-.6l-2 2a5 5 0 0 0 7 7l2-2',
+  clock: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0M12 7v5l3 2',
+  chart: 'M4 3v17h17M8 15v-4M13 15V7M18 15V5',
+  monitor: 'M4 4h16v13H4zM8 21h8M12 17v4',
+  logout: 'M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4M15 17l5-5-5-5M20 12H9',
+  chevron: 'm9 6 6 6-6 6',
+};
+---
+<svg class:list={['icon', className]} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={paths[name]} /></svg>

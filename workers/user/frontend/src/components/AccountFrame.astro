@@ -1,0 +1,39 @@
+---
+import Icon from './Icon.astro';
+interface Props {
+  page: 'profile' | 'sessions' | 'providers' | 'connections' | 'login-history' | 'login-stats';
+}
+const { page } = Astro.props;
+const navigation = [
+  { href: '/profile', label: 'プロフィール', icon: 'user', page: 'profile' },
+  { href: '/sessions', label: 'セッション管理', icon: 'shield', page: 'sessions' },
+  { href: '/connections', label: '連携サービス', icon: 'link', page: 'connections' },
+  { href: '/providers', label: 'SNS連携', icon: 'link', page: 'providers' },
+  { href: '/login-history', label: 'ログイン履歴', icon: 'clock', page: 'login-history' },
+  { href: '/login-stats', label: 'ログイン統計', icon: 'chart', page: 'login-stats' },
+] as const;
+---
+<div class="account-app">
+  <a href="#main-content" class="skip-link">本文へ移動</a>
+  <header class="user-header">
+    <div class="user-header-inner">
+      <a href="/" class="user-logo" aria-label="0g0 ID トップ"><span class="user-logo-mark" aria-hidden="true">0g0<span>·</span></span><span>0g0 ID</span></a>
+      <span class="user-header-label">アカウント</span>
+    </div>
+  </header>
+  <main class="user-main" id="main-content" tabindex="-1">
+    <div class="user-intro"><h1>アカウント設定</h1></div>
+    <div class="user-grid">
+      <aside class="user-aside">
+        <slot name="identity" />
+        <slot name="navigation">
+          <nav class="account-nav" aria-label="アカウント設定">
+            {navigation.map(item => item.page === 'profile' ? <slot name="profile-link"><a href={item.href} class:list={['account-nav-item', { 'is-active': page === item.page }]} aria-current={page === item.page ? 'page' : undefined}><Icon name={item.icon} /><span>{item.label}</span><Icon name="chevron" class="trailing" /></a></slot> : <a href={item.href} class:list={['account-nav-item', { 'is-active': page === item.page }]} aria-current={page === item.page ? 'page' : undefined}><Icon name={item.icon} /><span>{item.label}</span><Icon name="chevron" class="trailing" /></a>)}
+          </nav>
+        </slot>
+      </aside>
+      <section class="user-detail"><slot /></section>
+    </div>
+    <footer class="user-footer">© 0g0 ID</footer>
+  </main>
+</div>

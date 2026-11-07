@@ -1,65 +1,41 @@
 ---
 import Base from '../layouts/Base.astro';
+import AccountFrame from '../components/AccountFrame.astro';
+import Icon from '../components/Icon.astro';
 ---
 <Base title="0g0 ID - ログイン統計">
-  <div class="min-h-screen flex items-center justify-center p-4">
-    <div class="w-full" style="max-width: 480px">
-      <div class="card">
-        <div class="flex items-center justify-between mb-4">
-          <h1 class="text-2xl font-bold">ログイン統計</h1>
-          <a href="/profile" class="btn btn-ghost btn-sm">← プロフィール</a>
-        </div>
-        <p class="text-sm mb-4" style="color: var(--color-muted)">
-          プロバイダー別のログイン回数と、日別のトレンドを確認できます。
-        </p>
-
-        <div class="flex items-center gap-2 mb-2">
-          <label for="days-select" class="text-sm" style="color: var(--color-muted)">期間</label>
-          <select id="days-select" class="px-3 py-2 rounded text-sm" style="max-width: 160px; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text)">
-            <option value="7">直近 7日</option>
-            <option value="30" selected>直近 30日</option>
-            <option value="90">直近 90日</option>
-            <option value="365">直近 365日</option>
-          </select>
-        </div>
+  <AccountFrame page="login-stats">
+    <a slot="profile-link" href="/profile" class="account-nav-item"><Icon name="user" /><span>プロフィール</span><Icon name="chevron" class="trailing" /></a>
+    <div class="user-section-title"><h2>ログイン統計</h2></div>
+    <p class="section-description section-intro">プロバイダー別のログイン回数と、日別のトレンドを確認できます。</p>
+    <div class="settings-card stats-settings">
+      <div class="list-toolbar">
+        <label for="days-select">期間</label>
+        <select id="days-select">
+          <option value="7">直近 7日</option>
+          <option value="30" selected>直近 30日</option>
+          <option value="90">直近 90日</option>
+          <option value="365">直近 365日</option>
+        </select>
       </div>
-
-      <div id="loading" class="card flex items-center justify-center gap-2 py-8" style="color: var(--color-muted)" role="status" aria-live="polite">
-        <span class="spinner" aria-hidden="true"></span>
-        <span>ログイン統計を読み込み中...</span>
-      </div>
-      <div id="error" class="card alert alert-error" style="display:none">
-        <p id="stats-error-message" role="alert"></p>
-        <button id="stats-retry-btn" type="button" class="btn btn-primary mt-3">もう一度読み込む</button>
-      </div>
-      <div id="empty" class="card text-center py-8" style="color: var(--color-muted); display:none">
-        ログイン履歴がありません
-      </div>
-
-      <div id="providers-card" class="card" style="display:none">
-        <h2 class="text-lg font-semibold mb-3">プロバイダー別ログイン回数</h2>
-        <div class="flex items-center justify-between mb-4 text-sm" style="color: var(--color-muted)">
-          <div>
-            総ログイン数:
-            <span id="total-count" class="font-semibold" style="color: var(--color-text)">-</span>
-          </div>
-          <div>
-            最も多いプロバイダー:
-            <span id="top-provider" class="font-semibold" style="color: var(--color-text)">-</span>
-          </div>
+      <div id="loading" class="loading-row" style="color: var(--color-muted)" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><span>ログイン統計を読み込み中...</span></div>
+      <div id="error" class="alert alert-error" style="display:none"><p id="stats-error-message" role="alert"></p><button id="stats-retry-btn" type="button" class="btn btn-primary mt-3">もう一度読み込む</button></div>
+      <div id="empty" class="empty-state" style="color: var(--color-muted); display:none">ログイン履歴がありません</div>
+      <section id="providers-card" class="stats-section" style="display:none">
+        <h3>プロバイダー別ログイン回数</h3>
+        <div class="stats-summary">
+          <div>総ログイン数: <span id="total-count">-</span></div>
+          <div>最も多いプロバイダー: <span id="top-provider">-</span></div>
         </div>
         <div id="providers-list"></div>
-      </div>
-
-      <div id="trends-card" class="card" style="display:none">
-        <h2 id="trends-title" class="text-lg font-semibold mb-3">直近のトレンド</h2>
-        <div id="trends-empty" class="text-sm py-4 text-center" style="color: var(--color-muted); display:none">
-          この期間のログインはありません
-        </div>
+      </section>
+      <section id="trends-card" class="stats-section" style="display:none">
+        <h3 id="trends-title">直近のトレンド</h3>
+        <div id="trends-empty" class="empty-state" style="color: var(--color-muted); display:none">この期間のログインはありません</div>
         <div id="trends-list"></div>
-      </div>
+      </section>
     </div>
-  </div>
+  </AccountFrame>
 </Base>
 
 <script>

@@ -2,13 +2,13 @@
 
 @theme {
   --color-bg: #ffffff;
-  --color-text: #252d28;
-  --color-muted: #5b6961;
-  --color-border: #dce2dd;
-  --color-surface: #f3f6f3;
-  --color-accent: #326354;
-  --color-danger: #b32736;
-  --color-success: #216940;
+  --color-text: #222f2b;
+  --color-muted: #5d7064;
+  --color-border: #dde4de;
+  --color-surface: #f4f6f3;
+  --color-accent: #28675a;
+  --color-danger: #b24c54;
+  --color-success: #247b59;
   --font-family-sans: "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, system-ui, sans-serif;
   --radius: 12px;
   --radius-sm: 8px;
@@ -311,14 +311,14 @@ textarea:focus-visible {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  width: 248px;
+  width: 252px;
   position: sticky;
   top: 0;
   height: 100dvh;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 26px 12px 16px;
-  background: #192c23;
+  background: #1a2822;
   color: #e8eee9;
 }
 .sidebar-logo {
@@ -336,7 +336,7 @@ textarea:focus-visible {
   height: 42px;
   border-radius: 11px;
   background: #e3ece4;
-  color: #326354;
+  color: var(--color-accent);
   font-size: 16px;
   font-weight: 800;
 }
@@ -422,7 +422,7 @@ textarea:focus-visible {
 }
 .main-content {
   width: 100%;
-  max-width: 1440px;
+  max-width: 1500px;
   min-width: 0;
   margin: 0 auto;
   padding: 26px 28px 40px;
@@ -430,11 +430,16 @@ textarea:focus-visible {
   overflow: visible;
 }
 .page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-bottom: 22px;
 }
 .page-title {
   font-weight: 700;
-  font-size: 26px;
+  font-size: 28px;
   line-height: 1.4;
   letter-spacing: -0.02em;
 }
@@ -443,7 +448,34 @@ textarea:focus-visible {
   box-shadow: none;
 }
 .btn {
-  min-height: 40px;
+  min-height: 44px;
+}
+.admin-login {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  background: var(--color-surface);
+  padding: 24px 16px;
+}
+.admin-login-panel {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.admin-login-brand {
+  color: var(--color-accent);
+  font-size: 15px;
+  font-weight: 750;
+  margin-bottom: 8px;
+}
+.admin-login-panel h1 {
+  font-size: 24px;
+  font-weight: 700;
+}
+.admin-login-panel > .btn {
+  width: 100%;
 }
 .hamburger {
   display: none;
@@ -616,7 +648,7 @@ textarea:focus-visible {
   }
   .sidebar {
     position: fixed;
-    width: 248px;
+    width: 252px;
     height: 100dvh;
   }
   .sidebar:not(.open) {

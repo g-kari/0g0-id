@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "hono": "4.13.14",
+    "hono": "4.13.17",
     "jose": "^6.2.14"
   },
   "devDependencies": {

@@ -7,7 +7,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.UI_REFERENCE_PLAYWRIGHT_MODULE || "@playwright/test");
-const staticRoot = path.resolve("workers/admin/dist/client");
+let staticRoot = path.resolve("workers/admin/dist/client");
 const reportDir = path.resolve(process.env.UI_REFERENCE_REPORT_DIR || "ui-reference-report");
 const metrics = {
   total_users: 1284,
@@ -21,7 +21,7 @@ const metrics = {
 const report = {
   status: "running",
   scope:
-    "Built admin UI; synthetic metrics; all non-loopback requests blocked; no production API or writable server",
+    "Built admin and account UI; synthetic read-only API fixtures; all non-loopback requests and writes blocked; no production API or writable server",
   cases: [],
   bfcacheRestorations: [],
   limitations: [],
@@ -139,6 +139,25 @@ try {
       }
       await route.continue();
     });
+    await page.goto(`${origin}/?error=not_admin`);
+    await page.getByRole("heading", { name: "管理者ログイン", exact: true }).waitFor();
+    await page.locator("#error-message").waitFor({ state: "visible" });
+    assert.equal(await page.locator("#error-message").textContent(), "管理者権限がありません");
+    assert.equal(
+      await page.getByRole("link", { name: "Google でログイン" }).getAttribute("href"),
+      "/auth/login",
+    );
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth),
+      false,
+    );
+    await page.screenshot({
+      path: path.join(reportDir, `admin-login-${viewport.width}x${viewport.height}.png`),
+      fullPage: true,
+    });
+    report.cases.push(
+      `admin login layout, error and unchanged sign-in destination at ${viewport.width}x${viewport.height}px`,
+    );
     await page.goto(`${origin}/dashboard`);
     await page.locator("#total-users").waitFor({ state: "visible" });
     assert.equal(await page.locator("#total-users").textContent(), "1,284");
@@ -300,6 +319,168 @@ try {
     }
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpectedWrites, []);
+    assert.deepEqual(blockedOrigins, []);
+    await context.close();
+  }
+  staticRoot = path.resolve("workers/user/dist/client");
+  const fixtureNow = Date.now();
+  const createdAt = new Date(fixtureNow - 3_600_000).toISOString();
+  const expiresAt = new Date(fixtureNow + 86_400_000).toISOString();
+  const userFixtures = {
+    "/api/me": {
+      id: "synthetic-user",
+      email: "synthetic@example.invalid",
+      name: "Synthetic profile",
+      picture: null,
+      phone: null,
+      address: null,
+      role: "user",
+    },
+    "/api/me/bff-sessions": [
+      {
+        id: "synthetic-browser-session",
+        user_id: "synthetic-user",
+        bff_origin: origin,
+        user_agent: "Synthetic desktop browser",
+        ip: "192.0.2.1",
+        has_device_key: false,
+        device_bound_at: null,
+        created_at: Math.floor((fixtureNow - 3_600_000) / 1000),
+        expires_at: Math.floor((fixtureNow + 86_400_000) / 1000),
+      },
+    ],
+    "/api/me/sessions": [
+      {
+        id: "synthetic-app-session",
+        service_id: "synthetic-service",
+        service_name: "Synthetic service",
+        created_at: createdAt,
+        expires_at: expiresAt,
+      },
+    ],
+    "/api/providers": ["google", "line", "twitch", "github", "x"].map((provider) => ({
+      provider,
+      connected: provider === "google",
+    })),
+    "/api/connections": [
+      {
+        service_id: "synthetic-service",
+        service_name: "Synthetic service",
+        client_id: "synthetic-client",
+        first_authorized_at: "2026-10-01T00:00:00Z",
+        last_authorized_at: createdAt,
+        pairwise_sub: `synthetic-sub-${"a".repeat(64)}`,
+      },
+    ],
+    "/api/me/login-history": [
+      {
+        id: "synthetic-login",
+        user_id: "synthetic-user",
+        provider: "google",
+        success: 1,
+        ip_address: "192.0.2.1",
+        country: "JP",
+        user_agent: "Synthetic browser",
+        created_at: createdAt,
+      },
+    ],
+    "/api/me/login-stats": [{ provider: "google", count: 12 }],
+    "/api/me/security/login-trends": [{ date: createdAt.slice(0, 10), count: 12 }],
+  };
+  const userRoutes = [
+    { path: "/profile", ready: ["#content"] },
+    { path: "/sessions", ready: ["#bff-list", "#list"] },
+    { path: "/providers", ready: ["#provider-content"] },
+    { path: "/connections", ready: ["#list"] },
+    { path: "/login-history", ready: ["#list"] },
+    { path: "/login-stats", ready: ["#providers-card", "#trends-card"] },
+    { path: "/device", ready: ["#step-code"] },
+  ];
+  for (const viewport of [
+    { width: 1280, height: 900 },
+    { width: 390, height: 844 },
+    { width: 320, height: 740 },
+  ]) {
+    const context = await browser.newContext({ viewport });
+    const page = await context.newPage();
+    const errors = [],
+      blockedOrigins = [],
+      unexpectedWrites = [],
+      unexpectedReads = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await context.route("**/*", async (route) => {
+      const request = route.request(),
+        url = new URL(request.url());
+      if (url.origin !== origin) {
+        blockedOrigins.push(url.origin);
+        return route.abort();
+      }
+      if (request.method() !== "GET") {
+        unexpectedWrites.push(url.pathname);
+        return route.abort();
+      }
+      if (url.pathname.startsWith("/api/")) {
+        if (!Object.hasOwn(userFixtures, url.pathname)) {
+          unexpectedReads.push(url.pathname);
+          return route.abort();
+        }
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: userFixtures[url.pathname] }),
+        });
+      }
+      await route.continue();
+    });
+    for (const route of userRoutes) {
+      await page.goto(`${origin}${route.path}`);
+      for (const ready of route.ready) await page.locator(ready).waitFor({ state: "visible" });
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth),
+        false,
+        `${route.path} must not overflow the viewport`,
+      );
+      if (route.path !== "/device") {
+        assert.equal(await page.locator('.account-nav [aria-current="page"]').count(), 1);
+        assert.equal(await page.locator(".user-intro h1").textContent(), "アカウント設定");
+        assert.deepEqual(
+          await page
+            .locator(".account-nav .account-nav-item")
+            .evaluateAll(
+              (items, currentPath) =>
+                items
+                  .filter(
+                    (item) =>
+                      item.hasAttribute("href") || item.getAttribute("aria-current") === "page",
+                  )
+                  .map((item) => item.getAttribute("href") || currentPath),
+              route.path,
+            ),
+          ["/profile", "/sessions", "/connections", "/providers", "/login-history", "/login-stats"],
+        );
+      }
+      await page.screenshot({
+        path: path.join(
+          reportDir,
+          `user${route.path.replaceAll("/", "-")}-${viewport.width}x${viewport.height}.png`,
+        ),
+        fullPage: true,
+      });
+      if (route.path !== "/device") {
+        await page.locator(".skip-link").focus();
+        await page.keyboard.press("Enter");
+        assert.equal(
+          await page.locator("#main-content").evaluate((el) => el === document.activeElement),
+          true,
+        );
+      }
+      report.cases.push(
+        `user ${route.path} populated layout at ${viewport.width}x${viewport.height}px`,
+      );
+    }
+    assert.deepEqual(errors, []);
+    assert.deepEqual(unexpectedWrites, []);
+    assert.deepEqual(unexpectedReads, []);
     assert.deepEqual(blockedOrigins, []);
     await context.close();
   }

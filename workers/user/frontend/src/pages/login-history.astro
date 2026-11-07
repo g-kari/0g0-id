@@ -1,53 +1,42 @@
 ---
 import Base from '../layouts/Base.astro';
+import AccountFrame from '../components/AccountFrame.astro';
+import Icon from '../components/Icon.astro';
 ---
 <Base title="0g0 ID - ログイン履歴">
-  <div class="min-h-screen flex items-center justify-center p-4">
-    <div class="w-full" style="max-width: 480px">
-      <div class="card">
-        <div class="flex items-center justify-between mb-4">
-          <h1 class="text-2xl font-bold">ログイン履歴</h1>
-          <a href="/profile" class="btn btn-ghost btn-sm">← プロフィール</a>
+  <AccountFrame page="login-history">
+    <a slot="profile-link" href="/profile" class="account-nav-item"><Icon name="user" /><span>プロフィール</span><Icon name="chevron" class="trailing" /></a>
+    <div class="user-section-title"><h2>ログイン履歴</h2></div>
+    <p class="section-description section-intro">これまでのログイン履歴です。身に覚えのないログインがある場合は、セッションを無効化してください。</p>
+    <div class="settings-card stack-card">
+      <div class="list-toolbar">
+        <label for="provider-filter">プロバイダー</label>
+        <select id="provider-filter">
+          <option value="">すべて</option>
+          <option value="google">google</option>
+          <option value="line">line</option>
+          <option value="twitch">twitch</option>
+          <option value="github">github</option>
+          <option value="x">x</option>
+        </select>
+      </div>
+      <div id="history-results" aria-busy="true">
+        <div id="loading" role="status" class="loading-row" style="color: var(--color-muted)">
+          <span class="spinner" aria-hidden="true"></span><span>ログイン履歴を読み込み中...</span>
         </div>
-        <p class="text-sm mb-6" style="color: var(--color-muted)">
-          これまでのログイン履歴です。身に覚えのないログインがある場合は、パスワードの変更やセッションの無効化をご検討ください。
-        </p>
-
-        <div class="mb-4">
-          <label for="provider-filter" class="block text-sm font-semibold mb-1.5">プロバイダー</label>
-          <select
-            id="provider-filter"
-            class="w-full px-3 py-2 rounded text-sm"
-            style="border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text)"
-          >
-            <option value="">すべて</option>
-            <option value="google">google</option>
-            <option value="line">line</option>
-            <option value="twitch">twitch</option>
-            <option value="github">github</option>
-            <option value="x">x</option>
-          </select>
+        <div id="error" class="alert alert-error" style="display:none">
+          <p id="error-message" role="alert"></p>
+          <button id="retry-btn" type="button" class="btn btn-primary mt-3">もう一度読み込む</button>
         </div>
-
-        <div id="history-results" aria-busy="true">
-          <div id="loading" role="status" class="flex items-center justify-center gap-2 py-8" style="color: var(--color-muted)">
-            <span class="spinner" aria-hidden="true"></span>
-            <span>ログイン履歴を読み込み中...</span>
-          </div>
-          <div id="error" class="alert alert-error" style="display:none">
-            <p id="error-message" role="alert"></p>
-            <button id="retry-btn" type="button" class="btn btn-primary btn-full mt-3">もう一度読み込む</button>
-          </div>
-          <p id="history-summary" role="status" tabindex="-1" class="text-sm mb-3" style="color: var(--color-text)"></p>
-          <div id="empty" class="text-center py-8" style="color: var(--color-muted); display:none">ログイン履歴はありません</div>
-          <div id="list" style="display:none"></div>
-          <div id="load-more-wrap" class="mt-4" style="display:none">
-            <button id="load-more-btn" type="button" class="btn btn-ghost btn-full">もっと読み込む</button>
-          </div>
+        <p id="history-summary" role="status" tabindex="-1" class="result-summary" style="color: var(--color-text)"></p>
+        <div id="empty" class="empty-state" style="color: var(--color-muted); display:none">ログイン履歴はありません</div>
+        <div id="list" class="account-list" style="display:none"></div>
+        <div id="load-more-wrap" class="list-footer" style="display:none">
+          <button id="load-more-btn" type="button" class="btn btn-ghost btn-full">もっと読み込む</button>
         </div>
       </div>
     </div>
-  </div>
+  </AccountFrame>
 </Base>
 
 <script>

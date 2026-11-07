@@ -1,39 +1,28 @@
 ---
 import Base from '../layouts/Base.astro';
+import AccountFrame from '../components/AccountFrame.astro';
+import Icon from '../components/Icon.astro';
 ---
 <Base title="SNS連携 — 0g0 ID">
-  <div id="content">
-    <div class="min-h-screen p-4" style="background:var(--color-surface);">
-      <div style="max-width:480px; margin:0 auto; display:flex; flex-direction:column; gap:1.5rem; padding:2rem 0;">
-        <div style="display:flex; align-items:center; gap:0.75rem;">
-          <a href="/profile" class="btn btn-ghost btn-sm">← プロフィール</a>
+  <AccountFrame page="providers">
+    <a slot="profile-link" href="/profile" class="account-nav-item"><Icon name="user" /><span>プロフィール</span><Icon name="chevron" class="trailing" /></a>
+    <div id="content">
+      <div class="user-section-title"><h2 id="providers-heading" tabindex="-1">SNS連携</h2></div>
+      <p class="section-description section-intro">複数のSNSアカウントを同一IDに連携できます。</p>
+      <div id="providers-state" aria-busy="true">
+        <div id="loading" role="status" class="settings-card loading-row"><span class="spinner" aria-hidden="true"></span><span>SNS連携を読み込み中...</span></div>
+        <div id="providers-error" class="settings-card recovery-panel" style="display:none">
+          <p id="providers-error-message" role="alert"></p>
+          <p class="section-description">通信状況を確認して、もう一度お試しください。</p>
+          <button id="providers-retry-btn" type="button" class="btn btn-primary">もう一度読み込む</button>
         </div>
-        <div>
-          <h1 id="providers-heading" tabindex="-1" style="font-size:1.5rem; font-weight:700;">SNS連携</h1>
-          <p style="color:var(--color-muted); font-size:0.875rem; margin-top:4px;">
-            複数のSNSアカウントを同一IDに連携できます
-          </p>
-        </div>
-        <div id="providers-state" aria-busy="true">
-          <div id="loading" role="status" class="flex items-center justify-center gap-2 py-8">
-            <span class="spinner" aria-hidden="true"></span>
-            <span>SNS連携を読み込み中...</span>
-          </div>
-          <div id="providers-error" class="card flex flex-col gap-4" style="display:none">
-            <p id="providers-error-message" role="alert" style="overflow-wrap:anywhere;"></p>
-            <p class="text-sm">通信状況を確認して、もう一度お試しください。</p>
-            <button id="providers-retry-btn" type="button" class="btn btn-primary">もう一度読み込む</button>
-          </div>
-          <div id="provider-content" style="display:none">
-            <div id="provider-list" class="card" style="padding:0; overflow:hidden; display:flex; flex-direction:column; gap:0;"></div>
-            <div id="warning" class="alert alert-error" style="font-size:0.8125rem; display:none">
-              連携中のプロバイダーが1つしかないため、解除できません。先に別のプロバイダーを連携してください。
-            </div>
-          </div>
+        <div id="provider-content" style="display:none">
+          <div id="provider-list" class="settings-card provider-list"></div>
+          <div id="warning" class="alert alert-error" style="display:none">連携中のプロバイダーが1つしかないため、解除できません。先に別のプロバイダーを連携してください。</div>
         </div>
       </div>
     </div>
-  </div>
+  </AccountFrame>
 </Base>
 
 <script>

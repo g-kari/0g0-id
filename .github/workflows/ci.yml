@@ -160,7 +160,7 @@ jobs:
             UI_REFERENCE_REPORT_DIR="$RUNNER_TEMP/ui-reference" \
             node scripts/ui-reference-browser-smoke.mjs
 
-      - name: 管理 UI デザインの検証記録
+      - name: 管理・アカウント UI デザインの検証記録
         if: always()
         uses: actions/upload-artifact@v7
         with:
