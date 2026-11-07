@@ -82,6 +82,8 @@ import {
   validateServiceFinalRedirect,
 } from "../../utils/auth-helpers";
 import { handleCallback } from "./callback";
+import { finalizeLogin, type LoginFinalizationState } from "./finalize";
+import type { TokenPayload } from "@0g0-id/shared";
 
 // --- テスト用定数 ---
 const mockEnv = createMockIdpEnv();
@@ -944,4 +946,146 @@ describe("GET /auth/callback", () => {
       expect(body.error.code).toBe("PROVIDER_ALREADY_LINKED");
     });
   });
+});
+
+describe("shared finalization after native passkey authentication", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupSuccessPath();
+  });
+  const nativeState: LoginFinalizationState = {
+    ...mockStateData,
+    provider: "passkey",
+    serviceId: "native-service",
+    redirectTo: "https://app.example.test/callback",
+    nonce: "native-nonce",
+    codeChallenge: "A".repeat(43),
+    codeChallengeMethod: "S256",
+    scope: "openid profile",
+  };
+  function nativeRequest(state: LoginFinalizationState = nativeState) {
+    const app = new Hono<{
+      Bindings: ReturnType<typeof createMockIdpEnv>;
+      Variables: { user: TokenPayload };
+    }>();
+    app.get("/native-finish", (c) => finalizeLogin(c, mockUser, "passkey", state));
+    return app.request("https://id.0g0.xyz/native-finish", {}, mockEnv);
+  }
+  it("uses the existing standard code path with state/PKCE/nonce and a native method label", async () => {
+    vi.mocked(validateServiceFinalRedirect).mockResolvedValue(true);
+    const res = await nativeRequest();
+    expect(res.status).toBe(302);
+    expect(vi.mocked(createAuthCode)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      expect.objectContaining({
+        userId: mockUser.id,
+        serviceId: "native-service",
+        redirectTo: nativeState.redirectTo,
+        provider: "passkey",
+        nonce: "native-nonce",
+        codeChallenge: nativeState.codeChallenge,
+        codeChallengeMethod: "S256",
+        scope: "openid profile",
+      }),
+    );
+    const url = new URL(res.headers.get("Location")!);
+    expect(url.searchParams.get("code")).toBe("auth-code-token");
+    expect(url.searchParams.get("state")).toBe(mockStateData.bffState);
+    expect(vi.mocked(resolveProvider)).not.toHaveBeenCalled();
+    expect(vi.mocked(validateProviderCredentials)).not.toHaveBeenCalled();
+  });
+  it("rechecks account lockout before issuing any native auth code", async () => {
+    vi.mocked(isAccountLocked).mockResolvedValue({
+      locked: true,
+      failedAttempts: 5,
+      lockedUntil: "2026-11-07T22:00:00Z",
+    });
+    expect((await nativeRequest()).status).toBe(429);
+    expect(vi.mocked(createAuthCode)).not.toHaveBeenCalled();
+  });
+  it("rejects an unregistered final redirect for native authentication", async () => {
+    vi.mocked(validateServiceFinalRedirect).mockResolvedValue(false);
+    expect((await nativeRequest()).status).toBe(400);
+    expect(vi.mocked(createAuthCode)).not.toHaveBeenCalled();
+  });
+  it("does not issue a native code when a requested resource was deleted", async () => {
+    vi.mocked(validateServiceFinalRedirect).mockResolvedValue(true);
+    vi.mocked(findResourceServerByUri).mockResolvedValue(null);
+    const res = await nativeRequest({ ...nativeState, resource: "https://resource.example.test" });
+    expect(new URL(res.headers.get("Location")!).searchParams.get("error")).toBe("invalid_target");
+    expect(vi.mocked(createAuthCode)).not.toHaveBeenCalled();
+  });
+  it("checks resource subject restrictions and pins its registration generation", async () => {
+    vi.mocked(validateServiceFinalRedirect).mockResolvedValue(true);
+    const resource = {
+      id: "rs-native",
+      uri: "https://resource.example.test",
+      name: "Synthetic",
+      allowed_scopes: "[]",
+      owner_user_id: "admin",
+      created_at: "2026-11-07",
+      updated_at: "2026-11-07",
+    };
+    vi.mocked(findResourceServerByUri).mockResolvedValue({
+      ...resource,
+      allowed_subjects: '["other-user"]',
+    });
+    const denied = await nativeRequest({ ...nativeState, resource: resource.uri });
+    expect(new URL(denied.headers.get("Location")!).searchParams.get("error")).toBe(
+      "access_denied",
+    );
+    expect(vi.mocked(createAuthCode)).not.toHaveBeenCalled();
+    vi.mocked(findResourceServerByUri).mockResolvedValue({
+      ...resource,
+      allowed_subjects: JSON.stringify([mockUser.id]),
+    });
+    expect((await nativeRequest({ ...nativeState, resource: resource.uri })).status).toBe(302);
+    expect(vi.mocked(createAuthCode)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      expect.objectContaining({
+        provider: "passkey",
+        resource: resource.uri,
+        resourceServerId: "rs-native",
+      }),
+    );
+  });
+  it("preserves legacy absent method metadata rather than inventing an OAuth provider", async () => {
+    vi.mocked(validateServiceFinalRedirect).mockResolvedValue(true);
+    await nativeRequest({ ...nativeState, provider: undefined });
+    expect(vi.mocked(createAuthCode)).toHaveBeenCalledWith(
+      mockEnv.DB,
+      expect.objectContaining({ provider: undefined }),
+    );
+  });
+  it.each([
+    ["passkey", 0],
+    ["passkey", 1],
+    ["google", 0],
+    ["google", 1],
+  ])(
+    "requires verified email for bootstrap elevation (%s, verified=%i)",
+    async (method, verified) => {
+      const env = createMockIdpEnv({ BOOTSTRAP_ADMIN_EMAIL: "USER@example.com" });
+      const user = { ...mockUser, email_verified: verified };
+      vi.mocked(tryBootstrapAdmin).mockResolvedValue(true);
+      vi.mocked(validateServiceFinalRedirect).mockResolvedValue(true);
+      const app = new Hono<{
+        Bindings: ReturnType<typeof createMockIdpEnv>;
+        Variables: { user: TokenPayload };
+      }>();
+      app.get("/finish", (c) =>
+        finalizeLogin(c, user, String(method), { ...nativeState, provider: String(method) }),
+      );
+      const res = await app.request("https://id.0g0.xyz/finish", {}, env);
+      expect(res.status).toBe(302);
+      expect(vi.mocked(createAuthCode)).toHaveBeenCalled();
+      if (verified === 1) {
+        expect(vi.mocked(tryBootstrapAdmin)).toHaveBeenCalledWith(env.DB, user.id);
+        expect(user.role).toBe("admin");
+      } else {
+        expect(vi.mocked(tryBootstrapAdmin)).not.toHaveBeenCalled();
+        expect(user.role).toBe("user");
+      }
+    },
+  );
 });

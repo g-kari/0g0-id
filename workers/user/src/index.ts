@@ -22,6 +22,7 @@ import { COOKIE_NAMES } from "@0g0-id/shared";
 import authRoutes from "./routes/auth";
 import dbscRoutes from "./routes/dbsc";
 import oauthRoutes from "./routes/oauth";
+import passkeyRoutes from "./routes/passkey";
 import profileRoutes from "./routes/profile";
 import connectionsRoutes from "./routes/connections";
 import providersRoutes from "./routes/providers";
@@ -92,6 +93,7 @@ app.use("/api/providers/*", dbscRequire);
 app.use("/auth/link", dbscRequire);
 
 app.route("/auth", authRoutes);
+app.route("/auth", passkeyRoutes);
 app.route("/auth/dbsc", dbscRoutes);
 // OAuth 2.0 / OIDC フロー: IdP の /auth/authorize からリダイレクトされるプロバイダー選択ページ
 app.route("/", oauthRoutes);

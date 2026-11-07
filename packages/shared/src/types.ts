@@ -186,6 +186,16 @@ export interface RateLimitBinding {
 }
 
 export interface IdpEnv {
+  /** Email signup requires both flags to be exactly "true", plus every binding and budget. */
+  EMAIL_PASSKEY_SIGNUP_ENABLED?: string;
+  VERIFICATION_EMAIL_ENABLED?: string;
+  VERIFICATION_EMAIL?: SendEmail;
+  VERIFICATION_EMAIL_FROM?: string;
+  EMAIL_SIGNUP_DAILY_LIMIT?: string;
+  RATE_LIMITER_EMAIL_SIGNUP?: RateLimitBinding;
+  RATE_LIMITER_EMAIL_SIGNUP_GLOBAL?: RateLimitBinding;
+  /** Native passkey login is disabled unless this is exactly the string "true". */
+  PASSKEY_LOGIN_ENABLED?: string;
   DB: D1Database;
   /** link_token JTI のワンタイム消費チェック用 KV。未設定時はチェックをスキップ（段階的導入）。 */
   LINK_TOKEN_KV?: KVNamespace;
@@ -228,6 +238,10 @@ export interface IdpEnv {
 }
 
 export interface BffEnv {
+  /** Optional signup entry visibility; the IdP gate remains authoritative. */
+  EMAIL_PASSKEY_SIGNUP_ENABLED?: string;
+  /** Reveal native passkey entry points only when this is exactly "true". */
+  PASSKEY_LOGIN_ENABLED?: string;
   IDP: Fetcher;
   IDP_ORIGIN: string;
   /** BFF自身のオリジン（例: "https://user.0g0.xyz"）。CORS/CSRF検証に使用。 */

@@ -53,9 +53,12 @@ app.get("/login", async (c) => {
 
   // IdP /auth/login URL をプロバイダーごとに組み立てる
   // redirect_to には外部クライアントの redirect_uri を指定（BFF経由ではなくクライアント直接）
-  const buildLoginUrl = (provider: string): string => {
-    const url = new URL(`${c.env.IDP_ORIGIN}/auth/login`);
-    url.searchParams.set("provider", provider);
+  const buildLoginUrl = (provider: string | null): string => {
+    const url = new URL(
+      provider === null ? "/auth/passkey/start" : "/auth/login",
+      c.env.IDP_ORIGIN,
+    );
+    if (provider !== null) url.searchParams.set("provider", provider);
     url.searchParams.set("redirect_to", redirectUri);
     url.searchParams.set("state", state);
     url.searchParams.set("client_id", clientId);
@@ -73,6 +76,17 @@ app.get("/login", async (c) => {
   const twitchUrl = escapeHtml(buildLoginUrl("twitch"));
   const githubUrl = escapeHtml(buildLoginUrl("github"));
   const xUrl = escapeHtml(buildLoginUrl("x"));
+  const passkeyButton =
+    c.env.PASSKEY_LOGIN_ENABLED === "true"
+      ? `<a href="${escapeHtml(buildLoginUrl(null))}" class="btn">パスキーでサインイン</a>`
+      : "";
+
+  const signupUrl = new URL(buildLoginUrl(null));
+  signupUrl.pathname = "/auth/email/signup/start";
+  const signupButton =
+    c.env.EMAIL_PASSKEY_SIGNUP_ENABLED === "true"
+      ? `<a href="${escapeHtml(signupUrl.toString())}" class="btn">メールで新規登録</a>`
+      : "";
 
   const html = `<!DOCTYPE html>
 <html lang="ja">
@@ -90,6 +104,8 @@ app.get("/login", async (c) => {
       <h1>0g0 ID</h1>
       <p class="subtitle">アカウントにサインインしてください</p>
       <div class="login-buttons">
+        ${passkeyButton}
+        ${signupButton}
         <a href="${googleUrl}" class="btn btn-google">
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
             <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>

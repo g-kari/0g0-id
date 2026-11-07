@@ -21,6 +21,9 @@ const reportDir = path.resolve(
   process.env.PROVIDERS_RECOVERY_REPORT_DIR || "providers-recovery-ui",
 );
 const providersPath = "/api/providers";
+const passkeyStatusPath = "/auth/passkey/status";
+const signupStatusPath = "/auth/signup/status";
+const featureStatusPaths = [passkeyStatusPath, signupStatusPath];
 const providerLabels = {
   google: "Google",
   line: "LINE",
@@ -243,6 +246,7 @@ async function main() {
       const pageErrors = [];
       const forbiddenWrites = [];
       const unexpectedReads = [];
+      const featureStatusReads = [];
       const unexpectedDialogs = [];
       const unexpectedSockets = [];
       const blockedOrigins = new Set();
@@ -271,6 +275,17 @@ async function main() {
         if (url.origin !== origin) {
           blockedOrigins.add(url.origin);
           await route.abort();
+          return;
+        }
+        // Only the explicit unauthorized-to-home case may read this feature flag.
+        // Keep every other auth path/query and all writes blocked; never proxy it.
+        if (
+          featureStatusPaths.includes(url.pathname) &&
+          !url.search &&
+          allowedPaths.includes(url.pathname)
+        ) {
+          featureStatusReads.push(url.pathname);
+          await route.fulfill({ json: { enabled: false } });
           return;
         }
         if (url.pathname.startsWith("/auth/")) {
@@ -302,6 +317,7 @@ async function main() {
         pageErrors,
         forbiddenWrites,
         unexpectedReads,
+        featureStatusReads,
         unexpectedDialogs,
         unexpectedSockets,
         status: "running",
@@ -310,11 +326,27 @@ async function main() {
       const readCount = () => calls.filter((call) => call.path === providersPath).length;
       try {
         await check(page, readCount, origin);
+        for (const statusPath of featureStatusPaths) {
+          if (allowedPaths.includes(statusPath)) {
+            await expect
+              .poll(() => featureStatusReads.filter((path) => path === statusPath).length)
+              .toBe(1);
+            await expect(
+              page.locator(statusPath === signupStatusPath ? "#email-signup" : "#passkey-login"),
+            ).toBeHidden();
+          }
+        }
         assert.deepEqual(forbiddenWrites, [], "No account or provider writes may occur.");
         assert.deepEqual(
           unexpectedReads,
           [],
           "Only the exact synthetic API read routes may occur.",
+        );
+        assert(
+          featureStatusPaths.every(
+            (path) => featureStatusReads.filter((read) => read === path).length <= 1,
+          ),
+          "The home page may make only one disabled read for each feature status.",
         );
         assert.deepEqual(unexpectedDialogs, [], "No provider link/unlink flow may be invoked.");
         assert.deepEqual(unexpectedSockets, [], "No WebSocket traffic may occur.");
@@ -549,8 +581,10 @@ async function main() {
           await page.goto(`${localOrigin}/providers`);
           await expect(page).toHaveURL(`${localOrigin}/`);
           await expect(page.getByRole("link", { name: "Googleでサインイン" })).toBeVisible();
+          await expect(page.locator("#passkey-login")).toBeHidden();
           assert.equal(readCount(), 1);
         },
+        [providersPath, passkeyStatusPath, signupStatusPath],
       );
     }
     report.status = "passed";
