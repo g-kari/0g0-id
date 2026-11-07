@@ -477,6 +477,8 @@ try {
         assert.equal(await scrollRegion.evaluate((el) => el === document.activeElement), true);
       }
       await page.locator(".page-title").click();
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForFunction(() => window.scrollX === 0 && window.scrollY === 0);
       await page.screenshot({
         path: path.join(
           reportDir,

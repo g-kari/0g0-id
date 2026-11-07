@@ -40,14 +40,18 @@
 
 `createBffAuthRoutes()` が生成する共通ルート + 独自の `/auth/link`。
 
-| Method | Path                 | 認証              | 説明                                                                                                                                                                                                                                     |
-| ------ | -------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/auth/login`        | —                 | `provider` クエリでプロバイダーを選択し、id Worker `/auth/login` にリダイレクト。                                                                                                                                                        |
-| GET    | `/auth/callback`     | —                 | id Worker からのコールバック。ワンタイムコードを `/auth/exchange` で交換し、セッション Cookie を発行して `/profile` へ。`Secure-Session-Registration` ヘッダで DBSC 登録を Chrome に開始させる。                                         |
-| POST   | `/auth/logout`       | セッション Cookie | リフレッシュトークンを失効させ、セッション Cookie を削除。                                                                                                                                                                               |
-| POST   | `/auth/link`         | セッション Cookie | ログイン済みユーザーの SNS プロバイダー追加連携。内部で `link-intent` トークンを取得し、`/auth/login?link_token=...` へリダイレクト。POST 固定（強制ナビゲーション対策）。                                                               |
-| POST   | `/auth/dbsc/start`   | セッション Cookie | DBSC 端末公開鍵バインド。Body は `application/jwt` または `{ "jwt": "..." }`。検証成功で `bff_sessions` に公開鍵保存。                                                                                                                   |
-| POST   | `/auth/dbsc/refresh` | セッション Cookie | DBSC challenge-response リフレッシュ。初回 POST は `403` + `Secure-Session-Challenge: "<nonce>"`。Chrome は `Sec-Session-Response` ヘッダに端末秘密鍵で署名した proof JWT（`aud=SELF_ORIGIN` / `jti=<nonce>`）を付けて再送。成功時 200。 |
+| Method | Path                   | 認証              | 説明                                                                                                                                                                                                                                     |
+| ------ | ---------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/auth/signup`         | —                 | `EMAIL_PASSKEY_SIGNUP_ENABLED="true"` のときだけ通常BFF stateを設定し、固定callback付きでIdPメール新規登録へ。未設定404。                                                                                                                |
+| GET    | `/auth/signup/status`  | —                 | 新規登録UIの明示有効化状態だけを返す。no-store、既定false。IdP側の独立gateも必須。                                                                                                                                                       |
+| GET    | `/auth/passkey`        | —                 | `PASSKEY_LOGIN_ENABLED="true"` のときだけ、通常BFF stateを設定してIdPの専用パスキーログインへ移動。未設定は404。                                                                                                                         |
+| GET    | `/auth/passkey/status` | —                 | BFFのパスキー入口表示フラグだけを返す。既定false、no-store。アカウント検索なし。                                                                                                                                                         |
+| GET    | `/auth/login`          | —                 | `provider` クエリでプロバイダーを選択し、id Worker `/auth/login` にリダイレクト。                                                                                                                                                        |
+| GET    | `/auth/callback`       | —                 | id Worker からのコールバック。ワンタイムコードを `/auth/exchange` で交換し、セッション Cookie を発行して `/profile` へ。`Secure-Session-Registration` ヘッダで DBSC 登録を Chrome に開始させる。                                         |
+| POST   | `/auth/logout`         | セッション Cookie | リフレッシュトークンを失効させ、セッション Cookie を削除。                                                                                                                                                                               |
+| POST   | `/auth/link`           | セッション Cookie | ログイン済みユーザーの SNS プロバイダー追加連携。内部で `link-intent` トークンを取得し、`/auth/login?link_token=...` へリダイレクト。POST 固定（強制ナビゲーション対策）。                                                               |
+| POST   | `/auth/dbsc/start`     | セッション Cookie | DBSC 端末公開鍵バインド。Body は `application/jwt` または `{ "jwt": "..." }`。検証成功で `bff_sessions` に公開鍵保存。                                                                                                                   |
+| POST   | `/auth/dbsc/refresh`   | セッション Cookie | DBSC challenge-response リフレッシュ。初回 POST は `403` + `Secure-Session-Challenge: "<nonce>"`。Chrome は `Sec-Session-Response` ヘッダに端末秘密鍵で署名した proof JWT（`aud=SELF_ORIGIN` / `jti=<nonce>`）を付けて再送。成功時 200。 |
 
 ### `POST /auth/dbsc/start` の応答
 
@@ -448,3 +452,7 @@ BFF 経由で返るエラーは `{ error: { code, message } }` 形式。
 ## エラーフォーマット
 
 id Worker と同じ `{ error: { code, message } }` 形式。BFF 固有の追加コード: `UPSTREAM_ERROR`（id Worker 到達失敗）、`INTERNAL_ERROR`（予期せぬ例外）。
+
+### ネイティブパスキー入口（既定無効）
+
+BFFとIdPの `PASSKEY_LOGIN_ENABLED` を文字列 `"true"` にした構成だけを対象とする。今回の変更は設定・DB移行・メール送信を有効化しない。OAuthプロバイダーやSNS連携ではなく、IdPオリジン上の専用WebAuthn画面から通常の認可コード／BFF callbackに合流する。外部クライアント向け `/login` も同じ明示フラグ時だけ独立したパスキー選択肢を表示する。詳しい境界と有効化前条件は[専用設計](./proposals/native-passkey-login.md)を参照。

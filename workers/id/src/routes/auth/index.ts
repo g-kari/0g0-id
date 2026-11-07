@@ -8,6 +8,8 @@ import {
 } from "../../middleware/auth";
 import { serviceBindingMiddleware } from "../../middleware/service-binding";
 
+import nativePasskeyRoutes from "./native-passkey";
+import emailPasskeyRoutes from "./email-passkey";
 import { handleAuthorize } from "./authorize";
 import { handleLogin } from "./login";
 import { handleCallback } from "./callback";
@@ -20,6 +22,10 @@ import { handleDbscBind, handleDbscChallenge, handleDbscVerify, handleDbscStatus
 type Variables = { user: TokenPayload };
 
 const app = new Hono<{ Bindings: IdpEnv; Variables: Variables }>();
+
+// Native credentials are not OAuth provider entries. Disabled unless explicitly configured.
+app.route("/passkey", nativePasskeyRoutes);
+app.route("/email", emailPasskeyRoutes);
 
 // GET /auth/authorize — 標準 OAuth 2.0 Authorization エンドポイント
 app.get("/authorize", authRateLimitMiddleware, handleAuthorize);

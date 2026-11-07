@@ -15,6 +15,8 @@ import {
   cleanupStaleDbscChallenges,
 } from "@0g0-id/shared";
 import { validateEnv } from "./utils/env-validation";
+import { cleanupNativePasskeyChallenges } from "./utils/native-passkey-cleanup";
+import { cleanupEmailPasskeyState } from "./utils/email-passkey-cleanup";
 import authRoutes from "./routes/auth";
 import usersRoutes from "./routes/users";
 import tokenRoutes from "./routes/token";
@@ -112,6 +114,26 @@ export default {
 
         await cleanupStaleDbscChallenges(env.DB);
         appLogger.info("DBSCチャレンジクリーンアップ完了");
+
+        const nativeCleanup = await cleanupNativePasskeyChallenges(
+          env.DB,
+          env.PASSKEY_LOGIN_ENABLED,
+        );
+        if (nativeCleanup.status === "schema_missing") {
+          appLogger.error("Native passkey cleanup requires the reviewed schema");
+        } else if (nativeCleanup.status === "completed") {
+          appLogger.info("Native passkey challenge cleanup completed");
+        }
+
+        const emailCleanup = await cleanupEmailPasskeyState(
+          env.DB,
+          env.EMAIL_PASSKEY_SIGNUP_ENABLED,
+        );
+        if (emailCleanup.status === "schema_missing") {
+          appLogger.error("Email signup cleanup requires the reviewed schema");
+        } else if (emailCleanup.status === "completed") {
+          appLogger.info("Email signup retention cleanup completed");
+        }
       })(),
     );
   },
