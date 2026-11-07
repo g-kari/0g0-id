@@ -623,6 +623,11 @@ async function processSelfTest(state: string): Promise<void> {
   const children: ViteChild[] = [];
   for (const worker of workers)
     await mkdir(path.join(root, "workers", worker), { recursive: true });
+  // Probe children inherit the declared `--import tsx` launcher, which Node
+  // resolves from the child's cwd (a fixture worker directory). Link the real
+  // root node_modules into the fixture so that resolution reaches tsx,
+  // mirroring the dependency links copyCheckout builds for real children.
+  await symlink(path.join(repository, "node_modules"), path.join(root, "node_modules"), "junction");
   try {
     for (const worker of [...workers, "mcp"] as const)
       await startViteChild(
