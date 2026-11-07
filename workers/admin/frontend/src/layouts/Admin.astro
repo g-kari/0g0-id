@@ -16,19 +16,20 @@ const links = [
 ---
 <Base title={title}>
   <div class="admin-layout">
-    <button class="hamburger" id="hamburger" type="button" aria-label="メニューを開く">
+    <button class="hamburger" id="hamburger" type="button" aria-label="メニューを開く" aria-controls="sidebar" aria-expanded="false">
       <span></span><span></span><span></span>
     </button>
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-logo">
-        <span style="font-size:1.25rem; font-weight:700;">🔐 0g0 Admin</span>
+        <span class="brand-mark">0g0</span><span>管理コンソール</span>
       </div>
       <nav class="sidebar-nav">
         {links.map(link => (
           <a
             href={link.href}
             class:list={['sidebar-link', { active: pathname.startsWith(link.matcher) }]}
+            aria-current={pathname.startsWith(link.matcher) ? 'page' : undefined}
           >
             <span>{link.icon}</span>
             <span>{link.label}</span>
@@ -52,11 +53,16 @@ const links = [
     const hamburger = document.getElementById('hamburger')!;
     const sidebar = document.getElementById('sidebar')!;
     const overlay = document.getElementById('sidebar-overlay')!;
-    function toggle() {
-      sidebar.classList.toggle('open');
-      overlay.classList.toggle('open');
+    function setOpen(open: boolean) {
+      sidebar.classList.toggle('open', open);
+      overlay.classList.toggle('open', open);
+      hamburger.setAttribute('aria-expanded', String(open));
+      hamburger.setAttribute('aria-label', open ? 'メニューを閉じる' : 'メニューを開く');
     }
-    hamburger.addEventListener('click', toggle);
-    overlay.addEventListener('click', toggle);
+    hamburger.addEventListener('click', () => setOpen(!sidebar.classList.contains('open')));
+    overlay.addEventListener('click', () => { setOpen(false); hamburger.focus(); });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && sidebar.classList.contains('open')) { setOpen(false); hamburger.focus(); }
+    });
   </script>
 </Base>

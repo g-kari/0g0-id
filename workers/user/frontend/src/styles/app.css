@@ -1,16 +1,16 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #fefbfb;
-  --color-text: #483030;
-  --color-muted: #a39696;
-  --color-border: #dfd7d7;
-  --color-surface: #f2f0f0;
-  --color-accent: #73862d;
-  --color-danger: #c0392b;
-  --color-success: #2d7a3a;
+  --color-bg: #ffffff;
+  --color-text: #172b3a;
+  --color-muted: #526776;
+  --color-border: #cbd6dc;
+  --color-surface: #edf3f5;
+  --color-accent: #17656b;
+  --color-danger: #b32736;
+  --color-success: #216940;
 
-  --font-family-sans: "Reddit Sans", "IBM Plex Sans JP", BlinkMacSystemFont, sans-serif;
+  --font-family-sans: "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, system-ui, sans-serif;
 
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -58,7 +58,6 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     padding: 2rem;
-    animation: fade-slide-up 0.4s var(--ease-spring) both;
   }
 
   .btn {
@@ -74,7 +73,10 @@
     font-family: inherit;
     cursor: pointer;
     text-decoration: none;
-    transition: all 0.4s var(--ease-spring);
+    transition:
+      background-color 140ms ease,
+      color 140ms ease,
+      border-color 140ms ease;
     white-space: nowrap;
   }
   .btn:hover {
@@ -165,7 +167,7 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
     font-family: inherit;
-    font-size: 0.95rem;
+    font-size: 1rem;
     color: var(--color-text);
     transition: border-color 0.2s;
     outline: none;
@@ -179,7 +181,6 @@
     padding: 0.75rem 1rem;
     border-radius: var(--radius-sm);
     font-size: 0.875rem;
-    animation: fade-slide-up 0.2s var(--ease-spring) both;
   }
   .alert-error {
     background: #fff0ee;
@@ -229,5 +230,117 @@
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+/* Shared interaction and readability foundations */
+:focus-visible {
+  outline: 3px solid #17656b;
+  outline-offset: 3px;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #17656b;
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.btn {
+  min-height: 44px;
+}
+.btn:hover {
+  transform: none;
+}
+.btn-line {
+  color: #10351f;
+}
+.card {
+  box-shadow: 0 8px 28px rgba(23, 43, 58, 0.06);
+}
+.profile-heading h1 {
+  font-size: 1.8rem;
+  line-height: 1.25;
+  margin-top: 0.75rem;
+}
+.profile-heading p {
+  color: var(--color-muted);
+  margin-top: 0.4rem;
+}
+.profile-brand {
+  display: inline-block;
+  font-size: 0.9rem;
+  font-weight: 750;
+  color: var(--color-accent);
+}
+.danger-zone {
+  border-top: 1px solid var(--color-border);
+  margin-top: 0.5rem;
+  padding-top: 1rem;
+}
+.danger-zone h3 {
+  font-weight: 650;
+}
+.danger-zone p {
+  color: var(--color-muted);
+  font-size: 0.875rem;
+  margin: 0.25rem 0 0.75rem;
+}
+#user-name,
+#user-email {
+  overflow-wrap: anywhere;
+}
+dialog {
+  margin: auto;
+}
+dialog::backdrop {
+  background: rgba(15, 35, 45, 0.55);
+}
+#code-form input {
+  min-width: 0;
+  width: 0;
+}
+@media (max-width: 480px) {
+  .card {
+    padding: 1.25rem;
+  }
+}
+.login-shell {
+  background: #edf3f5;
+}
+.login-card {
+  border-top: 4px solid #17656b;
+  padding: 2rem;
+}
+.login-mark {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  background: #d8edeb;
+  color: #17595e;
+  border-radius: 10px;
+  font-size: 1.05rem;
+  font-weight: 800;
+  margin-bottom: 1.5rem;
+}
+.login-card h1 {
+  letter-spacing: -0.03em;
+}
+.login-card .btn {
+  min-height: 48px;
+}
+@media (max-width: 480px) {
+  .login-card {
+    padding: 1.5rem;
   }
 }
