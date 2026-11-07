@@ -4,18 +4,19 @@
 
 現行の Google、LINE、Twitch、GitHub、X 認証は変更しない。追加プロバイダー名は未確定であり、既存要望の GitHub / X / LINE / Twitch を新規要望と取り違えない。
 
-この変更は **未接続のストレージ基盤** のみを追加する。アプリのルート登録、環境変数、依存パッケージ、OAuth プロバイダー型、既存 DB、既存ログイン UI は変更しない。実際のメール登録・パスキーログインはまだ利用できない。
+この変更は **未接続の認証ストレージとメール配送基盤** を追加する。アプリのルート登録、環境変数、依存パッケージ、OAuth プロバイダー型、既存 DB、既存ログイン UI は変更しない。実際のメール登録・パスキーログインはまだ利用できない。
 
 - `packages/shared/src/db/passkey-challenges.ts`: 256 bit challenge、5分期限、用途・ユーザー・ブラウザー・設定された origin / RP ID の束縛と原子的な一回消費。
 - `packages/shared/src/db/passkey-credentials.ts`: 検証済み公開鍵の保存、所有者の一致、署名カウンターの compare-and-swap。credential ID の upsert や他アカウントへの移管はしない。
 - `docs/proposals/passkey-schema.sql`: 2テーブルの案。通常の migration ディレクトリには置かず、デプロイにも適用しない。
 - `packages/shared/src/db/passkeys.test.ts`: 実 SQLite による SQL・制約・期限・競合・削除連動の回帰テスト。
+- `workers/id/src/utils/verification-email.ts`: 未接続の Cloudflare Email Sending adapter と確認メールテンプレート。詳細は [配送設計](./email-delivery.md)。binding・送信元・公開 route は設定しない。
 
 これらの関数は shared の公開 barrel に export しない。署名検証器の代替でもなく、成功を返しただけで登録・ログインを認可するものでもない。
 
 ## 完成までの必須事項
 
-1. メール所有確認の配送手段、送信元アドレス、利用可能な既存契約を決める。現行コードにはメール配送機能がない。配送サービスの認証や本番設定を先に作ったことにはしない。
+1. メール所有確認の配送手段、送信元アドレス、利用可能な既存契約を決める。Cloudflare Email Sending の未接続 adapter は追加したが、公開経路・本番の送信設定・メール所有確認は未実装である。配送サービスの認証や本番設定を先に作ったことにはしない。
 2. Workers 対応の監査可能な WebAuthn 実装を採用し、正確なバージョンと lockfile を固定する。CBOR / COSE / attestation / 署名の独自実装はしない。
 3. 新規登録用の検証済みメール intent と登録 pending record を実装する。今回の登録 challenge helper は既存の検証済みユーザー用であり、まだ存在しない pending subject には対応しない。新規ユーザー作成・公開鍵保存・intent消費を原子的に結び付ける拡張が必要。
 4. IdP origin に登録・認証 UI を置き、BFF と標準 OAuth の既存認可コード発行処理へ接続する。メール＋パスキーを外部 OAuth プロバイダーとして偽装しない。
