@@ -23,6 +23,8 @@ const baseService: Service = {
   client_secret_hash: "hash_xyz",
   allowed_scopes: '["profile","email"]',
   owner_user_id: "user-1",
+  source: "admin",
+  registration_access_token_hash: null,
   created_at: "2024-01-01T00:00:00Z",
   updated_at: "2024-01-01T00:00:00Z",
 };

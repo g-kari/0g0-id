@@ -32,6 +32,8 @@ const service: Service = {
   client_secret_hash: "must-not-leak",
   allowed_scopes: '["profile"]',
   owner_user_id: OWNER_ID,
+  source: "admin",
+  registration_access_token_hash: null,
   created_at: "2026-10-16T00:00:00Z",
   updated_at: "2026-10-16T00:00:00Z",
 };

@@ -76,6 +76,8 @@ const mockService = {
   client_secret_hash: "hashed-secret",
   allowed_scopes: JSON.stringify(["profile", "email"]),
   owner_user_id: "admin-user-id",
+  source: "admin",
+  registration_access_token_hash: null,
   created_at: "2024-01-01T00:00:00Z",
   updated_at: "2024-01-01T00:00:00Z",
 };
@@ -1091,7 +1093,7 @@ describe("POST /api/token/ — authorization_code grant", () => {
     vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(signAccessToken).mockResolvedValue("mock-access-token");
     vi.mocked(generateToken).mockReturnValue("mock-refresh-token");
-    vi.mocked(createRefreshToken).mockResolvedValue(undefined);
+    vi.mocked(createRefreshToken).mockResolvedValue(true);
     vi.mocked(signIdToken).mockResolvedValue("mock-id-token");
   });
 
@@ -1493,7 +1495,7 @@ describe("POST /api/token/ — refresh_token grant", () => {
     vi.mocked(findRefreshTokenById).mockResolvedValue(mockRefreshToken as never);
     vi.mocked(signAccessToken).mockResolvedValue("new-access-token");
     vi.mocked(generateToken).mockReturnValue("new-refresh-token");
-    vi.mocked(createRefreshToken).mockResolvedValue(undefined);
+    vi.mocked(createRefreshToken).mockResolvedValue(true);
   });
 
   it("refresh_tokenが未指定 → { error: invalid_request } + 400", async () => {

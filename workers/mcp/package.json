@@ -12,15 +12,15 @@
   },
   "dependencies": {
     "@0g0-id/shared": "*",
-    "hono": "4.13.13",
-    "jose": "^6.2.13",
+    "hono": "4.13.14",
+    "jose": "^6.2.14",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.66.0",
     "@cloudflare/workers-types": "^5.20261029.1",
     "@types/node": "^22.10.0",
-    "tsx": "^4.22.4",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite-plus": "0.1.24",
     "wrangler": "4.156.0"

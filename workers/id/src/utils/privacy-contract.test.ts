@@ -6,7 +6,7 @@ import type { IdpEnv, User } from "@0g0-id/shared";
 // The keys below are the existing public-repository TEST fixture, not production credentials.
 vi.mock("@0g0-id/shared", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@0g0-id/shared")>();
-  return { ...actual, createRefreshToken: vi.fn().mockResolvedValue(undefined) };
+  return { ...actual, createRefreshToken: vi.fn().mockResolvedValue(true) };
 });
 
 import {

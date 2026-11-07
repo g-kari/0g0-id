@@ -20,10 +20,11 @@ vi.mock("../../utils/scopes", () => ({
 
 vi.mock("../../utils/auth-helpers", () => ({
   validateServiceRedirectUri: vi.fn(),
+  validateResourceParam: vi.fn(),
 }));
 
 import { validateNonce, validateCodeChallengeParams } from "../../utils/scopes";
-import { validateServiceRedirectUri } from "../../utils/auth-helpers";
+import { validateServiceRedirectUri, validateResourceParam } from "../../utils/auth-helpers";
 import { handleAuthorize } from "./authorize";
 
 // --- テスト用定数 ---
@@ -60,6 +61,20 @@ describe("GET /auth/authorize", () => {
     vi.mocked(validateServiceRedirectUri).mockResolvedValue({
       ok: true,
       serviceId: "svc-1",
+    });
+    vi.mocked(validateResourceParam).mockResolvedValue({
+      ok: true,
+      uri: "https://dots-events.0g0.xyz/mcp",
+      resource: {
+        id: "rs-1",
+        uri: "https://dots-events.0g0.xyz/mcp",
+        name: "dots-events",
+        allowed_scopes: '["events:read","events:subscribe"]',
+        allowed_subjects: "[]",
+        owner_user_id: "user-1",
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      },
     });
   });
 
@@ -262,6 +277,55 @@ describe("GET /auth/authorize", () => {
       const redirectUrl = new URL(location!);
       expect(redirectUrl.searchParams.has("scope")).toBe(false);
       expect(redirectUrl.searchParams.has("nonce")).toBe(false);
+    });
+
+    it("resource 指定時（登録済み）→ 正規化済み resource がリダイレクトURLに含まれる", async () => {
+      const res = await makeRequest({
+        ...validParams,
+        resource: "https://dots-events.0g0.xyz/mcp",
+      });
+      expect(res.status).toBe(302);
+      const location = res.headers.get("Location");
+      const redirectUrl = new URL(location!);
+      expect(redirectUrl.searchParams.get("resource")).toBe("https://dots-events.0g0.xyz/mcp");
+    });
+
+    it("resource 未指定時 → リダイレクトURLに含まれない", async () => {
+      const res = await makeRequest(validParams);
+      expect(res.status).toBe(302);
+      const location = res.headers.get("Location");
+      const redirectUrl = new URL(location!);
+      expect(redirectUrl.searchParams.has("resource")).toBe(false);
+    });
+  });
+
+  // =====================
+  // resource 検証 (RFC 8707)
+  // =====================
+  describe("resource 検証", () => {
+    it("未登録の resource → 400 invalid_target", async () => {
+      vi.mocked(validateResourceParam).mockResolvedValue({
+        ok: false,
+        error: "resource is not a registered resource server",
+      });
+      const res = await makeRequest({
+        ...validParams,
+        resource: "https://unknown.example/mcp",
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: string; error_description: string }>();
+      expect(body.error).toBe("invalid_target");
+    });
+
+    it("不正な形式の resource → 400 invalid_target", async () => {
+      vi.mocked(validateResourceParam).mockResolvedValue({
+        ok: false,
+        error: "Invalid resource parameter",
+      });
+      const res = await makeRequest({ ...validParams, resource: "not-a-url" });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: string }>();
+      expect(body.error).toBe("invalid_target");
     });
   });
 });

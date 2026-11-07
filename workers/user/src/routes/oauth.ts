@@ -27,6 +27,7 @@ app.get("/login", async (c) => {
   const codeChallengeMethod = c.req.query("code_challenge_method");
   const scope = c.req.query("scope");
   const nonce = c.req.query("nonce");
+  const resource = c.req.query("resource");
 
   // パラメータ長の上限チェック（DoS・過大入力対策）
   const PARAM_LIMITS: [string | undefined, number, string][] = [
@@ -37,6 +38,7 @@ app.get("/login", async (c) => {
     [codeChallengeMethod, 16, "code_challenge_method"],
     [scope, 1024, "scope"],
     [nonce, 128, "nonce"],
+    [resource, 2048, "resource"],
   ];
   for (const [value, maxLen, name] of PARAM_LIMITS) {
     if (value !== undefined && value.length > maxLen) {
@@ -61,6 +63,8 @@ app.get("/login", async (c) => {
     url.searchParams.set("code_challenge_method", codeChallengeMethod ?? "S256");
     if (scope) url.searchParams.set("scope", scope);
     if (nonce) url.searchParams.set("nonce", nonce);
+    // RFC 8707: resource（IdP の /auth/authorize で検証・正規化済み）を転送
+    if (resource) url.searchParams.set("resource", resource);
     return url.toString();
   };
 

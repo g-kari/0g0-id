@@ -4,6 +4,7 @@ import type { IdpEnv, Service, TokenPayload } from "@0g0-id/shared";
 import {
   parseJsonBody,
   sha256,
+  findRefreshTokenByHash,
   findUserById,
   findServiceById,
   createLogger,
@@ -34,6 +35,21 @@ export async function handleRefresh(c: Context<{ Bindings: IdpEnv; Variables: Va
   if (!result.ok) return result.response;
 
   const tokenHash = await sha256(result.data.refresh_token);
+
+  // RFC 8707: resource 束縛トークンはこの legacy 経路では扱わない。
+  // ここで更新すると resource を落として aud が client_id に化けてしまうため、
+  // 標準トークンエンドポイントへ明示的に誘導して拒否する。
+  // 失効処理の前に読み取り専用で確認し、提示トークン自体は消費しない。
+  const peekedToken = await findRefreshTokenByHash(c.env.DB, tokenHash);
+  if (peekedToken?.resource) {
+    return c.json(
+      restErrorBody(
+        "INVALID_REQUEST",
+        "Resource-bound refresh tokens must be refreshed at the standard token endpoint",
+      ),
+      400,
+    );
+  }
 
   const validationResult = await validateAndRevokeRefreshToken(c.env.DB, tokenHash);
   if (!validationResult.ok) {
