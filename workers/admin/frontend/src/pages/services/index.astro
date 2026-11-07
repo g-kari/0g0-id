@@ -16,7 +16,7 @@ import Admin from '../../layouts/Admin.astro';
     <div class="spinner"></div>
   </div>
   <div id="table-wrap" class="card" style="padding:0; overflow:hidden; display:none;">
-    <div class="table-wrap"><table class="data-table">
+    <div class="table-wrap" tabindex="0" role="region" aria-label="サービス一覧（横スクロールできます）"><table class="data-table">
       <thead>
         <tr>
           <th>サービス名</th>
@@ -32,7 +32,7 @@ import Admin from '../../layouts/Admin.astro';
 
   <!-- Add Modal -->
   <div id="modal-backdrop" class="modal-backdrop" style="display:none;">
-    <div class="modal" role="dialog" aria-modal="true" id="modal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" id="modal">
       <div class="modal-header">
         <h2 class="modal-title" id="modal-title">新規サービス追加</h2>
         <button class="btn btn-ghost" style="padding:4px 10px;" aria-label="閉じる" id="btn-modal-close">✕</button>
@@ -141,10 +141,12 @@ import Admin from '../../layouts/Admin.astro';
     btnCreate.textContent = '作成';
     (btnCreate as HTMLButtonElement).disabled = false;
     modalBackdrop.style.display = '';
+    serviceNameInput.focus();
   }
 
   function closeModal(): void {
     modalBackdrop.style.display = 'none';
+    document.getElementById('btn-add')!.focus();
   }
 
   document.getElementById('btn-add')!.addEventListener('click', openModal);
@@ -155,6 +157,16 @@ import Admin from '../../layouts/Admin.astro';
     if (e.target === modalBackdrop) closeModal();
   });
   modal.addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('keydown', (event) => {
+    if (modalBackdrop.style.display === 'none') return;
+    if (event.key === 'Escape') { event.preventDefault(); closeModal(); return; }
+    if (event.key !== 'Tab') return;
+    const controls = Array.from(modal.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])')).filter(el => el.getClientRects().length > 0);
+    const first = controls[0], last = controls[controls.length - 1];
+    if (!first || !last) return;
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  });
 
   btnCreate.addEventListener('click', async () => {
     const name = serviceNameInput.value.trim();
@@ -179,6 +191,7 @@ import Admin from '../../layouts/Admin.astro';
       modalTitle.textContent = '作成完了';
       resultClientId.value = result.client_id;
       resultClientSecret.value = result.client_secret;
+      resultClientId.focus();
     } catch (err) {
       showError(err instanceof Error ? err.message : '作成に失敗しました');
       closeModal();

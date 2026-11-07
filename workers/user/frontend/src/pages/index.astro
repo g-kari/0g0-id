@@ -2,11 +2,12 @@
 import Base from '../layouts/Base.astro';
 ---
 <Base title="0g0 ID - ログイン">
-  <div class="min-h-screen flex items-center justify-center p-4">
+  <div class="login-shell min-h-screen flex items-center justify-center p-4">
     <div class="w-full max-w-sm">
-      <div class="card">
+      <div class="card login-card">
+        <div class="login-mark" aria-hidden="true">0g0</div>
         <h1 class="text-2xl font-bold mb-1" style="color: var(--color-text)">0g0 ID</h1>
-        <p class="text-sm mb-6" style="color: var(--color-muted)">アカウントにサインインしてください</p>
+        <p class="text-sm mb-6" style="color: var(--color-muted)">利用するアカウントを選んでサインインしてください。</p>
 
         <div id="error-alert" class="alert alert-error mb-4" role="alert" style="display:none"></div>
 

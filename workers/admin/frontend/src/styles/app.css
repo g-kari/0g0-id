@@ -1,19 +1,19 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #fefbfb;
-  --color-text: #483030;
-  --color-muted: #a39696;
-  --color-border: #dfd7d7;
-  --color-surface: #f2f0f0;
-  --color-accent: #73862d;
-  --color-danger: #c0392b;
-  --color-success: #2d7a3a;
-  --font-family-sans: "Reddit Sans", "IBM Plex Sans JP", BlinkMacSystemFont, sans-serif;
+  --color-bg: #ffffff;
+  --color-text: #172b3a;
+  --color-muted: #526776;
+  --color-border: #cbd6dc;
+  --color-surface: #edf3f5;
+  --color-accent: #17656b;
+  --color-danger: #b32736;
+  --color-success: #216940;
+  --font-family-sans: "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, system-ui, sans-serif;
   --radius: 12px;
   --radius-sm: 8px;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --transition: all 0.4s var(--ease);
+  --transition: background-color 140ms ease, color 140ms ease;
 }
 
 @layer base {
@@ -128,7 +128,7 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
     font-family: inherit;
-    font-size: 0.95rem;
+    font-size: 1rem;
     color: var(--color-text);
     transition: border-color 0.2s;
     outline: none;
@@ -434,5 +434,82 @@
     .data-table {
       min-width: 600px;
     }
+  }
+}
+
+/* Shared interaction and readability foundations */
+:focus-visible {
+  outline: 3px solid #17656b;
+  outline-offset: 3px;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #17656b;
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.sidebar {
+  background: #17343e;
+  color: #e9f1f2;
+}
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-size: 0.9rem;
+}
+.brand-mark {
+  display: inline-grid;
+  place-items: center;
+  background: #d4e9e7;
+  color: #17343e;
+  border-radius: 6px;
+  padding: 0.25rem 0.45rem;
+  font-size: 1rem;
+  font-weight: 800;
+}
+.sidebar-link {
+  color: #d3e2e4;
+}
+.sidebar-link.active {
+  background: #d4e9e7;
+  color: #17343e;
+  font-weight: 700;
+}
+.hamburger {
+  background: #17343e;
+}
+.main-content {
+  background: #edf3f5;
+  min-width: 0;
+}
+.page-title {
+  letter-spacing: -0.02em;
+}
+.card {
+  background: #fff;
+  box-shadow: 0 5px 18px rgba(23, 43, 58, 0.04);
+}
+.btn {
+  min-height: 40px;
+}
+.table-wrap:focus-visible {
+  outline: 3px solid #17656b;
+  outline-offset: -3px;
+}
+@media (max-width: 767px) {
+  .sidebar:not(.open) {
+    visibility: hidden;
   }
 }
