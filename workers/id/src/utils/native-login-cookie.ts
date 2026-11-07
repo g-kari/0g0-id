@@ -4,7 +4,12 @@ import { isoBase64URL } from "@simplewebauthn/server/helpers";
 const encoder = new TextEncoder();
 const MAX_PLAINTEXT_BYTES = 2600;
 const CONTEXT = "0g0-id-native-passkey-login-v1";
-export type NativeCookiePurpose = "browser" | "continuation";
+export type NativeCookiePurpose =
+  | "browser"
+  | "continuation"
+  | "email-browser"
+  | "email-signup"
+  | "email-enrollment";
 
 async function key(secret: string, purpose: NativeCookiePurpose) {
   if (secret.length < 32) throw new Error("Native login configuration unavailable");

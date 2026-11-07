@@ -71,8 +71,15 @@ export async function createEmailSignupIntent(
      * accept an old ID after intent retention/cleanup. A duplicate returns no
      * new token and must not resend. */
     serverIntentId?: string;
+    /** UTC-day intent allocation budget. Public routes must supply a reviewed limit. */
+    dailyLimit?: number;
   },
 ): Promise<{ intentId: string; recipient: string; token: string; expiresAt: number } | null> {
+  if (
+    input.dailyLimit !== undefined &&
+    (!Number.isSafeInteger(input.dailyLimit) || input.dailyLimit < 1)
+  )
+    throw new Error("Invalid signup budget");
   const email = normalizeEmail(input.email);
   const [browserHash, origin] = await binding(input);
   const id = input.serverIntentId ?? crypto.randomUUID();
@@ -81,6 +88,7 @@ export async function createEmailSignupIntent(
   const token = generateToken(32);
   const tokenHash = await sha256(token);
   const now = Math.floor(Date.now() / 1000);
+  const dayStart = Math.floor(now / 86400) * 86400;
   const results = await db.batch([
     db
       .prepare(`INSERT INTO email_signup_intents
@@ -89,6 +97,7 @@ export async function createEmailSignupIntent(
        WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = ? COLLATE NOCASE)
          AND (SELECT count(*) FROM email_signup_intents WHERE email = ? COLLATE NOCASE AND created_at >= ?) < 3
          AND (SELECT count(*) FROM email_signup_intents WHERE browser_binding_hash = ? AND created_at >= ?) < 5
+         AND (? IS NULL OR (SELECT count(*) FROM email_signup_intents WHERE created_at >= ? AND created_at < ?) < ?)
       ON CONFLICT(id) DO NOTHING`)
       .bind(
         id,
@@ -103,6 +112,10 @@ export async function createEmailSignupIntent(
         now - 3600,
         browserHash,
         now - 3600,
+        input.dailyLimit ?? null,
+        dayStart,
+        dayStart + 86400,
+        input.dailyLimit ?? null,
       ),
     db
       .prepare(`INSERT INTO email_signup_outbox (intent_id, state, created_at)
@@ -259,7 +272,8 @@ export async function settleAbandonedEmailSignupDeliveries(db: D1Database): Prom
       WHERE state = 'queued' AND intent_id IN
         (SELECT id FROM email_signup_intents WHERE expires_at <= ?)`)
       .bind(now, now),
-    // Retain one day after expiry, including rate-limit evidence; no scheduler is installed.
+    // Retain one day after expiry, including UTC daily-budget evidence. The
+    // caller must gate scheduled use on the signup flag and schema availability.
     db.prepare("DELETE FROM email_signup_intents WHERE expires_at <= ?").bind(now - 86400),
   ]);
 }

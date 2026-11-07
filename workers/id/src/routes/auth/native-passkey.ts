@@ -21,6 +21,7 @@ import {
 } from "./native-passkey-state";
 import { nativePasskeyPage } from "./native-passkey-page";
 import { finalizeLogin } from "./finalize";
+import { BodyTooLarge, boundedBody } from "../../utils/auth-http-body";
 
 export type NativePasskeyEnv = IdpEnv & { PASSKEY_LOGIN_ENABLED?: string };
 type Env = { Bindings: NativePasskeyEnv; Variables: { user: TokenPayload } };
@@ -29,7 +30,7 @@ const BROWSER_COOKIE = "__Host-idp-native-browser";
 const FLOW_COOKIE = "__Host-idp-native-login";
 const SECRET_RE = /^[A-Za-z0-9_-]{43}$/;
 const COOKIE_OPTIONS = { httpOnly: true, secure: true, sameSite: "Lax" as const, path: "/" };
-const BODY_LIMIT = 32 * 1024;
+
 interface Flow {
   browserHash: string;
   transaction: string;
@@ -37,6 +38,7 @@ interface Flow {
   exp: number;
   continuation: NativeContinuation;
   challengeId?: string;
+  requiredCredential?: { credentialHash: string; registrationId: string };
 }
 
 function failure(c: NativeContext, status: 400 | 403 | 404 | 413 | 429 | 503 = 400) {
@@ -110,38 +112,6 @@ async function writeFlow(c: NativeContext, flow: Flow) {
   );
 }
 
-class BodyTooLarge extends Error {}
-async function boundedBody(request: Request): Promise<string> {
-  const declared = request.headers.get("Content-Length");
-  if (declared && (!/^\d+$/.test(declared) || Number(declared) > BODY_LIMIT))
-    throw new BodyTooLarge();
-  const reader = request.body?.getReader();
-  if (!reader) return "";
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > BODY_LIMIT) {
-        await reader.cancel();
-        throw new BodyTooLarge();
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
-}
-
 const app = new Hono<Env>();
 app.use("*", async (c, next) => {
   c.header("Cache-Control", "no-store");
@@ -187,9 +157,18 @@ app.use("*", async (c, next) => {
 
 // GET validates the continuation and installs cookies. It never consumes email
 // proof, creates a credential/user, sends mail, or calls navigator.credentials.
-app.get("/start", async (c) => {
-  const continuation = await readNativeContinuation(new URL(c.req.url), c.env);
-  if (!continuation) return failure(c);
+/** Internal handoff only. It installs a fresh login ceremony, never an auth code.
+ * A signup receipt may constrain a new signature; possession of it is not proof. */
+export async function beginNativeLogin(
+  c: NativeContext,
+  continuation: NativeContinuation,
+  requiredCredential?: { credentialId: string; registrationId: string },
+): Promise<Response> {
+  if (
+    c.env.PASSKEY_LOGIN_ENABLED !== "true" ||
+    !(await nativeContinuationIsCurrent(c.env, continuation))
+  )
+    return failure(c);
   const browser = generateToken(32);
   const exp = Math.floor(Date.now() / 1000) + 600;
   const browserCookie = await sealNativeCookie(
@@ -205,11 +184,25 @@ app.get("/start", async (c) => {
     csrf: generateToken(32),
     exp,
     continuation,
+    ...(requiredCredential
+      ? {
+          requiredCredential: {
+            credentialHash: await sha256(requiredCredential.credentialId),
+            registrationId: requiredCredential.registrationId,
+          },
+        }
+      : {}),
   };
   // Serialize both before setting either, including the aggregate cookie bound.
   await writeFlow(c, flow);
   setCookie(c, BROWSER_COOKIE, browserCookie, { ...COOKIE_OPTIONS, maxAge: 600 });
   return c.redirect("/auth/passkey", 303);
+}
+
+app.get("/start", async (c) => {
+  const continuation = await readNativeContinuation(new URL(c.req.url), c.env);
+  if (!continuation) return failure(c);
+  return beginNativeLogin(c, continuation);
 });
 
 app.get("/", async (c) => {
@@ -228,7 +221,9 @@ app.get("/", async (c) => {
     "Permissions-Policy",
     "geolocation=(), microphone=(), camera=(), payment=(), usb=(), bluetooth=(), magnetometer=(), gyroscope=(), accelerometer=(), ambient-light-sensor=(), display-capture=(), screen-wake-lock=(), publickey-credentials-get=(self), publickey-credentials-create=()",
   );
-  return c.html(nativePasskeyPage(context.flow.csrf, nonce));
+  return c.html(
+    nativePasskeyPage(context.flow.csrf, nonce, context.flow.requiredCredential !== undefined),
+  );
 });
 
 app.post("/options", async (c) => {
@@ -294,6 +289,13 @@ app.post("/verify", async (c) => {
     response,
   });
   if (!result.verified) return failure(c);
+  const required = context.flow.requiredCredential;
+  if (
+    required &&
+    (required.credentialHash !== (await sha256(result.credentialId)) ||
+      required.registrationId !== result.registrationId)
+  )
+    return failure(c);
   // The assertion is consumed. There is no automatic retry after this boundary.
   deleteCookie(c, FLOW_COOKIE, COOKIE_OPTIONS);
   deleteCookie(c, BROWSER_COOKIE, COOKIE_OPTIONS);

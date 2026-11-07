@@ -1,5 +1,5 @@
 /** No CDN, cross-origin WebAuthn, account lookup, or automatic credential prompt. */
-export function nativePasskeyPage(csrf: string, nonce: string): string {
+export function nativePasskeyPage(csrf: string, nonce: string, afterSignup = false): string {
   if (!/^[A-Za-z0-9_-]{43}$/.test(csrf) || !/^[A-Za-z0-9_-]{22}$/.test(nonce))
     throw new Error("Invalid page context");
   return `<!doctype html>
@@ -12,7 +12,7 @@ h1{font-size:1.5rem}button{font:inherit;cursor:pointer;border:0;border-radius:.5
 button:disabled{cursor:wait;opacity:.6}button:focus-visible,a:focus-visible{outline:3px solid #d77c14;outline-offset:4px}
 p{margin:1rem 0}#status{min-height:3.4rem}small{color:#4b5d70}a{color:#174a7e}
 </style></head><body><main><small>0g0 ID</small><h1>パスキーでログイン</h1>
-<p>このサイトに登録したパスキーを選び、端末の画面で本人確認してください。</p>
+<p>${afterSignup ? "今作成したパスキーを選び、もう一度本人確認してください。登録だけではログインは完了していません。" : "このサイトに登録したパスキーを選び、端末の画面で本人確認してください。"}</p>
 <form method="post" action="/auth/passkey/verify" id="login-form">
 <input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="credential" id="credential">
 <button type="button" id="login">パスキーを選んでログイン</button></form>

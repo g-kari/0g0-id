@@ -1,6 +1,6 @@
 # Native passkey HTTP draft, 2026-11-07 UTC
 
-Status: default-off implementation proposal. No deployment configuration or migration is enabled by this increment. Signup and real browser/Workers rollout validation remain separate gates.
+Status: default-off implementation proposal. No deployment configuration or migration is enabled by this increment. Default-off signup wiring is now described in [email signup HTTP](./email-passkey-http.md); activation and real-browser rollout remain separate gates.
 
 ## Minimum coherent increment
 
@@ -31,20 +31,22 @@ The current user-bound `passkey-flow.authenticationOptions()` includes credentia
 
 ## Expired challenge cleanup
 
-The candidate scheduled path calls a native cleanup helper. With no literal enable flag, it performs no DB query. With the flag enabled, it checks sqlite_master for the proposed challenge table before deleting only expired challenges. An absent schema returns schema_missing and is reported as incomplete; a database exception is not turned into success. Email intent/outbox cleanup is not enabled because no public signup is connected. The repository currently declares a daily 00:00 UTC cron, unchanged by this draft. Deployment must verify the cron actually runs and evaluate daily peak storage capacity before enablement; an unused or missing schedule does not become operational just because a helper is present.
+The candidate scheduled path calls a native cleanup helper. With no literal enable flag, it performs no DB query. With the flag enabled, it checks sqlite_master for the proposed challenge table before deleting only expired challenges. An absent schema returns schema_missing and is reported as incomplete; a database exception is not turned into success. Email intent/outbox cleanup now has its own signup flag and schema gate, described in the email signup HTTP proposal. The repository currently declares a daily 00:00 UTC cron, unchanged by this draft. Deployment must verify the cron actually runs and evaluate daily peak storage capacity before enablement; an unused or missing schedule does not become operational just because a helper is present.
 
 ## Deliberately unfinished / pre-enable gates
 
-1. This increment signs in **already enrolled discoverable passkeys**. There is no public signup or email verification handler, no existing-account linking or recovery, and no email-as-login shortcut.
+1. This increment signs in **already enrolled discoverable passkeys**. Email signup/verification handlers now exist behind independent default-off gates. There is still no existing-account linking or recovery, and no email-as-login shortcut.
 2. Both passkey schema deployment and rollout configuration are outside this task. Runtime DB errors fail closed; absence of migrations is not reported as a functioning feature.
 3. Formal Vite+ 1.5 / Node 22 / TS7 CI is not substituted by the cached local Vite+ 0.1.24 / Node 24 / TS6 results. A current CI run on the exact integration bytes is needed.
-4. Real browser rendering, CSP on actual cross-origin form redirects, physical authenticator or browser virtual-authenticator flows, BFCache behavior and actual Workers/D1 execution remain pre-enable verification. UI lifecycle tests execute the emitted JavaScript with explicit test doubles, not a browser.
+4. Real browser rendering, CSP on actual cross-origin form redirects, physical authenticator or browser virtual-authenticator flows, BFCache behavior remain pre-enable verification. A limited native HTTP smoke in actual local workerd/D1 passed cookies, RS256 UP/UV, standard code and replay checks with synthetic rate-limit stubs and transcribed empty schema; this is not browser, signup-handler or migration validation. UI lifecycle tests execute the emitted JavaScript with explicit test doubles, not a browser.
 5. Existing token/exchange handlers are unchanged. A proof-time account check is covered; existing code-exchange/refresh semantics after a later account-policy change are not strengthened here. Review the desired passkey-specific verified-email recheck at code exchange before rollout.
 6. Existing `finalizeLogin` checks are not a single SQL transaction with auth-code insert. This draft preserves its concurrency semantics rather than claiming an atomic account/resource/code authorization boundary.
 7. Cookie aggregate context is intentionally stricter than individual legacy parameter limits. Oversized clients receive a generic error, not truncation.
 8. Failed signature input does not increment a claimed owner's account lockout count: unauthenticated credential hints must not become an account-locking DoS primitive. Existing lockouts are enforced after proof and IP limits apply throughout.
 
-## Next signup integration (design only, not mounted)
+## Original signup integration outline (superseded by the default-off HTTP proposal)
+
+The following outline is historical; current implementation and remaining gates are in [email signup HTTP](./email-passkey-http.md).
 
 Use a separate `EMAIL_PASSKEY_SIGNUP_ENABLED === "true"` gate, independently approved delivery binding and fixed sender `noreply@id.0g0.xyz`. The approved paid-plan statement does not provision a binding or authorize new credentials/DNS/contract steps. Fail closed without every required runtime dependency, including dedicated per-IP and aggregate delivery controls. Do not reuse native login purpose/cookie namespaces for enrollment authority.
 

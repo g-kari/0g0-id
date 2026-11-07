@@ -23,4 +23,20 @@ app.get("/passkey", (c) => {
   return c.redirect(target.toString());
 });
 
+app.get("/signup/status", (c) => {
+  c.header("Cache-Control", "no-store");
+  return c.json({ enabled: c.env.EMAIL_PASSKEY_SIGNUP_ENABLED === "true" });
+});
+app.get("/signup", (c) => {
+  c.header("Cache-Control", "no-store");
+  c.header("Referrer-Policy", "no-referrer");
+  if (c.env.EMAIL_PASSKEY_SIGNUP_ENABLED !== "true") return c.notFound();
+  const state = generateToken(16);
+  setOAuthStateCookie(c, COOKIE_NAMES.USER_STATE, state);
+  const target = new URL("/auth/email/signup/start", c.env.IDP_ORIGIN);
+  target.searchParams.set("redirect_to", new URL("/auth/callback", c.env.SELF_ORIGIN).toString());
+  target.searchParams.set("state", state);
+  return c.redirect(target.toString());
+});
+
 export default app;

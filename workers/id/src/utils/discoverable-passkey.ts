@@ -41,7 +41,10 @@ export function createDiscoverablePasskeyFlow(db: D1Database, configuredOrigin: 
       browserBinding: string;
       challengeId: string;
       response: AuthenticationResponseJSON;
-    }): Promise<{ verified: false } | { verified: true; userId: string }> {
+    }): Promise<
+      | { verified: false }
+      | { verified: true; userId: string; credentialId: string; registrationId: string }
+    > {
       try {
         const binding = {
           browserBinding: input.browserBinding,
@@ -97,7 +100,14 @@ export function createDiscoverablePasskeyFlow(db: D1Database, configuredOrigin: 
           previousCounter: row.sign_count,
           newCounter: result.newCounter,
         });
-        return saved ? { verified: true, userId: result.ownerID } : { verified: false };
+        return saved
+          ? {
+              verified: true,
+              userId: result.ownerID,
+              credentialId: result.credentialID,
+              registrationId: result.registrationId,
+            }
+          : { verified: false };
       } catch {
         // Storage uncertainty must not issue a code or replay the assertion.
         return { verified: false };

@@ -1,6 +1,6 @@
 /**
- * Unconnected Cloudflare Email Sending adapter. No route, binding or sender is
- * enabled by this module. SendEmail is supplied by the Workers runtime types.
+ * Default-off Cloudflare Email Sending adapter. No binding or sender is enabled
+ * by this module. SendEmail is supplied by the Workers runtime types.
  */
 /** Approved sender; domain/binding activation is a separate deployment step. */
 export const VERIFICATION_EMAIL_SENDER = "noreply@id.0g0.xyz";
@@ -9,7 +9,7 @@ export interface VerificationEmailInput {
   recipient: string;
   /** Opaque, random, single-purpose proof token. Not an access/session token. */
   token: string;
-  /** Unix seconds, matching the email intent's server-side expiry. */
+  /** Effective Unix expiry, no later than intent or browser-state expiry. */
   expiresAt: number;
 }
 
@@ -99,7 +99,7 @@ export function buildVerificationEmail(
     throw new Error("Invalid email verification origin");
   }
   const url = new URL("/auth/email/verify", origin.origin);
-  // Fragments do not travel in HTTP access logs or Referer headers. The future
+  // Fragments do not travel in HTTP access logs or Referer headers. The
   // verification page must remove the fragment before loading any other assets.
   url.hash = `token=${input.token}`;
   const link = url.toString();

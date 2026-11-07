@@ -47,6 +47,8 @@ CREATE TABLE email_signup_intents (
 );
 CREATE INDEX idx_email_signup_email_time ON email_signup_intents(email COLLATE NOCASE, created_at);
 CREATE INDEX idx_email_signup_browser_time ON email_signup_intents(browser_binding_hash, created_at);
+-- Supports the atomic UTC-day intent allocation budget.
+CREATE INDEX idx_email_signup_created ON email_signup_intents(created_at);
 CREATE INDEX idx_email_signup_expiry ON email_signup_intents(expires_at);
 
 -- Delivery ledger only: plaintext tokens are deliberately NOT persisted.

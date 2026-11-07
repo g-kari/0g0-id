@@ -22,6 +22,8 @@ const reportDir = path.resolve(
 );
 const providersPath = "/api/providers";
 const passkeyStatusPath = "/auth/passkey/status";
+const signupStatusPath = "/auth/signup/status";
+const featureStatusPaths = [passkeyStatusPath, signupStatusPath];
 const providerLabels = {
   google: "Google",
   line: "LINE",
@@ -278,9 +280,9 @@ async function main() {
         // Only the explicit unauthorized-to-home case may read this feature flag.
         // Keep every other auth path/query and all writes blocked; never proxy it.
         if (
-          url.pathname === passkeyStatusPath &&
+          featureStatusPaths.includes(url.pathname) &&
           !url.search &&
-          allowedPaths.includes(passkeyStatusPath)
+          allowedPaths.includes(url.pathname)
         ) {
           featureStatusReads.push(url.pathname);
           await route.fulfill({ json: { enabled: false } });
@@ -324,9 +326,15 @@ async function main() {
       const readCount = () => calls.filter((call) => call.path === providersPath).length;
       try {
         await check(page, readCount, origin);
-        if (allowedPaths.includes(passkeyStatusPath)) {
-          await expect.poll(() => featureStatusReads.length).toBe(1);
-          await expect(page.locator("#passkey-login")).toBeHidden();
+        for (const statusPath of featureStatusPaths) {
+          if (allowedPaths.includes(statusPath)) {
+            await expect
+              .poll(() => featureStatusReads.filter((path) => path === statusPath).length)
+              .toBe(1);
+            await expect(
+              page.locator(statusPath === signupStatusPath ? "#email-signup" : "#passkey-login"),
+            ).toBeHidden();
+          }
         }
         assert.deepEqual(forbiddenWrites, [], "No account or provider writes may occur.");
         assert.deepEqual(
@@ -335,8 +343,10 @@ async function main() {
           "Only the exact synthetic API read routes may occur.",
         );
         assert(
-          featureStatusReads.length <= 1,
-          "The home page may make only one disabled feature-status read.",
+          featureStatusPaths.every(
+            (path) => featureStatusReads.filter((read) => read === path).length <= 1,
+          ),
+          "The home page may make only one disabled read for each feature status.",
         );
         assert.deepEqual(unexpectedDialogs, [], "No provider link/unlink flow may be invoked.");
         assert.deepEqual(unexpectedSockets, [], "No WebSocket traffic may occur.");
@@ -574,7 +584,7 @@ async function main() {
           await expect(page.locator("#passkey-login")).toBeHidden();
           assert.equal(readCount(), 1);
         },
-        [providersPath, passkeyStatusPath],
+        [providersPath, passkeyStatusPath, signupStatusPath],
       );
     }
     report.status = "passed";

@@ -28,7 +28,7 @@ Email Routing だけの無料送信は、アカウント内の事前検証済み
 
 ## 今回の実装
 
-`workers/id/src/utils/verification-email.ts` を追加する。既存の Env、Wrangler、公開 route は変更しない。呼び出し元はまだなく、binding と送信元が設定済みであることや、本番送信が可能であることを意味しない。
+`workers/id/src/utils/verification-email.ts` は独立gateを持つ[default-off signup HTTP](./email-passkey-http.md)から呼ばれる。optional Env型を追加するが、Wranglerや本番binding・送信元設定は変更しない。本番送信が可能であることを意味しない。メールに表示する期限はintentとbrowser stateの短い方で、登録開始から最大10分。
 
 - `buildVerificationEmail`: 固定件名の日本語 text / HTML。1通1宛先。任意の本文、header、CC/BCC、添付、外部リンクを受け付けない。
 - 宛先と送信元は単一の ASCII mailbox のみ受け付ける。表示名形式、アドレス一覧、CRLF、引用 local part、国際化メールアドレスは現段階では非対応として拒否する。

@@ -489,4 +489,22 @@ OAuth 2.0 標準エンドポイント（`/auth/authorize` / `/api/token` 等）�
 | POST   | `/auth/passkey/options` | exact Origin + CSRF + 明示確認     | 32KiB上限。アカウント検索を行わないdiscoverable challenge。                                                                  |
 | POST   | `/auth/passkey/verify`  | exact Origin + CSRF + WebAuthn署名 | 32KiB上限。UP/UV・userHandle・RP・origin・challenge・登録世代CASを検証し、現在の利用権限を再照合して通常の認可コードへ合流。 |
 
-メール登録・復旧・既存アカウントへのパスキー追加は接続されていない。失敗は汎用応答、内部authority/receiptは返さない。期限切れchallenge清掃は明示フラグとtable存在確認の後だけ実行し、未導入スキーマを通常の無効構成から参照しない。[設計・未検証範囲](./proposals/native-passkey-login.md)を参照。
+復旧・既存アカウントへのパスキー追加は接続されていない。失敗は汎用応答、内部authority/receiptは返さない。期限切れchallenge清掃は明示フラグとtable存在確認の後だけ実行し、未導入スキーマを通常の無効構成から参照しない。[設計・未検証範囲](./proposals/native-passkey-login.md)を参照。
+
+## メール所有確認と新規登録（default-off）
+
+`EMAIL_PASSKEY_SIGNUP_ENABLED="true"` に加え、独立したmail/login gate、固定送信元、既存binding、IP/全体limiter、明示UTC日次割当上限がすべて必須。設定不足はfail-closed。実配送・本番有効化はしていない。
+
+| Method | Path                                | 認証                                           | 説明                                                                                              |
+| ------ | ----------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| GET    | `/auth/email/signup/start`          | —                                              | default-off。継続先を検証し短命暗号stateにUUIDを予約。DB書込・送信なし。                          |
+| GET    | `/auth/email/signup`                | browser/signup cookie                          | メール入力UI。明示操作まで送信しない。                                                            |
+| POST   | `/auth/email/start`                 | exact Origin + CSRF + 明示確認                 | 32KiB上限。冪等intent、必須IP/全体制限/UTC日次上限。既存・抑止・新規とも同じ202。                 |
+| GET    | `/auth/email/verify`                | browser/signup cookie                          | fragmentを同期除去。GET/HEADはproof不消費。                                                       |
+| POST   | `/auth/email/verify`                | exact Origin + CSRF + 明示確認                 | 元browser/transactionに束縛してメールproofを消費。authorityは別purposeの暗号HttpOnlycookieのみ。  |
+| GET    | `/auth/email/register`              | browser/signup/enrollment cookie               | 登録UI、または結果不明時の署名ログイン案内。認証しない。                                          |
+| POST   | `/auth/email/registration/options`  | exact Origin + CSRF + 明示確認 + authority     | 同じpendingを再開。resident key/UV必須。                                                          |
+| POST   | `/auth/email/registration/complete` | exact Origin + CSRF + authority + WebAuthn登録 | 新規アカウントを原子的に作成。登録receiptだけではcodeを発行せず、新credential世代の新署名認証へ。 |
+| POST   | `/auth/email/login`                 | exact Origin + CSRF + 明示確認                 | 結果不明時は新しい署名ログインへ。メールのみのログイン/復旧ではない。                             |
+
+設定・予算・未完境界は [default-off HTTP設計](./proposals/email-passkey-http.md) を参照。
