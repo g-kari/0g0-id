@@ -26,7 +26,7 @@
     "happy-dom": "21.0.4",
     "tsx": "4.23.15",
     "typescript": "6.0.3",
-    "vite-plus": "0.1.24"
+    "vite-plus": "1.1.0"
   },
   "overrides": {
     "esbuild": "^0.28.2",
