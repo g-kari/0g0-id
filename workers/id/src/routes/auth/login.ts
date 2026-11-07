@@ -24,6 +24,7 @@ import {
   setSecureCookie,
   validateProviderCredentials,
   validateServiceRedirectUri,
+  validateResourceParam,
 } from "../../utils/auth-helpers";
 import { validateRequiredParams, validateParamLengths } from "../../utils/validation";
 
@@ -114,11 +115,27 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
   }
   const codeChallengeMethod = c.req.query("code_challenge_method");
   const scope = c.req.query("scope");
+  const resource = c.req.query("resource");
 
   const scopeLenErr = validateParamLengths(c, [
     { value: scope, max: 2048, message: "scope too long" },
+    { value: resource, max: 2048, message: "resource too long" },
   ]);
   if (scopeLenErr) return scopeLenErr;
+
+  // RFC 8707: resource は外部サービスフロー（client_id あり）でのみ有効。
+  // /auth/authorize で検証済みだが、/auth/login を直接叩く経路に備えて再検証する
+  let resourceUri: string | undefined;
+  if (resource) {
+    if (!clientId) {
+      return c.json(restErrorBody("BAD_REQUEST", "resource requires client_id"), 400);
+    }
+    const resourceResult = await validateResourceParam(c.env.DB, resource);
+    if (!resourceResult.ok) {
+      return c.json(restErrorBody("BAD_REQUEST", resourceResult.error), 400);
+    }
+    resourceUri = resourceResult.uri;
+  }
 
   const codeChallengeError = validateCodeChallengeParams(codeChallenge, codeChallengeMethod);
   if (codeChallengeError) {
@@ -175,6 +192,7 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
     ...(nonce ? { nonce } : {}),
     ...(codeChallenge ? { codeChallenge, codeChallengeMethod: codeChallengeMethod ?? "S256" } : {}),
     ...(scope ? { scope } : {}),
+    ...(resourceUri ? { resource: resourceUri } : {}),
   };
   const stateData = JSON.stringify(statePayload);
   const signedStateData = await signCookie(stateData, c.env.COOKIE_SECRET);

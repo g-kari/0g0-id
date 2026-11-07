@@ -43,12 +43,15 @@ try {
     fund: false,
   }).loadVirtual();
   assert.equal(tree.meta.filename, path.resolve("package-lock.json"));
-  const rule = (value) => value ? {
-    key: value.key ?? null,
-    value: value.value ?? null,
-  } : null;
-  const selected = [...tree.inventory.values()].filter((node) =>
-    node.isProjectRoot || node.isWorkspace || ["miniflare", "undici"].includes(node.name),
+  const rule = (value) =>
+    value
+      ? {
+          key: value.key ?? null,
+          value: value.value ?? null,
+        }
+      : null;
+  const selected = [...tree.inventory.values()].filter(
+    (node) => node.isProjectRoot || node.isWorkspace || ["miniflare", "undici"].includes(node.name),
   );
   assert(selected.length <= 32, "Diagnostic node count limit");
   const nodes = selected.map((node) => {
@@ -75,22 +78,28 @@ try {
   });
   assert.equal(digest(readFileSync("package.json")), digest(manifestBytes));
   assert.equal(digest(readFileSync("package-lock.json")), digest(lockBytes));
-  const output = JSON.stringify({
-    npmBinary,
-    npmEntry,
-    npmVersion: npmPackage.version,
-    arboristEntry,
-    arboristVersion: arboristPackage.version,
-    cwd: process.cwd(),
-    rootManifestSha256: digest(manifestBytes),
-    lockSha256: digest(lockBytes),
-    selectedOverrides,
-    nodes,
-  }, null, 2);
+  const output = JSON.stringify(
+    {
+      npmBinary,
+      npmEntry,
+      npmVersion: npmPackage.version,
+      arboristEntry,
+      arboristVersion: arboristPackage.version,
+      cwd: process.cwd(),
+      rootManifestSha256: digest(manifestBytes),
+      lockSha256: digest(lockBytes),
+      selectedOverrides,
+      nodes,
+    },
+    null,
+    2,
+  );
   assert(Buffer.byteLength(output) <= 131_072, "Diagnostic output limit");
   console.log(output);
 } catch {
-  console.error("Read-only override diagnostic failed; no configuration or environment dump emitted");
+  console.error(
+    "Read-only override diagnostic failed; no configuration or environment dump emitted",
+  );
   process.exitCode = 1;
 } finally {
   clearTimeout(timeout);

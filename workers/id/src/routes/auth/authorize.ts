@@ -2,11 +2,15 @@ import type { Context } from "hono";
 import type { IdpEnv } from "@0g0-id/shared";
 import { createLogger } from "@0g0-id/shared";
 import { validateNonce, validateCodeChallengeParams } from "../../utils/scopes";
-import { validateServiceRedirectUri } from "../../utils/auth-helpers";
+import { validateServiceRedirectUri, validateResourceParam } from "../../utils/auth-helpers";
 
 const authLogger = createLogger("auth");
 
-type OAuthErrorCode = "invalid_request" | "unsupported_response_type" | "server_error";
+type OAuthErrorCode =
+  | "invalid_request"
+  | "unsupported_response_type"
+  | "invalid_target"
+  | "server_error";
 
 /**
  * RFC 6749 形式の OAuth エラーレスポンスを返すヘルパー。
@@ -35,6 +39,8 @@ export async function handleAuthorize(c: Context<{ Bindings: IdpEnv }>) {
   const codeChallengeMethod = c.req.query("code_challenge_method");
   // OIDC: nonce は任意パラメータ（ID Token にリプレイ攻撃対策として埋め込む）
   const nonce = c.req.query("nonce");
+  // RFC 8707: resource は任意パラメータ（アクセストークンの aud 束縛）
+  const resource = c.req.query("resource");
 
   // response_type は unsupported_response_type なので個別処理
   if (responseType !== "code") {
@@ -68,6 +74,7 @@ export async function handleAuthorize(c: Context<{ Bindings: IdpEnv }>) {
     { value: redirectUri, max: 2048, msg: "redirect_uri too long" },
     { value: state, max: 1024, msg: "state too long" },
     { value: scope, max: 2048, msg: "scope too long" },
+    { value: resource, max: 2048, msg: "resource too long" },
   ];
   for (const check of lengthChecks) {
     if (check.value && check.value.length > check.max) {
@@ -91,6 +98,23 @@ export async function handleAuthorize(c: Context<{ Bindings: IdpEnv }>) {
     return oauthError(c, "invalid_request", uriResult.error, 400);
   }
 
+  // RFC 8707: resource が指定された場合は登録済みリソースサーバーか検証し、
+  // 正規化した URI を引き継ぐ（この URI がアクセストークンの aud になる）
+  let resourceUri: string | undefined;
+  if (resource) {
+    let resourceResult: Awaited<ReturnType<typeof validateResourceParam>>;
+    try {
+      resourceResult = await validateResourceParam(c.env.DB, resource);
+    } catch (err) {
+      authLogger.error("[authorize] Failed to validate resource parameter", err);
+      return oauthError(c, "server_error", "Internal server error", 500);
+    }
+    if (!resourceResult.ok) {
+      return oauthError(c, "invalid_target", resourceResult.error, 400);
+    }
+    resourceUri = resourceResult.uri;
+  }
+
   // ユーザーをプロバイダー選択画面（USER_ORIGIN/login）にリダイレクト
   // BFFのログイン画面がプロバイダー選択とIdPへの/auth/loginリダイレクトを担当する
   const loginUrl = new URL("/login", c.env.USER_ORIGIN);
@@ -106,6 +130,10 @@ export async function handleAuthorize(c: Context<{ Bindings: IdpEnv }>) {
   // OIDC: nonce を転送（ID Token に埋め込むため USER_ORIGIN/login → IdP /auth/login → auth code → token発行まで引き継ぐ）
   if (nonce) {
     loginUrl.searchParams.set("nonce", nonce);
+  }
+  // RFC 8707: resource（正規化済み）を転送（aud 束縛のため token 発行まで引き継ぐ）
+  if (resourceUri) {
+    loginUrl.searchParams.set("resource", resourceUri);
   }
 
   return c.redirect(loginUrl.toString());

@@ -33,7 +33,8 @@ export function checkCloudflareToolchain(repository: string): void {
               ?.map((directory) => path.join(directory, name, "package.json"))
               .find(existsSync)
           : undefined;
-      if (name === "@cloudflare/vite-plugin") assert.ok(pluginManifest, "Missing Cloudflare plugin");
+      if (name === "@cloudflare/vite-plugin")
+        assert.ok(pluginManifest, "Missing Cloudflare plugin");
       const entry = realpathSync(
         pluginManifest
           ? path.join(path.dirname(pluginManifest), "dist/index.mjs")

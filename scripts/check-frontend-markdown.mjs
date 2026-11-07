@@ -36,10 +36,21 @@ async function assertSafeCode(html, expected, label, language, highlighted, shik
     assert.equal(pre.textContent, expected, `${label}: no injected text inside pre`);
     assert.equal(container.childNodes.length, 2, `${label}: pre and terminal newline only`);
     assert.equal(container.childNodes[0], pre, `${label}: pre is first node`);
-    assert.equal(container.childNodes[1].nodeType, window.Node.TEXT_NODE, `${label}: terminal text node`);
-    assert.equal(container.childNodes[1].textContent, "\n", `${label}: exactly one terminal newline`);
+    assert.equal(
+      container.childNodes[1].nodeType,
+      window.Node.TEXT_NODE,
+      `${label}: terminal text node`,
+    );
+    assert.equal(
+      container.childNodes[1].textContent,
+      "\n",
+      `${label}: exactly one terminal newline`,
+    );
     for (const element of container.querySelectorAll("*")) {
-      assert.ok((highlighted ? ["PRE", "CODE", "SPAN"] : ["PRE", "CODE"]).includes(element.tagName), `${label}: unexpected element`);
+      assert.ok(
+        (highlighted ? ["PRE", "CODE", "SPAN"] : ["PRE", "CODE"]).includes(element.tagName),
+        `${label}: unexpected element`,
+      );
       if (element.tagName === "SPAN") {
         assert.ok(code.contains(element), `${label}: highlighting span belongs to code`);
       }
@@ -54,7 +65,11 @@ async function assertSafeCode(html, expected, label, language, highlighted, shik
     }
     if (language !== undefined) {
       assert.ok(code.getAttribute("class") === `language-${language}`, `${label}: language class`);
-      assert.equal(pre.getAttribute("class"), `language-${language}`, `${label}: pre language class`);
+      assert.equal(
+        pre.getAttribute("class"),
+        `language-${language}`,
+        `${label}: pre language class`,
+      );
       assert.equal(pre.getAttribute("data-language"), language);
     }
     if (highlighted) assert.ok(code.querySelector("span"), `${label}: syntax highlighting`);
@@ -78,7 +93,12 @@ const prismCases = [
   },
   { name: "TypeScript alias", lang: "ts", code: 'const message: string = "<&>";', tokens: true },
   { name: "TypeScript", lang: "typescript", code: "const count: number = 1;", tokens: true },
-  { name: "Astro", lang: "astro", code: '<div class="message">Hello &amp; world</div>', tokens: true },
+  {
+    name: "Astro",
+    lang: "astro",
+    code: '<div class="message">Hello &amp; world</div>',
+    tokens: true,
+  },
   { name: "plaintext", lang: "plaintext", code: attack },
   { name: "absent language", lang: "", code: attack },
 ];

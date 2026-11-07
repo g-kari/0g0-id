@@ -27,6 +27,7 @@ vi.mock("../../utils/token-pair", () => ({
   issueTokenPair: vi.fn(),
   buildTokenResponse: vi.fn(),
   issueIdToken: vi.fn(),
+  ResourceRegistrationGoneError: class extends Error {},
 }));
 
 vi.mock("./utils", async (importOriginal) => {
@@ -63,6 +64,8 @@ const mockService = {
   client_secret_hash: "hashed-secret",
   allowed_scopes: '["openid","profile","email"]',
   owner_user_id: "user-1",
+  source: "admin",
+  registration_access_token_hash: null,
   created_at: "2024-01-01T00:00:00Z",
   updated_at: "2024-01-01T00:00:00Z",
 };
@@ -97,6 +100,8 @@ const mockAuthCode = {
   code_challenge_method: null,
   nonce: null,
   provider: null,
+  resource: null,
+  resource_server_id: null,
   used_at: null,
   expires_at: "2099-01-01T00:00:00Z",
   created_at: "2024-01-01T00:00:00Z",

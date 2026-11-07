@@ -962,8 +962,15 @@ async function main(): Promise<void> {
         names[worker].replaceAll("-", "_"),
         "wrangler.json",
       );
-      const generatedConfig = JSON.parse(await readFile(generated, "utf8")) as Record<string, unknown>;
-      assert.equal(generatedConfig.upload_source_maps, false, `${worker}: source-map upload must remain disabled`);
+      const generatedConfig = JSON.parse(await readFile(generated, "utf8")) as Record<
+        string,
+        unknown
+      >;
+      assert.equal(
+        generatedConfig.upload_source_maps,
+        false,
+        `${worker}: source-map upload must remain disabled`,
+      );
       // Preserve the generated runtime config. Only id's dedicated asset fixture
       // needs an explicit test config; this does not validate production rollout.
       let configPath = generated;

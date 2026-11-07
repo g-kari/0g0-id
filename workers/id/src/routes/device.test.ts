@@ -118,6 +118,8 @@ const mockService = {
   client_secret_hash: "hashed-secret",
   allowed_scopes: JSON.stringify(["profile", "email"]),
   owner_user_id: "admin-user-id",
+  source: "admin",
+  registration_access_token_hash: null,
   created_at: "2024-01-01T00:00:00Z",
   updated_at: "2024-01-01T00:00:00Z",
 };

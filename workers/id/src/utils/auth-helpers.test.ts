@@ -5,10 +5,11 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
   return {
     ...actual,
     linkProvider: vi.fn(),
+    listRedirectUris: vi.fn(),
   };
 });
 
-import { linkProvider, signCookie } from "@0g0-id/shared";
+import { linkProvider, listRedirectUris, signCookie } from "@0g0-id/shared";
 import type { User } from "@0g0-id/shared";
 import {
   matchesExtraBffOrigins,
@@ -16,6 +17,7 @@ import {
   isBffOrigin,
   parseStateFromCookie,
   handleProviderLink,
+  validateServiceFinalRedirect,
 } from "./auth-helpers";
 
 const mockLinkProvider = vi.mocked(linkProvider);
@@ -350,5 +352,87 @@ describe("handleProviderLink", () => {
     await expect(handleProviderLink(mockDb, "user-1", "google", "google-sub-123")).rejects.toBe(
       "string error",
     );
+  });
+});
+
+// ============================================================
+// validateServiceFinalRedirect（service 付きフローの最終確認）
+// ============================================================
+describe("validateServiceFinalRedirect", () => {
+  const mockListRedirectUris = vi.mocked(listRedirectUris);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function registered(uris: string[]) {
+    mockListRedirectUris.mockResolvedValue(
+      uris.map((uri, i) => ({
+        id: `ru-${i}`,
+        service_id: "svc-1",
+        uri,
+        created_at: "2024-01-01T00:00:00Z",
+      })),
+    );
+  }
+
+  it("登録済みの外部 HTTPS callback は通る（BFF 許可リストに無いドメインでも）", async () => {
+    registered(["https://chatgpt.com/connector/oauth/callback"]);
+    await expect(
+      validateServiceFinalRedirect(mockDb, "svc-1", "https://chatgpt.com/connector/oauth/callback"),
+    ).resolves.toBe(true);
+  });
+
+  it("登録されていない外部 HTTPS は拒否する", async () => {
+    registered(["https://chatgpt.com/connector/oauth/callback"]);
+    await expect(
+      validateServiceFinalRedirect(mockDb, "svc-1", "https://evil.example/callback"),
+    ).resolves.toBe(false);
+  });
+
+  it("登録済み loopback http はポート違いでも通る（RFC 8252）", async () => {
+    registered(["http://localhost:3000/callback"]);
+    await expect(
+      validateServiceFinalRedirect(mockDb, "svc-1", "http://127.0.0.1:51234/callback"),
+    ).resolves.toBe(true);
+  });
+
+  it("登録済み [::1] loopback http は通る", async () => {
+    registered(["http://[::1]:3000/callback"]);
+    await expect(
+      validateServiceFinalRedirect(mockDb, "svc-1", "http://[::1]:4000/callback"),
+    ).resolves.toBe(true);
+  });
+
+  it("非 loopback の http は登録の有無によらず拒否する", async () => {
+    registered(["http://example.com/callback"]);
+    await expect(
+      validateServiceFinalRedirect(mockDb, "svc-1", "http://example.com/callback"),
+    ).resolves.toBe(false);
+  });
+
+  it("loopback でも任意 scheme は拒否する", async () => {
+    registered(["ftp://localhost/callback"]);
+    await expect(
+      validateServiceFinalRedirect(mockDb, "svc-1", "ftp://localhost/callback"),
+    ).resolves.toBe(false);
+  });
+
+  it("loopback http でも未登録なら拒否する", async () => {
+    registered(["http://localhost:3000/callback"]);
+    await expect(
+      validateServiceFinalRedirect(mockDb, "svc-1", "http://localhost:3000/other"),
+    ).resolves.toBe(false);
+  });
+
+  it("fragment つきは拒否する", async () => {
+    registered(["https://chatgpt.com/connector/oauth/callback"]);
+    await expect(
+      validateServiceFinalRedirect(
+        mockDb,
+        "svc-1",
+        "https://chatgpt.com/connector/oauth/callback#frag",
+      ),
+    ).resolves.toBe(false);
   });
 });

@@ -42,6 +42,7 @@ export * from "./lib/env-flags";
 export * from "./lib/internal-secret-deprecation";
 export * from "./db/users";
 export * from "./db/services";
+export * from "./db/resource-servers";
 export * from "./db/service-redirect-uris";
 export * from "./db/refresh-tokens";
 export * from "./db/auth-codes";
