@@ -77,8 +77,13 @@ try {
     const context = await browser.newContext({ viewport });
     const page = await context.newPage();
     await page.addInitScript(() => {
+      window.__uiReferencePageShown = false;
+      window.addEventListener("pagehide", () => {
+        window.__uiReferencePageShown = false;
+      });
       window.addEventListener("pageshow", (event) => {
         window.__uiReferencePersisted = event.persisted;
+        window.__uiReferencePageShown = true;
       });
     });
     const errors = [],
@@ -230,19 +235,41 @@ try {
       assert.equal(await page.locator("#hamburger").getAttribute("aria-expanded"), "false");
       await page.locator("#hamburger").click();
       await page.setViewportSize({ width: 1280, height: 900 });
+      await page.waitForFunction(
+        () =>
+          !window.matchMedia("(max-width: 767px)").matches &&
+          !document.querySelector("#admin-workspace").inert &&
+          !document.querySelector("#sidebar").inert &&
+          document.querySelector("#hamburger").getAttribute("aria-expanded") === "false" &&
+          !document.body.classList.contains("menu-open"),
+        null,
+        { timeout: 5000 },
+      );
       assert.equal(await page.locator("#admin-workspace").evaluate((el) => el.inert), false);
       assert.equal(await page.locator("#sidebar").evaluate((el) => el.inert), false);
       await page.setViewportSize(viewport);
+      await page.waitForFunction(
+        () =>
+          window.matchMedia("(max-width: 767px)").matches &&
+          !document.querySelector("#admin-workspace").inert &&
+          document.querySelector("#sidebar").inert &&
+          document.querySelector("#hamburger").getAttribute("aria-expanded") === "false" &&
+          !document.body.classList.contains("menu-open"),
+        null,
+        { timeout: 5000 },
+      );
       assert.equal(await page.locator("#sidebar").evaluate((el) => el.inert), true);
       await page.locator("#hamburger").click();
       await page.locator('#sidebar a[href="/services"]').click();
       await page.waitForURL("**/services");
       await page.goBack();
       await page.waitForURL("**/dashboard");
+      await page.waitForFunction(() => window.__uiReferencePageShown === true);
       assert.equal(await page.locator("#hamburger").getAttribute("aria-expanded"), "false");
       assert.equal(await page.locator("#admin-workspace").evaluate((el) => el.inert), false);
       await page.goForward();
       await page.waitForURL("**/services");
+      await page.waitForFunction(() => window.__uiReferencePageShown === true);
       assert.equal(await page.locator("#hamburger").getAttribute("aria-expanded"), "false");
       report.cases.push(
         "mobile menu focus loop, Escape, close, overlay, repeat open, breakpoint and history navigation",
@@ -254,6 +281,7 @@ try {
       await page.goto(`${origin}/services`);
       await page.goBack();
       await page.waitForURL("**/dashboard");
+      await page.waitForFunction(() => window.__uiReferencePageShown === true);
       const persisted = await page.evaluate(() => window.__uiReferencePersisted === true);
       report.bfcacheRestorations.push({ viewport, persisted });
       assert.equal(await page.locator("#hamburger").getAttribute("aria-expanded"), "false");
