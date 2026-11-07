@@ -1,28 +1,20 @@
 ---
 import Base from '../layouts/Base.astro';
+import AccountFrame from '../components/AccountFrame.astro';
 ---
 <Base title="0g0 ID - 連携サービス">
-  <div class="min-h-screen flex items-center justify-center p-4">
-    <div class="w-full" style="max-width: 480px">
-      <div class="card">
-        <div class="flex items-center justify-between mb-4">
-          <h1 class="text-2xl font-bold">連携サービス</h1>
-          <a href="/profile" class="btn btn-ghost btn-sm">← プロフィール</a>
-        </div>
-        <p class="text-sm mb-6" style="color: var(--color-muted)">
-          アクセスを許可しているサービスの一覧です。不要なサービスは連携を解除できます。
-        </p>
-
-        <div id="loading" class="flex items-center justify-center gap-2 py-8" style="color: var(--color-muted)">
-          <span class="spinner"></span>
-          <span>読み込み中...</span>
-        </div>
-        <div id="error" class="alert alert-error" style="display:none"></div>
-        <div id="empty" class="text-center py-8" style="color: var(--color-muted); display:none">連携中のサービスはありません</div>
-        <div id="list" style="display:none"></div>
+  <AccountFrame page="connections">
+    <div class="user-section-title"><h2>連携サービス</h2></div>
+    <p class="section-description section-intro">アクセスを許可しているサービスの一覧です。不要なサービスは連携を解除できます。</p>
+    <div class="settings-card stack-card">
+      <div id="loading" class="loading-row" style="color: var(--color-muted)">
+        <span class="spinner"></span><span>読み込み中...</span>
       </div>
+      <div id="error" class="alert alert-error" style="display:none"></div>
+      <div id="empty" class="empty-state" style="color: var(--color-muted); display:none">連携中のサービスはありません</div>
+      <div id="list" class="account-list" style="display:none"></div>
     </div>
-  </div>
+  </AccountFrame>
 </Base>
 
 <script>

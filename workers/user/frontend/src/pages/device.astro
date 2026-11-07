@@ -2,14 +2,15 @@
 import Base from '../layouts/Base.astro';
 ---
 <Base title="0g0 ID - デバイス認証">
-  <div class="min-h-screen flex items-center justify-center p-4">
+  <div class="device-shell min-h-screen flex items-center justify-center p-4">
     <div class="w-full max-w-sm">
-      <div class="card">
+      <div class="card device-card">
+        <a href="/" class="device-brand" aria-label="0g0 ID トップ">0g0 ID</a>
 
         <!-- Step: code -->
         <div id="step-code">
           <h1 class="text-2xl font-bold mb-1">デバイス認証</h1>
-          <p class="text-sm mb-6" style="color: var(--color-muted)">デバイスに表示されているコードを入力してください</p>
+          <p class="text-sm mb-6" style="color: var(--color-muted)">デバイスに表示されたコードを入力してください</p>
           <div id="code-error" class="alert alert-error mb-4" role="alert" style="display:none"></div>
           <form id="code-form" class="flex flex-col gap-4">
             <div class="flex items-center gap-2">

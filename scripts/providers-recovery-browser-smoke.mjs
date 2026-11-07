@@ -526,9 +526,7 @@ async function main() {
             await failed(page, "一時的なエラーです");
             await page.locator("#providers-retry-btn").press("Enter");
             await pending(page);
-            await page
-              .getByText("複数のSNSアカウントを同一IDに連携できます", { exact: true })
-              .click();
+            await page.locator(".user-header-label").click();
             const focus = await page.evaluate(() => ({
               id: document.activeElement.id,
               tagName: document.activeElement.tagName,

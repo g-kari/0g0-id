@@ -1,51 +1,29 @@
 ---
 import Base from '../layouts/Base.astro';
+import AccountFrame from '../components/AccountFrame.astro';
+import Icon from '../components/Icon.astro';
 ---
 <Base title="0g0 ID - ログイン中のデバイス">
-  <div class="min-h-screen flex items-center justify-center p-4">
-    <div class="w-full" style="max-width: 560px">
-      <div class="card">
-        <div class="flex items-center justify-between mb-4">
-          <h1 class="text-2xl font-bold">ログイン中のデバイス</h1>
-          <a href="/profile" class="btn btn-ghost btn-sm">← プロフィール</a>
-        </div>
-        <p class="text-sm mb-6" style="color: var(--color-muted)">
-          現在アクティブなセッションの一覧です。身に覚えのないセッションは無効化してください。
-        </p>
-
-        <h2 class="text-lg font-semibold mb-2">このブラウザのセッション</h2>
-        <p class="text-xs mb-3" style="color: var(--color-muted)">
-          ログイン済みブラウザごとの Cookie セッション。TPM バインド済み（DBSC）のセッションはハードウェア鍵でセッションハイジャック耐性があります。
-        </p>
-        <div id="bff-loading" class="flex items-center justify-center gap-2 py-4" style="color: var(--color-muted)">
-          <span class="spinner"></span>
-          <span>読み込み中...</span>
-        </div>
-        <div id="bff-error" class="alert alert-error" style="display:none"></div>
-        <div id="bff-empty" class="text-center py-4" style="color: var(--color-muted); display:none">アクティブなブラウザセッションはありません</div>
-        <div id="bff-list" style="display:none"></div>
-
-        <hr class="my-5" style="border-color: var(--color-border)" />
-
-        <h2 class="text-lg font-semibold mb-2">連携アプリケーション</h2>
-        <p class="text-xs mb-3" style="color: var(--color-muted)">
-          0g0 ID を経由してログインしているサービスおよび IdP セッションの一覧です。
-        </p>
-
-        <div id="loading" class="flex items-center justify-center gap-2 py-4" style="color: var(--color-muted)">
-          <span class="spinner"></span>
-          <span>読み込み中...</span>
-        </div>
-        <div id="error" class="alert alert-error" style="display:none"></div>
-        <div id="empty" class="text-center py-4" style="color: var(--color-muted); display:none">アクティブなセッションはありません</div>
-        <div id="list" style="display:none"></div>
-        <div id="actions" style="display:none">
-          <hr class="my-5" style="border-color: var(--color-border)" />
-          <button id="revoke-all-btn" class="btn btn-danger btn-full">すべてのセッションを無効化</button>
-        </div>
-      </div>
+  <AccountFrame page="sessions">
+    <div class="user-section-title"><h2>ログイン中のデバイス</h2></div>
+    <p class="section-description section-intro">現在アクティブなセッションの一覧です。身に覚えのないセッションは無効化してください。</p>
+    <div class="settings-card session-settings">
+      <div class="form-card-title"><span class="form-card-icon"><Icon name="monitor" /></span><h3>このブラウザのセッション</h3></div>
+      <p class="section-description">ログイン済みブラウザごとの Cookie セッション。TPM バインド済み（DBSC）のセッションはハードウェア鍵でセッションハイジャック耐性があります。</p>
+      <div id="bff-loading" class="loading-row" style="color: var(--color-muted)"><span class="spinner"></span><span>読み込み中...</span></div>
+      <div id="bff-error" class="alert alert-error" style="display:none"></div>
+      <div id="bff-empty" class="empty-state" style="color: var(--color-muted); display:none">アクティブなブラウザセッションはありません</div>
+      <div id="bff-list" class="account-list" style="display:none"></div>
+      <div class="form-divider"></div>
+      <div class="form-card-title"><span class="form-card-icon"><Icon name="link" /></span><h3>連携アプリケーション</h3></div>
+      <p class="section-description">0g0 ID を経由してログインしているサービスおよび IdP セッションの一覧です。</p>
+      <div id="loading" class="loading-row" style="color: var(--color-muted)"><span class="spinner"></span><span>読み込み中...</span></div>
+      <div id="error" class="alert alert-error" style="display:none"></div>
+      <div id="empty" class="empty-state" style="color: var(--color-muted); display:none">アクティブなセッションはありません</div>
+      <div id="list" class="account-list" style="display:none"></div>
+      <div id="actions" class="list-footer" style="display:none"><button id="revoke-all-btn" class="btn btn-danger-quiet">すべてのセッションを無効化</button></div>
     </div>
-  </div>
+  </AccountFrame>
 </Base>
 
 <script>
