@@ -34,7 +34,57 @@ jobs:
           npm --version
 
       - name: 依存パッケージインストール（ルートワークスペース）
+        id: root-install
         run: npm ci
+
+      # Temporary lock generation only; the failed frozen install remains failed.
+      - name: Generate reviewed dependency migration lockfiles
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.number == 335 && failure() && steps.root-install.outcome == 'failure' }}
+        id: migration-lockfiles
+        timeout-minutes: 5
+        run: |
+          export VP_NODE_VERSION="$(node -p 'process.versions.node')"
+          . "$HOME/.config/vite-plus/env"
+          vp --version
+          vp exec node -e 'const assert = require("node:assert/strict"); const [major, minor, patch] = process.versions.node.split(".").map(Number); console.log("Effective Node:", process.versions.node); assert(major > 22 || (major === 22 && (minor > 23 || (minor === 23 && patch >= 4))), "Node >=22.23.4 required");'
+          effective_versions="$(vp pm version --json)"
+          effective_npm="$(printf '%s' "$effective_versions" | vp exec node -p 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).npm')"
+          printf 'Effective npm: %s\n' "$effective_npm"
+          test "$effective_npm" = "11.21.2"
+          vp install --lockfile-only --no-frozen-lockfile --ignore-scripts -- --no-audit --no-fund
+          vp update miniflare undici postcss nanoid tinypool semver tslib -- --package-lock-only --ignore-scripts --no-audit --no-fund
+          vp exec node -e 'const assert = require("node:assert/strict"); const { packages } = require("./package-lock.json"); assert.equal(packages["node_modules/miniflare"].version, "5.20261101.0-beta"); const entries = Object.entries(packages).filter(([path]) => /(^|\/)node_modules\/undici$/.test(path)); console.log("External Undici lock records:", entries.map(([path, pkg]) => [path, pkg.version])); assert(entries.length > 0); for (const [, pkg] of entries) assert.equal(pkg.version, "7.30.2");'
+          for frontend in workers/admin/frontend workers/user/frontend; do
+            (
+              cd "$frontend"
+              vp install --lockfile-only --no-frozen-lockfile --ignore-scripts -- --no-audit --no-fund
+              vp update undici zod astro magic-string -- --package-lock-only --ignore-scripts --no-audit --no-fund
+              vp exec node -e 'const assert = require("node:assert/strict"); const path = require("node:path/posix"); const { packages } = require("./package-lock.json"); const astroPath = "node_modules/astro"; assert.equal(packages[astroPath].version, "7.4.3"); let resolved; for (let directory = astroPath; ; directory = path.dirname(directory)) { if (path.basename(directory) !== "node_modules") { const candidate = path.join(directory, "node_modules", "magic-string"); if (packages[candidate]) { resolved = candidate; break; } } if (directory === ".") break; } assert(resolved, "Astro magic-string must resolve in generated lock"); console.log("Astro magic-string lock resolution:", resolved, packages[resolved].version); assert.equal(packages[resolved].version, "1.4.3");'
+            )
+          done
+          git diff --exit-code -- package.json packages/shared/package.json workers/*/package.json workers/*/frontend/package.json
+
+      - name: Inspect failed lock override resolution (read-only)
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.number == 335 && failure() && steps.migration-lockfiles.outcome == 'failure' }}
+        timeout-minutes: 1
+        run: |
+          export VP_NODE_VERSION="$(node -p 'process.versions.node')"
+          . "$HOME/.config/vite-plus/env"
+          npm_selection="$(vp env which npm)"
+          npm_binary="$(printf '%s\n' "$npm_selection" | head -n 1)"
+          vp exec node scripts/ci-lock-override-diagnostic.mjs "$npm_binary"
+
+      - name: Upload three migration lockfiles for review
+        if: ${{ failure() && steps.migration-lockfiles.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: reviewed-dependency-migration-lockfiles
+          path: |
+            package-lock.json
+            workers/admin/frontend/package-lock.json
+            workers/user/frontend/package-lock.json
+          retention-days: 7
+          if-no-files-found: error
 
       - name: 依存パッケージインストール（user frontend）
         # workers/*/frontend は npm workspaces 対象外のため個別に install が必要
@@ -45,6 +95,13 @@ jobs:
       - name: 依存パッケージインストール（admin frontend）
         run: npm ci
         working-directory: workers/admin/frontend
+
+      - name: Frontend Markdown security and compatibility regression
+        timeout-minutes: 3
+        run: |
+          for frontend in admin user; do
+            ./node_modules/.bin/vp exec node scripts/check-frontend-markdown.mjs "$frontend"
+          done
 
       - name: TypeScript CLI versions and workspace checks (Node22 / TS6+TS7 isolation)
         run: node scripts/check-typescript-cli.mjs
@@ -57,6 +114,12 @@ jobs:
 
       - name: テスト実行
         run: ./node_modules/.bin/vp test run
+
+      - name: Workspace test scripts
+        run: |
+          for workspace in packages/shared workers/admin workers/id workers/mcp workers/user; do
+            (cd "$workspace" && "$GITHUB_WORKSPACE/node_modules/.bin/vp" run test)
+          done
 
       - name: フロントエンドビルド検証（user）
         run: npm run build
@@ -151,8 +214,8 @@ jobs:
       - name: Cloudflare 実アプリ統合スモーク（ローカル・使い捨て状態）
         timeout-minutes: 8
         run: |
-          ./node_modules/.bin/vp exec tsx scripts/ci-app-smoke.ts --self-test
-          ./node_modules/.bin/vp exec tsx scripts/ci-app-smoke.ts
+          ./node_modules/.bin/vp exec node --import tsx scripts/ci-app-smoke.ts --self-test
+          ./node_modules/.bin/vp exec node --import tsx scripts/ci-app-smoke.ts
 
       - name: ログイン統計 UI の検証記録
         if: always()

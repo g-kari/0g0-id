@@ -16,7 +16,17 @@ const rootTs = rootRequire("typescript");
 assert.equal(rootTs.version, "6.0.3");
 assert.equal(typeof rootTs.createProgram, "function");
 const vpRequire = createRequire(rootRequire.resolve("vite-plus/package.json"));
-const coreRequire = createRequire(vpRequire.resolve("@voidzero-dev/vite-plus-core/package.json"));
+const corePackagePath = vpRequire.resolve("vite/package.json");
+const corePackage = read(corePackagePath);
+assert.equal(corePackage.name, "@voidzero-dev/vite-plus-core");
+assert.equal(corePackage.version, read(rootRequire.resolve("vite-plus/package.json")).version);
+const coreRequire = createRequire(corePackagePath);
+const vitestPackagePath = vpRequire.resolve("vitest/package.json");
+assert.equal(read(vitestPackagePath).version, read(join(root, "package.json")).overrides.vitest);
+console.log(`Vite+ core: ${realpathSync(corePackagePath)} (${corePackage.version})`);
+console.log(`Vite+ Vitest: ${realpathSync(vitestPackagePath)}`);
+const peerVitePath = rootRequire.resolve("vite/package.json");
+console.log(`Root Vite peer: ${realpathSync(peerVitePath)} (${read(peerVitePath).version})`);
 const coreTs = coreRequire("typescript");
 assert.equal(coreTs.version, "6.0.3");
 assert.equal(typeof coreTs.createProgram, "function");
@@ -45,6 +55,15 @@ const workspaces = [
 for (const workspace of workspaces) {
   const cwd = join(root, workspace);
   const localRequire = createRequire(join(cwd, "package.json"));
+  const localVpRequire = createRequire(localRequire.resolve("vite-plus/package.json"));
+  assert.equal(
+    realpathSync(localVpRequire.resolve("vite/package.json")),
+    realpathSync(corePackagePath),
+  );
+  assert.equal(
+    realpathSync(localVpRequire.resolve("vitest/package.json")),
+    realpathSync(vitestPackagePath),
+  );
   const packagePath = localRequire.resolve("typescript/package.json");
   assert.equal(
     realpathSync(packagePath),

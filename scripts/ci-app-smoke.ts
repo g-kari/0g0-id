@@ -28,8 +28,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { runInNewContext } from "node:vm";
 import type { Plugin, ViteDevServer } from "vite-plus";
 import type { TestHarness, WorkerHandle } from "wrangler";
+import { assertCloudflareStartup, checkCloudflareToolchain } from "./check-cloudflare-toolchain";
 import type { IdpEnv } from "../packages/shared/src/types";
 import { generatePairwiseSub } from "../packages/shared/src/lib/crypto";
+
+assertCloudflareStartup();
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const workers = ["id", "user", "admin", "mcp"] as const;
@@ -803,7 +806,9 @@ async function main(): Promise<void> {
     process.env.HOME = path.join(state, "home");
     process.env.XDG_CONFIG_HOME = path.join(state, "config");
     process.env.TMPDIR = path.join(state, "tmp");
-    process.env.MINIFLARE_REGISTRY_PATH = path.join(state, "registry.json");
+    // Both current Miniflare and legacy Wrangler callers stay in disposable state.
+    process.env.CLOUDFLARE_DEV_REGISTRY_PATH = path.join(state, "dev-registry");
+    process.env.MINIFLARE_REGISTRY_PATH = process.env.CLOUDFLARE_DEV_REGISTRY_PATH;
     process.env.CLOUDFLARE_CF_FETCH_ENABLED = "false";
     process.env.CLOUDFLARE_VITE_FORCE_LOCAL = "true";
     process.env.WRANGLER_SEND_METRICS = "false";
@@ -818,6 +823,7 @@ async function main(): Promise<void> {
     await mkdir(process.env.TMPDIR, { recursive: true });
     await prepareOfflineWranglerUpdateCache(state);
     installNetworkGuard(state);
+    checkCloudflareToolchain(root);
     const { generateKeyPair, exportPKCS8, exportSPKI } = await import("jose");
     const keys = await generateKeyPair("ES256", { extractable: true });
     const privateKey = await exportPKCS8(keys.privateKey);
@@ -955,6 +961,15 @@ async function main(): Promise<void> {
         "dist",
         names[worker].replaceAll("-", "_"),
         "wrangler.json",
+      );
+      const generatedConfig = JSON.parse(await readFile(generated, "utf8")) as Record<
+        string,
+        unknown
+      >;
+      assert.equal(
+        generatedConfig.upload_source_maps,
+        false,
+        `${worker}: source-map upload must remain disabled`,
       );
       // Preserve the generated runtime config. Only id's dedicated asset fixture
       // needs an explicit test config; this does not validate production rollout.
