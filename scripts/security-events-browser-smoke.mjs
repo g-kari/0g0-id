@@ -283,12 +283,18 @@ async function main() {
         }
       });
       await context.addInitScript(
-        ({ ignoreFirstAbort, stallFirstBody }) => {
+        ({ ignoreFirstAbort, stallFirstBody, dashboardFixture, dashboardPaths }) => {
           window.__syntheticXss = 0;
           window.__syntheticAborts = [];
           window.__syntheticBodyStalled = false;
           window.__syntheticFirstReadDelivered = false;
           window.__syntheticBodyConsumed = false;
+          window.__dashboardReads = [];
+          window.__dashboardDelivered = [];
+          window.__dashboardBodyStalled = [];
+          window.__dashboardBodyConsumed = [];
+          window.__dashboardReleaseBody = {};
+          const dashboardCounts = {};
           const nativeFetch = window.fetch.bind(window);
           let firstEventsRead = true;
           window.fetch = (input, init) => {
@@ -301,6 +307,56 @@ async function main() {
                 once: true,
               },
             );
+            const dashboardPath = new URL(requestUrl, window.location.href).pathname;
+            if (dashboardFixture && dashboardPaths.includes(dashboardPath)) {
+              const count = (dashboardCounts[dashboardPath] || 0) + 1;
+              dashboardCounts[dashboardPath] = count;
+              window.__dashboardReads.push({
+                path: dashboardPath,
+                count,
+                hasSignal: init?.signal instanceof AbortSignal,
+                credentials: init?.credentials,
+                contentType: new Headers(init?.headers).get("Content-Type"),
+              });
+              const held = count === 1 && dashboardFixture.paths.includes(dashboardPath);
+              function observeBody(value) {
+                const readJson = value.json.bind(value);
+                const clone = value.clone.bind(value);
+                value.json = async () => {
+                  try {
+                    return await readJson();
+                  } finally {
+                    window.__dashboardBodyConsumed.push({ path: dashboardPath, count });
+                  }
+                };
+                value.clone = () => observeBody(clone());
+                return value;
+              }
+              const response = nativeFetch(
+                input,
+                held && dashboardFixture.ignoreAbort ? { ...init, signal: undefined } : init,
+              ).then((received) => {
+                window.__dashboardDelivered.push({ path: dashboardPath, count });
+                return received;
+              });
+              if (!held || dashboardFixture.phase === "headers") return response.then(observeBody);
+              return response.then(async (received) => {
+                const text = await received.text();
+                const body = new ReadableStream({
+                  start(controller) {
+                    window.__dashboardReleaseBody[dashboardPath] = () => {
+                      controller.enqueue(new TextEncoder().encode(text));
+                      controller.close();
+                    };
+                  },
+                });
+                window.__dashboardBodyStalled.push(dashboardPath);
+                return observeBody(new Response(body, {
+                  status: received.status,
+                  headers: received.headers,
+                }));
+              });
+            }
             const first =
               firstEventsRead && requestUrl.startsWith("/api/security-trends/recent-events?");
             if (first) firstEventsRead = false;
@@ -339,7 +395,12 @@ async function main() {
             return response;
           };
         },
-        { ignoreFirstAbort: options.ignoreFirstAbort, stallFirstBody: options.stallFirstBody },
+        {
+          ignoreFirstAbort: options.ignoreFirstAbort,
+          stallFirstBody: options.stallFirstBody,
+          dashboardFixture: options.dashboardFixture,
+          dashboardPaths: dashboardPanels.map((panel) => panel.path),
+        },
       );
       await context.route("**/*", async (route) => {
         const request = route.request();
@@ -1371,10 +1432,328 @@ async function main() {
         },
       );
     }
+
+    const dashboardContent = (key) => key === "trends" ? "#trends-chart" : `#${key}-wrap`;
+    const dashboardCount = (calls, apiPath) =>
+      calls.filter((call) => call.path === apiPath).length;
+    async function dashboardLoaded(page, key) {
+      await expect(page.locator(dashboardContent(key))).toBeVisible();
+      await expect(page.locator(`#${key}-loading`)).toBeHidden();
+      await expect(page.locator(`#${key}-failure`)).toBeHidden();
+      await expect(page.locator(`section[aria-labelledby="${key}-heading"]`))
+        .toHaveAttribute("aria-busy", "false");
+    }
+    async function dashboardNextTask(page) {
+      await page.evaluate(() => new Promise((resolve) => {
+        const channel = new MessageChannel();
+        channel.port1.onmessage = () => {
+          channel.port1.close();
+          channel.port2.close();
+          resolve();
+        };
+        channel.port2.postMessage(null);
+      }));
+    }
+    async function dashboardSnapshot(page) {
+      return page.evaluate(() => ({
+        url: window.location.href,
+        focus: document.activeElement?.id,
+        panels: ["trends", "suspicious", "ip", "ua"].map((key) => {
+          const content = document.getElementById(key === "trends" ? "trends-chart" : `${key}-wrap`);
+          return {
+            key,
+            html: content.innerHTML,
+            display: content.style.display,
+            empty: document.getElementById(`${key}-empty`).style.display,
+            error: document.getElementById(`${key}-error`).textContent,
+            failure: document.getElementById(`${key}-failure`).style.display,
+            busy: document.getElementById(`${key}-heading`).closest("section").getAttribute("aria-busy"),
+            disabled: document.getElementById(`${key}-retry`).disabled,
+          };
+        }),
+      }));
+    }
+
+    for (const panel of dashboardPanels)
+      for (const phase of ["headers", "success-body", "error-body"]) {
+        const oldGate = deferred();
+        const retryGate = deferred();
+        const viewport = panel.key === "trends" && phase === "success-body" ? viewports[2] : viewports[1];
+        await scenario(
+          `Dashboard ${panel.key}: ${phase} deadline, independent repeated retry and ignored late result`,
+          viewport,
+          defaultResponse,
+          async (page, calls, origin) => {
+            try {
+              await page.clock.install({ time: fixtureNow });
+              await page.clock.pauseAt(fixtureNow + 60_000);
+              await page.goto(`${origin}/security/dashboard`, { waitUntil: "domcontentloaded" });
+              await expect.poll(() => calls.length).toBe(4);
+              for (const sibling of dashboardPanels.filter((entry) => entry.key !== panel.key))
+                await dashboardLoaded(page, sibling.key);
+              if (phase !== "headers")
+                await expect.poll(() => page.evaluate(
+                  (apiPath) => window.__dashboardBodyStalled.includes(apiPath), panel.path,
+                )).toBe(true);
+              await page.clock.runFor(29_999);
+              await expect(page.locator(`#${panel.key}-loading`)).toBeVisible();
+              await expect(page.locator(`#${panel.key}-retry`)).toBeDisabled();
+              await page.clock.runFor(1);
+              await expect(page.locator(`#${panel.key}-loading`)).toBeHidden();
+              await expect(page.locator(`#${panel.key}-error`))
+                .toHaveText("読み込みが30秒以内に完了しませんでした。再試行してください");
+              await expect(page.locator(`#${panel.key}-retry`)).toBeEnabled();
+              await expect(page.locator(`section[aria-labelledby="${panel.key}-heading"]`))
+                .toHaveAttribute("aria-busy", "false");
+              await expect(page.locator("#error")).toContainText(panel.label);
+              assert.equal(calls.length, 4, "A deadline must not retry automatically.");
+              assert.equal(await page.evaluate(() => window.__syntheticAborts.length), 1);
+              if (panel.key === "trends" && phase !== "error-body")
+                await page.screenshot({
+                  path: path.join(reportDir, `dashboard-deadline-${phase}-${viewport.width}.png`),
+                  fullPage: true,
+                });
+              const retry = page.locator(`#${panel.key}-retry`);
+              await retry.press("Enter");
+              await expect.poll(() => dashboardCount(calls, panel.path)).toBe(2);
+              await expect(retry).toBeDisabled();
+              await page.evaluate((key) => {
+                const button = document.getElementById(`${key}-retry`);
+                button.dispatchEvent(new MouseEvent("click"));
+                button.dispatchEvent(new MouseEvent("click"));
+              }, panel.key);
+              await page.clock.runFor(29_999);
+              await expect(retry).toBeDisabled();
+              assert.equal(calls.length, 5, "Repeated activation must not duplicate any panel read.");
+              retryGate.resolve();
+              await dashboardLoaded(page, panel.key);
+              await expect(page.locator(`#${panel.key}-heading`)).toBeFocused();
+              await expect(page.locator("#error")).toBeHidden();
+              const before = await dashboardSnapshot(page);
+              if (phase === "headers") {
+                oldGate.resolve();
+                await expect.poll(() => page.evaluate(
+                  (apiPath) => window.__dashboardDelivered.some(
+                    (read) => read.path === apiPath && read.count === 1,
+                  ), panel.path,
+                )).toBe(true);
+              } else {
+                await page.evaluate(
+                  (apiPath) => window.__dashboardReleaseBody[apiPath](), panel.path,
+                );
+
+              }
+              const oldError = phase === "error-body"
+                || (phase === "headers" && ["ip", "ua"].includes(panel.key));
+              await expect.poll(() => page.evaluate(
+                (apiPath) => window.__dashboardBodyConsumed.filter(
+                  (read) => read.path === apiPath && read.count === 1,
+                ).length, panel.path,
+              )).toBe(oldError ? 2 : 1);
+              await dashboardNextTask(page);
+              // Body/peek completion plus a later browser task prevents an early stale-result pass.
+              await page.clock.runFor(60_000);
+              assert.deepEqual(await dashboardSnapshot(page), before,
+                "Late success/error must not change DOM, focus or retry state.");
+              for (const sibling of dashboardPanels)
+                assert.equal(dashboardCount(calls, sibling.path), sibling.key === panel.key ? 2 : 1);
+              const requests = await page.evaluate(() => window.__dashboardReads);
+              assert(requests.every((read) => read.hasSignal
+                && read.credentials === "same-origin" && read.contentType === "application/json"));
+              if (panel.key === "trends" && phase === "success-body")
+                await page.screenshot({
+                  path: path.join(reportDir, `dashboard-deadline-recovered-${viewport.width}.png`), fullPage: true,
+                });
+            } finally {
+              oldGate.resolve();
+              retryGate.resolve();
+            }
+          },
+          {
+            dashboardFixture: { paths: [panel.path], phase, ignoreAbort: true },
+            dashboardResponse: async (route, current, count) => {
+              if (current.key !== panel.key || count > 2)
+                return route.fulfill({ json: { data: dashboardData[current.key] } });
+              if (count === 2) {
+                await retryGate.promise;
+                return route.fulfill({ json: { data: dashboardData[current.key] } });
+              }
+              if (phase === "headers") await oldGate.promise;
+              if (phase === "error-body" || (phase === "headers" && ["ip", "ua"].includes(panel.key)))
+                return route.fulfill({
+                  status: 503, json: { error: { message: "Synthetic obsolete failure" } },
+                });
+              return route.fulfill({ json: { data: [] } });
+            },
+          },
+        );
+      }
+
+    const dashboardLeaveGate = deferred();
+    await scenario(
+      "Dashboard pagehide cancels all reads; restored page waits for manual retry",
+      viewports[1],
+      defaultResponse,
+      async (page, calls, origin) => {
+        try {
+          await page.clock.install({ time: fixtureNow });
+          await page.clock.pauseAt(fixtureNow + 60_000);
+          await page.goto(`${origin}/security/dashboard`, { waitUntil: "domcontentloaded" });
+          await expect.poll(() => calls.length).toBe(4);
+          await page.evaluate(() =>
+            window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true })),
+          );
+          for (const { key } of dashboardPanels) {
+            await expect(page.locator(`#${key}-loading`)).toBeHidden();
+            await expect(page.locator(`#${key}-retry`)).toBeEnabled();
+            await expect(page.locator(`#${key}-error`))
+              .toHaveText("読み込みを中断しました。再試行してください");
+          }
+          assert.equal(await page.evaluate(() => window.__syntheticAborts.length), 4);
+          const cancelled = await dashboardSnapshot(page);
+          await page.evaluate(() =>
+            window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })),
+          );
+          await page.clock.runFor(60_000);
+          assert.equal(calls.length, 4, "Restoration must not trigger automatic reads.");
+          assert.deepEqual(await dashboardSnapshot(page), cancelled);
+          for (const { key } of dashboardPanels) {
+            await page.locator(`#${key}-retry`).press("Enter");
+            await dashboardLoaded(page, key);
+          }
+          const recovered = await dashboardSnapshot(page);
+          dashboardLeaveGate.resolve();
+          await expect.poll(() => page.evaluate(() => window.__dashboardDelivered.length)).toBe(8);
+          await expect.poll(() => page.evaluate(() => window.__dashboardBodyConsumed.filter(
+            (read) => read.count === 1,
+          ).length)).toBe(4);
+          await dashboardNextTask(page);
+          await page.clock.runFor(100);
+          assert.deepEqual(await dashboardSnapshot(page), recovered);
+          for (const panel of dashboardPanels) assert.equal(dashboardCount(calls, panel.path), 2);
+        } finally {
+          dashboardLeaveGate.resolve();
+        }
+      },
+      {
+        dashboardFixture: {
+          paths: dashboardPanels.map((panel) => panel.path), phase: "headers", ignoreAbort: true,
+        },
+        dashboardResponse: async (route, panel, count) => {
+          if (count === 1) {
+            await dashboardLeaveGate.promise;
+            return panel.key === "ip"
+              ? route.fulfill({ status: 500, json: { error: { message: "Old failure" } } })
+              : route.fulfill({ json: { data: [] } });
+          }
+          return route.fulfill({ json: { data: dashboardData[panel.key] } });
+        },
+      },
+    );
+
+    for (const late of [false, true]) {
+      const authGate = deferred();
+      await scenario(
+        late ? "Dashboard late401 retains shared authentication navigation after timeout"
+          : "Dashboard current401 retains shared authentication navigation",
+        viewports[1],
+        defaultResponse,
+        async (page, calls, origin) => {
+          try {
+            if (late) {
+              await page.clock.install({ time: fixtureNow });
+              await page.clock.pauseAt(fixtureNow + 60_000);
+            }
+            await page.goto(`${origin}/security/dashboard`, { waitUntil: "domcontentloaded" });
+            if (late) {
+              await expect.poll(() => dashboardCount(calls, dashboardPanels[0].path)).toBe(1);
+              await page.clock.runFor(30_000);
+              await expect(page.locator("#trends-retry")).toBeEnabled();
+              await expect(page.locator("#trends-error")).toContainText("30秒");
+              await page.locator("#trends-retry").press("Enter");
+              await dashboardLoaded(page, "trends");
+              authGate.resolve();
+            }
+            await expect(page).toHaveURL(`${origin}/`);
+            await expect(page.getByRole("link", { name: "Googleでサインイン" })).toBeVisible();
+            assert.equal(dashboardCount(calls, dashboardPanels[0].path), late ? 2 : 1);
+          } finally {
+            authGate.resolve();
+          }
+        },
+        {
+          dashboardFixture: { paths: [dashboardPanels[0].path], phase: "headers", ignoreAbort: late },
+          dashboardResponse: async (route, panel, count) => {
+            if (panel.key === "trends" && count === 1) {
+              if (late) await authGate.promise;
+              return route.fulfill({ status: 401, json: { error: { code: "UNAUTHORIZED" } } });
+            }
+            return route.fulfill({ json: { data: dashboardData[panel.key] } });
+          },
+        },
+      );
+    }
+
+    for (const recovery of ["TOKEN_ROTATED", "DBSC_BINDING_REQUIRED"]) {
+      await scenario(
+        `Dashboard retains shared ${recovery} recovery within the same deadline`,
+        viewports[1],
+        defaultResponse,
+        async (page, calls, origin) => {
+          await page.clock.install({ time: fixtureNow });
+          await page.clock.pauseAt(fixtureNow + 60_000);
+          await page.goto(`${origin}/security/dashboard`, { waitUntil: "domcontentloaded" });
+          const apiPath = dashboardPanels[0].path;
+          await expect.poll(() => page.evaluate(
+            (api) => window.__dashboardDelivered.some((read) => read.path === api), apiPath,
+          )).toBe(true);
+          // Wait for each peek to finish before advancing the helper's existing timers.
+          await expect.poll(() => page.evaluate(
+            (api) => window.__dashboardBodyConsumed.filter(
+              (read) => read.path === api && read.count === 1,
+            ).length, apiPath,
+          )).toBe(1);
+          await dashboardNextTask(page);
+          await page.clock.runFor(recovery === "TOKEN_ROTATED" ? 400 : 500);
+          await expect.poll(() => dashboardCount(calls, apiPath)).toBe(2);
+          if (recovery === "DBSC_BINDING_REQUIRED") {
+            await expect.poll(() => page.evaluate(
+              (api) => window.__dashboardBodyConsumed.filter(
+                (read) => read.path === api && read.count === 2,
+              ).length, apiPath,
+            )).toBe(1);
+            await dashboardNextTask(page);
+            await page.clock.runFor(1500);
+            await expect.poll(() => dashboardCount(calls, apiPath)).toBe(3);
+          }
+          await dashboardLoaded(page, "trends");
+          assert.equal(dashboardCount(calls, apiPath), recovery === "TOKEN_ROTATED" ? 2 : 3);
+          await page.clock.runFor(60_000);
+          await expect(page.locator("#trends-failure")).toBeHidden();
+          assert.equal(await page.evaluate(() => window.__syntheticAborts.length), 0,
+            "Completed reads must clear their deadline timers.");
+          assert.equal(new URL(page.url()).pathname, "/security/dashboard");
+        },
+        {
+          dashboardFixture: { paths: [], phase: "headers" },
+          dashboardResponse: async (route, panel, count) => {
+            if (panel.key === "trends" && count <= (recovery === "TOKEN_ROTATED" ? 1 : 2))
+              return route.fulfill({
+                status: recovery === "TOKEN_ROTATED" ? 503 : 403,
+                headers: recovery === "DBSC_BINDING_REQUIRED"
+                  ? { "Secure-Session-Registration": "synthetic-fixture" } : {},
+                json: { error: { code: recovery, message: "Synthetic existing recovery" } },
+              });
+            return route.fulfill({ json: { data: dashboardData[panel.key] } });
+          },
+        },
+      );
+    }
+
     assert.equal(
       report.cases.length,
-      45,
-      "All32existing and13deadline/lifecycle/error cases must run.",
+      62,
+      "All 45 existing cases and 17 dashboard deadline/lifecycle/auth cases must run.",
     );
     report.status = "passed";
   } catch (err) {
