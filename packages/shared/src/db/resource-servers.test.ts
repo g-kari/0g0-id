@@ -3,6 +3,7 @@ import {
   findResourceServerById,
   findResourceServerByUri,
   listResourceServers,
+  countResourceServersByOwner,
   createResourceServer,
   updateResourceServer,
   deleteResourceServer,
@@ -50,6 +51,21 @@ describe("listResourceServers", () => {
     const db = makeD1Mock(null, [baseResource]);
     const result = await listResourceServers(db);
     expect(result).toEqual([baseResource]);
+  });
+});
+
+describe("countResourceServersByOwner", () => {
+  it("所有者IDを束縛して件数を返す", async () => {
+    const db = makeD1Mock({ count: 2 });
+    expect(await countResourceServersByOwner(db, "user-1")).toBe(2);
+    expect(db.prepare).toHaveBeenCalledWith(
+      "SELECT COUNT(*) as count FROM resource_servers WHERE owner_user_id = ?",
+    );
+    expect(db._stmt.bind).toHaveBeenCalledWith("user-1");
+  });
+
+  it("該当行がない場合は0を返す", async () => {
+    expect(await countResourceServersByOwner(makeD1Mock(null), "user-1")).toBe(0);
   });
 });
 
