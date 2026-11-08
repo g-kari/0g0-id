@@ -1735,7 +1735,9 @@ async function main() {
               authGate.resolve();
             }
             await expect(page).toHaveURL(`${origin}/`);
-            await expect(page.getByRole("link", { name: "Googleでサインイン" })).toBeVisible();
+            const signIn = page.getByRole("link", { name: "Google でログイン", exact: true });
+            await expect(signIn).toBeVisible();
+            await expect(signIn).toHaveAttribute("href", "/auth/login");
             assert.equal(dashboardCount(calls, dashboardPanels[0].path), late ? 2 : 1);
           } finally {
             authGate.resolve();
