@@ -1053,6 +1053,194 @@ async function main() {
         }
       },
     );
+    // Retry focus must survive repeated failures without locator.press refocusing it.
+    for (const viewport of [mobile, standard, desktop]) {
+      const gates = [deferred(), deferred(), deferred()];
+      await scenario(
+        "Repeated keyboard Retry failures restore the same control",
+        viewport,
+        async (route, call) => {
+          if (call.index > 1) await gates[call.index - 2].promise;
+          await fail(route);
+        },
+        async (page, calls, localOrigin, caseReport) => {
+          try {
+            await page.goto(`${localOrigin}/login-stats`);
+            await failed(page);
+            await settled(page, [1]);
+            const retry = page.locator("#stats-retry-btn");
+            await retry.focus();
+            caseReport.retryFocus = [];
+            for (const [index, key] of ["Enter", "Space", "Enter"].entries()) {
+              await expect(retry).toBeFocused();
+              await page.keyboard.press(key);
+              await pending(page);
+              await expect.poll(() => calls.length).toBe((index + 2) * 2);
+              await page.keyboard.press("Enter");
+              assertPairs(calls, Array(index + 2).fill(30));
+              gates[index].resolve();
+              await failed(page);
+              await settled(page, [index + 2]);
+              caseReport.retryFocus.push(await page.evaluate(() => document.activeElement.id));
+              await expect(retry).toBeFocused();
+              assertPairs(calls, Array(index + 2).fill(30));
+            }
+            await noOverflow(page);
+            await page.screenshot({
+              path: path.join(reportDir, `retry-focus-${viewport.width}.png`),
+              fullPage: true,
+            });
+          } finally {
+            for (const gate of gates) gate.resolve();
+          }
+        },
+      );
+    }
+
+    for (const intent of [
+      "select",
+      "link",
+      "focus-then-blur",
+      "pointer",
+      "tab",
+      "window-blur",
+      "pagehide",
+    ]) {
+      const gate = deferred();
+      await scenario(
+        `Pending Retry respects intervening ${intent} intent`,
+        standard,
+        async (route, call) => {
+          if (call.index === 2) await gate.promise;
+          await fail(route);
+        },
+        async (page, calls, localOrigin, caseReport) => {
+          try {
+            await page.goto(`${localOrigin}/login-stats`);
+            await failed(page);
+            await settled(page, [1]);
+            const retry = page.locator("#stats-retry-btn");
+            await retry.focus();
+            await expect(retry).toBeFocused();
+            await page.keyboard.press("Enter");
+            await pending(page);
+            await expect.poll(() => calls.length).toBe(4);
+            if (intent === "select") await page.locator("#days-select").focus();
+            else if (intent === "link") await page.locator('a[href="/profile"]').focus();
+            else if (intent === "focus-then-blur") {
+              await page.locator("#days-select").focus();
+              await page.locator("#days-select").evaluate((control) => control.blur());
+              await expect(page.locator("body")).toBeFocused();
+            } else if (intent === "pointer") await page.locator("h2").click();
+            else if (intent === "tab") await page.keyboard.press("Tab");
+            else if (intent === "window-blur") {
+              await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+            } else {
+              await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide")));
+            }
+            const active = await page.evaluate(
+              () => document.activeElement.id || document.activeElement.tagName,
+            );
+            gate.resolve();
+            await failed(page);
+            await settled(page, [2]);
+            await expect(retry).not.toBeFocused();
+            assert.equal(
+              await page.evaluate(() => document.activeElement.id || document.activeElement.tagName),
+              active,
+            );
+            assertPairs(calls, [30, 30]);
+            caseReport.focusAfterIntent = active;
+            caseReport.lifecycleNote =
+              "Synthetic blur/pagehide are not real window or BFCache admission tests.";
+          } finally {
+            gate.resolve();
+          }
+        },
+      );
+    }
+
+    for (const outcome of ["success", "empty"]) {
+      const gate = deferred();
+      await scenario(
+        `Retry ${outcome} does not focus a hidden control`,
+        standard,
+        async (route, call) => {
+          if (call.index === 1) return fail(route);
+          await gate.promise;
+          return succeed(
+            route,
+            call,
+            outcome === "empty" ? { providers: [], trends: [] } : fixture("focus-success", 30),
+          );
+        },
+        async (page, calls, localOrigin) => {
+          try {
+            await page.goto(`${localOrigin}/login-stats`);
+            await failed(page);
+            await settled(page, [1]);
+            const retry = page.locator("#stats-retry-btn");
+            await retry.focus();
+            await expect(retry).toBeFocused();
+            await page.keyboard.press("Space");
+            await pending(page);
+            gate.resolve();
+            if (outcome === "empty") await empty(page);
+            else await loaded(page, 30, fixture("focus-success", 30));
+            await settled(page, [2]);
+            await expect(retry).not.toBeFocused();
+            await expect(retry).toBeHidden();
+            assertPairs(calls, [30, 30]);
+          } finally {
+            gate.resolve();
+          }
+        },
+      );
+    }
+
+    for (const outcome of ["success", "failure"]) {
+      const gate = deferred();
+      await scenario(
+        `A stale Retry ${outcome} cannot restore focus after a newer period`,
+        standard,
+        async (route, call) => {
+          if (call.index === 1) return fail(route);
+          if (call.index === 2) {
+            await gate.promise;
+            return outcome === "failure" ? fail(route) : succeed(route, call);
+          }
+          return fail(route);
+        },
+        async (page, calls, localOrigin) => {
+          try {
+            await page.goto(`${localOrigin}/login-stats`);
+            await failed(page);
+            await settled(page, [1]);
+            const retry = page.locator("#stats-retry-btn");
+            await retry.focus();
+            await expect(retry).toBeFocused();
+            await page.keyboard.press("Enter");
+            await pending(page);
+            await expect.poll(() => calls.length).toBe(4);
+            await page.locator("#days-select").focus();
+            await select(page, calls, 90, 3);
+            await failed(page);
+            await settled(page, [3]);
+            await expect(page.locator("#days-select")).toBeFocused();
+            await page.locator("#days-select").evaluate((control) => control.blur());
+            gate.resolve();
+            await settled(page, [2]);
+            await failed(page);
+            await expect(page.locator("body")).toBeFocused();
+            await expect(page.locator("#days-select")).toHaveValue("90");
+            assertPairs(calls, [30, 30, 90]);
+          } finally {
+            gate.resolve();
+          }
+        },
+      );
+    }
+
     report.status = "passed";
   } catch (error) {
     report.status = "failed";
