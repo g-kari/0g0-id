@@ -1146,7 +1146,9 @@ async function main() {
             await settled(page, [2]);
             await expect(retry).not.toBeFocused();
             assert.equal(
-              await page.evaluate(() => document.activeElement.id || document.activeElement.tagName),
+              await page.evaluate(
+                () => document.activeElement.id || document.activeElement.tagName,
+              ),
               active,
             );
             assertPairs(calls, [30, 30]);
