@@ -162,6 +162,7 @@ import Admin from '../../layouts/Admin.astro';
 
 <script>
   import { apiFetch, formatDatetime } from '../../lib/api';
+  import { ReadDeadlineError, readWithDeadline } from '../../lib/read-deadline';
   import { escapeHtml } from '../../lib/helpers';
 
   interface DailyLoginStat { date: string; count: number; }
@@ -178,6 +179,9 @@ import Admin from '../../layouts/Admin.astro';
     ip: 'IP別ログイン集計',
     ua: 'User-Agent別ログイン集計',
   };
+  const READ_DEADLINE_MS = 30_000;
+  type PanelReader = (signal: AbortSignal) => Promise<() => void>;
+  const activeRequests = new Map<PanelKey, AbortController>();
   const pending = new Set<PanelKey>();
   const failures = new Set<PanelKey>();
 
@@ -191,7 +195,7 @@ import Admin from '../../layouts/Admin.astro';
     errorEl.style.display = names.length ? '' : 'none';
   }
 
-  async function loadPanel(key: PanelKey, render: () => Promise<void>): Promise<void> {
+  async function loadPanel(key: PanelKey, read: PanelReader): Promise<void> {
     if (pending.has(key)) return;
     const heading = document.getElementById(`${key}-heading`)!;
     const section = heading.closest('section')!;
@@ -204,7 +208,10 @@ import Admin from '../../layouts/Admin.astro';
     const retry = document.getElementById(`${key}-retry`)! as HTMLButtonElement;
     const wasRetryFocused = document.activeElement === retry;
     const retrying = failures.has(key);
+    const controller = new AbortController();
+    activeRequests.set(key, controller);
     pending.add(key);
+    if (key === 'trends') cachedTrendData = null;
     retry.disabled = true;
     retry.textContent = '再試行中…';
     section.setAttribute('aria-busy', 'true');
@@ -214,29 +221,41 @@ import Admin from '../../layouts/Admin.astro';
     if (retrying) status.textContent = 'データを再取得中です';
     let succeeded = false;
     try {
-      await render();
+      // Only the winning read may publish DOM/cache updates. apiFetch retains
+      // its existing token/DBSC retries and authentication redirect behavior.
+      const render = await readWithDeadline(read, controller, READ_DEADLINE_MS);
+      if (activeRequests.get(key) !== controller) return;
+      render();
       succeeded = true;
       failures.delete(key);
       failure.style.display = 'none';
       message.textContent = '';
       if (retrying) status.textContent = 'データを再取得しました';
     } catch (error) {
+      if (activeRequests.get(key) !== controller) return;
       failures.add(key);
       empty.style.display = 'none';
       content.style.display = 'none';
-      message.textContent = error instanceof Error && error.message ? error.message : `${panelLabels[key]}の取得に失敗しました`;
+      message.textContent = error instanceof ReadDeadlineError
+        ? '読み込みが30秒以内に完了しませんでした。再試行してください'
+        : controller.signal.aborted
+          ? '読み込みを中断しました。再試行してください'
+          : error instanceof Error && error.message ? error.message : `${panelLabels[key]}の取得に失敗しました`;
       failure.style.display = 'flex';
       status.textContent = '取得に失敗しました。再試行できます';
     } finally {
-      pending.delete(key);
-      loading.style.display = 'none';
-      section.setAttribute('aria-busy', 'false');
-      retry.disabled = false;
-      retry.textContent = '再試行';
-      updateErrorSummary();
-      // 再試行中に他の要素へ移動した場合はフォーカスを奪わない。
-      if (wasRetryFocused && (document.activeElement === retry || document.activeElement === document.body)) {
-        (succeeded ? heading : retry).focus();
+      if (activeRequests.get(key) === controller) {
+        activeRequests.delete(key);
+        pending.delete(key);
+        loading.style.display = 'none';
+        section.setAttribute('aria-busy', 'false');
+        retry.disabled = false;
+        retry.textContent = '再試行';
+        updateErrorSummary();
+        // 再試行中に他の要素へ移動した場合はフォーカスを奪わない。
+        if (wasRetryFocused && (document.activeElement === retry || document.activeElement === document.body)) {
+          (succeeded ? heading : retry).focus();
+        }
       }
     }
   }
@@ -245,18 +264,19 @@ import Admin from '../../layouts/Admin.astro';
   let cachedTrendData: DailyLoginStat[] | null = null;
   let renderedTrendWidth = 0;
 
-  async function renderTrends(): Promise<void> {
+  async function readTrends(signal: AbortSignal): Promise<() => void> {
     const emptyEl = document.getElementById('trends-empty')!;
     const chartEl = document.getElementById('trends-chart')!;
-    cachedTrendData = null;
-    const data = await apiFetch<DailyLoginStat[]>('/api/metrics/login-trends?days=30');
-    if (!data || data.length === 0) {
-      emptyEl.style.display = '';
-      return;
-    }
-    cachedTrendData = data;
-    chartEl.style.display = '';
-    drawTrends(data);
+    const data = await apiFetch<DailyLoginStat[]>('/api/metrics/login-trends?days=30', { signal });
+    return () => {
+      if (!data || data.length === 0) {
+        emptyEl.style.display = '';
+        return;
+      }
+      cachedTrendData = data;
+      chartEl.style.display = '';
+      drawTrends(data);
+    };
   }
 
   function drawTrends(data: DailyLoginStat[]): void {
@@ -344,91 +364,102 @@ import Admin from '../../layouts/Admin.astro';
   }).observe(observedTrendChart);
 
   // 疑わしい多国間ログイン
-  async function renderSuspicious(): Promise<void> {
+  async function readSuspicious(signal: AbortSignal): Promise<() => void> {
     const emptyEl = document.getElementById('suspicious-empty')!;
     const wrapEl = document.getElementById('suspicious-wrap')!;
     const tbody = document.getElementById('suspicious-tbody')!;
     const data = await apiFetch<SuspiciousLogin[]>(
       '/api/metrics/suspicious-logins?hours=24&min_countries=2',
+      { signal },
     );
-    if (!data || data.length === 0) {
-      emptyEl.style.display = '';
-      return;
-    }
-    tbody.innerHTML = data
-      .map(
-        (row) => `
-      <tr>
-        <td style="font-family:monospace; font-size:0.8rem;">${escapeHtml(row.user_id)}</td>
-        <td>${row.country_count}</td>
-        <td>${escapeHtml(row.countries)}</td>
-        <td><a href="/users/${escapeHtml(encodeURIComponent(row.user_id))}" class="btn btn-ghost" style="padding:4px 10px; font-size:0.8rem;">詳細</a> <a href="/security/events?user_id=${escapeHtml(encodeURIComponent(row.user_id))}&amp;period=24h" class="btn btn-ghost" style="padding:4px 10px; font-size:0.8rem;">ログインを調べる</a></td>
-      </tr>
-    `,
-      )
-      .join('');
-    wrapEl.style.display = '';
+    return () => {
+      if (!data || data.length === 0) {
+        emptyEl.style.display = '';
+        return;
+      }
+      tbody.innerHTML = data
+        .map(
+          (row) => `
+        <tr>
+          <td style="font-family:monospace; font-size:0.8rem;">${escapeHtml(row.user_id)}</td>
+          <td>${row.country_count}</td>
+          <td>${escapeHtml(row.countries)}</td>
+          <td><a href="/users/${escapeHtml(encodeURIComponent(row.user_id))}" class="btn btn-ghost" style="padding:4px 10px; font-size:0.8rem;">詳細</a> <a href="/security/events?user_id=${escapeHtml(encodeURIComponent(row.user_id))}&amp;period=24h" class="btn btn-ghost" style="padding:4px 10px; font-size:0.8rem;">ログインを調べる</a></td>
+        </tr>
+      `,
+        )
+        .join('');
+      wrapEl.style.display = '';
+    };
   }
 
   // IP別ログイン集計
-  async function renderIpStats(): Promise<void> {
+  async function readIpStats(signal: AbortSignal): Promise<() => void> {
     const emptyEl = document.getElementById('ip-empty')!;
     const wrapEl = document.getElementById('ip-wrap')!;
     const tbody = document.getElementById('ip-tbody')!;
-    const data = await apiFetch<IpStat[]>('/api/security-trends/ip-stats?days=7&limit=20');
-    if (!data || data.length === 0) {
-      emptyEl.style.display = '';
-      return;
-    }
-    tbody.innerHTML = data
-      .map(
-        (row) => `
-      <tr>
-        <td style="font-family:monospace; font-size:0.875rem;">${escapeHtml(row.ip_address)}</td>
-        <td style="text-align:right;">${row.count.toLocaleString()}</td>
-        <td style="color:var(--color-muted); font-size:0.875rem;">${formatDatetime(row.last_seen)}</td>
-      </tr>
-    `,
-      )
-      .join('');
-    wrapEl.style.display = '';
+    const data = await apiFetch<IpStat[]>('/api/security-trends/ip-stats?days=7&limit=20', { signal });
+    return () => {
+      if (!data || data.length === 0) {
+        emptyEl.style.display = '';
+        return;
+      }
+      tbody.innerHTML = data
+        .map(
+          (row) => `
+        <tr>
+          <td style="font-family:monospace; font-size:0.875rem;">${escapeHtml(row.ip_address)}</td>
+          <td style="text-align:right;">${row.count.toLocaleString()}</td>
+          <td style="color:var(--color-muted); font-size:0.875rem;">${formatDatetime(row.last_seen)}</td>
+        </tr>
+      `,
+        )
+        .join('');
+      wrapEl.style.display = '';
+    };
   }
 
   // UA別ログイン集計
-  async function renderUaStats(): Promise<void> {
+  async function readUaStats(signal: AbortSignal): Promise<() => void> {
     const emptyEl = document.getElementById('ua-empty')!;
     const wrapEl = document.getElementById('ua-wrap')!;
     const tbody = document.getElementById('ua-tbody')!;
-    const data = await apiFetch<UaStat[]>('/api/security-trends/user-agent-stats?days=7&limit=20');
-    if (!data || data.length === 0) {
-      emptyEl.style.display = '';
-      return;
-    }
-    tbody.innerHTML = data
-      .map(
-        (row) => `
-      <tr>
-        <td style="font-family:monospace; font-size:0.8rem; word-break:break-all; max-width:600px;" title="${escapeHtml(row.user_agent)}">${escapeHtml(row.user_agent)}</td>
-        <td style="text-align:right;">${row.count.toLocaleString()}</td>
-      </tr>
-    `,
-      )
-      .join('');
-    wrapEl.style.display = '';
+    const data = await apiFetch<UaStat[]>('/api/security-trends/user-agent-stats?days=7&limit=20', { signal });
+    return () => {
+      if (!data || data.length === 0) {
+        emptyEl.style.display = '';
+        return;
+      }
+      tbody.innerHTML = data
+        .map(
+          (row) => `
+        <tr>
+          <td style="font-family:monospace; font-size:0.8rem; word-break:break-all; max-width:600px;" title="${escapeHtml(row.user_agent)}">${escapeHtml(row.user_agent)}</td>
+          <td style="text-align:right;">${row.count.toLocaleString()}</td>
+        </tr>
+      `,
+        )
+        .join('');
+      wrapEl.style.display = '';
+    };
   }
 
-  const renderers: Record<PanelKey, () => Promise<void>> = {
-    trends: renderTrends,
-    suspicious: renderSuspicious,
-    ip: renderIpStats,
-    ua: renderUaStats,
+  const readers: Record<PanelKey, PanelReader> = {
+    trends: readTrends,
+    suspicious: readSuspicious,
+    ip: readIpStats,
+    ua: readUaStats,
   };
-  const panelKeys = Object.keys(renderers) as PanelKey[];
+  const panelKeys = Object.keys(readers) as PanelKey[];
   for (const key of panelKeys) {
     document.getElementById(`${key}-retry`)!.addEventListener('click', () => {
-      if (failures.has(key)) void loadPanel(key, renderers[key]);
+      if (failures.has(key)) void loadPanel(key, readers[key]);
     });
   }
+  // Navigation cancels pending reads; restored pages keep manual retry available.
+  window.addEventListener('pagehide', () => {
+    for (const controller of activeRequests.values()) controller.abort();
+  });
   // 初回の4項目は並列取得。再試行は失敗した項目の既存GETだけを実行する。
-  void Promise.all(panelKeys.map((key) => loadPanel(key, renderers[key])));
+  void Promise.all(panelKeys.map((key) => loadPanel(key, readers[key])));
 </script>
