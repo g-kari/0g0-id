@@ -449,4 +449,110 @@ describe("login stats paired-view ownership and recovery", () => {
     await retry;
     expect(document.activeElement).toBe(daysSelect);
   });
+
+  it("restores focused Retry after each same-period failure", async () => {
+    const initial = start(30);
+    settle(requests[0], "failure", "failure");
+    await initial;
+    retryButton.focus();
+    const focus = vi.spyOn(retryButton, "focus");
+    for (let index = 1; index <= 3; index++) {
+      const retry = controller.retry();
+      await controller.retry();
+      expect(requests).toHaveLength(index + 1);
+      // DOM emulators need an explicit blur for the browser's hide/disable behavior.
+      retryButton.blur();
+      settle(requests[index], "failure", "failure");
+      await retry;
+      expect(retryButton.disabled).toBe(false);
+      expect(document.activeElement).toBe(retryButton);
+      expect(focus).toHaveBeenCalledTimes(index);
+    }
+  });
+
+  for (const intent of [
+    "focus-then-blur",
+    "pointer",
+    "tab",
+    "escape",
+    "window-blur",
+    "pagehide",
+  ]) {
+    it(`does not restore Retry after ${intent}`, async () => {
+      const initial = start(30);
+      settle(requests[0], "failure", "failure");
+      await initial;
+      retryButton.focus();
+      const focus = vi.spyOn(retryButton, "focus");
+      const retry = controller.retry();
+      retryButton.blur();
+      if (intent === "focus-then-blur") {
+        daysSelect.focus();
+        daysSelect.blur();
+      } else if (intent === "pointer") {
+        document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+      } else if (intent === "tab" || intent === "escape") {
+        document.body.dispatchEvent(
+          new KeyboardEvent("keydown", { key: intent === "tab" ? "Tab" : "Escape", bubbles: true }),
+        );
+      } else {
+        window.dispatchEvent(new Event(intent === "pagehide" ? "pagehide" : "blur"));
+      }
+      settle(requests[1], "failure", "failure");
+      await retry;
+      expect(focus).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(document.body);
+    });
+  }
+
+  for (const outcome of ["data", "empty"] as const) {
+    it(`does not restore Retry after ${outcome}`, async () => {
+      const initial = start(30);
+      settle(requests[0], "failure", "failure");
+      await initial;
+      retryButton.focus();
+      const focus = vi.spyOn(retryButton, "focus");
+      const retry = controller.retry();
+      retryButton.blur();
+      settle(requests[1], outcome, outcome);
+      await retry;
+      expect(focus).not.toHaveBeenCalled();
+    });
+  }
+
+  it("does not restore a superseded Retry after the newer period also fails", async () => {
+    const initial = start(30);
+    settle(requests[0], "failure", "failure");
+    await initial;
+    retryButton.focus();
+    const focus = vi.spyOn(retryButton, "focus");
+    const retry = controller.retry();
+    retryButton.blur();
+    const newer = start(90);
+    settle(requests[2], "failure", "failure");
+    await newer;
+    settle(requests[1], "failure", "failure");
+    await retry;
+    expect(focus).not.toHaveBeenCalled();
+    expect(daysSelect.value).toBe("90");
+  });
+
+  it("removes intent listeners after settlement and supersession", async () => {
+    const initial = start(30);
+    settle(requests[0], "failure", "failure");
+    await initial;
+    retryButton.focus();
+    const remove = vi.spyOn(document, "removeEventListener");
+    const removeWindow = vi.spyOn(window, "removeEventListener");
+    const retry = controller.retry();
+    const newer = start(90);
+    expect(remove).toHaveBeenCalledWith("focusin", expect.any(Function), true);
+    expect(removeWindow).toHaveBeenCalledWith("pagehide", expect.any(Function));
+    settle(requests[2], "failure", "failure");
+    await newer;
+    settle(requests[1], "failure", "failure");
+    await retry;
+    expect(remove).toHaveBeenCalledWith("keydown", expect.any(Function), true);
+    expect(removeWindow).toHaveBeenCalledWith("blur", expect.any(Function));
+  });
 });
