@@ -57,6 +57,9 @@ function selectedPeriod(value: string): LoginStatsPeriod {
 export function createLoginStatsLoader(options: LoginStatsLoaderOptions): LoginStatsLoader {
   let generation = 0;
   let state: LoginStatsState | null = null;
+  let stopFocusTracking: (() => void) | undefined;
+  const ownerDocument = options.retryButton.ownerDocument;
+  const ownerWindow = ownerDocument.defaultView;
 
   function display(next: LoginStatsState): void {
     state = next;
@@ -70,11 +73,40 @@ export function createLoginStatsLoader(options: LoginStatsLoaderOptions): LoginS
     options.retryButton.disabled = !flags.error;
   }
 
-  async function load(): Promise<void> {
+  async function load(isRetry = false): Promise<void> {
     const days = selectedPeriod(options.daysSelect.value);
     if (state?.kind === "loading" && state.days === days) return;
+    stopFocusTracking?.();
     const requestId = ++generation;
+    let restoreRetryFocus = isRetry && ownerDocument.activeElement === options.retryButton;
     display({ kind: "loading", requestId, days });
+
+    // Start after hiding/disabling Retry: its own focus loss is not user intent.
+    const cancelFocus = (): void => {
+      restoreRetryFocus = false;
+    };
+    const onFocus = (event: FocusEvent): void => {
+      if (event.target !== options.retryButton) cancelFocus();
+    };
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Tab" || event.key === "Escape") cancelFocus();
+    };
+    const cleanupFocus = (): void => {
+      ownerDocument.removeEventListener("focusin", onFocus, true);
+      ownerDocument.removeEventListener("pointerdown", cancelFocus, true);
+      ownerDocument.removeEventListener("keydown", onKey, true);
+      ownerWindow?.removeEventListener("blur", cancelFocus);
+      ownerWindow?.removeEventListener("pagehide", cancelFocus);
+      if (stopFocusTracking === cleanupFocus) stopFocusTracking = undefined;
+    };
+    if (restoreRetryFocus) {
+      ownerDocument.addEventListener("focusin", onFocus, true);
+      ownerDocument.addEventListener("pointerdown", cancelFocus, true);
+      ownerDocument.addEventListener("keydown", onKey, true);
+      ownerWindow?.addEventListener("blur", cancelFocus);
+      ownerWindow?.addEventListener("pagehide", cancelFocus);
+      stopFocusTracking = cleanupFocus;
+    }
 
     try {
       // Reading must not mutate the UI: neither endpoint can publish a partial pair.
@@ -98,13 +130,22 @@ export function createLoginStatsLoader(options: LoginStatsLoaderOptions): LoginS
       }
       // Includes render failures; any partially written cards remain hidden.
       display({ kind: "error", requestId, days });
+      if (
+        restoreRetryFocus &&
+        (ownerDocument.activeElement === ownerDocument.body ||
+          ownerDocument.activeElement === options.retryButton)
+      ) {
+        options.retryButton.focus();
+      }
+    } finally {
+      cleanupFocus();
     }
   }
 
   return {
     load,
     retry: async (): Promise<void> => {
-      if (state?.kind === "error") await load();
+      if (state?.kind === "error") await load(true);
     },
     reconcile: async (): Promise<void> => {
       if (state !== null && state.days !== selectedPeriod(options.daysSelect.value)) await load();
