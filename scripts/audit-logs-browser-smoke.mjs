@@ -266,9 +266,10 @@ async function main() {
         if (new URL(request.url()).pathname === auditPath)
           requestFailures.push({ url: request.url(), error: request.failure()?.errorText });
       });
-      await context.addInitScript(({ ignoreFirstAbort, delayFirstJson }) => {
+      await context.addInitScript(({ ignoreFirstAbort, ignoreAuditAborts, delayFirstJson }) => {
         window.__syntheticXss = 0;
         window.__syntheticAborts = [];
+        window.__syntheticHeadersResolved = false;
         window.__syntheticJsonStarted = false;
         window.__syntheticJsonResolved = false;
         const nativeFetch = window.fetch.bind(window);
@@ -290,16 +291,22 @@ async function main() {
           // A transport ignoring cancellation makes both request-sequence guards observable.
           const fetched = nativeFetch(
             input,
-            ignoreFirstAbort && first ? { ...init, signal: undefined } : init,
-          );
-          if (delayFirstJson && first) {
+            (ignoreFirstAbort && first) || (ignoreAuditAborts && isAuditRead)
+              ? { ...init, signal: undefined }
+              : init,
+          ).then((response) => {
+            if (first) window.__syntheticHeadersResolved = true;
+            return response;
+          });
+          if (first) {
             return fetched.then((response) => {
               const nativeJson = response.json.bind(response);
               response.json = async () => {
                 window.__syntheticJsonStarted = true;
-                await new Promise((resolve) => {
-                  window.__syntheticReleaseJson = resolve;
-                });
+                if (delayFirstJson)
+                  await new Promise((resolve) => {
+                    window.__syntheticReleaseJson = resolve;
+                  });
                 const body = await nativeJson();
                 window.__syntheticJsonResolved = true;
                 return body;
@@ -570,7 +577,8 @@ async function main() {
               await expect(page.locator("#loading")).toBeHidden();
               await expect(page.locator("#error-message")).toBeVisible();
               await expect(page.locator("#retry-btn")).toBeEnabled();
-              await page.locator("#retry-btn").press("Space");
+              await expect(page.locator("#retry-btn")).toBeFocused();
+              await page.keyboard.press("Space");
               await loaded(page, 1);
               await assertState(page, calls, { ...matchingFilters, offset: 50 });
               assert.equal(readCount(calls), 3);
@@ -1113,6 +1121,21 @@ async function main() {
       },
     );
 
+    async function auditNextTask(page) {
+      await page.evaluate(
+        () =>
+          new Promise((resolve) => {
+            const channel = new window.MessageChannel();
+            channel.port1.onmessage = () => {
+              channel.port1.close();
+              channel.port2.close();
+              resolve();
+            };
+            channel.port2.postMessage(null);
+          }),
+      );
+    }
+
     for (const viewport of viewports) {
       for (const phase of ["headers", "body"]) {
         const gates = [deferred(), deferred()];
@@ -1164,7 +1187,8 @@ async function main() {
               await page.clock.runFor(1);
               await expect(page.locator("#loading")).toBeHidden();
               await expect(page.locator("#retry-btn")).toBeEnabled();
-              await page.locator("#retry-btn").press("Space");
+              await expect(page.locator("#retry-btn")).toBeFocused();
+              await page.keyboard.press("Space");
               await loaded(page, 1);
               await assertState(page, calls, filters);
               await expect(page.locator('[role="region"]')).toBeFocused();
@@ -1180,6 +1204,10 @@ async function main() {
                   .poll(() => page.evaluate(() => window.__syntheticJsonResolved))
                   .toBe(true);
               }
+              await expect
+                .poll(() => page.evaluate(() => window.__syntheticHeadersResolved))
+                .toBe(true);
+              await auditNextTask(page);
               await page.clock.runFor(30000);
               await loaded(page, 1);
               await assertState(page, calls, filters);
@@ -1189,7 +1217,7 @@ async function main() {
               await page.evaluate(() => window.__syntheticReleaseJson?.()).catch(() => {});
             }
           },
-          { ignoreFirstAbort: true, delayFirstJson: phase === "body" },
+          { ignoreAuditAborts: true, delayFirstJson: phase === "body" },
         );
       }
     }
@@ -1240,7 +1268,8 @@ async function main() {
               assert.equal(readCount(calls), 1);
               await page.locator("#retry-btn").press("Enter");
             }
-            if (navigation !== "invalid") await loaded(page, 50);
+            const expectedCount = navigation === "filter" ? 1 : 50;
+            if (navigation !== "invalid") await loaded(page, expectedCount);
             gate.resolve();
             await page.clock.runFor(60000);
             if (navigation === "invalid") {
@@ -1250,7 +1279,7 @@ async function main() {
               await page.locator("#reset-filters").click();
               await loaded(page, 50);
             } else {
-              await loaded(page, 50);
+              await loaded(page, expectedCount);
               await assertState(page, calls, expected);
             }
           } finally {
@@ -1261,16 +1290,106 @@ async function main() {
       );
     }
 
-    for (const status of [200, 403, 401]) {
+    for (const outcome of ["success", "timeout"]) {
+      const gates = [deferred(), deferred()];
+      await scenario(
+        `Keyboard Retry preserves an active filter edit on ${outcome}`,
+        viewports[1],
+        async (route, url, n) => {
+          if (n <= 2) await gates[n - 1].promise;
+          await defaultResponse(route, url);
+        },
+        async (page, calls, origin) => {
+          try {
+            await page.clock.install({ time: 1794132000000 });
+            await page.clock.pauseAt(1794132060000);
+            await page.goto(`${origin}/security/audit`);
+            await expect.poll(() => readCount(calls)).toBe(1);
+            await page.clock.runFor(30000);
+            await expect(page.locator("#retry-btn")).toBeEnabled();
+            await page.locator("#retry-btn").focus();
+            await page.keyboard.press("Enter");
+            await expect.poll(() => readCount(calls)).toBe(2);
+            await page.locator("#filter-action").focus();
+            await page.keyboard.type("user.unban");
+            if (outcome === "success") {
+              gates[1].resolve();
+              await loaded(page, 50);
+            } else {
+              await page.clock.runFor(30000);
+              await expect(page.locator("#error-message")).toContainText("時間がかかっています");
+            }
+            await expect(page.locator("#filter-action")).toBeFocused();
+            await expect(page.locator("#filter-action")).toHaveValue("user.unban");
+            assertQuery(queryObject(new URL(page.url())), {});
+            assert.equal(readCount(calls), 2);
+          } finally {
+            gates.forEach((gate) => gate.resolve());
+          }
+        },
+        { ignoreAuditAborts: true },
+      );
+    }
+
+    const supersededGates = [deferred(), deferred()];
+    await scenario(
+      "A changed audit query owns a fresh deadline while the superseded transport ignores abort",
+      viewports[1],
+      async (route, url, n) => {
+        if (n <= 2) await supersededGates[n - 1].promise;
+        await defaultResponse(route, url);
+      },
+      async (page, calls, origin) => {
+        try {
+          await page.clock.install({ time: 1794132000000 });
+          await page.clock.pauseAt(1794132060000);
+          await page.goto(`${origin}/security/audit`);
+          await expect.poll(() => readCount(calls)).toBe(1);
+          await page.clock.runFor(1000);
+          await fillFilters(page, matchingFilters);
+          await applyButton(page).click();
+          await expect.poll(() => readCount(calls)).toBe(2);
+          await page.clock.runFor(29000);
+          await expect(page.locator("#loading")).toBeVisible();
+          await expect(page.locator("#retry-btn")).toBeDisabled();
+          await page.clock.runFor(999);
+          await expect(page.locator("#loading")).toBeVisible();
+          await page.clock.runFor(1);
+          await expect(page.locator("#loading")).toBeHidden();
+          await expect(page.locator("#retry-btn")).toBeEnabled();
+          await page.locator("#retry-btn").press("Enter");
+          await loaded(page, 50);
+          await assertState(page, calls, matchingFilters);
+          supersededGates.forEach((gate) => gate.resolve());
+          await expect
+            .poll(() => page.evaluate(() => window.__syntheticHeadersResolved))
+            .toBe(true);
+          await auditNextTask(page);
+          await loaded(page, 50);
+          await assertState(page, calls, matchingFilters);
+          assert.equal(readCount(calls), 3);
+        } finally {
+          supersededGates.forEach((gate) => gate.resolve());
+        }
+      },
+      { ignoreAuditAborts: true },
+    );
+
+    for (const { status, retryFirst } of [200, 403, 401].flatMap((status) => [
+      { status, retryFirst: true },
+      { status, retryFirst: false },
+    ])) {
       const gate = deferred();
       const delivered = deferred();
       await scenario(
-        `Timed out audit ${status} cannot overwrite or redirect a recovered read`,
+        `Timed out audit ${status} remains inert with retryFirst=${retryFirst}`,
         viewports[1],
         async (route, url, n) => {
           if (n === 1) {
             await gate.promise;
-            await route.fulfill({ status, json: filteredResponse(url) });
+            const body = filteredResponse(url);
+            body.data = body.data.map((row) => ({ ...row, status: "failure" }));
+            await route.fulfill({ status, json: body });
             delivered.resolve();
           } else await defaultResponse(route, url);
         },
@@ -1282,13 +1401,29 @@ async function main() {
             await expect.poll(() => readCount(calls)).toBe(1);
             await page.clock.runFor(30000);
             await expect(page.locator("#retry-btn")).toBeEnabled();
-            await page.locator("#retry-btn").press("Enter");
-            await loaded(page, 50);
+            if (retryFirst) {
+              await page.locator("#retry-btn").press("Enter");
+              await loaded(page, 50);
+            }
             gate.resolve();
             await delivered.promise;
+            await expect
+              .poll(() => page.evaluate(() => window.__syntheticHeadersResolved))
+              .toBe(true);
+            if (status === 200)
+              await expect
+                .poll(() => page.evaluate(() => window.__syntheticJsonResolved))
+                .toBe(true);
+            await auditNextTask(page);
             await page.clock.runFor(30000);
+            if (!retryFirst) {
+              await expect(page.locator("#error-message")).toContainText("時間がかかっています");
+              await expect(page.locator("#table-wrap")).toBeHidden();
+              await page.locator("#retry-btn").press("Enter");
+            }
             await loaded(page, 50);
             await assertState(page, calls, matchingFilters);
+            await expect(page.locator("#audit-tbody tr").first()).toContainText("成功");
             assert.equal(readCount(calls), 2);
           } finally {
             gate.resolve();
