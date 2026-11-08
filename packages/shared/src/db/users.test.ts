@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vite-plus/test";
 import {
   updateUserRole,
-  deleteUser,
+  deleteUserSafely,
   updateUserProfile,
   getUserProviders,
   unlinkProvider,
@@ -142,22 +142,28 @@ describe("updateUserProfile", () => {
   });
 });
 
-describe("deleteUser", () => {
-  it("削除成功時にtrueを返す", async () => {
+describe("deleteUserSafely", () => {
+  it("削除成功時にdeletedを返す", async () => {
     const db = makeD1Mock(null, [], 1);
-    const result = await deleteUser(db, "user-1");
-    expect(result).toBe(true);
+    const result = await deleteUserSafely(db, "user-1");
+    expect(result).toEqual({ status: "deleted" });
   });
 
-  it("対象ユーザーが存在しない場合はfalseを返す", async () => {
+  it("対象ユーザーが存在しない場合はnot_foundを返す", async () => {
     const db = makeD1Mock(null, [], 0);
-    const result = await deleteUser(db, "not-exist");
-    expect(result).toBe(false);
+    const result = await deleteUserSafely(db, "not-exist");
+    expect(result).toEqual({ status: "not_found" });
   });
 
-  it("正しいSQLでDELETEを実行する", async () => {
+  it("認可コード・MCPセッション・ユーザーを同じbatchで削除する", async () => {
     const db = makeD1Mock(null, [], 1);
-    await deleteUser(db, "user-1");
+    await deleteUserSafely(db, "user-1");
+    expect(db.prepare).toHaveBeenCalledWith(
+      expect.stringContaining("DELETE FROM auth_codes WHERE user_id = ?"),
+    );
+    expect(db.prepare).toHaveBeenCalledWith(
+      expect.stringContaining("DELETE FROM mcp_sessions WHERE user_id = ?"),
+    );
     expect(db.prepare).toHaveBeenCalledWith("DELETE FROM users WHERE id = ?");
   });
 });
