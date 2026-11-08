@@ -351,10 +351,12 @@ async function main() {
                   },
                 });
                 window.__dashboardBodyStalled.push(dashboardPath);
-                return observeBody(new Response(body, {
-                  status: received.status,
-                  headers: received.headers,
-                }));
+                return observeBody(
+                  new Response(body, {
+                    status: received.status,
+                    headers: received.headers,
+                  }),
+                );
               });
             }
             const first =
@@ -1433,33 +1435,39 @@ async function main() {
       );
     }
 
-    const dashboardContent = (key) => key === "trends" ? "#trends-chart" : `#${key}-wrap`;
-    const dashboardCount = (calls, apiPath) =>
-      calls.filter((call) => call.path === apiPath).length;
+    const dashboardContent = (key) => (key === "trends" ? "#trends-chart" : `#${key}-wrap`);
+    const dashboardCount = (calls, apiPath) => calls.filter((call) => call.path === apiPath).length;
     async function dashboardLoaded(page, key) {
       await expect(page.locator(dashboardContent(key))).toBeVisible();
       await expect(page.locator(`#${key}-loading`)).toBeHidden();
       await expect(page.locator(`#${key}-failure`)).toBeHidden();
-      await expect(page.locator(`section[aria-labelledby="${key}-heading"]`))
-        .toHaveAttribute("aria-busy", "false");
+      await expect(page.locator(`section[aria-labelledby="${key}-heading"]`)).toHaveAttribute(
+        "aria-busy",
+        "false",
+      );
     }
     async function dashboardNextTask(page) {
-      await page.evaluate(() => new Promise((resolve) => {
-        const channel = new MessageChannel();
-        channel.port1.onmessage = () => {
-          channel.port1.close();
-          channel.port2.close();
-          resolve();
-        };
-        channel.port2.postMessage(null);
-      }));
+      await page.evaluate(
+        () =>
+          new Promise((resolve) => {
+            const channel = new MessageChannel();
+            channel.port1.onmessage = () => {
+              channel.port1.close();
+              channel.port2.close();
+              resolve();
+            };
+            channel.port2.postMessage(null);
+          }),
+      );
     }
     async function dashboardSnapshot(page) {
       return page.evaluate(() => ({
         url: window.location.href,
         focus: document.activeElement?.id,
         panels: ["trends", "suspicious", "ip", "ua"].map((key) => {
-          const content = document.getElementById(key === "trends" ? "trends-chart" : `${key}-wrap`);
+          const content = document.getElementById(
+            key === "trends" ? "trends-chart" : `${key}-wrap`,
+          );
           return {
             key,
             html: content.innerHTML,
@@ -1467,7 +1475,10 @@ async function main() {
             empty: document.getElementById(`${key}-empty`).style.display,
             error: document.getElementById(`${key}-error`).textContent,
             failure: document.getElementById(`${key}-failure`).style.display,
-            busy: document.getElementById(`${key}-heading`).closest("section").getAttribute("aria-busy"),
+            busy: document
+              .getElementById(`${key}-heading`)
+              .closest("section")
+              .getAttribute("aria-busy"),
             disabled: document.getElementById(`${key}-retry`).disabled,
           };
         }),
@@ -1478,7 +1489,8 @@ async function main() {
       for (const phase of ["headers", "success-body", "error-body"]) {
         const oldGate = deferred();
         const retryGate = deferred();
-        const viewport = panel.key === "trends" && phase === "success-body" ? viewports[2] : viewports[1];
+        const viewport =
+          panel.key === "trends" && phase === "success-body" ? viewports[2] : viewports[1];
         await scenario(
           `Dashboard ${panel.key}: ${phase} deadline, independent repeated retry and ignored late result`,
           viewport,
@@ -1492,19 +1504,26 @@ async function main() {
               for (const sibling of dashboardPanels.filter((entry) => entry.key !== panel.key))
                 await dashboardLoaded(page, sibling.key);
               if (phase !== "headers")
-                await expect.poll(() => page.evaluate(
-                  (apiPath) => window.__dashboardBodyStalled.includes(apiPath), panel.path,
-                )).toBe(true);
+                await expect
+                  .poll(() =>
+                    page.evaluate(
+                      (apiPath) => window.__dashboardBodyStalled.includes(apiPath),
+                      panel.path,
+                    ),
+                  )
+                  .toBe(true);
               await page.clock.runFor(29_999);
               await expect(page.locator(`#${panel.key}-loading`)).toBeVisible();
               await expect(page.locator(`#${panel.key}-retry`)).toBeDisabled();
               await page.clock.runFor(1);
               await expect(page.locator(`#${panel.key}-loading`)).toBeHidden();
-              await expect(page.locator(`#${panel.key}-error`))
-                .toHaveText("読み込みが30秒以内に完了しませんでした。再試行してください");
+              await expect(page.locator(`#${panel.key}-error`)).toHaveText(
+                "読み込みが30秒以内に完了しませんでした。再試行してください",
+              );
               await expect(page.locator(`#${panel.key}-retry`)).toBeEnabled();
-              await expect(page.locator(`section[aria-labelledby="${panel.key}-heading"]`))
-                .toHaveAttribute("aria-busy", "false");
+              await expect(
+                page.locator(`section[aria-labelledby="${panel.key}-heading"]`),
+              ).toHaveAttribute("aria-busy", "false");
               await expect(page.locator("#error")).toContainText(panel.label);
               assert.equal(calls.length, 4, "A deadline must not retry automatically.");
               assert.equal(await page.evaluate(() => window.__syntheticAborts.length), 1);
@@ -1524,7 +1543,11 @@ async function main() {
               }, panel.key);
               await page.clock.runFor(29_999);
               await expect(retry).toBeDisabled();
-              assert.equal(calls.length, 5, "Repeated activation must not duplicate any panel read.");
+              assert.equal(
+                calls.length,
+                5,
+                "Repeated activation must not duplicate any panel read.",
+              );
               retryGate.resolve();
               await dashboardLoaded(page, panel.key);
               await expect(page.locator(`#${panel.key}-heading`)).toBeFocused();
@@ -1532,37 +1555,62 @@ async function main() {
               const before = await dashboardSnapshot(page);
               if (phase === "headers") {
                 oldGate.resolve();
-                await expect.poll(() => page.evaluate(
-                  (apiPath) => window.__dashboardDelivered.some(
-                    (read) => read.path === apiPath && read.count === 1,
-                  ), panel.path,
-                )).toBe(true);
+                await expect
+                  .poll(() =>
+                    page.evaluate(
+                      (apiPath) =>
+                        window.__dashboardDelivered.some(
+                          (read) => read.path === apiPath && read.count === 1,
+                        ),
+                      panel.path,
+                    ),
+                  )
+                  .toBe(true);
               } else {
                 await page.evaluate(
-                  (apiPath) => window.__dashboardReleaseBody[apiPath](), panel.path,
+                  (apiPath) => window.__dashboardReleaseBody[apiPath](),
+                  panel.path,
                 );
-
               }
-              const oldError = phase === "error-body"
-                || (phase === "headers" && ["ip", "ua"].includes(panel.key));
-              await expect.poll(() => page.evaluate(
-                (apiPath) => window.__dashboardBodyConsumed.filter(
-                  (read) => read.path === apiPath && read.count === 1,
-                ).length, panel.path,
-              )).toBe(oldError ? 2 : 1);
+              const oldError =
+                phase === "error-body" || (phase === "headers" && ["ip", "ua"].includes(panel.key));
+              await expect
+                .poll(() =>
+                  page.evaluate(
+                    (apiPath) =>
+                      window.__dashboardBodyConsumed.filter(
+                        (read) => read.path === apiPath && read.count === 1,
+                      ).length,
+                    panel.path,
+                  ),
+                )
+                .toBe(oldError ? 2 : 1);
               await dashboardNextTask(page);
               // Body/peek completion plus a later browser task prevents an early stale-result pass.
               await page.clock.runFor(60_000);
-              assert.deepEqual(await dashboardSnapshot(page), before,
-                "Late success/error must not change DOM, focus or retry state.");
+              assert.deepEqual(
+                await dashboardSnapshot(page),
+                before,
+                "Late success/error must not change DOM, focus or retry state.",
+              );
               for (const sibling of dashboardPanels)
-                assert.equal(dashboardCount(calls, sibling.path), sibling.key === panel.key ? 2 : 1);
+                assert.equal(
+                  dashboardCount(calls, sibling.path),
+                  sibling.key === panel.key ? 2 : 1,
+                );
               const requests = await page.evaluate(() => window.__dashboardReads);
-              assert(requests.every((read) => read.hasSignal
-                && read.credentials === "same-origin" && read.contentType === "application/json"));
+              assert(
+                requests.every(
+                  (read) =>
+                    read.hasSignal &&
+                    read.credentials === "same-origin" &&
+                    read.contentType === "application/json",
+                ),
+              );
               if (panel.key === "trends" && phase === "success-body")
                 await page.screenshot({
-                  path: path.join(reportDir, `dashboard-deadline-recovered-${viewport.width}.png`), fullPage: true,
+                  path: path.join(reportDir, `dashboard-deadline-recovered-${viewport.width}.png`),
+                  fullPage: true,
                 });
             } finally {
               oldGate.resolve();
@@ -1579,9 +1627,13 @@ async function main() {
                 return route.fulfill({ json: { data: dashboardData[current.key] } });
               }
               if (phase === "headers") await oldGate.promise;
-              if (phase === "error-body" || (phase === "headers" && ["ip", "ua"].includes(panel.key)))
+              if (
+                phase === "error-body" ||
+                (phase === "headers" && ["ip", "ua"].includes(panel.key))
+              )
                 return route.fulfill({
-                  status: 503, json: { error: { message: "Synthetic obsolete failure" } },
+                  status: 503,
+                  json: { error: { message: "Synthetic obsolete failure" } },
                 });
               return route.fulfill({ json: { data: [] } });
             },
@@ -1606,8 +1658,9 @@ async function main() {
           for (const { key } of dashboardPanels) {
             await expect(page.locator(`#${key}-loading`)).toBeHidden();
             await expect(page.locator(`#${key}-retry`)).toBeEnabled();
-            await expect(page.locator(`#${key}-error`))
-              .toHaveText("読み込みを中断しました。再試行してください");
+            await expect(page.locator(`#${key}-error`)).toHaveText(
+              "読み込みを中断しました。再試行してください",
+            );
           }
           assert.equal(await page.evaluate(() => window.__syntheticAborts.length), 4);
           const cancelled = await dashboardSnapshot(page);
@@ -1624,9 +1677,13 @@ async function main() {
           const recovered = await dashboardSnapshot(page);
           dashboardLeaveGate.resolve();
           await expect.poll(() => page.evaluate(() => window.__dashboardDelivered.length)).toBe(8);
-          await expect.poll(() => page.evaluate(() => window.__dashboardBodyConsumed.filter(
-            (read) => read.count === 1,
-          ).length)).toBe(4);
+          await expect
+            .poll(() =>
+              page.evaluate(
+                () => window.__dashboardBodyConsumed.filter((read) => read.count === 1).length,
+              ),
+            )
+            .toBe(4);
           await dashboardNextTask(page);
           await page.clock.runFor(100);
           assert.deepEqual(await dashboardSnapshot(page), recovered);
@@ -1637,7 +1694,9 @@ async function main() {
       },
       {
         dashboardFixture: {
-          paths: dashboardPanels.map((panel) => panel.path), phase: "headers", ignoreAbort: true,
+          paths: dashboardPanels.map((panel) => panel.path),
+          phase: "headers",
+          ignoreAbort: true,
         },
         dashboardResponse: async (route, panel, count) => {
           if (count === 1) {
@@ -1654,7 +1713,8 @@ async function main() {
     for (const late of [false, true]) {
       const authGate = deferred();
       await scenario(
-        late ? "Dashboard late401 retains shared authentication navigation after timeout"
+        late
+          ? "Dashboard late401 retains shared authentication navigation after timeout"
           : "Dashboard current401 retains shared authentication navigation",
         viewports[1],
         defaultResponse,
@@ -1682,7 +1742,11 @@ async function main() {
           }
         },
         {
-          dashboardFixture: { paths: [dashboardPanels[0].path], phase: "headers", ignoreAbort: late },
+          dashboardFixture: {
+            paths: [dashboardPanels[0].path],
+            phase: "headers",
+            ignoreAbort: late,
+          },
           dashboardResponse: async (route, panel, count) => {
             if (panel.key === "trends" && count === 1) {
               if (late) await authGate.promise;
@@ -1704,24 +1768,41 @@ async function main() {
           await page.clock.pauseAt(fixtureNow + 60_000);
           await page.goto(`${origin}/security/dashboard`, { waitUntil: "domcontentloaded" });
           const apiPath = dashboardPanels[0].path;
-          await expect.poll(() => page.evaluate(
-            (api) => window.__dashboardDelivered.some((read) => read.path === api), apiPath,
-          )).toBe(true);
+          await expect
+            .poll(() =>
+              page.evaluate(
+                (api) => window.__dashboardDelivered.some((read) => read.path === api),
+                apiPath,
+              ),
+            )
+            .toBe(true);
           // Wait for each peek to finish before advancing the helper's existing timers.
-          await expect.poll(() => page.evaluate(
-            (api) => window.__dashboardBodyConsumed.filter(
-              (read) => read.path === api && read.count === 1,
-            ).length, apiPath,
-          )).toBe(1);
+          await expect
+            .poll(() =>
+              page.evaluate(
+                (api) =>
+                  window.__dashboardBodyConsumed.filter(
+                    (read) => read.path === api && read.count === 1,
+                  ).length,
+                apiPath,
+              ),
+            )
+            .toBe(1);
           await dashboardNextTask(page);
           await page.clock.runFor(recovery === "TOKEN_ROTATED" ? 400 : 500);
           await expect.poll(() => dashboardCount(calls, apiPath)).toBe(2);
           if (recovery === "DBSC_BINDING_REQUIRED") {
-            await expect.poll(() => page.evaluate(
-              (api) => window.__dashboardBodyConsumed.filter(
-                (read) => read.path === api && read.count === 2,
-              ).length, apiPath,
-            )).toBe(1);
+            await expect
+              .poll(() =>
+                page.evaluate(
+                  (api) =>
+                    window.__dashboardBodyConsumed.filter(
+                      (read) => read.path === api && read.count === 2,
+                    ).length,
+                  apiPath,
+                ),
+              )
+              .toBe(1);
             await dashboardNextTask(page);
             await page.clock.runFor(1500);
             await expect.poll(() => dashboardCount(calls, apiPath)).toBe(3);
@@ -1730,8 +1811,11 @@ async function main() {
           assert.equal(dashboardCount(calls, apiPath), recovery === "TOKEN_ROTATED" ? 2 : 3);
           await page.clock.runFor(60_000);
           await expect(page.locator("#trends-failure")).toBeHidden();
-          assert.equal(await page.evaluate(() => window.__syntheticAborts.length), 0,
-            "Completed reads must clear their deadline timers.");
+          assert.equal(
+            await page.evaluate(() => window.__syntheticAborts.length),
+            0,
+            "Completed reads must clear their deadline timers.",
+          );
           assert.equal(new URL(page.url()).pathname, "/security/dashboard");
         },
         {
@@ -1740,8 +1824,10 @@ async function main() {
             if (panel.key === "trends" && count <= (recovery === "TOKEN_ROTATED" ? 1 : 2))
               return route.fulfill({
                 status: recovery === "TOKEN_ROTATED" ? 503 : 403,
-                headers: recovery === "DBSC_BINDING_REQUIRED"
-                  ? { "Secure-Session-Registration": "synthetic-fixture" } : {},
+                headers:
+                  recovery === "DBSC_BINDING_REQUIRED"
+                    ? { "Secure-Session-Registration": "synthetic-fixture" }
+                    : {},
                 json: { error: { code: recovery, message: "Synthetic existing recovery" } },
               });
             return route.fulfill({ json: { data: dashboardData[panel.key] } });
