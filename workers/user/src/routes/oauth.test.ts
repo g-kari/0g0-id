@@ -202,3 +202,59 @@ describe("OAuth ログインページ — GET /login", () => {
     });
   });
 });
+
+describe("OAuth ログインページ — 未設定プロバイダーのボタン非表示", () => {
+  function buildAppWithIdp(idpFetch: (req: Request) => Promise<Response>) {
+    const app = new Hono<{ Bindings: { IDP_ORIGIN: string; IDP: Fetcher } }>();
+    app.route("/", oauthRoutes);
+    const idp = { fetch: idpFetch } as unknown as Fetcher;
+    return {
+      request: (path: string, init?: RequestInit) => {
+        const req = new Request(`${baseUrl}${path}`, init);
+        return app.request(req, undefined, {
+          IDP_ORIGIN: "https://id.0g0.xyz",
+          IDP: idp,
+        });
+      },
+    };
+  }
+
+  it("IdP で未設定のプロバイダーはボタンが表示されない", async () => {
+    const app = buildAppWithIdp(async () =>
+      Response.json({
+        data: { google: true, line: false, twitch: true, github: true, x: false },
+      }),
+    );
+    const res = await app.request(`/login${REQUIRED_PARAMS}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Googleでサインイン");
+    expect(html).toContain("Twitchでサインイン");
+    expect(html).toContain("GitHubでサインイン");
+    expect(html).not.toContain("LINEでサインイン");
+    expect(html).not.toContain("X（Twitter）でサインイン");
+  });
+
+  it("IdP がエラーを返した場合は全ボタンが表示される（フォールバック）", async () => {
+    const app = buildAppWithIdp(async () => new Response("error", { status: 500 }));
+    const res = await app.request(`/login${REQUIRED_PARAMS}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Googleでサインイン");
+    expect(html).toContain("LINEでサインイン");
+    expect(html).toContain("Twitchでサインイン");
+    expect(html).toContain("GitHubでサインイン");
+    expect(html).toContain("X（Twitter）でサインイン");
+  });
+
+  it("IdP への接続に失敗した場合は全ボタンが表示される（フォールバック）", async () => {
+    const app = buildAppWithIdp(async () => {
+      throw new Error("network error");
+    });
+    const res = await app.request(`/login${REQUIRED_PARAMS}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("LINEでサインイン");
+    expect(html).toContain("X（Twitter）でサインイン");
+  });
+});
