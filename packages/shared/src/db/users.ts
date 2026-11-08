@@ -1,6 +1,8 @@
 import type { User } from "../types";
 import { escapeLikePattern } from "../lib/sql";
 import { daysAgoIso } from "./helpers";
+import { countServicesByOwner } from "./services";
+import { countResourceServersByOwner } from "./resource-servers";
 import {
   type OAuthProvider,
   PROVIDER_COLUMN,
@@ -314,9 +316,74 @@ export async function updateUserRoleWithRevocation(
   return user;
 }
 
-export async function deleteUser(db: D1Database, userId: string): Promise<boolean> {
-  const result = await db.prepare("DELETE FROM users WHERE id = ?").bind(userId).run();
-  return (result.meta.changes ?? 0) > 0;
+async function deleteUser(db: D1Database, userId: string): Promise<boolean> {
+  // Some deployed D1 databases still have auth_codes.user_id as NO ACTION even
+  // though the migration ledger includes the cascade migration. Delete account
+  // dependents and the user in one batch so a failed FK check rolls everything back.
+  const results = await db.batch([
+    db
+      .prepare(
+        "DELETE FROM auth_codes WHERE user_id = ? AND EXISTS (SELECT 1 FROM users WHERE id = ?)",
+      )
+      .bind(userId, userId),
+    db
+      .prepare(
+        "DELETE FROM mcp_sessions WHERE user_id = ? AND EXISTS (SELECT 1 FROM users WHERE id = ?)",
+      )
+      .bind(userId, userId),
+    db.prepare("DELETE FROM users WHERE id = ?").bind(userId),
+  ]);
+  return (results[2]?.meta.changes ?? 0) > 0;
+}
+
+export type DeleteUserSafelyResult =
+  | { status: "deleted" }
+  | { status: "not_found" }
+  | { status: "conflict"; code: "CONFLICT"; message: string };
+
+async function getUserDeletionOwnershipConflict(
+  db: D1Database,
+  userId: string,
+): Promise<Extract<DeleteUserSafelyResult, { status: "conflict" }> | null> {
+  const ownedServices = await countServicesByOwner(db, userId);
+  if (ownedServices > 0) {
+    return {
+      status: "conflict",
+      code: "CONFLICT",
+      message: `User owns ${ownedServices} service(s). Transfer ownership before deleting.`,
+    };
+  }
+  const ownedResources = await countResourceServersByOwner(db, userId);
+  if (ownedResources > 0) {
+    return {
+      status: "conflict",
+      code: "CONFLICT",
+      message: `User owns ${ownedResources} resource server(s). Delete them before deleting the account.`,
+    };
+  }
+  return null;
+}
+
+function isForeignKeyConstraintFailure(error: unknown): boolean {
+  return error instanceof Error && /FOREIGN KEY constraint failed/i.test(error.message);
+}
+
+export async function deleteUserSafely(
+  db: D1Database,
+  userId: string,
+): Promise<DeleteUserSafelyResult> {
+  const existingConflict = await getUserDeletionOwnershipConflict(db, userId);
+  if (existingConflict) return existingConflict;
+
+  try {
+    const deleted = await deleteUser(db, userId);
+    return deleted ? { status: "deleted" } : { status: "not_found" };
+  } catch (error) {
+    if (!isForeignKeyConstraintFailure(error)) throw error;
+    const conflict = await getUserDeletionOwnershipConflict(db, userId);
+    if (conflict) return conflict;
+    throw error;
+  }
 }
 
 /**

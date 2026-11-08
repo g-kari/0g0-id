@@ -6,7 +6,6 @@ vi.mock("@0g0-id/shared", () => ({
   findUserById: vi.fn(),
   banUserWithRevocation: vi.fn(),
   unbanUser: vi.fn(),
-  deleteUser: vi.fn(),
   updateUserRoleWithRevocation: vi.fn(),
   getUserProviders: vi.fn(),
   getLoginEventsByUserId: vi.fn(),
@@ -15,9 +14,8 @@ vi.mock("@0g0-id/shared", () => ({
   listActiveSessionsByUserId: vi.fn(),
   listServicesByOwner: vi.fn(),
   listUserConnections: vi.fn(),
-  countServicesByOwner: vi.fn(),
+  deleteUserSafely: vi.fn(),
   revokeUserTokens: vi.fn(),
-  revokeAllBffSessionsByUserId: vi.fn(),
   deleteMcpSessionsByUser: vi.fn(),
   createAdminAuditLog: vi.fn(),
 }));
@@ -28,7 +26,6 @@ import {
   findUserById,
   banUserWithRevocation,
   unbanUser,
-  deleteUser,
   updateUserRoleWithRevocation,
   getUserProviders,
   getLoginEventsByUserId,
@@ -37,7 +34,7 @@ import {
   listActiveSessionsByUserId,
   listServicesByOwner,
   listUserConnections,
-  countServicesByOwner,
+  deleteUserSafely,
   revokeUserTokens,
   deleteMcpSessionsByUser,
   createAdminAuditLog,
@@ -270,13 +267,13 @@ describe("unbanUserTool", () => {
 describe("deleteUserTool", () => {
   it("ユーザーを削除し監査ログを記録する", async () => {
     vi.mocked(findUserById).mockResolvedValue(mockUser);
-    vi.mocked(countServicesByOwner).mockResolvedValue(0);
-    vi.mocked(deleteUser).mockResolvedValue(true as never);
+    vi.mocked(deleteUserSafely).mockResolvedValue({ status: "deleted" } as never);
 
     const result = await deleteUserTool.handler({ user_id: "user-1" }, mockContext);
 
     expect(result.isError).toBeUndefined();
     expect(result.content[0].text).toContain("削除");
+    expect(vi.mocked(deleteUserSafely)).toHaveBeenCalledWith(mockContext.db, "user-1");
     expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
       mockContext.db,
       expect.objectContaining({
@@ -289,7 +286,7 @@ describe("deleteUserTool", () => {
   it("user_id未指定はエラー", async () => {
     const result = await deleteUserTool.handler({}, mockContext);
     expect(result.isError).toBe(true);
-    expect(vi.mocked(deleteUser)).not.toHaveBeenCalled();
+    expect(vi.mocked(deleteUserSafely)).not.toHaveBeenCalled();
   });
 
   it("ユーザーが見つからない場合はエラー", async () => {
@@ -297,18 +294,38 @@ describe("deleteUserTool", () => {
 
     const result = await deleteUserTool.handler({ user_id: "nonexistent" }, mockContext);
     expect(result.isError).toBe(true);
-    expect(vi.mocked(deleteUser)).not.toHaveBeenCalled();
+    expect(vi.mocked(deleteUserSafely)).not.toHaveBeenCalled();
     expect(vi.mocked(createAdminAuditLog)).not.toHaveBeenCalled();
   });
 
-  it("サービスを所有している場合はエラー", async () => {
+  it("service所有競合は安全な削除結果をエラーとして返す", async () => {
     vi.mocked(findUserById).mockResolvedValue(mockUser);
-    vi.mocked(countServicesByOwner).mockResolvedValue(2);
+    vi.mocked(deleteUserSafely).mockResolvedValue({
+      status: "conflict",
+      code: "CONFLICT",
+      message: "User owns 2 service(s). Transfer ownership before deleting.",
+    } as never);
 
     const result = await deleteUserTool.handler({ user_id: "user-1" }, mockContext);
+
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("Transfer ownership");
-    expect(vi.mocked(deleteUser)).not.toHaveBeenCalled();
+    expect(vi.mocked(createAdminAuditLog)).not.toHaveBeenCalled();
+  });
+
+  it("resource所有の競合は削除失敗として安全に返し、監査成功記録を作らない", async () => {
+    vi.mocked(findUserById).mockResolvedValue(mockUser);
+    vi.mocked(deleteUserSafely).mockResolvedValue({
+      status: "conflict",
+      code: "CONFLICT",
+      message: "User owns 1 resource server(s). Delete them before deleting the account.",
+    } as never);
+
+    const result = await deleteUserTool.handler({ user_id: "user-1" }, mockContext);
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("1 resource server(s)");
+    expect(vi.mocked(createAdminAuditLog)).not.toHaveBeenCalled();
   });
 });
 

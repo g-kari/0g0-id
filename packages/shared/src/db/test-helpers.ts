@@ -19,7 +19,15 @@ export function makeD1Mock(
     run: vi.fn().mockResolvedValue({ meta: { changes } }),
     all: vi.fn().mockResolvedValue({ results: allResults }),
   };
-  const db = { prepare: vi.fn().mockReturnValue(stmt), _stmt: stmt };
+  const db = {
+    prepare: vi.fn().mockReturnValue(stmt),
+    batch: vi.fn().mockImplementation(async (statements: unknown[]) =>
+      statements.map((_, index) => ({
+        meta: { changes: index === statements.length - 1 ? changes : 0 },
+      })),
+    ),
+    _stmt: stmt,
+  };
   return db as unknown as D1Database & { _stmt: ReturnType<typeof vi.fn> };
 }
 

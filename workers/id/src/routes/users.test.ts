@@ -15,7 +15,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     updateUserProfile: vi.fn(),
     updateUserRole: vi.fn(),
     updateUserRoleWithRevocation: vi.fn(),
-    deleteUser: vi.fn(),
+    deleteUserSafely: vi.fn(),
     listUserConnections: vi.fn(),
     revokeUserServiceTokens: vi.fn(),
     revokeUserTokens: vi.fn(),
@@ -27,8 +27,6 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     revokeOtherUserTokens: vi.fn(),
     listActiveSessionsByUserId: vi.fn(),
     listActiveBffSessionsByUserId: vi.fn(),
-    countServicesByOwner: vi.fn(),
-    countResourceServersByOwner: vi.fn(),
     listServicesByOwner: vi.fn(),
     getUserProviders: vi.fn(),
     unlinkProvider: vi.fn(),
@@ -50,7 +48,7 @@ import {
   countUsers,
   updateUserProfile,
   updateUserRoleWithRevocation,
-  deleteUser,
+  deleteUserSafely,
   listUserConnections,
   revokeUserServiceTokens,
   revokeUserTokens,
@@ -60,8 +58,6 @@ import {
   listActiveSessionsByUserId,
   listActiveBffSessionsByUserId,
   revokeBffSessionByIdForUser,
-  countServicesByOwner,
-  countResourceServersByOwner,
   listServicesByOwner,
   getUserProviders,
   unlinkProvider,
@@ -981,10 +977,7 @@ describe("DELETE /api/users/:id", () => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
     vi.mocked(findUserById).mockResolvedValue(mockUser);
-    vi.mocked(countServicesByOwner).mockResolvedValue(0);
-    vi.mocked(countResourceServersByOwner).mockResolvedValue(0);
-    vi.mocked(revokeUserTokens).mockResolvedValue();
-    vi.mocked(deleteUser).mockResolvedValue(true);
+    vi.mocked(deleteUserSafely).mockResolvedValue({ status: "deleted" });
   });
 
   it("管理者でない場合 → 403を返す", async () => {
@@ -1034,7 +1027,11 @@ describe("DELETE /api/users/:id", () => {
   });
 
   it("リソースサーバーを所有している場合 → 副作用なしで409を返す", async () => {
-    vi.mocked(countResourceServersByOwner).mockResolvedValue(2);
+    vi.mocked(deleteUserSafely).mockResolvedValue({
+      status: "conflict",
+      code: "CONFLICT",
+      message: "User owns 2 resource server(s). Delete them before deleting the account.",
+    });
     const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004", {
       method: "DELETE",
       origin: "https://admin.0g0.xyz",
@@ -1043,13 +1040,17 @@ describe("DELETE /api/users/:id", () => {
     const body = await res.json<{ error: { code: string; message: string } }>();
     expect(body.error.code).toBe("CONFLICT");
     expect(body.error.message).toContain("2 resource server(s)");
+    expect(deleteUserSafely).toHaveBeenCalled();
     expect(revokeUserTokens).not.toHaveBeenCalled();
     expect(revokeAllBffSessionsByUserId).not.toHaveBeenCalled();
-    expect(deleteUser).not.toHaveBeenCalled();
   });
 
   it("サービスを所有している場合 → 409を返す", async () => {
-    vi.mocked(countServicesByOwner).mockResolvedValue(2);
+    vi.mocked(deleteUserSafely).mockResolvedValue({
+      status: "conflict",
+      code: "CONFLICT",
+      message: "User owns 2 service(s). Transfer ownership before deleting.",
+    });
     const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004", {
       method: "DELETE",
       origin: "https://admin.0g0.xyz",
@@ -1057,28 +1058,21 @@ describe("DELETE /api/users/:id", () => {
     expect(res.status).toBe(409);
     const body = await res.json<{ error: { code: string; message: string } }>();
     expect(body.error.code).toBe("CONFLICT");
-    expect(body.error.message).toContain("2");
+    expect(body.error.message).toContain("2 service(s)");
   });
 
-  it("削除前にトークンを失効させる", async () => {
-    await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004", {
+  it("一括削除を呼び204を返す", async () => {
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004", {
       method: "DELETE",
       origin: "https://admin.0g0.xyz",
     });
-    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(
-      expect.anything(),
-      "00000000-0000-0000-0000-000000000004",
-      "admin_action",
-    );
-    expect(vi.mocked(revokeAllBffSessionsByUserId)).toHaveBeenCalledWith(
-      expect.anything(),
-      "00000000-0000-0000-0000-000000000004",
-      "admin_action",
-    );
-    expect(vi.mocked(deleteUser)).toHaveBeenCalledWith(
+    expect(res.status).toBe(204);
+    expect(deleteUserSafely).toHaveBeenCalledWith(
       expect.anything(),
       "00000000-0000-0000-0000-000000000004",
     );
+    expect(revokeUserTokens).not.toHaveBeenCalled();
+    expect(revokeAllBffSessionsByUserId).not.toHaveBeenCalled();
   });
 });
 
@@ -2657,10 +2651,7 @@ describe("DELETE /api/users/me", () => {
     vi.resetAllMocks();
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
     vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: mockUserPayload.sub });
-    vi.mocked(countServicesByOwner).mockResolvedValue(0);
-    vi.mocked(countResourceServersByOwner).mockResolvedValue(0);
-    vi.mocked(revokeUserTokens).mockResolvedValue(undefined);
-    vi.mocked(deleteUser).mockResolvedValue(true);
+    vi.mocked(deleteUserSafely).mockResolvedValue({ status: "deleted" });
   });
 
   it("Authorizationヘッダーなし → 401を返す", async () => {
@@ -2689,7 +2680,11 @@ describe("DELETE /api/users/me", () => {
   });
 
   it("リソースサーバーを所有している場合 → 副作用なしで409を返す", async () => {
-    vi.mocked(countResourceServersByOwner).mockResolvedValue(2);
+    vi.mocked(deleteUserSafely).mockResolvedValue({
+      status: "conflict",
+      code: "CONFLICT",
+      message: "User owns 2 resource server(s). Delete them before deleting the account.",
+    });
     const res = await sendRequest(app, "/api/users/me", {
       method: "DELETE",
       origin: "https://id.0g0.xyz",
@@ -2700,11 +2695,14 @@ describe("DELETE /api/users/me", () => {
     expect(body.error.message).toContain("2 resource server(s)");
     expect(revokeUserTokens).not.toHaveBeenCalled();
     expect(revokeAllBffSessionsByUserId).not.toHaveBeenCalled();
-    expect(deleteUser).not.toHaveBeenCalled();
   });
 
   it("サービスを所有している場合 → 409を返す", async () => {
-    vi.mocked(countServicesByOwner).mockResolvedValue(2);
+    vi.mocked(deleteUserSafely).mockResolvedValue({
+      status: "conflict",
+      code: "CONFLICT",
+      message: "User owns 2 service(s). Transfer ownership before deleting.",
+    });
     const res = await sendRequest(app, "/api/users/me", {
       method: "DELETE",
       origin: "https://id.0g0.xyz",
@@ -2715,37 +2713,22 @@ describe("DELETE /api/users/me", () => {
     expect(body.error.message).toContain("2 service(s)");
   });
 
-  it("トークンを失効してからユーザーを削除し204を返す", async () => {
+  it("一括削除を呼び204を返す", async () => {
     const res = await sendRequest(app, "/api/users/me", {
       method: "DELETE",
       origin: "https://id.0g0.xyz",
     });
     expect(res.status).toBe(204);
-    expect(vi.mocked(revokeUserTokens)).toHaveBeenCalledWith(
-      expect.anything(),
-      mockUserPayload.sub,
-      "admin_action",
-    );
-    expect(vi.mocked(revokeAllBffSessionsByUserId)).toHaveBeenCalledWith(
-      expect.anything(),
-      mockUserPayload.sub,
-      "admin_action",
-    );
-    expect(vi.mocked(deleteUser)).toHaveBeenCalledWith(expect.anything(), mockUserPayload.sub);
+    expect(deleteUserSafely).toHaveBeenCalledWith(expect.anything(), mockUserPayload.sub);
+    expect(revokeUserTokens).not.toHaveBeenCalled();
+    expect(revokeAllBffSessionsByUserId).not.toHaveBeenCalled();
   });
 
-  it("revokeUserTokens・revokeAllBffSessionsByUserIdがdeleteUserより先に呼ばれる", async () => {
+  it("単一の削除処理に集約し、個別の失効処理は呼ばない", async () => {
     const callOrder: string[] = [];
-    vi.mocked(revokeUserTokens).mockImplementation(async () => {
-      callOrder.push("revokeTokens");
-    });
-    vi.mocked(revokeAllBffSessionsByUserId).mockImplementation(async () => {
-      callOrder.push("revokeBffSessions");
-      return 0;
-    });
-    vi.mocked(deleteUser).mockImplementation(async () => {
+    vi.mocked(deleteUserSafely).mockImplementation(async () => {
       callOrder.push("delete");
-      return true;
+      return { status: "deleted" };
     });
 
     await sendRequest(app, "/api/users/me", {
@@ -2753,7 +2736,9 @@ describe("DELETE /api/users/me", () => {
       origin: "https://id.0g0.xyz",
     });
 
-    expect(callOrder).toEqual(["revokeTokens", "revokeBffSessions", "delete"]);
+    expect(callOrder).toEqual(["delete"]);
+    expect(revokeUserTokens).not.toHaveBeenCalled();
+    expect(revokeAllBffSessionsByUserId).not.toHaveBeenCalled();
   });
 });
 

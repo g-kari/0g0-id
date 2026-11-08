@@ -10,16 +10,7 @@ import type {
   AdminUserSummary,
   RestErrorBody,
 } from "@0g0-id/shared";
-import {
-  countServicesByOwner,
-  countResourceServersByOwner,
-  findUserById,
-  revokeUserTokens,
-  revokeAllBffSessionsByUserId,
-  deleteMcpSessionsByUser,
-  deleteUser,
-  restErrorBody,
-} from "@0g0-id/shared";
+import { findUserById, deleteUserSafely, restErrorBody } from "@0g0-id/shared";
 
 export const PatchMeSchema = z
   .object({
@@ -121,25 +112,9 @@ export async function performUserDeletion(
   db: D1Database,
   userId: string,
 ): Promise<{ code: string; message: string } | null> {
-  const ownedServices = await countServicesByOwner(db, userId);
-  if (ownedServices > 0) {
-    return {
-      code: "CONFLICT",
-      message: `User owns ${ownedServices} service(s). Transfer ownership before deleting.`,
-    };
+  const result = await deleteUserSafely(db, userId);
+  if (result.status === "conflict") {
+    return { code: result.code, message: result.message };
   }
-  // resource_servers.owner_user_id also restricts user deletion. Check before
-  // revoking sessions so a blocked deletion leaves the account usable.
-  const ownedResources = await countResourceServersByOwner(db, userId);
-  if (ownedResources > 0) {
-    return {
-      code: "CONFLICT",
-      message: `User owns ${ownedResources} resource server(s). Delete them before deleting the account.`,
-    };
-  }
-  await revokeUserTokens(db, userId, "admin_action");
-  await revokeAllBffSessionsByUserId(db, userId, "admin_action");
-  await deleteMcpSessionsByUser(db, userId);
-  await deleteUser(db, userId);
   return null;
 }
