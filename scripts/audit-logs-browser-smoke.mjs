@@ -266,9 +266,10 @@ async function main() {
         if (new URL(request.url()).pathname === auditPath)
           requestFailures.push({ url: request.url(), error: request.failure()?.errorText });
       });
-      await context.addInitScript(({ ignoreFirstAbort, delayFirstJson }) => {
+      await context.addInitScript(({ ignoreFirstAbort, ignoreAuditAborts, delayFirstJson }) => {
         window.__syntheticXss = 0;
         window.__syntheticAborts = [];
+        window.__syntheticHeadersResolved = false;
         window.__syntheticJsonStarted = false;
         window.__syntheticJsonResolved = false;
         const nativeFetch = window.fetch.bind(window);
@@ -290,16 +291,22 @@ async function main() {
           // A transport ignoring cancellation makes both request-sequence guards observable.
           const fetched = nativeFetch(
             input,
-            ignoreFirstAbort && first ? { ...init, signal: undefined } : init,
-          );
-          if (delayFirstJson && first) {
+            (ignoreFirstAbort && first) || (ignoreAuditAborts && isAuditRead)
+              ? { ...init, signal: undefined }
+              : init,
+          ).then((response) => {
+            if (first) window.__syntheticHeadersResolved = true;
+            return response;
+          });
+          if (first) {
             return fetched.then((response) => {
               const nativeJson = response.json.bind(response);
               response.json = async () => {
                 window.__syntheticJsonStarted = true;
-                await new Promise((resolve) => {
-                  window.__syntheticReleaseJson = resolve;
-                });
+                if (delayFirstJson)
+                  await new Promise((resolve) => {
+                    window.__syntheticReleaseJson = resolve;
+                  });
                 const body = await nativeJson();
                 window.__syntheticJsonResolved = true;
                 return body;
@@ -570,7 +577,8 @@ async function main() {
               await expect(page.locator("#loading")).toBeHidden();
               await expect(page.locator("#error-message")).toBeVisible();
               await expect(page.locator("#retry-btn")).toBeEnabled();
-              await page.locator("#retry-btn").press("Space");
+              await expect(page.locator("#retry-btn")).toBeFocused();
+              await page.keyboard.press("Space");
               await loaded(page, 1);
               await assertState(page, calls, { ...matchingFilters, offset: 50 });
               assert.equal(readCount(calls), 3);
@@ -1112,6 +1120,318 @@ async function main() {
         });
       },
     );
+
+    async function auditNextTask(page) {
+      await page.evaluate(
+        () =>
+          new Promise((resolve) => {
+            const channel = new window.MessageChannel();
+            channel.port1.onmessage = () => {
+              channel.port1.close();
+              channel.port2.close();
+              resolve();
+            };
+            channel.port2.postMessage(null);
+          }),
+      );
+    }
+
+    for (const viewport of viewports) {
+      for (const phase of ["headers", "body"]) {
+        const gates = [deferred(), deferred()];
+        await scenario(
+          `Audit ${phase} deadline and keyboard recovery at ${viewport.width}px`,
+          viewport,
+          async (route, url, n) => {
+            if (n === 2 || (n === 1 && phase === "headers")) await gates[n - 1].promise;
+            await defaultResponse(route, url);
+          },
+          async (page, calls, origin) => {
+            try {
+              await page.clock.install({ time: 1794132000000 });
+              await page.clock.pauseAt(1794132060000);
+              const filters = { ...matchingFilters, offset: "50" };
+              await page.goto(`${origin}/security/audit?${new URLSearchParams(filters)}`);
+              await expect.poll(() => readCount(calls)).toBe(1);
+              if (phase === "body")
+                await expect
+                  .poll(() => page.evaluate(() => window.__syntheticJsonStarted))
+                  .toBe(true);
+              await page.clock.runFor(29999);
+              await expect(page.locator("#loading")).toBeVisible();
+              await expect(page.locator("#retry-btn")).toBeDisabled();
+              await page.clock.runFor(1);
+              await expect(page.locator("#loading")).toBeHidden();
+              await expect(page.locator("#error-message")).toContainText("時間がかかっています");
+              await expect(page.locator("#retry-btn")).toBeEnabled();
+              await expect(page.locator("#table-wrap")).toBeHidden();
+              await expect(page.locator("#pagination")).toBeHidden();
+              await assertState(page, calls, filters);
+              await page.clock.runFor(60000);
+              assert.equal(readCount(calls), 1, "A deadline must never automatically retry.");
+              await page.locator("#retry-btn").focus();
+              await assertResponsive(page);
+              await page.screenshot({
+                path: path.join(reportDir, `audit-deadline-${phase}-${viewport.width}.png`),
+                fullPage: true,
+              });
+              await page.keyboard.press("Enter");
+              await expect.poll(() => readCount(calls)).toBe(2);
+              await page.evaluate(() => {
+                document.getElementById("retry-btn").click();
+                document.getElementById("retry-btn").click();
+              });
+              await page.clock.runFor(29999);
+              await expect(page.locator("#loading")).toBeVisible();
+              assert.equal(readCount(calls), 2);
+              await page.clock.runFor(1);
+              await expect(page.locator("#loading")).toBeHidden();
+              await expect(page.locator("#retry-btn")).toBeEnabled();
+              await expect(page.locator("#retry-btn")).toBeFocused();
+              await page.keyboard.press("Space");
+              await loaded(page, 1);
+              await assertState(page, calls, filters);
+              await expect(page.locator('[role="region"]')).toBeFocused();
+              await assertResponsive(page);
+              await page.screenshot({
+                path: path.join(reportDir, `audit-recovered-${phase}-${viewport.width}.png`),
+                fullPage: true,
+              });
+              gates.forEach((gate) => gate.resolve());
+              if (phase === "body") {
+                await page.evaluate(() => window.__syntheticReleaseJson());
+                await expect
+                  .poll(() => page.evaluate(() => window.__syntheticJsonResolved))
+                  .toBe(true);
+              }
+              await expect
+                .poll(() => page.evaluate(() => window.__syntheticHeadersResolved))
+                .toBe(true);
+              await auditNextTask(page);
+              await page.clock.runFor(30000);
+              await loaded(page, 1);
+              await assertState(page, calls, filters);
+              assert.equal(readCount(calls), 3);
+            } finally {
+              gates.forEach((gate) => gate.resolve());
+              await page.evaluate(() => window.__syntheticReleaseJson?.()).catch(() => {});
+            }
+          },
+          { ignoreAuditAborts: true, delayFirstJson: phase === "body" },
+        );
+      }
+    }
+
+    for (const navigation of ["filter", "reset", "invalid", "history", "pagehide"]) {
+      const gate = deferred();
+      await scenario(
+        `Pending audit read is superseded by ${navigation} without a stale timer`,
+        viewports[1],
+        async (route, url, n) => {
+          if (n === 1) await gate.promise;
+          await defaultResponse(route, url);
+        },
+        async (page, calls, origin) => {
+          try {
+            await page.clock.install({ time: 1794132000000 });
+            await page.clock.pauseAt(1794132060000);
+            await page.goto(`${origin}/security/audit?${new URLSearchParams(matchingFilters)}`);
+            await expect.poll(() => readCount(calls)).toBe(1);
+            await page.clock.runFor(1000);
+            let expected = matchingFilters;
+            if (navigation === "filter") {
+              expected = { ...matchingFilters, action: "user.unban" };
+              await fillFilters(page, expected);
+              await applyButton(page).click();
+            } else if (navigation === "reset") {
+              expected = {};
+              await page.locator("#reset-filters").click();
+            } else if (navigation === "invalid") {
+              await page.locator("#filter-admin").fill("invalid");
+              await applyButton(page).click();
+              await expect(page.locator("#error")).toBeVisible();
+              await page.locator("#retry-btn").press("Enter");
+              assert.equal(readCount(calls), 1);
+            } else if (navigation === "history") {
+              await page.locator("#reset-filters").click();
+              await loaded(page, 50);
+              await page.goBack();
+              await loaded(page, 50);
+              await assertState(page, calls, matchingFilters);
+              await page.goForward();
+              expected = {};
+            } else {
+              await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+              await expect(page.locator("#loading")).toBeHidden();
+              await expect(page.locator("#retry-btn")).toBeEnabled();
+              await page.evaluate(() => window.dispatchEvent(new Event("pageshow")));
+              assert.equal(readCount(calls), 1);
+              await page.locator("#retry-btn").press("Enter");
+            }
+            const expectedCount = navigation === "filter" ? 1 : 50;
+            if (navigation !== "invalid") await loaded(page, expectedCount);
+            gate.resolve();
+            await page.clock.runFor(60000);
+            if (navigation === "invalid") {
+              await expect(page.locator("#table-wrap")).toBeHidden();
+              await expect(page.locator("#filter-admin")).toHaveValue("invalid");
+              assert.equal(readCount(calls), 1);
+              await page.locator("#reset-filters").click();
+              await loaded(page, 50);
+            } else {
+              await loaded(page, expectedCount);
+              await assertState(page, calls, expected);
+            }
+          } finally {
+            gate.resolve();
+          }
+        },
+        { ignoreFirstAbort: true },
+      );
+    }
+
+    for (const outcome of ["success", "timeout"]) {
+      const gates = [deferred(), deferred()];
+      await scenario(
+        `Keyboard Retry preserves an active filter edit on ${outcome}`,
+        viewports[1],
+        async (route, url, n) => {
+          if (n <= 2) await gates[n - 1].promise;
+          await defaultResponse(route, url);
+        },
+        async (page, calls, origin) => {
+          try {
+            await page.clock.install({ time: 1794132000000 });
+            await page.clock.pauseAt(1794132060000);
+            await page.goto(`${origin}/security/audit`);
+            await expect.poll(() => readCount(calls)).toBe(1);
+            await page.clock.runFor(30000);
+            await expect(page.locator("#retry-btn")).toBeEnabled();
+            await page.locator("#retry-btn").focus();
+            await page.keyboard.press("Enter");
+            await expect.poll(() => readCount(calls)).toBe(2);
+            await page.locator("#filter-action").focus();
+            await page.keyboard.type("user.unban");
+            if (outcome === "success") {
+              gates[1].resolve();
+              await loaded(page, 50);
+            } else {
+              await page.clock.runFor(30000);
+              await expect(page.locator("#error-message")).toContainText("時間がかかっています");
+            }
+            await expect(page.locator("#filter-action")).toBeFocused();
+            await expect(page.locator("#filter-action")).toHaveValue("user.unban");
+            assertQuery(queryObject(new URL(page.url())), {});
+            assert.equal(readCount(calls), 2);
+          } finally {
+            gates.forEach((gate) => gate.resolve());
+          }
+        },
+        { ignoreAuditAborts: true },
+      );
+    }
+
+    const supersededGates = [deferred(), deferred()];
+    await scenario(
+      "A changed audit query owns a fresh deadline while the superseded transport ignores abort",
+      viewports[1],
+      async (route, url, n) => {
+        if (n <= 2) await supersededGates[n - 1].promise;
+        await defaultResponse(route, url);
+      },
+      async (page, calls, origin) => {
+        try {
+          await page.clock.install({ time: 1794132000000 });
+          await page.clock.pauseAt(1794132060000);
+          await page.goto(`${origin}/security/audit`);
+          await expect.poll(() => readCount(calls)).toBe(1);
+          await page.clock.runFor(1000);
+          await fillFilters(page, matchingFilters);
+          await applyButton(page).click();
+          await expect.poll(() => readCount(calls)).toBe(2);
+          await page.clock.runFor(29000);
+          await expect(page.locator("#loading")).toBeVisible();
+          await expect(page.locator("#retry-btn")).toBeDisabled();
+          await page.clock.runFor(999);
+          await expect(page.locator("#loading")).toBeVisible();
+          await page.clock.runFor(1);
+          await expect(page.locator("#loading")).toBeHidden();
+          await expect(page.locator("#retry-btn")).toBeEnabled();
+          await page.locator("#retry-btn").press("Enter");
+          await loaded(page, 50);
+          await assertState(page, calls, matchingFilters);
+          supersededGates.forEach((gate) => gate.resolve());
+          await expect
+            .poll(() => page.evaluate(() => window.__syntheticHeadersResolved))
+            .toBe(true);
+          await auditNextTask(page);
+          await loaded(page, 50);
+          await assertState(page, calls, matchingFilters);
+          assert.equal(readCount(calls), 3);
+        } finally {
+          supersededGates.forEach((gate) => gate.resolve());
+        }
+      },
+      { ignoreAuditAborts: true },
+    );
+
+    for (const { status, retryFirst } of [200, 403, 401].flatMap((status) => [
+      { status, retryFirst: true },
+      { status, retryFirst: false },
+    ])) {
+      const gate = deferred();
+      const delivered = deferred();
+      await scenario(
+        `Timed out audit ${status} remains inert with retryFirst=${retryFirst}`,
+        viewports[1],
+        async (route, url, n) => {
+          if (n === 1) {
+            await gate.promise;
+            const body = filteredResponse(url);
+            body.data = body.data.map((row) => ({ ...row, status: "failure" }));
+            await route.fulfill({ status, json: body });
+            delivered.resolve();
+          } else await defaultResponse(route, url);
+        },
+        async (page, calls, origin) => {
+          try {
+            await page.clock.install({ time: 1794132000000 });
+            await page.clock.pauseAt(1794132060000);
+            await page.goto(`${origin}/security/audit?${new URLSearchParams(matchingFilters)}`);
+            await expect.poll(() => readCount(calls)).toBe(1);
+            await page.clock.runFor(30000);
+            await expect(page.locator("#retry-btn")).toBeEnabled();
+            if (retryFirst) {
+              await page.locator("#retry-btn").press("Enter");
+              await loaded(page, 50);
+            }
+            gate.resolve();
+            await delivered.promise;
+            await expect
+              .poll(() => page.evaluate(() => window.__syntheticHeadersResolved))
+              .toBe(true);
+            if (status === 200)
+              await expect
+                .poll(() => page.evaluate(() => window.__syntheticJsonResolved))
+                .toBe(true);
+            await auditNextTask(page);
+            await page.clock.runFor(30000);
+            if (!retryFirst) {
+              await expect(page.locator("#error-message")).toContainText("時間がかかっています");
+              await expect(page.locator("#table-wrap")).toBeHidden();
+              await page.locator("#retry-btn").press("Enter");
+            }
+            await loaded(page, 50);
+            await assertState(page, calls, matchingFilters);
+            await expect(page.locator("#audit-tbody tr").first()).toContainText("成功");
+            assert.equal(readCount(calls), 2);
+          } finally {
+            gate.resolve();
+          }
+        },
+        { ignoreFirstAbort: true },
+      );
+    }
 
     report.serviceOwnerSub = await serviceOwnerSubBrowserCases({
       browser,

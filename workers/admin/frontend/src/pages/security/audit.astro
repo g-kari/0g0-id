@@ -49,6 +49,7 @@ import Admin from '../../layouts/Admin.astro';
 </style>
 
 <script>
+  import { ReadDeadlineError, readWithDeadline } from '../../lib/read-deadline';
   import { formatDatetime } from '../../lib/api';
   import { AUDIT_ACTIONS, AUDIT_PAGE_SIZE, auditQueryParams, auditTargetHref, parseAuditQuery, readAuditPage, type AuditQuery, type AuditRow } from '../../lib/audit-log-view';
 
@@ -134,29 +135,37 @@ import Admin from '../../layouts/Admin.astro';
     tbody.replaceChildren(fragment);
   }
   async function load(): Promise<void> {
+    const restoreFocus = document.activeElement === retry;
+    let loaded = false;
     const id = ++sequence;
     pending = true;
-    active?.abort(); active = new AbortController();
+    active?.abort();
+    const controller = new AbortController();
+    active = controller;
     retry.disabled = true; clearView(); loading.style.display = 'flex'; summary.textContent = '読み込み中...';
     const params = invalidParams ?? new URLSearchParams(window.location.search);
     if (!invalidParams) syncForm(params);
     const query = parseAuditQuery(params);
     if ('error' in query) {
       showError(`${query.error}。条件を入力し直すかリセットしてください`);
+      controller.abort(); active = undefined;
       loading.style.display = 'none'; retry.disabled = false; pending = false; return;
     }
     const apiParams = auditQueryParams(query);
     apiParams.set('limit', String(AUDIT_PAGE_SIZE)); apiParams.set('offset', String(query.offset));
     try {
-      const res = await fetch(`/api/audit-logs?${apiParams}`, { credentials: 'same-origin', signal: active.signal });
-      if (id !== sequence) return;
+      // Only the winning read may redirect or change the view, including after a stalled body.
+      const { res, body } = await readWithDeadline(async (signal) => {
+        const res = await fetch(`/api/audit-logs?${apiParams}`, { credentials: 'same-origin', signal });
+        const body: unknown = res.ok ? await res.json() : undefined;
+        return { res, body };
+      }, controller, 30_000);
+      if (id !== sequence || controller.signal.aborted) return;
       if (res.status === 401) { window.location.href = '/'; return; }
       if (!res.ok) {
         showError(res.status === 403 ? '管理者権限を確認できません。再ログインして権限を確認してください' : res.status === 400 ? '検索条件を受け付けられませんでした。条件を確認してください' : '監査ログの取得に失敗しました。しばらくしてから再読み込みしてください');
         return;
       }
-      const body: unknown = await res.json();
-      if (id !== sequence) return;
       const { rows, total } = readAuditPage(body, query);
       if (query.offset > 0 && query.offset >= total) {
         navigate({ ...query, offset: Math.max(0, Math.floor((total - 1) / AUDIT_PAGE_SIZE) * AUDIT_PAGE_SIZE) }, true); return;
@@ -167,11 +176,18 @@ import Admin from '../../layouts/Admin.astro';
       empty.style.display = rows.length === 0 ? '' : 'none'; table.style.display = '';
       pageInfo.textContent = `${Math.floor(query.offset / AUDIT_PAGE_SIZE) + 1} / ${Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE))} ページ`;
       prev.disabled = query.offset === 0; next.disabled = query.offset + AUDIT_PAGE_SIZE >= total; pagination.style.display = 'flex';
-    } catch {
+      loaded = true;
+    } catch (err) {
       if (id !== sequence) return;
-      showError('監査ログを安全に表示できませんでした。しばらくしてから再読み込みしてください');
+      showError(err instanceof ReadDeadlineError ? '監査ログの読み込みに時間がかかっています。同じ条件で再読み込みできます' : '監査ログを安全に表示できませんでした。しばらくしてから再読み込みしてください');
     } finally {
-      if (id === sequence) { loading.style.display = 'none'; retry.disabled = false; pending = false; }
+      if (id === sequence) {
+        active = undefined; loading.style.display = 'none'; retry.disabled = false; pending = false;
+        if (restoreFocus && (document.activeElement === document.body || document.activeElement === retry)) {
+          if (loaded) table.querySelector<HTMLElement>('[role="region"]')?.focus();
+          else retry.focus();
+        }
+      }
     }
   }
   form.addEventListener('submit', (event) => {
@@ -191,6 +207,7 @@ import Admin from '../../layouts/Admin.astro';
     const query = parseAuditQuery(new URLSearchParams(window.location.search));
     if (!next.disabled && !('error' in query)) navigate({ ...query, offset: query.offset + AUDIT_PAGE_SIZE });
   });
+  window.addEventListener('pagehide', () => active?.abort());
   window.addEventListener('popstate', () => { invalidParams = undefined; void load(); });
   void load();
 </script>
