@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { readdirSync, readFileSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, URL as NodeURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { performUserDeletion } from "./_shared";
 import { INTERNAL_OPENAPI } from "../openapi/internal-spec";
@@ -14,7 +14,7 @@ describe("performUserDeletion with real migrations and foreign keys", () => {
   beforeEach(() => {
     sqlite = new DatabaseSync(":memory:");
     sqlite.exec("PRAGMA foreign_keys = ON");
-    const migrations = fileURLToPath(new URL("../../../../../migrations/", import.meta.url));
+    const migrations = fileURLToPath(new NodeURL("../../../../../migrations/", import.meta.url));
     for (const file of readdirSync(migrations)
       .filter((name) => name.endsWith(".sql"))
       .sort()) {
