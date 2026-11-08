@@ -12,6 +12,7 @@ import type {
 } from "@0g0-id/shared";
 import {
   countServicesByOwner,
+  countResourceServersByOwner,
   findUserById,
   revokeUserTokens,
   revokeAllBffSessionsByUserId,
@@ -125,6 +126,15 @@ export async function performUserDeletion(
     return {
       code: "CONFLICT",
       message: `User owns ${ownedServices} service(s). Transfer ownership before deleting.`,
+    };
+  }
+  // resource_servers.owner_user_id also restricts user deletion. Check before
+  // revoking sessions so a blocked deletion leaves the account usable.
+  const ownedResources = await countResourceServersByOwner(db, userId);
+  if (ownedResources > 0) {
+    return {
+      code: "CONFLICT",
+      message: `User owns ${ownedResources} resource server(s). Delete them before deleting the account.`,
     };
   }
   await revokeUserTokens(db, userId, "admin_action");

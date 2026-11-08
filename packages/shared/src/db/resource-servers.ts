@@ -32,6 +32,14 @@ export async function listResourceServers(db: D1Database): Promise<ResourceServe
   return result.results;
 }
 
+export async function countResourceServersByOwner(db: D1Database, userId: string): Promise<number> {
+  const result = await db
+    .prepare("SELECT COUNT(*) as count FROM resource_servers WHERE owner_user_id = ?")
+    .bind(userId)
+    .first<{ count: number }>();
+  return result?.count ?? 0;
+}
+
 export async function createResourceServer(
   db: D1Database,
   params: {

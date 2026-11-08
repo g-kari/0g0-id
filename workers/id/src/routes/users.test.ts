@@ -28,6 +28,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
     listActiveSessionsByUserId: vi.fn(),
     listActiveBffSessionsByUserId: vi.fn(),
     countServicesByOwner: vi.fn(),
+    countResourceServersByOwner: vi.fn(),
     listServicesByOwner: vi.fn(),
     getUserProviders: vi.fn(),
     unlinkProvider: vi.fn(),
@@ -60,6 +61,7 @@ import {
   listActiveBffSessionsByUserId,
   revokeBffSessionByIdForUser,
   countServicesByOwner,
+  countResourceServersByOwner,
   listServicesByOwner,
   getUserProviders,
   unlinkProvider,
@@ -980,6 +982,7 @@ describe("DELETE /api/users/:id", () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockAdminPayload);
     vi.mocked(findUserById).mockResolvedValue(mockUser);
     vi.mocked(countServicesByOwner).mockResolvedValue(0);
+    vi.mocked(countResourceServersByOwner).mockResolvedValue(0);
     vi.mocked(revokeUserTokens).mockResolvedValue();
     vi.mocked(deleteUser).mockResolvedValue(true);
   });
@@ -1028,6 +1031,21 @@ describe("DELETE /api/users/:id", () => {
     expect(res.status).toBe(404);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("リソースサーバーを所有している場合 → 副作用なしで409を返す", async () => {
+    vi.mocked(countResourceServersByOwner).mockResolvedValue(2);
+    const res = await sendRequest(app, "/api/users/00000000-0000-0000-0000-000000000004", {
+      method: "DELETE",
+      origin: "https://admin.0g0.xyz",
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("CONFLICT");
+    expect(body.error.message).toContain("2 resource server(s)");
+    expect(revokeUserTokens).not.toHaveBeenCalled();
+    expect(revokeAllBffSessionsByUserId).not.toHaveBeenCalled();
+    expect(deleteUser).not.toHaveBeenCalled();
   });
 
   it("サービスを所有している場合 → 409を返す", async () => {
@@ -2640,6 +2658,7 @@ describe("DELETE /api/users/me", () => {
     vi.mocked(verifyAccessToken).mockResolvedValue(mockUserPayload);
     vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: mockUserPayload.sub });
     vi.mocked(countServicesByOwner).mockResolvedValue(0);
+    vi.mocked(countResourceServersByOwner).mockResolvedValue(0);
     vi.mocked(revokeUserTokens).mockResolvedValue(undefined);
     vi.mocked(deleteUser).mockResolvedValue(true);
   });
@@ -2667,6 +2686,21 @@ describe("DELETE /api/users/me", () => {
     expect(res.status).toBe(401);
     const body = await res.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("リソースサーバーを所有している場合 → 副作用なしで409を返す", async () => {
+    vi.mocked(countResourceServersByOwner).mockResolvedValue(2);
+    const res = await sendRequest(app, "/api/users/me", {
+      method: "DELETE",
+      origin: "https://id.0g0.xyz",
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("CONFLICT");
+    expect(body.error.message).toContain("2 resource server(s)");
+    expect(revokeUserTokens).not.toHaveBeenCalled();
+    expect(revokeAllBffSessionsByUserId).not.toHaveBeenCalled();
+    expect(deleteUser).not.toHaveBeenCalled();
   });
 
   it("サービスを所有している場合 → 409を返す", async () => {

@@ -690,6 +690,21 @@ export const INTERNAL_OPENAPI = {
           "403": { description: "FORBIDDEN — オリジン不正" },
         },
       },
+      delete: {
+        tags: ["ユーザー API"],
+        summary: "自分のアカウントを削除",
+        description:
+          "認証済みユーザー自身を削除する。サービス用トークン・BAN済みユーザーは利用不可。OriginヘッダーによるCSRF検証あり。所有サービスは事前に所有権を移譲し、所有リソースサーバーは事前に削除する必要がある。事前確認で所有を検出した場合はセッションを失効せず409を返す。削除成功時はリフレッシュトークン・BFFセッション・MCPセッションも削除される。",
+        security: [{ BearerAuth: [] }],
+        responses: {
+          "204": { description: "削除成功" },
+          "401": { description: "UNAUTHORIZED — 未認証、ユーザー未存在、またはBAN済み" },
+          "403": {
+            description: "FORBIDDEN — サービス用トークン、またはオリジン不正",
+          },
+          "409": { description: "CONFLICT — サービスまたはリソースサーバーを所有している" },
+        },
+      },
     },
     "/api/users": {
       get: {
@@ -1177,7 +1192,7 @@ export const INTERNAL_OPENAPI = {
         tags: ["ユーザー API (管理者)"],
         summary: "ユーザー削除",
         description:
-          "指定ユーザーを削除する（管理者専用）。自分自身の削除は不可。サービス所有者は所有権移譲後でないと削除不可。",
+          "指定ユーザーを削除する（管理者専用）。自分自身の削除は不可。所有サービスは事前に所有権を移譲し、所有リソースサーバーは事前に削除する必要がある。事前確認で所有を検出した場合はセッションを失効せず409を返す。",
         security: [{ BearerAuth: [] }],
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         responses: {
@@ -1185,7 +1200,7 @@ export const INTERNAL_OPENAPI = {
           "401": { description: "UNAUTHORIZED" },
           "403": { description: "FORBIDDEN — 管理者権限なし、または自分自身の削除" },
           "404": { description: "NOT_FOUND — ユーザー未存在" },
-          "409": { description: "CONFLICT — サービス所有者は削除不可" },
+          "409": { description: "CONFLICT — サービスまたはリソースサーバーを所有している" },
         },
       },
     },
