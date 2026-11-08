@@ -23,6 +23,7 @@ import authRoutes from "./routes/auth";
 import dbscRoutes from "./routes/dbsc";
 import oauthRoutes from "./routes/oauth";
 import passkeyRoutes from "./routes/passkey";
+import providerStatusRoutes from "./routes/provider-status";
 import profileRoutes from "./routes/profile";
 import connectionsRoutes from "./routes/connections";
 import providersRoutes from "./routes/providers";
@@ -94,6 +95,7 @@ app.use("/auth/link", dbscRequire);
 
 app.route("/auth", authRoutes);
 app.route("/auth", passkeyRoutes);
+app.route("/auth", providerStatusRoutes);
 app.route("/auth/dbsc", dbscRoutes);
 // OAuth 2.0 / OIDC フロー: IdP の /auth/authorize からリダイレクトされるプロバイダー選択ページ
 app.route("/", oauthRoutes);

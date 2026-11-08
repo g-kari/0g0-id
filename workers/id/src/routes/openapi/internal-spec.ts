@@ -481,6 +481,26 @@ export const INTERNAL_OPENAPI = {
         },
       },
     },
+    "/auth/providers": {
+      get: {
+        tags: ["認証フロー"],
+        summary: "設定済みプロバイダー一覧",
+        description:
+          "プロバイダーごとの設定済み状態（真偽値のみ）を返す。判定は /auth/login の PROVIDER_NOT_CONFIGURED ゲートと同一基準。資格情報は含まないため未認証で取得できる。フロント／BFF が未設定プロバイダーのボタンを出し分けるために使う。",
+        responses: {
+          "200": {
+            description: "設定済みプロバイダーの真偽値マップ",
+            content: {
+              "application/json": {
+                example: {
+                  data: { google: true, line: false, twitch: false, github: true, x: false },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     "/auth/callback": {
       get: {
         tags: ["認証フロー"],

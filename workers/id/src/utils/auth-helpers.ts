@@ -4,6 +4,7 @@ import {
   verifyCookie,
   linkProvider,
   COOKIE_NAMES,
+  ALL_PROVIDERS,
   PROVIDER_CREDENTIALS,
   findServiceByClientId,
   findResourceServerByUri,
@@ -248,6 +249,20 @@ export function validateProviderCredentials(
     };
   }
   return { ok: true };
+}
+
+/**
+ * 全プロバイダーの設定済み状態を返す。
+ * 判定は /auth/login のゲート（validateProviderCredentials）と同一基準で、
+ * フロント／BFF が未設定プロバイダーのボタンを出し分けるために使う。
+ * 資格情報そのものは含めず、真偽値だけを返す。
+ */
+export function getConfiguredProviders(env: IdpEnv): Record<OAuthProvider, boolean> {
+  const configured = {} as Record<OAuthProvider, boolean>;
+  for (const provider of ALL_PROVIDERS) {
+    configured[provider] = validateProviderCredentials(provider, env).ok;
+  }
+  return configured;
 }
 
 /**

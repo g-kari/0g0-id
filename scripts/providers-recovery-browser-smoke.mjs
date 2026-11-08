@@ -21,6 +21,7 @@ const reportDir = path.resolve(
   process.env.PROVIDERS_RECOVERY_REPORT_DIR || "providers-recovery-ui",
 );
 const providersPath = "/api/providers";
+const providersStatusPath = "/auth/providers/status";
 const passkeyStatusPath = "/auth/passkey/status";
 const signupStatusPath = "/auth/signup/status";
 const featureStatusPaths = [passkeyStatusPath, signupStatusPath];
@@ -65,6 +66,12 @@ function statuses(connected = ["google"]) {
     connected: connected.includes(provider),
   }));
 }
+
+// Synthetic /auth/providers/status response: every provider configured, so the
+// providers UI keeps its link forms exactly as the loaded-state cases expect.
+const allProvidersConfigured = Object.fromEntries(
+  Object.keys(providerLabels).map((provider) => [provider, true]),
+);
 
 async function fail(route, message = "一時的なエラーです", status = 503) {
   // Ordinary errors do not activate the shared TOKEN_ROTATED/DBSC transport retries.
@@ -234,7 +241,13 @@ async function main() {
     report.browser = await browser.version();
     report.browserExecutableOverride = process.env.PROVIDERS_RECOVERY_CHROMIUM_EXECUTABLE || null;
 
-    async function scenario(name, viewport, respond, check, allowedPaths = [providersPath]) {
+    async function scenario(
+      name,
+      viewport,
+      respond,
+      check,
+      allowedPaths = [providersPath, providersStatusPath],
+    ) {
       const context = await browser.newContext({
         viewport,
         serviceWorkers: "block",
@@ -247,6 +260,7 @@ async function main() {
       const forbiddenWrites = [];
       const unexpectedReads = [];
       const featureStatusReads = [];
+      const providerStatusReads = [];
       const unexpectedDialogs = [];
       const unexpectedSockets = [];
       const blockedOrigins = new Set();
@@ -288,6 +302,17 @@ async function main() {
           await route.fulfill({ json: { enabled: false } });
           return;
         }
+        // The providers UI reads the configured-provider map alongside its list
+        // read (and the home page reads it after unauthorized navigation).
+        if (
+          url.pathname === providersStatusPath &&
+          !url.search &&
+          allowedPaths.includes(url.pathname)
+        ) {
+          providerStatusReads.push(url.pathname);
+          await route.fulfill({ json: allProvidersConfigured });
+          return;
+        }
         if (url.pathname.startsWith("/auth/")) {
           unexpectedReads.push(url.pathname);
           await route.abort();
@@ -318,6 +343,7 @@ async function main() {
         forbiddenWrites,
         unexpectedReads,
         featureStatusReads,
+        providerStatusReads,
         unexpectedDialogs,
         unexpectedSockets,
         status: "running",
@@ -347,6 +373,10 @@ async function main() {
             (path) => featureStatusReads.filter((read) => read === path).length <= 1,
           ),
           "The home page may make only one disabled read for each feature status.",
+        );
+        assert(
+          providerStatusReads.length <= readCount(),
+          "The configured-provider map may be read at most once per providers list read.",
         );
         assert.deepEqual(unexpectedDialogs, [], "No provider link/unlink flow may be invoked.");
         assert.deepEqual(unexpectedSockets, [], "No WebSocket traffic may occur.");
@@ -568,7 +598,7 @@ async function main() {
           await expect(page.locator("#user-email")).toHaveText(profile.email);
           assert.equal(readCount(), 1);
         },
-        [providersPath, "/api/me"],
+        [providersPath, providersStatusPath, "/api/me"],
       );
 
       await scenario(
@@ -582,7 +612,7 @@ async function main() {
           await expect(page.locator("#passkey-login")).toBeHidden();
           assert.equal(readCount(), 1);
         },
-        [providersPath, passkeyStatusPath, signupStatusPath],
+        [providersPath, providersStatusPath, passkeyStatusPath, signupStatusPath],
       );
     }
     report.status = "passed";
