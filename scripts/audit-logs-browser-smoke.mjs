@@ -1131,7 +1131,9 @@ async function main() {
               await page.goto(`${origin}/security/audit?${new URLSearchParams(filters)}`);
               await expect.poll(() => readCount(calls)).toBe(1);
               if (phase === "body")
-                await expect.poll(() => page.evaluate(() => window.__syntheticJsonStarted)).toBe(true);
+                await expect
+                  .poll(() => page.evaluate(() => window.__syntheticJsonStarted))
+                  .toBe(true);
               await page.clock.runFor(29999);
               await expect(page.locator("#loading")).toBeVisible();
               await expect(page.locator("#retry-btn")).toBeDisabled();
@@ -1165,7 +1167,7 @@ async function main() {
               await page.locator("#retry-btn").press("Space");
               await loaded(page, 1);
               await assertState(page, calls, filters);
-              await expect(page.locator('[aria-label="監査ログ一覧（横スクロールできます）"]')).toBeFocused();
+              await expect(page.locator('[role="region"]')).toBeFocused();
               await assertResponsive(page);
               await page.screenshot({
                 path: path.join(reportDir, `audit-recovered-${phase}-${viewport.width}.png`),
@@ -1174,7 +1176,9 @@ async function main() {
               gates.forEach((gate) => gate.resolve());
               if (phase === "body") {
                 await page.evaluate(() => window.__syntheticReleaseJson());
-                await expect.poll(() => page.evaluate(() => window.__syntheticJsonResolved)).toBe(true);
+                await expect
+                  .poll(() => page.evaluate(() => window.__syntheticJsonResolved))
+                  .toBe(true);
               }
               await page.clock.runFor(30000);
               await loaded(page, 1);
@@ -1327,4 +1331,3 @@ await main().catch((err) => {
   console.error(err);
   process.exitCode = 1;
 });
-
