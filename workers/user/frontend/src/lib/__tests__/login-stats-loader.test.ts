@@ -470,14 +470,7 @@ describe("login stats paired-view ownership and recovery", () => {
     }
   });
 
-  for (const intent of [
-    "focus-then-blur",
-    "pointer",
-    "tab",
-    "escape",
-    "window-blur",
-    "pagehide",
-  ]) {
+  for (const intent of ["focus-then-blur", "pointer", "tab", "escape", "window-blur", "pagehide"]) {
     it(`does not restore Retry after ${intent}`, async () => {
       const initial = start(30);
       settle(requests[0], "failure", "failure");
