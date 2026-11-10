@@ -170,8 +170,32 @@ async function main() {
       ]) {
         const successful = scenario === "success" || scenario === "manual-no-js";
         const context: any = await browser.newContext({
-          serviceWorkers: "block",
+          // Playwright 1.57.0 browserContext.js:128-131 implements "block"
+          // by reading navigator.serviceWorker without handling SecurityError.
+          // Opaque-origin documents throw on that getter before app code runs.
+          serviceWorkers: "allow",
           javaScriptEnabled: scenario !== "manual-no-js",
+        });
+        // Fresh contexts contain no workers. Install an equivalent registration
+        // blocker before any page, but tolerate only the opaque-origin getter's
+        // SecurityError. Application pageerrors are still all fatal below.
+        await context.addInitScript(() => {
+          let container: ServiceWorkerContainer | undefined;
+          try {
+            container = navigator.serviceWorker;
+          } catch (error) {
+            if (error instanceof DOMException && error.name === "SecurityError") return;
+            throw error;
+          }
+          if (container) {
+            Object.defineProperty(container, "register", {
+              configurable: false,
+              writable: false,
+              value: async () => {
+                throw new Error("Synthetic smoke blocks service worker registration");
+              },
+            });
+          }
         });
         const page = await context.newPage();
         const errors: string[] = [];
