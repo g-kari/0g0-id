@@ -247,3 +247,27 @@ describe("validateEnv", () => {
     });
   });
 });
+
+describe("default-off Discord credential staging", () => {
+  it.each([undefined, "false", "TRUE"])(
+    "does not affect legacy startup while flag is %s",
+    (flag) => {
+      expect(
+        validateEnv({
+          ...validEnv,
+          DISCORD_LOGIN_ENABLED: flag,
+          DISCORD_CLIENT_ID: "111111111111111111",
+        } as IdpEnv).ok,
+      ).toBe(true);
+    },
+  );
+  it("still rejects incomplete credentials after explicit enablement", () => {
+    expect(
+      validateEnv({
+        ...validEnv,
+        DISCORD_LOGIN_ENABLED: "true",
+        DISCORD_CLIENT_ID: "111111111111111111",
+      } as IdpEnv).ok,
+    ).toBe(false);
+  });
+});

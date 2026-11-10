@@ -47,6 +47,8 @@ export function validateEnv(env: IdpEnv): EnvValidationResult {
 
   // オプションプロバイダーの認証情報は片方だけ設定されていてはならない（設定ミスの早期検知）
   for (const pair of Object.values(PROVIDER_CREDENTIALS)) {
+    // Staging one new credential while disabled must not break existing logins.
+    if (pair.id === "DISCORD_CLIENT_ID" && env.DISCORD_LOGIN_ENABLED !== "true") continue;
     const hasId = !!env[pair.id];
     const hasSecret = !!env[pair.secret];
     if (hasId !== hasSecret) {

@@ -12,6 +12,20 @@ import authRoutes from "../workers/user/src/routes/auth";
 import { handleLogin } from "../workers/id/src/routes/auth/login";
 import { handleLinkIntent } from "../workers/id/src/routes/auth/link-intent";
 
+function safeDiagnostic(error: unknown): string {
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : "Unknown error";
+  return message
+    .replace(/https?:\/\/[^\s"'<>]+/g, (value) => {
+      try {
+        return `${new URL(value).origin}/[redacted]`;
+      } catch {
+        return "[redacted-url]";
+      }
+    })
+    .replace(/[A-Za-z0-9_-]{24,}/g, "[redacted-value]")
+    .slice(0, 600);
+}
+
 async function main() {
   const modulePath = process.env.SOCIAL_LOGIN_PLAYWRIGHT_MODULE;
   assert.ok(
@@ -45,6 +59,11 @@ async function main() {
       status: string;
       stage?: string;
       errors?: string[];
+      failure?: string;
+      finalStatus?: number | null;
+      postedOrigin?: string | null;
+      idpPosts?: number;
+      providerVisits?: number;
     }[],
   };
   const sqlite = new DatabaseSync(":memory:");
@@ -164,7 +183,7 @@ async function main() {
         let copiedHtml = "";
         let transplantedQuery = "";
         const capturedCookies: string[] = [];
-        page.on("pageerror", () => errors.push("page error"));
+        page.on("pageerror", (error: Error) => errors.push(safeDiagnostic(error)));
         await context.addCookies([
           {
             name: "__Host-user-session",
@@ -215,11 +234,18 @@ async function main() {
               return;
             }
             if (url.origin === EVIL && url.pathname === "/fixture") {
-              const body =
-                scenario === "null-origin"
-                  ? `<iframe sandbox="allow-scripts allow-forms" srcdoc="${copiedHtml.replaceAll("&", "&amp;").replaceAll('"', "&quot;")}"></iframe>`
-                  : copiedHtml;
-              await route.fulfill({ contentType: "text/html", body });
+              // A top-level CSP sandbox yields Origin:null for the real form POST,
+              // without permanently sandboxing the IdP JSON error document. An
+              // iframe sandbox also sandboxes Chromium's JSON viewer, whose own
+              // storage access can throw unrelated opaque-origin SecurityErrors.
+              await route.fulfill({
+                contentType: "text/html",
+                headers:
+                  scenario === "null-origin"
+                    ? { "Content-Security-Policy": "sandbox allow-scripts allow-forms" }
+                    : {},
+                body: copiedHtml,
+              });
               return;
             }
             assert.ok(
@@ -279,8 +305,8 @@ async function main() {
               headers: outgoing,
               body: await response.text(),
             });
-          } catch {
-            errors.push("Intercepted request assertion failed");
+          } catch (error) {
+            errors.push(`Intercepted request: ${safeDiagnostic(error)}`);
             await route.abort("blockedbyclient");
           }
         });
@@ -339,20 +365,39 @@ async function main() {
             );
           }
           assert.deepEqual(errors, []);
-          report.cases.push({ provider, scenario, status: "passed" });
+          report.cases.push({
+            provider,
+            scenario,
+            status: "passed",
+            finalStatus: finalStatus ?? null,
+            postedOrigin: postedOrigin ?? null,
+            idpPosts,
+            providerVisits,
+          });
         } catch (error) {
-          report.cases.push({ provider, scenario, status: "failed", stage, errors });
+          report.cases.push({
+            provider,
+            scenario,
+            status: "failed",
+            stage,
+            errors,
+            failure: safeDiagnostic(error),
+            finalStatus: finalStatus ?? null,
+            postedOrigin: postedOrigin ?? null,
+            idpPosts,
+            providerVisits,
+          });
           // Screenshot contains only synthetic fixtures, never cookies/token reports.
           await page
             .screenshot({ path: path.join(reportDir, `${provider}-${scenario}-failure.png`) })
             .catch(() => {});
-          throw error;
         } finally {
           await context.close();
         }
       }
     }
-    report.status = "passed";
+    report.status = report.cases.some((item) => item.status === "failed") ? "failed" : "passed";
+    if (report.status === "failed") process.exitCode = 1;
   } catch {
     report.status = "failed";
     process.exitCode = 1;
