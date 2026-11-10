@@ -8,6 +8,7 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { Hono } from "hono";
 import { bffCsrfMiddleware, type BffEnv, type IdpEnv, type TokenPayload } from "@0g0-id/shared";
 import { makeSessionCookie } from "../packages/shared/src/test-helpers/session";
+import { SOCIAL_LOGIN_BROWSER_INIT } from "./social-login-browser-init";
 import authRoutes from "../workers/user/src/routes/auth";
 import { handleLogin } from "../workers/id/src/routes/auth/login";
 import { handleLinkIntent } from "../workers/id/src/routes/auth/link-intent";
@@ -179,24 +180,7 @@ async function main() {
         // Fresh contexts contain no workers. Install an equivalent registration
         // blocker before any page, but tolerate only the opaque-origin getter's
         // SecurityError. Application pageerrors are still all fatal below.
-        await context.addInitScript(() => {
-          let container: ServiceWorkerContainer | undefined;
-          try {
-            container = navigator.serviceWorker;
-          } catch (error) {
-            if (error instanceof DOMException && error.name === "SecurityError") return;
-            throw error;
-          }
-          if (container) {
-            Object.defineProperty(container, "register", {
-              configurable: false,
-              writable: false,
-              value: async () => {
-                throw new Error("Synthetic smoke blocks service worker registration");
-              },
-            });
-          }
-        });
+        await context.addInitScript(SOCIAL_LOGIN_BROWSER_INIT);
         const page = await context.newPage();
         const errors: string[] = [];
         let stage = "browser fixture setup";
