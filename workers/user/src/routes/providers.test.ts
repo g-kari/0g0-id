@@ -147,7 +147,7 @@ describe("user BFF — /api/providers", () => {
       const idpFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
       const app = buildApp(idpFetch);
 
-      for (const provider of ["google", "line", "twitch", "github", "x"]) {
+      for (const provider of ["google", "line", "twitch", "github", "x", "discord", "steam"]) {
         const res = await app.request(`/api/providers/${provider}`, {
           method: "DELETE",
           headers: { Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}` },

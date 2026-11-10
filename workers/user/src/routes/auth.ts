@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
+import { html } from "hono/html";
 import {
   generateToken,
   isValidProvider,
@@ -55,6 +56,26 @@ app.post("/link", async (c) => {
 
   // IdPに対してlink_user_idを直接渡すのはアカウント乗っ取りに悪用可能なため、
   // サーバー側でワンタイムトークンを発行してもらい、それをログインURLに含める
+  const bindProvider = provider === "discord" || provider === "steam";
+  let socialLoginUrl: URL | undefined;
+  if (bindProvider) {
+    try {
+      const origin = new URL(c.env.IDP_ORIGIN);
+      if (
+        origin.protocol !== "https:" ||
+        origin.username ||
+        origin.password ||
+        origin.pathname !== "/" ||
+        origin.search ||
+        origin.hash
+      ) {
+        return c.text("Invalid authentication service configuration", 503);
+      }
+      socialLoginUrl = new URL("/auth/login", origin);
+    } catch {
+      return c.text("Invalid authentication service configuration", 503);
+    }
+  }
   let linkToken: string;
   try {
     const res = await c.env.IDP.fetch(
@@ -63,7 +84,9 @@ app.post("/link", async (c) => {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
           ...internalServiceHeaders(c.env),
+          ...(bindProvider ? { "Content-Type": "application/json" } : {}),
         },
+        ...(bindProvider ? { body: JSON.stringify({ provider }) } : {}),
       }),
     );
     logUpstreamDeprecation(res, { method: "POST", path: "/auth/link-intent" }, userAuthLogger);
@@ -81,6 +104,42 @@ app.post("/link", async (c) => {
   const callbackUrl = `${c.env.SELF_ORIGIN}/auth/callback`;
 
   setOAuthStateCookie(c, COOKIE_NAMES.USER_STATE, state);
+
+  if (socialLoginUrl) {
+    // Submit the intent from this origin, never in a transplantable GET URL.
+    const nonce = generateToken(24);
+    c.header("Cache-Control", "no-store");
+    c.header("Referrer-Policy", "origin");
+    c.header("X-Frame-Options", "DENY");
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header(
+      "Content-Security-Policy",
+      `default-src 'none'; script-src 'nonce-${nonce}'; form-action ${socialLoginUrl.origin}; frame-ancestors 'none'; base-uri 'none'`,
+    );
+    return c.html(
+      html`<!doctype html>
+        <html lang="ja">
+          <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>アカウント連携 — 0g0 ID</title>
+          </head>
+          <body>
+            <p>アカウント連携を開始します。</p>
+            <form id="social-link" method="post" action="${socialLoginUrl.toString()}">
+              <input type="hidden" name="redirect_to" value="${callbackUrl}" />
+              <input type="hidden" name="state" value="${state}" />
+              <input type="hidden" name="provider" value="${provider}" />
+              <input type="hidden" name="link_token" value="${linkToken}" />
+              <button type="submit">連携を続ける</button>
+            </form>
+            <script nonce="${nonce}">
+              document.getElementById("social-link").submit();
+            </script>
+          </body>
+        </html>`,
+    );
+  }
 
   const loginUrl = new URL(`${c.env.IDP_ORIGIN}/auth/login`);
   loginUrl.searchParams.set("redirect_to", callbackUrl);

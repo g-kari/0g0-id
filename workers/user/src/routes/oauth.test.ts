@@ -219,6 +219,44 @@ describe("OAuth ログインページ — 未設定プロバイダーのボタ�
     };
   }
 
+  it.each([{}, { discord: false, steam: false }, { discord: "true", steam: 1 }, null, []])(
+    "new providers require explicit true: %j",
+    async (data) => {
+      const app = buildAppWithIdp(async () => Response.json({ data }));
+      const html = await (await app.request(`/login${REQUIRED_PARAMS}`)).text();
+      expect(html).not.toContain("Discordでサインイン");
+      expect(html).not.toContain("Steamでサインイン");
+    },
+  );
+
+  it("configured new providers preserve OAuth request parameters", async () => {
+    const app = buildAppWithIdp(async () =>
+      Response.json({ data: { discord: true, steam: true } }),
+    );
+    const html = await (
+      await app.request(
+        `/login${REQUIRED_PARAMS}&nonce=test-nonce&resource=https%3A%2F%2Fapi.example.com`,
+      )
+    ).text();
+    for (const provider of ["discord", "steam"]) {
+      const href = html.match(new RegExp(`href="([^"]*provider=${provider}[^"]*)"`))?.[1];
+      expect(href).toBeDefined();
+      const url = new URL(href!.replaceAll("&amp;", "&"));
+      const expected = new URLSearchParams(REQUIRED_PARAMS);
+      expect(url.searchParams.get("state")).toBe(expected.get("state"));
+      expect(url.searchParams.get("code_challenge")).toBe(expected.get("code_challenge"));
+      expect(url.searchParams.get("nonce")).toBe("test-nonce");
+      expect(url.searchParams.get("resource")).toBe("https://api.example.com");
+    }
+  });
+
+  it("malformed discovery never enables new providers", async () => {
+    const app = buildAppWithIdp(async () => new Response("not json"));
+    const html = await (await app.request(`/login${REQUIRED_PARAMS}`)).text();
+    expect(html).not.toContain("Discordでサインイン");
+    expect(html).not.toContain("Steamでサインイン");
+  });
+
   it("IdP で未設定のプロバイダーはボタンが表示されない", async () => {
     const app = buildAppWithIdp(async () =>
       Response.json({
@@ -245,6 +283,8 @@ describe("OAuth ログインページ — 未設定プロバイダーのボタ�
     expect(html).toContain("Twitchでサインイン");
     expect(html).toContain("GitHubでサインイン");
     expect(html).toContain("X（Twitter）でサインイン");
+    expect(html).not.toContain("Discordでサインイン");
+    expect(html).not.toContain("Steamでサインイン");
   });
 
   it("IdP への接続に失敗した場合は全ボタンが表示される（フォールバック）", async () => {
@@ -256,5 +296,7 @@ describe("OAuth ログインページ — 未設定プロバイダーのボタ�
     const html = await res.text();
     expect(html).toContain("LINEでサインイン");
     expect(html).toContain("X（Twitter）でサインイン");
+    expect(html).not.toContain("Discordでサインイン");
+    expect(html).not.toContain("Steamでサインイン");
   });
 });

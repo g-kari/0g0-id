@@ -9,8 +9,8 @@ import {
 } from "./providers";
 
 describe("ALL_PROVIDERS", () => {
-  it("5種類のプロバイダーを含む", () => {
-    expect(ALL_PROVIDERS).toHaveLength(5);
+  it("7種類のプロバイダーを含む", () => {
+    expect(ALL_PROVIDERS).toHaveLength(7);
   });
 
   it("google/line/twitch/github/xを含む", () => {
@@ -86,8 +86,8 @@ describe("PROVIDER_COLUMN", () => {
 });
 
 describe("PROVIDER_CREDENTIALS", () => {
-  it("googleを除く4プロバイダーが定義されている", () => {
-    expect(Object.keys(PROVIDER_CREDENTIALS)).toHaveLength(4);
+  it("googleとsteamを除く5プロバイダーが定義されている", () => {
+    expect(Object.keys(PROVIDER_CREDENTIALS)).toHaveLength(5);
     expect(Object.keys(PROVIDER_CREDENTIALS)).not.toContain("google");
   });
 

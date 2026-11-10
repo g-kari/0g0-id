@@ -7,6 +7,9 @@ export interface User {
   twitch_sub: string | null;
   github_sub: string | null;
   x_sub: string | null;
+  /** Absent on databases that have not applied the opt-in social login schema. */
+  discord_sub?: string | null;
+  steam_sub?: string | null;
   email: string;
   email_verified: number;
   name: string;
@@ -186,6 +189,11 @@ export interface RateLimitBinding {
 }
 
 export interface IdpEnv {
+  /** New social login methods require exact true and the reviewed schema. */
+  DISCORD_LOGIN_ENABLED?: string;
+  STEAM_LOGIN_ENABLED?: string;
+  DISCORD_CLIENT_ID?: string;
+  DISCORD_CLIENT_SECRET?: string;
   /** Email signup requires both flags to be exactly "true", plus every binding and budget. */
   EMAIL_PASSKEY_SIGNUP_ENABLED?: string;
   VERIFICATION_EMAIL_ENABLED?: string;

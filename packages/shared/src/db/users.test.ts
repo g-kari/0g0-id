@@ -199,7 +199,7 @@ describe("getUserProviders", () => {
   it("全プロバイダーのステータスを返す", async () => {
     const db = makeD1Mock(userWithGoogle);
     const providers = await getUserProviders(db, "user-1");
-    expect(providers).toHaveLength(5);
+    expect(providers).toHaveLength(7);
     const names = providers.map((p) => p.provider);
     expect(names).toContain("google");
     expect(names).toContain("line");

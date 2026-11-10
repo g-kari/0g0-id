@@ -19,6 +19,7 @@ import {
   handleProviderLink,
   validateProviderCredentials,
 } from "../../utils/auth-helpers";
+import { handleSocialCallback } from "./social-callback";
 import { finalizeLogin, validateFinalRedirect, redirectWithOAuthError } from "./finalize";
 
 const authLogger = createLogger("auth");
@@ -128,7 +129,7 @@ function validateProviderConfig(
   return { ok: true, provider };
 }
 
-async function resolveUserAccount(
+export async function resolveUserAccount(
   c: CallbackContext,
   provider: OAuthProvider,
   resolved: Extract<ProviderResolution, { ok: true }>,
@@ -184,6 +185,13 @@ async function resolveUserAccount(
  */
 
 export async function handleCallback(c: CallbackContext) {
+  const signedState = getCookie(c, STATE_COOKIE);
+  const initialState = signedState
+    ? await parseStateFromCookie(signedState, c.env.COOKIE_SECRET)
+    : null;
+  if (initialState?.provider === "discord" || initialState?.provider === "steam") {
+    return handleSocialCallback(c, "discord");
+  }
   const error = c.req.query("error");
   if (error) return handleOAuthError(c, error);
 

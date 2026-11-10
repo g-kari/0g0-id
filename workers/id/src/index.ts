@@ -13,6 +13,8 @@ import {
   cleanupExpiredRevokedAccessTokens,
   deleteExpiredRefreshTokens,
   cleanupStaleDbscChallenges,
+  socialLoginSchemaReady,
+  cleanupSocialLoginTransactions,
 } from "@0g0-id/shared";
 import { validateEnv } from "./utils/env-validation";
 import { cleanupNativePasskeyChallenges } from "./utils/native-passkey-cleanup";
@@ -114,6 +116,14 @@ export default {
 
         await cleanupStaleDbscChallenges(env.DB);
         appLogger.info("DBSCチャレンジクリーンアップ完了");
+
+        if (
+          (env.DISCORD_LOGIN_ENABLED === "true" || env.STEAM_LOGIN_ENABLED === "true") &&
+          (await socialLoginSchemaReady(env.DB))
+        ) {
+          await cleanupSocialLoginTransactions(env.DB);
+          appLogger.info("Social login retention cleanup completed");
+        }
 
         const nativeCleanup = await cleanupNativePasskeyChallenges(
           env.DB,

@@ -2,11 +2,13 @@ import { Hono } from "hono";
 import { createLogger } from "@0g0-id/shared";
 import type { BffEnv, OAuthProvider } from "@0g0-id/shared";
 
+import { isProviderAvailable } from "../lib/provider-availability";
+
 const oauthLogger = createLogger("user-oauth");
 
 /**
  * IdP の GET /auth/providers から設定済みプロバイダー一覧を取得する。
- * 取得に失敗した場合は null を返し、呼び出し側は全ボタンを表示する。
+ * 取得に失敗した場合は null を返し、呼び出し側は既存プロバイダーのみ表示する。
  */
 async function fetchConfiguredProviders(
   env: BffEnv,
@@ -110,10 +112,10 @@ app.get("/login", async (c) => {
       : "";
 
   // IdP の設定済みプロバイダー一覧を取得し、未設定プロバイダーのボタンは出さない。
-  // 取得できない場合は従来どおり全ボタンを表示する（IdP 側でも未設定を拒否するため安全）。
+  // 取得できない場合は従来どおり既存プロバイダーのみ表示する（IdP 側でも未設定を拒否するため安全）。
   const configured = await fetchConfiguredProviders(c.env);
   const showProvider = (provider: OAuthProvider): boolean =>
-    configured === null || configured[provider] !== false;
+    isProviderAvailable(provider, configured);
 
   const googleButton = showProvider("google")
     ? `    <a href="${googleUrl}" class="btn btn-google">
@@ -161,6 +163,14 @@ app.get("/login", async (c) => {
     </a>`
     : "";
 
+  const socialButtons = (["discord", "steam"] as const)
+    .filter(showProvider)
+    .map(
+      (provider) =>
+        `<a href="${escapeHtml(buildLoginUrl(provider))}" class="btn btn-${provider}">${provider === "discord" ? "Discord" : "Steam"}でサインイン</a>`,
+    )
+    .join("\n");
+
   const html = `<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -184,6 +194,7 @@ app.get("/login", async (c) => {
         ${twitchButton}
         ${githubButton}
         ${xButton}
+        ${socialButtons}
       </div>
     </div>
   </div>

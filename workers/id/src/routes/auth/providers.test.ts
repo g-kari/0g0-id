@@ -23,6 +23,8 @@ describe("GET /auth/providers — 設定済みプロバイダー一覧", () => {
       twitch: false,
       github: false,
       x: false,
+      discord: false,
+      steam: false,
     });
   });
 
@@ -56,6 +58,8 @@ describe("GET /auth/providers — 設定済みプロバイダー一覧", () => {
       twitch: true,
       github: true,
       x: true,
+      discord: false,
+      steam: false,
     });
   });
 

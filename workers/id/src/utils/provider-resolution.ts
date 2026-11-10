@@ -16,6 +16,9 @@ import {
   upsertTwitchUser,
   upsertGithubUser,
   upsertXUser,
+  upsertSocialLoginUser,
+  exchangeDiscordCode,
+  fetchDiscordUserInfo,
   createLogger,
   restErrorBody,
 } from "@0g0-id/shared";
@@ -94,6 +97,38 @@ export async function resolveProvider(
 ): Promise<ProviderResolution> {
   const displayName = PROVIDER_DISPLAY_NAMES[provider];
   switch (provider) {
+    case "steam":
+      return oauthError(c, "Steam requires its dedicated callback");
+    case "discord": {
+      const result = await exchangeAndFetchUserInfo(
+        c,
+        provider,
+        displayName,
+        () =>
+          exchangeDiscordCode({
+            code,
+            clientId: c.env.DISCORD_CLIENT_ID!,
+            clientSecret: c.env.DISCORD_CLIENT_SECRET!,
+            redirectUri: callbackUri,
+            codeVerifier: pkceVerifier,
+          }),
+        fetchDiscordUserInfo,
+      );
+      if (!result.ok) return result;
+      const { userInfo } = result;
+      return {
+        ok: true,
+        sub: userInfo.id,
+        upsert: (db, id) =>
+          upsertSocialLoginUser(db, {
+            id,
+            provider,
+            sub: userInfo.id,
+            name: userInfo.name,
+            picture: userInfo.picture,
+          }),
+      };
+    }
     case "google": {
       const result = await exchangeAndFetchUserInfo(
         c,

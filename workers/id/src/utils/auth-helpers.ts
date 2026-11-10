@@ -12,6 +12,9 @@ import {
   isLoopbackHost,
   listRedirectUris,
   matchRedirectUri,
+  isSocialLoginProvider,
+  socialLoginSchemaReady,
+  linkSocialLoginUser,
 } from "@0g0-id/shared";
 import type {
   IdpEnv,
@@ -26,6 +29,7 @@ import { parse as parseDomain } from "tldts";
 type Variables = { user: TokenPayload };
 
 export const CALLBACK_PATH = "/auth/callback";
+export const STEAM_CALLBACK_PATH = "/auth/steam/callback";
 
 /**
  * OAuthプロバイダーから返されるエラーコードの安全なマッピング。
@@ -221,7 +225,9 @@ export async function handleProviderLink(
   providerSub: string,
 ): Promise<{ ok: true; user: User } | { ok: false }> {
   try {
-    const user = await linkProvider(db, linkUserId, provider, providerSub);
+    const user = isSocialLoginProvider(provider)
+      ? await linkSocialLoginUser(db, linkUserId, provider, providerSub)
+      : await linkProvider(db, linkUserId, provider, providerSub);
     return { ok: true, user };
   } catch (err) {
     if (err instanceof Error && err.message === "PROVIDER_ALREADY_LINKED") {
@@ -240,6 +246,19 @@ export function validateProviderCredentials(
   env: IdpEnv,
 ): { ok: true } | { ok: false; code: string; message: string } {
   if (provider === "google") return { ok: true };
+  if (isSocialLoginProvider(provider)) {
+    const enabled = provider === "discord" ? env.DISCORD_LOGIN_ENABLED : env.STEAM_LOGIN_ENABLED;
+    let validOrigin = false;
+    try {
+      const url = new URL(env.IDP_ORIGIN);
+      validOrigin = url.protocol === "https:" && url.origin === env.IDP_ORIGIN;
+    } catch {
+      /* fail closed */
+    }
+    if (enabled !== "true" || !validOrigin)
+      return { ok: false, code: "PROVIDER_NOT_CONFIGURED", message: "Provider is not configured" };
+    if (provider === "steam") return { ok: true };
+  }
   const creds = PROVIDER_CREDENTIALS[provider];
   if (!env[creds.id] || !env[creds.secret]) {
     return {
@@ -344,4 +363,14 @@ export async function validateResourceParam(
   if (!resource) return { ok: false, error: "resource is not a registered resource server" };
 
   return { ok: true, uri: normalized, resource };
+}
+
+/** No optional-schema query unless a new provider is explicitly enabled. */
+export async function getReadyProviders(env: IdpEnv): Promise<Record<OAuthProvider, boolean>> {
+  const configured = getConfiguredProviders(env);
+  if ((configured.discord || configured.steam) && !(await socialLoginSchemaReady(env.DB))) {
+    configured.discord = false;
+    configured.steam = false;
+  }
+  return configured;
 }

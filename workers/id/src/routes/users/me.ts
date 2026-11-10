@@ -13,6 +13,9 @@ import {
   listActiveBffSessionsByUserId,
   getUserProviders,
   unlinkProvider,
+  socialLoginSchemaReady,
+  unlinkSocialLoginProvider,
+  isSocialLoginProvider,
   getLoginEventsByUserId,
   getUserLoginProviderStats,
   getUserDailyLoginTrends,
@@ -308,7 +311,28 @@ app.delete(
       );
     }
 
-    await unlinkProvider(c.env.DB, tokenUser.sub, provider);
+    // An upgraded schema needs an atomic last-provider guard, including legacy providers.
+    const hasSocialIdentity = providers.some(
+      (p) => isSocialLoginProvider(p.provider) && p.connected,
+    );
+    if (
+      hasSocialIdentity ||
+      isSocialLoginProvider(provider) ||
+      c.env.DISCORD_LOGIN_ENABLED === "true" ||
+      c.env.STEAM_LOGIN_ENABLED === "true"
+    ) {
+      if (
+        !(await socialLoginSchemaReady(c.env.DB)) ||
+        !(await unlinkSocialLoginProvider(c.env.DB, tokenUser.sub, provider))
+      ) {
+        return c.json(
+          { error: { code: "LAST_PROVIDER", message: "Provider could not be unlinked safely" } },
+          409,
+        );
+      }
+    } else {
+      await unlinkProvider(c.env.DB, tokenUser.sub, provider);
+    }
 
     return c.body(null, 204);
   },
