@@ -1206,7 +1206,7 @@ NOT_FOUND — 連携未存在
 | data[].created_at | ✓ | string | format: date-time |  |
 | data[].id | ✓ | string |  |  |
 | data[].ip_address |  | string ∪ null |  |  |
-| data[].provider | ✓ | string | enum: ["google", "line", "twitch", "github", "x"] |  |
+| data[].provider | ✓ | string | enum: ["google", "line", "twitch", "github", "x", "discord", "steam"] |  |
 | data[].success |  | integer | enum: [0, 1] |  |
 | data[].user_agent |  | string ∪ null |  |  |
 | data[].user_id | ✓ | string |  |  |
@@ -1238,7 +1238,7 @@ UNAUTHORIZED
 | data |  | array&lt;object&gt; |  |  |
 | data[] |  | object |  |  |
 | data[].connected | ✓ | boolean |  |  |
-| data[].provider | ✓ | string | enum: ["google", "line", "twitch", "github", "x"] |  |
+| data[].provider | ✓ | string | enum: ["google", "line", "twitch", "github", "x", "discord", "steam"] |  |
 
 #### 401
 
@@ -1256,7 +1256,7 @@ SNSプロバイダー連携解除
 
 | 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
 | --- | --- | --- | --- | --- | --- |
-| provider | path | ✓ | string | enum: ["google", "line", "twitch", "github", "x"] | SNSプロバイダー名 |
+| provider | path | ✓ | string | enum: ["google", "line", "twitch", "github", "x", "discord", "steam"] | SNSプロバイダー名 |
 
 **レスポンス**
 
@@ -1559,7 +1559,7 @@ NOT_FOUND — ユーザー未存在
 | data[].created_at | ✓ | string | format: date-time |  |
 | data[].id | ✓ | string |  |  |
 | data[].ip_address |  | string ∪ null |  |  |
-| data[].provider | ✓ | string | enum: ["google", "line", "twitch", "github", "x"] |  |
+| data[].provider | ✓ | string | enum: ["google", "line", "twitch", "github", "x", "discord", "steam"] |  |
 | data[].success |  | integer | enum: [0, 1] |  |
 | data[].user_agent |  | string ∪ null |  |  |
 | data[].user_id | ✓ | string |  |  |
@@ -1605,7 +1605,7 @@ NOT_FOUND — ユーザー未存在
 | data |  | array&lt;object&gt; |  |  |
 | data[] |  | object |  |  |
 | data[].connected | ✓ | boolean |  |  |
-| data[].provider | ✓ | string | enum: ["google", "line", "twitch", "github", "x"] |  |
+| data[].provider | ✓ | string | enum: ["google", "line", "twitch", "github", "x", "discord", "steam"] |  |
 
 #### 401
 
@@ -2459,7 +2459,7 @@ INTERNAL_ERROR — 集計の取得失敗。アプリ全体の環境検証失敗�
 | --- | --- | --- | --- | --- | --- |
 | user_id | query |  | string | pattern: ^[A-Za-z0-9_-]{1,128}$ | ユーザーID完全一致 |
 | country | query |  | string | pattern: ^(?:[A-Z]{2}&#124;unknown)$ | 国コード。unknown は国未取得（NULL） |
-| provider | query |  | string | enum: ["google", "line", "twitch", "github", "x"] |  |
+| provider | query |  | string | enum: ["google", "line", "twitch", "github", "x", "discord", "steam"] |  |
 | period | query |  | string | enum: ["all", "24h", "7d", "30d"]; default: "all" |  |
 | limit | query |  | integer | default: 50; minimum: 1; maximum: 100 |  |
 | offset | query |  | integer | default: 0; minimum: 0; maximum: 9007199254740991 |  |
@@ -2481,7 +2481,7 @@ INTERNAL_ERROR — 集計の取得失敗。アプリ全体の環境検証失敗�
 | data[].created_at | ✓ | string | format: date-time |  |
 | data[].id | ✓ | string |  |  |
 | data[].ip_address |  | string ∪ null |  |  |
-| data[].provider | ✓ | string | enum: ["google", "line", "twitch", "github", "x"] |  |
+| data[].provider | ✓ | string | enum: ["google", "line", "twitch", "github", "x", "discord", "steam"] |  |
 | data[].success |  | integer | enum: [0, 1] |  |
 | data[].user_agent |  | string ∪ null |  |  |
 | data[].user_id | ✓ | string |  |  |
@@ -3252,9 +3252,9 @@ OAuth server_error、または共通REST MISCONFIGURATION/INTERNAL_ERROR。
 
 ### GET /auth/callback
 
-Google OAuthコールバック
+OAuthコールバック
 
-Googleからのコールバック。ユーザーを作成/更新し、ワンタイム認可コード（60秒有効）を発行してBFFへリダイレクト。
+OAuthプロバイダーからのコールバック。Discordは単回DB transaction、PKCE、stateとissuerを追加検証する。Steamは専用経路を使用する。ワンタイム認可コードは60秒有効。
 
 **認証**: 仕様に記載なし
 
@@ -3348,7 +3348,7 @@ UNAUTHORIZED — アクセストークン無効
 
 ログイン開始
 
-BFFからのリダイレクトを受け取り、Googleの認可画面へリダイレクトする。
+BFFまたは登録済みサービスから認証を開始する。Discord/Steamは明示的な有効化とスキーマが必要。新規プロバイダーのアカウント連携はGETでは受け付けない。
 
 **認証**: 仕様に記載なし
 
@@ -3363,7 +3363,37 @@ BFFからのリダイレクトを受け取り、Googleの認可画面へリダ�
 
 #### 302
 
-Googleの認可画面へリダイレクト
+設定済みプロバイダーの認証画面へリダイレクト
+
+### POST /auth/login
+
+Discord/Steam アカウント連携開始
+
+認証済みユーザー画面が生成するフォーム専用。OriginはUSER_ORIGIN完全一致、redirect_toは同オリジンの/auth/callback固定。providerに束縛された署名済みlink_tokenを単回消費する。queryパラメーター、重複・未知のフォーム項目は拒否。
+
+**認証**: 仕様に記載なし
+
+**リクエスト本文**: 必須
+
+**Content-Type**: application/x-www-form-urlencoded
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object | additionalProperties: false |  |
+| link_token | ✓ | string |  |  |
+| provider | ✓ | string | enum: ["discord", "steam"] |  |
+| redirect_to | ✓ | string |  |  |
+| state | ✓ | string |  |  |
+
+**レスポンス**
+
+#### 200
+
+プロバイダー認証へ進むnonce付きHTMLページ
+
+#### 400
+
+無効な連携要求
 
 ### POST /auth/logout
 
@@ -3453,6 +3483,24 @@ Googleの認可画面へリダイレクト
 
 UNAUTHORIZED — トークン無効/再使用検出
 
+### GET /auth/steam/callback
+
+Steam OpenID 2.0 コールバック
+
+default-off。署名済みCookieと単回DB transaction、固定return_to、Steam直接検証と単回nonceを確認し、共通の認可コード発行へ進む。
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 302
+
+BFFまたは登録済みサービスへリダイレクト
+
+#### 400
+
+無効・期限切れ・再利用された認証
+
 ## スキーマ参照
 
 ### AdminAuditLog
@@ -3515,7 +3563,7 @@ UNAUTHORIZED — トークン無効/再使用検出
 | created_at | ✓ | string | format: date-time |  |
 | id | ✓ | string |  |  |
 | ip_address |  | string ∪ null |  |  |
-| provider | ✓ | string | enum: ["google", "line", "twitch", "github", "x"] |  |
+| provider | ✓ | string | enum: ["google", "line", "twitch", "github", "x", "discord", "steam"] |  |
 | success |  | integer | enum: [0, 1] |  |
 | user_agent |  | string ∪ null |  |  |
 | user_id | ✓ | string |  |  |

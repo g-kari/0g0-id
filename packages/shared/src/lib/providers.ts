@@ -5,10 +5,18 @@
  */
 
 /** サポートするOAuthプロバイダーの型 */
-export type OAuthProvider = "google" | "line" | "twitch" | "github" | "x";
+export type OAuthProvider = "google" | "line" | "twitch" | "github" | "x" | "discord" | "steam";
 
 /** サポートするOAuthプロバイダーの一覧（イテレーション用） */
-export const ALL_PROVIDERS: OAuthProvider[] = ["google", "line", "twitch", "github", "x"];
+export const ALL_PROVIDERS: OAuthProvider[] = [
+  "google",
+  "line",
+  "twitch",
+  "github",
+  "x",
+  "discord",
+  "steam",
+];
 
 /** 文字列が有効なOAuthプロバイダーかどうかを検証する型ガード */
 export function isValidProvider(value: string): value is OAuthProvider {
@@ -22,6 +30,8 @@ export const PROVIDER_DISPLAY_NAMES: Record<OAuthProvider, string> = {
   twitch: "Twitch",
   github: "GitHub",
   x: "X",
+  discord: "Discord",
+  steam: "Steam",
 };
 
 /** プロバイダーごとのDBカラム名 */
@@ -31,6 +41,8 @@ export const PROVIDER_COLUMN: Record<OAuthProvider, string> = {
   twitch: "twitch_sub",
   github: "github_sub",
   x: "x_sub",
+  discord: "discord_sub",
+  steam: "steam_sub",
 };
 
 /**
@@ -50,4 +62,17 @@ export const PROVIDER_CREDENTIALS = {
     name: "GitHub",
   },
   x: { id: "X_CLIENT_ID" as const, secret: "X_CLIENT_SECRET" as const, name: "X" },
-} satisfies Record<Exclude<OAuthProvider, "google">, { id: string; secret: string; name: string }>;
+  discord: {
+    id: "DISCORD_CLIENT_ID" as const,
+    secret: "DISCORD_CLIENT_SECRET" as const,
+    name: "Discord",
+  },
+} satisfies Record<
+  Exclude<OAuthProvider, "google" | "steam">,
+  { id: string; secret: string; name: string }
+>;
+
+/** Steam uses OpenID 2.0, retained in the legacy provider type for API compatibility. */
+export function isSocialLoginProvider(provider: OAuthProvider): provider is "discord" | "steam" {
+  return provider === "discord" || provider === "steam";
+}

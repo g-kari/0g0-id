@@ -26,6 +26,7 @@ import Icon from '../components/Icon.astro';
 </Base>
 
 <script>
+  import { isProviderAvailable } from "../lib/provider-availability";
   import { apiFetch } from '../lib/api';
   import { showToast } from '../lib/toast';
   import { createProvidersLoader } from '../lib/providers-loader';
@@ -34,10 +35,12 @@ import Icon from '../components/Icon.astro';
   type OAuthProvider = ProviderStatus['provider'];
 
   const PROVIDER_LABELS: Record<OAuthProvider, string> = {
-    google: 'Google', line: 'LINE', twitch: 'Twitch', github: 'GitHub', x: 'X（Twitter）',
+    google: 'Google', line: 'LINE', twitch: 'Twitch', github: 'GitHub', x: 'X（Twitter）', discord: 'Discord', steam: 'Steam',
   };
 
   const PROVIDER_ICONS: Record<OAuthProvider, string> = {
+    discord: '<span aria-hidden="true" style="width:20px; text-align:center">D</span>',
+    steam: '<span aria-hidden="true" style="width:20px; text-align:center">S</span>',
     google: `<svg width="20" height="20" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/><path d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 6.294C4.672 4.169 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>`,
     line: `<svg width="20" height="20" viewBox="0 0 36 36" fill="none" aria-hidden="true"><rect width="36" height="36" rx="8" fill="#06C755"/><path d="M30 16.8C30 11.4 24.6 7 18 7S6 11.4 6 16.8c0 4.8 4.2 8.8 9.9 9.6.4.1.9.3 1 .6.1.3 0 .7 0 .7l-.2 1.2c-.1.3-.3 1.2 1 .7s7.2-4.2 9.8-7.2c1.8-2 2.5-4 2.5-5.6z" fill="white"/><path d="M25.2 19.8h-3.9c-.2 0-.3-.1-.3-.3v-6c0-.2.1-.3.3-.3h3.9c.2 0 .3.1.3.3v1c0 .2-.1.3-.3.3h-2.6v1h2.6c.2 0 .3.1.3.3v1c0 .2-.1.3-.3.3h-2.6v1h2.6c.2 0 .3.1.3.3v1c0 .2-.1.3-.3.3zm-5.7 0h-1c-.2 0-.3-.1-.3-.3v-6c0-.2.1-.3.3-.3h1c.2 0 .3.1.3.3v6c0 .2-.1.3-.3.3zm-2.4 0h-1c-.2 0-.3-.1-.3-.3v-3.7l-2.5 3.8c-.1.1-.2.2-.3.2h-1c-.2 0-.3-.1-.3-.3v-6c0-.2.1-.3.3-.3h1c.2 0 .3.1.3.3v3.7l2.5-3.8c.1-.1.2-.2.3-.2h1c.2 0 .3.1.3.3v6c0 .2-.2.3-.3.3zm-6.5 0h-3.9c-.2 0-.3-.1-.3-.3v-6c0-.2.1-.3.3-.3h1c.2 0 .3.1.3.3v4.7h2.6c.2 0 .3.1.3.3v1c0 .2-.1.3-.3.3z" fill="#06C755"/></svg>`,
     twitch: `<svg width="20" height="20" viewBox="0 0 24 24" fill="#9147ff" aria-hidden="true"><path d="M11.64 5.93H13.07V10.21H11.64M15.57 5.93H17V10.21H15.57M7 2L3.43 5.57V18.43H7.71V22L11.29 18.43H14.14L20.57 12V2M19.14 11.29L16.29 14.14H13.43L10.93 16.64V14.14H7.71V3.43H19.14Z"/></svg>`,
@@ -51,8 +54,8 @@ import Icon from '../components/Icon.astro';
   const warningEl = document.getElementById('warning')!;
 
   let statuses: ProviderStatus[] = [];
-  // IdP で設定済みのプロバイダー（未設定は連携ボタンを出さない）。取得失敗時は全て設定済み扱い
-  let configured: Partial<Record<OAuthProvider, boolean>> = {};
+  // IdP で設定済みのプロバイダー（未設定は連携ボタンを出さない）。Discord / Steam は明示的な true の場合のみ有効
+  let configured: unknown = {};
 
   function getLinkedCount(): number {
     return statuses.filter(s => s.connected).length;
@@ -62,7 +65,7 @@ import Icon from '../components/Icon.astro';
     const linked = getLinkedCount();
     providerList.innerHTML = statuses.map((status, i) => {
       const borderStyle = i > 0 ? 'border-top:1px solid var(--color-border);' : '';
-      const isConfigured = configured[status.provider] !== false;
+      const isConfigured = isProviderAvailable(status.provider, configured);
       const actionHtml = status.connected
         ? `<button class="btn btn-ghost btn-sm" data-unlink="${status.provider}" ${linked <= 1 ? 'disabled title="最後の連携プロバイダーは解除できません"' : ''}>連携解除</button>`
         : isConfigured
@@ -111,11 +114,12 @@ import Icon from '../components/Icon.astro';
     focusAfterRetry: document.getElementById('providers-heading')!,
     load: async () => {
       statuses = await apiFetch<ProviderStatus[]>('/api/providers');
+      configured = {};
       try {
         const res = await fetch('/auth/providers/status', { credentials: 'same-origin', cache: 'no-store' });
         if (res.ok) configured = await res.json();
       } catch {
-        // 設定済み一覧が取得できない場合は全プロバイダーのボタンを表示する
+        // Discord / Steam の連携ボタンは非表示のままにする
       }
       render();
     },

@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import type { IdpEnv, TokenPayload } from "@0g0-id/shared";
-import { getConfiguredProviders } from "../../utils/auth-helpers";
+import { getReadyProviders } from "../../utils/auth-helpers";
 
 type Variables = { user: TokenPayload };
 
@@ -11,7 +11,7 @@ type Variables = { user: TokenPayload };
  * 判定基準は /auth/login の PROVIDER_NOT_CONFIGURED ゲートと同一。
  * 資格情報の値は一切含めないため、未認証で公開してよい。
  */
-export function handleProviders(c: Context<{ Bindings: IdpEnv; Variables: Variables }>) {
+export async function handleProviders(c: Context<{ Bindings: IdpEnv; Variables: Variables }>) {
   c.header("Cache-Control", "no-store");
-  return c.json({ data: getConfiguredProviders(c.env) });
+  return c.json({ data: await getReadyProviders(c.env) });
 }

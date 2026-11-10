@@ -158,6 +158,22 @@ jobs:
             LOGIN_STATS_REPORT_DIR="$RUNNER_TEMP/login-stats-ui" \
             node scripts/login-stats-browser-smoke.mjs
 
+      - name: Discord・Steam 連携のブラウザー境界（合成データ・外部通信遮断）
+        if: ${{ !cancelled() && env.UI_REFERENCE_PLAYWRIGHT_MODULE != '' }}
+        timeout-minutes: 3
+        run: |
+          SOCIAL_LOGIN_PLAYWRIGHT_MODULE="$UI_REFERENCE_PLAYWRIGHT_MODULE" \
+            SOCIAL_LOGIN_REPORT_DIR="$RUNNER_TEMP/social-login-browser" \
+            node --import tsx scripts/social-login-browser-smoke.ts
+
+      - name: Discord・Steam ブラウザー検証記録
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: social-login-browser
+          path: ${{ runner.temp }}/social-login-browser
+          if-no-files-found: ignore
+
       - name: 管理・アカウント UI（合成データ・外部通信遮断）
         if: ${{ !cancelled() && env.UI_REFERENCE_PLAYWRIGHT_MODULE != '' }}
         timeout-minutes: 3

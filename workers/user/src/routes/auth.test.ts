@@ -10,7 +10,12 @@ const baseUrl = "https://user.0g0.xyz";
 
 function buildApp(idpFetch: (req: Request) => Promise<Response>) {
   const app = new Hono<{
-    Bindings: { IDP: { fetch: typeof idpFetch }; IDP_ORIGIN: string; SESSION_SECRET: string };
+    Bindings: {
+      IDP: { fetch: typeof idpFetch };
+      IDP_ORIGIN: string;
+      SESSION_SECRET: string;
+      SELF_ORIGIN: string;
+    };
   }>();
   app.route("/auth", authRoutes);
   return {
@@ -20,6 +25,7 @@ function buildApp(idpFetch: (req: Request) => Promise<Response>) {
         IDP: { fetch: idpFetch },
         IDP_ORIGIN: "https://id.0g0.xyz",
         SESSION_SECRET: "test-secret",
+        SELF_ORIGIN: baseUrl,
       });
     },
   };
@@ -44,7 +50,7 @@ describe("user BFF — /auth", () => {
       const idpFetch = vi.fn();
       const app = buildApp(idpFetch);
 
-      for (const provider of ["google", "line", "twitch", "github", "x"]) {
+      for (const provider of ["google", "line", "twitch", "github", "x", "discord", "steam"]) {
         const res = await app.request(`/auth/login?provider=${provider}`);
         expect(res.status).toBe(302);
         expect(res.headers.get("Location")).toContain(`provider=${provider}`);
@@ -271,6 +277,8 @@ describe("user BFF — /auth", () => {
       // IdPの /auth/link-intent を呼び出したことを確認
       const [calledReq] = (idpFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [Request];
       expect(calledReq.url).toBe("https://id.0g0.xyz/auth/link-intent");
+      expect(calledReq.headers.get("Content-Type")).toBeNull();
+      expect(await calledReq.text()).toBe("");
       expect(calledReq.method).toBe("POST");
       expect(calledReq.headers.get("Authorization")).toBe("Bearer mock-access-token");
       // リダイレクトURLにlink_tokenが含まれ、link_user_idは含まれないことを確認
@@ -279,6 +287,67 @@ describe("user BFF — /auth", () => {
       expect(location).toContain("provider=github");
       expect(location).toContain("link_token=mock-one-time-link-token");
       expect(location).not.toContain("link_user_id");
+    });
+
+    it.each(["discord", "steam"])(
+      "POST linking forwards %s in an origin-bound form without a URL token",
+      async (provider) => {
+        const idpFetch = vi
+          .fn()
+          .mockResolvedValue(Response.json({ data: { link_token: "intent-token" } }));
+        const app = buildApp(idpFetch);
+        const res = await app.request("/auth/link", {
+          method: "POST",
+          headers: {
+            Cookie: `${SESSION_COOKIE}=${await makeSessionCookie({ userId: "user-abc" })}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: new URLSearchParams({ provider }),
+        });
+        expect(res.status).toBe(200);
+        expect(res.headers.get("Location")).toBeNull();
+        const [intentRequest] = idpFetch.mock.calls[0] as [Request];
+        expect(intentRequest.headers.get("Content-Type")).toBe("application/json");
+        expect(await intentRequest.json()).toEqual({ provider });
+        const body = await res.text();
+        expect(body).toContain('method="post" action="https://id.0g0.xyz/auth/login"');
+        expect(body).toContain(`name="provider" value="${provider}"`);
+        expect(body).toContain('name="link_token" value="intent-token"');
+        expect(body).toContain(`name="redirect_to" value="${baseUrl}/auth/callback"`);
+        expect(body).toMatch(/name="state" value="[A-Za-z0-9_-]+"/);
+        expect(body.match(/<input /g)).toHaveLength(4);
+        expect(body).toContain('<button type="submit">');
+        expect(body).not.toContain("?link_token=");
+        expect(res.headers.get("Cache-Control")).toBe("no-store");
+        expect(res.headers.get("Referrer-Policy")).toBe("origin");
+        const nonce = body.match(/<script nonce="([A-Za-z0-9_-]+)">/)?.[1];
+        expect(nonce).toBeTruthy();
+        expect(res.headers.get("Content-Security-Policy")).toBe(
+          `default-src 'none'; script-src 'nonce-${nonce}'; form-action https://id.0g0.xyz; frame-ancestors 'none'; base-uri 'none'`,
+        );
+        expect(res.headers.get("Set-Cookie")).toContain(STATE_COOKIE);
+      },
+    );
+
+    it.each(["discord", "steam"])("escapes %s link token attributes", async (provider) => {
+      const token = '"><script>alert(1)</script>&';
+      const app = buildApp(
+        vi.fn().mockResolvedValue(Response.json({ data: { link_token: token } })),
+      );
+      const res = await app.request("/auth/link", {
+        method: "POST",
+        headers: {
+          Cookie: `${SESSION_COOKIE}=${await makeSessionCookie()}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({ provider }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.text();
+      expect(body).not.toContain(token);
+      expect(body).toContain("&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;&amp;");
+      expect(body.match(/<script /g)).toHaveLength(1);
+      expect(res.headers.get("Location")).toBeNull();
     });
 
     it("link-intent呼び出し失敗時に /profile.html?error=link_failed にリダイレクトする", async () => {

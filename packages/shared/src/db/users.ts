@@ -551,7 +551,9 @@ export async function getUserProviders(db: D1Database, userId: string): Promise<
   const providers = ALL_PROVIDERS;
   return providers.map((p) => ({
     provider: p,
-    connected: user[PROVIDER_COLUMN[p] as keyof User] !== null,
+    connected:
+      typeof user[PROVIDER_COLUMN[p] as keyof User] === "string" &&
+      user[PROVIDER_COLUMN[p] as keyof User] !== "",
   }));
 }
 

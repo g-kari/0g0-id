@@ -116,7 +116,7 @@ import ServiceSubsCard from '../../components/users/ServiceSubsCard.astro';
     // プロバイダー
     const providersEl = document.getElementById('providers-list')!;
     const providerLabels: Record<string, string> = {
-      google: 'Google', line: 'LINE', twitch: 'Twitch', github: 'GitHub', x: 'X',
+      google: 'Google', line: 'LINE', twitch: 'Twitch', github: 'GitHub', x: 'X', discord: 'Discord', steam: 'Steam',
     };
     if (Array.isArray(providers)) {
       providersEl.innerHTML = (providers as ProviderStatus[]).map((p) => `

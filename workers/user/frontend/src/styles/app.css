@@ -158,6 +158,22 @@
   .btn-github:hover {
     background: #353d44;
   }
+  .btn-discord {
+    background: #5865f2;
+    color: #fff;
+    border-color: #5865f2;
+  }
+  .btn-discord:hover {
+    background: #4752c4;
+  }
+  .btn-steam {
+    background: #171d25;
+    color: #fff;
+    border-color: #171d25;
+  }
+  .btn-steam:hover {
+    background: #2a475e;
+  }
   .btn-x {
     background: #000;
     color: #fff;

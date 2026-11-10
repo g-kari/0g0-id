@@ -9,7 +9,7 @@ const app = new Hono<{ Bindings: BffEnv }>();
 // GET /auth/providers/status — 設定済みプロバイダー一覧（真偽値のみ）
 // IdP の GET /auth/providers を中継する。フロントが未設定プロバイダーの
 // ログインボタンを表示しないための公開情報で、資格情報は含まない。
-// 取得に失敗した場合は 502 を返し、フロント側は全ボタン表示にフォールバックする。
+// 取得に失敗した場合は 502 を返し、フロント側は既存プロバイダーのみ表示する。
 app.get("/providers/status", async (c) => {
   c.header("Cache-Control", "no-store");
   try {

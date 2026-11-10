@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import { html } from "hono/html";
 import type { IdpEnv, OAuthStateCookieData, TokenPayload } from "@0g0-id/shared";
 import { restErrorBody } from "@0g0-id/shared";
 import {
@@ -12,11 +13,18 @@ import {
   buildTwitchAuthUrl,
   buildGithubAuthUrl,
   buildXAuthUrl,
+  buildDiscordAuthUrl,
+  buildSteamAuthUrl,
+  isSocialLoginProvider,
+  socialLoginSchemaReady,
+  issueSocialLoginTransaction,
+  consumeSocialLoginLinkToken,
 } from "@0g0-id/shared";
 import { isValidProvider } from "@0g0-id/shared";
 import { validateNonce, validateCodeChallengeParams } from "../../utils/scopes";
 import {
   CALLBACK_PATH,
+  STEAM_CALLBACK_PATH,
   STATE_COOKIE,
   PKCE_COOKIE,
   isAllowedRedirectTo,
@@ -35,13 +43,43 @@ import { validateRequiredParams, validateParamLengths } from "../../utils/valida
 type Variables = { user: TokenPayload };
 
 export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Variables }>) {
-  const redirectTo = c.req.query("redirect_to");
-  const bffState = c.req.query("state");
-  const providerParam = c.req.query("provider") ?? "google";
-  const clientId = c.req.query("client_id");
+  // Browser linking is POST-only from the authenticated BFF page. A bearer URL
+  // must not attach a victim provider to the account named by an attacker's intent.
+  let form: URLSearchParams | undefined;
+  if (c.req.method === "POST") {
+    if (
+      c.req.header("Origin") !== c.env.USER_ORIGIN ||
+      new URL(c.req.url).search ||
+      c.req.header("Content-Type")?.split(";")[0] !== "application/x-www-form-urlencoded"
+    ) {
+      return c.json(restErrorBody("BAD_REQUEST", "Invalid link request"), 400);
+    }
+    const raw = await c.req.text();
+    if (raw.length > 16384)
+      return c.json(restErrorBody("BAD_REQUEST", "Invalid link request"), 400);
+    form = new URLSearchParams(raw);
+    const allowed = new Set(["provider", "redirect_to", "state", "link_token"]);
+    for (const key of form.keys())
+      if (!allowed.has(key) || form.getAll(key).length !== 1) {
+        return c.json(restErrorBody("BAD_REQUEST", "Invalid link request"), 400);
+      }
+    if (
+      form.get("redirect_to") !== `${c.env.USER_ORIGIN}/auth/callback` ||
+      !form.get("link_token") ||
+      !["discord", "steam"].includes(form.get("provider") ?? "")
+    ) {
+      return c.json(restErrorBody("BAD_REQUEST", "Invalid link request"), 400);
+    }
+  }
+  const query = (key: string): string | undefined =>
+    form ? (form.get(key) ?? undefined) : c.req.query(key);
+  const redirectTo = query("redirect_to");
+  const bffState = query("state");
+  const providerParam = query("provider") ?? "google";
+  const clientId = query("client_id");
   // link_user_id を直接URLパラメータとして受け付けるのはアカウント乗っ取り攻撃に悪用可能なため、
   // サーバー側で発行したワンタイムトークン（link_token）を使用する
-  const linkToken = c.req.query("link_token");
+  const linkToken = query("link_token");
 
   const requiredErr = validateRequiredParams(c, [
     { value: redirectTo, message: "Missing required parameters" },
@@ -61,11 +99,21 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
     return c.json(restErrorBody("BAD_REQUEST", "Invalid provider"), 400);
   }
   const provider = providerParam;
+  if (isSocialLoginProvider(provider) && linkToken && c.req.method !== "POST") {
+    return c.json(
+      restErrorBody("BAD_REQUEST", "Linking must start from your authenticated account page"),
+      400,
+    );
+  }
 
   // プロバイダー資格情報の確認（Google以外はオプション設定）
   const credResult = validateProviderCredentials(provider, c.env);
   if (!credResult.ok) {
     return c.json(restErrorBody(credResult.code, credResult.message), 400);
+  }
+
+  if (isSocialLoginProvider(provider) && !(await socialLoginSchemaReady(c.env.DB))) {
+    return c.json(restErrorBody("PROVIDER_NOT_CONFIGURED", "Provider is not configured"), 400);
   }
 
   // redirect_to の検証
@@ -105,17 +153,17 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
   }
 
   // OIDCオプションパラメータ
-  const nonce = c.req.query("nonce");
-  const codeChallenge = c.req.query("code_challenge");
+  const nonce = query("nonce");
+  const codeChallenge = query("code_challenge");
 
   // nonce の長さ・制御文字制限（RFC 7636 に準じて 128 文字まで、制御文字禁止）
   const nonceError = validateNonce(nonce);
   if (nonceError) {
     return c.json(restErrorBody("BAD_REQUEST", nonceError), 400);
   }
-  const codeChallengeMethod = c.req.query("code_challenge_method");
-  const scope = c.req.query("scope");
-  const resource = c.req.query("resource");
+  const codeChallengeMethod = query("code_challenge_method");
+  const scope = query("scope");
+  const resource = query("resource");
 
   const scopeLenErr = validateParamLengths(c, [
     { value: scope, max: 2048, message: "scope too long" },
@@ -150,13 +198,21 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
     if (!payload) {
       return c.json(restErrorBody("INVALID_LINK_TOKEN", "Invalid or expired link token"), 400);
     }
-    let parsed: { purpose: string; sub: string; exp: number; jti?: string };
+    let parsed: { purpose: string; sub: string; exp: number; jti?: string; provider?: string };
     try {
-      parsed = JSON.parse(payload) as { purpose: string; sub: string; exp: number; jti?: string };
+      parsed = JSON.parse(payload) as {
+        purpose: string;
+        sub: string;
+        exp: number;
+        jti?: string;
+        provider?: string;
+      };
     } catch {
       return c.json(restErrorBody("INVALID_LINK_TOKEN", "Invalid or expired link token"), 400);
     }
     if (
+      (parsed.provider !== undefined && parsed.provider !== provider) ||
+      (isSocialLoginProvider(provider) && parsed.provider !== provider) ||
       parsed.purpose !== "link" ||
       !parsed.sub ||
       typeof parsed.exp !== "number" ||
@@ -165,7 +221,15 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
       return c.json(restErrorBody("INVALID_LINK_TOKEN", "Invalid or expired link token"), 400);
     }
     // jti 消費チェック（ワンタイム性保証）
-    if (parsed.jti && c.env.LINK_TOKEN_KV) {
+    if (isSocialLoginProvider(provider)) {
+      if (
+        typeof parsed.sub !== "string" ||
+        !parsed.jti ||
+        !(await consumeSocialLoginLinkToken(c.env.DB, parsed.jti, parsed.exp))
+      ) {
+        return c.json(restErrorBody("INVALID_LINK_TOKEN", "Invalid or expired link token"), 400);
+      }
+    } else if (parsed.jti && c.env.LINK_TOKEN_KV) {
       const consumed = await c.env.LINK_TOKEN_KV.get(`jti:${parsed.jti}`);
       if (consumed) {
         return c.json(restErrorBody("INVALID_LINK_TOKEN", "Link token already consumed"), 400);
@@ -176,7 +240,7 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
   }
 
   // id側のstate/PKCEを生成
-  const idState = generateToken(16);
+  const idState = generateToken(isSocialLoginProvider(provider) ? 32 : 16);
   const idCodeVerifier = generateCodeVerifier();
   const idCodeChallenge = await generateCodeChallenge(idCodeVerifier);
 
@@ -195,6 +259,15 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
     ...(resourceUri ? { resource: resourceUri } : {}),
   };
   const stateData = JSON.stringify(statePayload);
+  if (isSocialLoginProvider(provider)) {
+    await issueSocialLoginTransaction(c.env.DB, {
+      state: idState,
+      browserBinding: idCodeVerifier,
+      statePayload: stateData,
+      provider,
+      idpOrigin: c.env.IDP_ORIGIN,
+    });
+  }
   const signedStateData = await signCookie(stateData, c.env.COOKIE_SECRET);
   setSecureCookie(c, STATE_COOKIE, signedStateData, 600); // 10分
   const signedPkce = await signCookie(idCodeVerifier, c.env.COOKIE_SECRET);
@@ -203,7 +276,43 @@ export async function handleLogin(c: Context<{ Bindings: IdpEnv; Variables: Vari
   const callbackUri = `${c.env.IDP_ORIGIN}${CALLBACK_PATH}`;
   const commonParams = { redirectUri: callbackUri, state: idState, codeChallenge: idCodeChallenge };
 
+  const redirectToProvider = (url: string) => {
+    if (c.req.method !== "POST") return c.redirect(url);
+    // End the BFF form navigation here: its exact-IdP form-action must not
+    // govern a cross-origin redirect chain to the identity provider.
+    const nonce = generateToken(24);
+    c.header("Cache-Control", "no-store");
+    c.header("Referrer-Policy", "no-referrer");
+    c.header(
+      "Content-Security-Policy",
+      `default-src 'none'; script-src 'nonce-${nonce}'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'`,
+    );
+    return c.html(
+      html`<!doctype html>
+        <html lang="ja">
+          <head>
+            <meta charset="UTF-8" />
+            <title>ログインを続ける</title>
+          </head>
+          <body>
+            <a id="provider-continue" href="${url}">ログインを続ける</a>
+            <script nonce="${nonce}">
+              location.replace(document.getElementById("provider-continue").href);
+            </script>
+          </body>
+        </html>`,
+    );
+  };
+
   switch (provider) {
+    case "discord":
+      return redirectToProvider(
+        buildDiscordAuthUrl({ ...commonParams, clientId: c.env.DISCORD_CLIENT_ID! }),
+      );
+    case "steam":
+      return redirectToProvider(
+        buildSteamAuthUrl(`${c.env.IDP_ORIGIN}${STEAM_CALLBACK_PATH}?state=${idState}`),
+      );
     case "line":
       return c.redirect(buildLineAuthUrl({ ...commonParams, clientId: c.env.LINE_CLIENT_ID! }));
     case "twitch":

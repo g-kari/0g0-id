@@ -13,6 +13,7 @@ import emailPasskeyRoutes from "./email-passkey";
 import { handleAuthorize } from "./authorize";
 import { handleLogin } from "./login";
 import { handleProviders } from "./providers";
+import { handleSocialCallback } from "./social-callback";
 import { handleCallback } from "./callback";
 import { handleExchange } from "./exchange";
 import { handleRefresh } from "./refresh";
@@ -33,12 +34,14 @@ app.get("/authorize", authRateLimitMiddleware, handleAuthorize);
 
 // GET /auth/login — BFFからのリダイレクト受け取り + プロバイダー認可へリダイレクト
 app.get("/login", authRateLimitMiddleware, handleLogin);
+app.post("/login", authRateLimitMiddleware, handleLogin);
 
 // GET /auth/providers — 設定済みプロバイダー一覧（ボタン出し分け用、資格情報は含まない）
 app.get("/providers", authRateLimitMiddleware, handleProviders);
 
 // GET /auth/callback — OAuthコールバック（全プロバイダー共通）
 app.get("/callback", authRateLimitMiddleware, handleCallback);
+app.get("/steam/callback", authRateLimitMiddleware, (c) => handleSocialCallback(c, "steam"));
 
 // POST /auth/exchange — ワンタイムコード交換
 app.post("/exchange", tokenApiRateLimitMiddleware, serviceBindingMiddleware, handleExchange);

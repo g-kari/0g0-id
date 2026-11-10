@@ -459,7 +459,8 @@ export const INTERNAL_OPENAPI = {
       get: {
         tags: ["認証フロー"],
         summary: "ログイン開始",
-        description: "BFFからのリダイレクトを受け取り、Googleの認可画面へリダイレクトする。",
+        description:
+          "BFFまたは登録済みサービスから認証を開始する。Discord/Steamは明示的な有効化とスキーマが必要。新規プロバイダーのアカウント連携はGETでは受け付けない。",
         parameters: [
           {
             name: "redirect_to",
@@ -477,7 +478,47 @@ export const INTERNAL_OPENAPI = {
           },
         ],
         responses: {
-          "302": { description: "Googleの認可画面へリダイレクト" },
+          "302": { description: "設定済みプロバイダーの認証画面へリダイレクト" },
+        },
+      },
+      post: {
+        tags: ["認証フロー"],
+        summary: "Discord/Steam アカウント連携開始",
+        description:
+          "認証済みユーザー画面が生成するフォーム専用。OriginはUSER_ORIGIN完全一致、redirect_toは同オリジンの/auth/callback固定。providerに束縛された署名済みlink_tokenを単回消費する。queryパラメーター、重複・未知のフォーム項目は拒否。",
+        requestBody: {
+          required: true,
+          content: {
+            "application/x-www-form-urlencoded": {
+              schema: {
+                type: "object",
+                required: ["provider", "redirect_to", "state", "link_token"],
+                additionalProperties: false,
+                properties: {
+                  provider: { type: "string", enum: ["discord", "steam"] },
+                  redirect_to: { type: "string" },
+                  state: { type: "string" },
+                  link_token: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "プロバイダー認証へ進むnonce付きHTMLページ" },
+          "400": { description: "無効な連携要求" },
+        },
+      },
+    },
+    "/auth/steam/callback": {
+      get: {
+        tags: ["認証フロー"],
+        summary: "Steam OpenID 2.0 コールバック",
+        description:
+          "default-off。署名済みCookieと単回DB transaction、固定return_to、Steam直接検証と単回nonceを確認し、共通の認可コード発行へ進む。",
+        responses: {
+          "302": { description: "BFFまたは登録済みサービスへリダイレクト" },
+          "400": { description: "無効・期限切れ・再利用された認証" },
         },
       },
     },
@@ -493,7 +534,15 @@ export const INTERNAL_OPENAPI = {
             content: {
               "application/json": {
                 example: {
-                  data: { google: true, line: false, twitch: false, github: true, x: false },
+                  data: {
+                    google: true,
+                    line: false,
+                    twitch: false,
+                    github: true,
+                    x: false,
+                    discord: false,
+                    steam: false,
+                  },
                 },
               },
             },
@@ -504,9 +553,9 @@ export const INTERNAL_OPENAPI = {
     "/auth/callback": {
       get: {
         tags: ["認証フロー"],
-        summary: "Google OAuthコールバック",
+        summary: "OAuthコールバック",
         description:
-          "Googleからのコールバック。ユーザーを作成/更新し、ワンタイム認可コード（60秒有効）を発行してBFFへリダイレクト。",
+          "OAuthプロバイダーからのコールバック。Discordは単回DB transaction、PKCE、stateとissuerを追加検証する。Steamは専用経路を使用する。ワンタイム認可コードは60秒有効。",
         responses: {
           "302": { description: "BFFへリダイレクト（?code=...）" },
         },
