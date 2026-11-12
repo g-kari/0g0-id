@@ -1,124 +1,110 @@
-import type { Context } from "hono";
 import { getCookie, deleteCookie } from "hono/cookie";
-import type { IdpEnv, OAuthStateCookieData, TokenPayload, User } from "@0g0-id/shared";
+import type { OAuthStateCookieData } from "@0g0-id/shared";
 import {
   timingSafeEqual,
-  findUserById,
   createLogger,
   restErrorBody,
   verifyCookie,
+  type OAuthProvider,
+  isValidProvider,
 } from "@0g0-id/shared";
-import { type OAuthProvider, PROVIDER_DISPLAY_NAMES, isValidProvider } from "@0g0-id/shared";
-import { type ProviderResolution, resolveProvider } from "../../utils/provider-resolution";
 import {
   CALLBACK_PATH,
   OAUTH_ERROR_MAP,
   STATE_COOKIE,
   PKCE_COOKIE,
   parseStateFromCookie,
-  handleProviderLink,
   validateProviderCredentials,
 } from "../../utils/auth-helpers";
-import { handleSocialCallback } from "./social-callback";
+import { resolveProvider } from "../../utils/provider-resolution";
+import { type CallbackContext, type CallbackResult, resolveUserAccount } from "./callback-account";
 import { finalizeLogin, validateFinalRedirect, redirectWithOAuthError } from "./finalize";
+import { handleSocialCallback } from "./social-callback";
 
 const authLogger = createLogger("auth");
-
-type CallbackContext = Context<{ Bindings: IdpEnv; Variables: Variables }>;
-type Variables = { user: TokenPayload };
-
-type CallbackResult<T> = ({ ok: true } & T) | { ok: false; response: Response };
 
 function clearOAuthCookies(c: CallbackContext): void {
   deleteCookie(c, STATE_COOKIE, { path: "/", secure: true });
   deleteCookie(c, PKCE_COOKIE, { path: "/", secure: true });
 }
 
-async function handleOAuthError(c: CallbackContext, error: string): Promise<Response> {
-  const stateCookieRaw = getCookie(c, STATE_COOKIE);
-  clearOAuthCookies(c);
+function badRequest(c: CallbackContext, message: string): CallbackResult<never> {
+  return { ok: false, response: c.json(restErrorBody("BAD_REQUEST", message), 400) };
+}
 
-  if (stateCookieRaw) {
-    const stateData = await parseStateFromCookie(stateCookieRaw, c.env.COOKIE_SECRET);
-    if (stateData && (await validateFinalRedirect(c, stateData))) {
-      const safeErrorCode = error in OAUTH_ERROR_MAP ? error : "access_denied";
-      return redirectWithOAuthError(
-        c,
-        stateData,
-        safeErrorCode,
-        OAUTH_ERROR_MAP[safeErrorCode] ?? "Authentication failed",
-      );
-    }
-  }
-
-  const safeMessage =
-    OAUTH_ERROR_MAP[error as keyof typeof OAUTH_ERROR_MAP] ?? "Authentication failed";
+function jsonOAuthError(c: CallbackContext, error: string): Response {
+  const safeMessage = OAUTH_ERROR_MAP[error] ?? "Authentication failed";
   return c.json(restErrorBody("OAUTH_ERROR", safeMessage), 400);
 }
 
-async function validateCallbackState(
+function redirectForOAuthError(
   c: CallbackContext,
-  state: string,
+  stateData: OAuthStateCookieData,
+  error: string,
+): Response {
+  const safeErrorCode = error in OAUTH_ERROR_MAP ? error : "access_denied";
+  return redirectWithOAuthError(
+    c,
+    stateData,
+    safeErrorCode,
+    OAUTH_ERROR_MAP[safeErrorCode] ?? "Authentication failed",
+  );
+}
+
+async function handleOAuthError(c: CallbackContext, error: string): Promise<Response> {
+  const stateCookieRaw = getCookie(c, STATE_COOKIE);
+  clearOAuthCookies(c);
+  if (!stateCookieRaw) return jsonOAuthError(c, error);
+
+  const stateData = await parseStateFromCookie(stateCookieRaw, c.env.COOKIE_SECRET);
+  if (!stateData || !(await validateFinalRedirect(c, stateData))) return jsonOAuthError(c, error);
+  return redirectForOAuthError(c, stateData, error);
+}
+
+async function readOAuthSession(
+  c: CallbackContext,
 ): Promise<CallbackResult<{ stateData: OAuthStateCookieData; pkceVerifier: string }>> {
   const stateCookieRaw = getCookie(c, STATE_COOKIE);
   const pkceCookieRaw = getCookie(c, PKCE_COOKIE);
-
-  if (!stateCookieRaw || !pkceCookieRaw) {
-    return {
-      ok: false,
-      response: c.json(restErrorBody("BAD_REQUEST", "Missing session cookies"), 400),
-    };
-  }
+  if (!stateCookieRaw || !pkceCookieRaw) return badRequest(c, "Missing session cookies");
 
   const pkceVerifier = await verifyCookie(pkceCookieRaw, c.env.COOKIE_SECRET);
   if (!pkceVerifier) {
     authLogger.error("[oauth-callback] PKCE cookie verification failed");
     clearOAuthCookies(c);
-    return {
-      ok: false,
-      response: c.json(restErrorBody("BAD_REQUEST", "Invalid PKCE cookie"), 400),
-    };
+    return badRequest(c, "Invalid PKCE cookie");
   }
 
   const stateData = await parseStateFromCookie(stateCookieRaw, c.env.COOKIE_SECRET);
   if (!stateData) {
     authLogger.error("[oauth-callback] State cookie verification or parse failed");
     clearOAuthCookies(c);
-    return {
-      ok: false,
-      response: c.json(restErrorBody("BAD_REQUEST", "Invalid state cookie"), 400),
-    };
+    return badRequest(c, "Invalid state cookie");
   }
-
-  if (!timingSafeEqual(state, stateData.idState)) {
-    clearOAuthCookies(c);
-    return {
-      ok: false,
-      response: c.json(restErrorBody("BAD_REQUEST", "State mismatch"), 400),
-    };
-  }
-
-  clearOAuthCookies(c);
   return { ok: true, stateData, pkceVerifier };
+}
+
+async function validateCallbackState(
+  c: CallbackContext,
+  state: string,
+): Promise<CallbackResult<{ stateData: OAuthStateCookieData; pkceVerifier: string }>> {
+  const session = await readOAuthSession(c);
+  if (!session.ok) return session;
+  if (!timingSafeEqual(state, session.stateData.idState)) {
+    clearOAuthCookies(c);
+    return badRequest(c, "State mismatch");
+  }
+  clearOAuthCookies(c);
+  return session;
 }
 
 function validateProviderConfig(
   c: CallbackContext,
   stateData: OAuthStateCookieData,
 ): CallbackResult<{ provider: OAuthProvider }> {
-  if (!stateData.provider) {
-    return {
-      ok: false,
-      response: c.json(restErrorBody("BAD_REQUEST", "Missing provider in state"), 400),
-    };
-  }
+  if (!stateData.provider) return badRequest(c, "Missing provider in state");
   const provider: OAuthProvider = stateData.provider;
-  if (!isValidProvider(provider)) {
-    return {
-      ok: false,
-      response: c.json(restErrorBody("BAD_REQUEST", "Invalid provider in state"), 400),
-    };
-  }
+  if (!isValidProvider(provider)) return badRequest(c, "Invalid provider in state");
   const credResult = validateProviderCredentials(provider, c.env);
   if (!credResult.ok) {
     return {
@@ -129,80 +115,29 @@ function validateProviderConfig(
   return { ok: true, provider };
 }
 
-export async function resolveUserAccount(
-  c: CallbackContext,
-  provider: OAuthProvider,
-  resolved: Extract<ProviderResolution, { ok: true }>,
-  stateData: OAuthStateCookieData,
-): Promise<CallbackResult<{ user: User }>> {
-  const userId = crypto.randomUUID();
-  let user: User;
-
-  if (stateData.linkUserId) {
-    const linkTargetUser = await findUserById(c.env.DB, stateData.linkUserId);
-    if (!linkTargetUser) {
-      return {
-        ok: false,
-        response: c.json(restErrorBody("NOT_FOUND", "User not found"), 404),
-      };
-    }
-    if (linkTargetUser.banned_at !== null) {
-      return {
-        ok: false,
-        response: c.json(restErrorBody("ACCOUNT_BANNED", "Your account has been suspended"), 403),
-      };
-    }
-    const result = await handleProviderLink(c.env.DB, stateData.linkUserId, provider, resolved.sub);
-    if (!result.ok) {
-      return {
-        ok: false,
-        response: c.json(
-          restErrorBody(
-            "PROVIDER_ALREADY_LINKED",
-            `This ${PROVIDER_DISPLAY_NAMES[provider]} account is already linked to another user`,
-          ),
-          409,
-        ),
-      };
-    }
-    user = result.user;
-  } else {
-    user = await resolved.upsert(c.env.DB, userId);
-  }
-
-  if (user.banned_at !== null) {
-    return {
-      ok: false,
-      response: c.json(restErrorBody("ACCOUNT_BANNED", "Your account has been suspended"), 403),
-    };
-  }
-
-  return { ok: true, user };
+async function optInSocialResponse(c: CallbackContext): Promise<Response | undefined> {
+  const signedState = getCookie(c, STATE_COOKIE);
+  if (!signedState) return undefined;
+  const initialState = await parseStateFromCookie(signedState, c.env.COOKIE_SECRET);
+  if (initialState?.provider !== "discord" && initialState?.provider !== "steam") return undefined;
+  return handleSocialCallback(c, "discord");
 }
 
-/**
- * GET /auth/callback — OAuthコールバック（全プロバイダー共通）
- */
-
-export async function handleCallback(c: CallbackContext) {
-  const signedState = getCookie(c, STATE_COOKIE);
-  const initialState = signedState
-    ? await parseStateFromCookie(signedState, c.env.COOKIE_SECRET)
-    : null;
-  if (initialState?.provider === "discord" || initialState?.provider === "steam") {
-    return handleSocialCallback(c, "discord");
-  }
-  const error = c.req.query("error");
-  if (error) return handleOAuthError(c, error);
-
+function readAuthorizationCode(
+  c: CallbackContext,
+): CallbackResult<{ code: string; state: string }> {
   const code = c.req.query("code");
   const state = c.req.query("state");
+  if (code && state) return { ok: true, code, state };
+  clearOAuthCookies(c);
+  return badRequest(c, "Missing code or state");
+}
 
-  if (!code || !state) {
-    clearOAuthCookies(c);
-    return c.json(restErrorBody("BAD_REQUEST", "Missing code or state"), 400);
-  }
-
+async function completeAuthorizationCodeLogin(
+  c: CallbackContext,
+  code: string,
+  state: string,
+): Promise<Response> {
   const stateResult = await validateCallbackState(c, state);
   if (!stateResult.ok) return stateResult.response;
   const { stateData, pkceVerifier } = stateResult;
@@ -211,12 +146,31 @@ export async function handleCallback(c: CallbackContext) {
   if (!providerResult.ok) return providerResult.response;
   const { provider } = providerResult;
 
-  const callbackUri = `${c.env.IDP_ORIGIN}${CALLBACK_PATH}`;
-  const resolved = await resolveProvider(c, provider, code, pkceVerifier, callbackUri);
+  const resolved = await resolveProvider(
+    c,
+    provider,
+    code,
+    pkceVerifier,
+    `${c.env.IDP_ORIGIN}${CALLBACK_PATH}`,
+  );
   if (!resolved.ok) return resolved.response;
 
   const userResult = await resolveUserAccount(c, provider, resolved, stateData);
   if (!userResult.ok) return userResult.response;
-
   return finalizeLogin(c, userResult.user, provider, stateData);
+}
+
+/**
+ * GET /auth/callback — OAuthコールバック（全プロバイダー共通）
+ */
+export async function handleCallback(c: CallbackContext) {
+  const social = await optInSocialResponse(c);
+  if (social) return social;
+
+  const error = c.req.query("error");
+  if (error) return handleOAuthError(c, error);
+
+  const authorization = readAuthorizationCode(c);
+  if (!authorization.ok) return authorization.response;
+  return completeAuthorizationCodeLogin(c, authorization.code, authorization.state);
 }
