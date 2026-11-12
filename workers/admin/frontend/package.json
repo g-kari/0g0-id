@@ -32,7 +32,7 @@
     "js-yaml": "5.5.0",
     "nanoid": "6.0.2",
     "postcss": "8.5.32",
-    "rolldown": "1.3.1",
+    "rolldown": "1.3.2",
     "semver": "7.8.6",
     "sharp": "0.35.5",
     "shiki": "4.6.0",
