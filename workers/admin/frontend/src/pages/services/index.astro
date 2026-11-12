@@ -68,7 +68,8 @@ import Admin from '../../layouts/Admin.astro';
 </Admin>
 
 <script>
-  import { apiFetch, formatDate } from '../../lib/api';
+  import { apiFetch } from '../../lib/api';
+  import { renderAdminServiceRows } from '../../lib/safe-markup';
   import type { ServiceSummary, NewServiceResult } from '@0g0-id/api-types';
 
   let services: ServiceSummary[] = [];
@@ -92,21 +93,7 @@ import Admin from '../../layouts/Admin.astro';
 
   function renderTable(): void {
     countEl.textContent = `${services.length} 件`;
-    tbody.innerHTML = services
-      .map(
-        (service) => `
-      <tr>
-        <td style="font-weight:500;">${service.name}</td>
-        <td><code style="font-size:0.8rem; background:var(--color-surface); padding:2px 6px; border-radius:4px;">${service.client_id}</code></td>
-        <td style="color:var(--color-muted); font-size:0.875rem;">${formatDate(service.created_at)}</td>
-        <td style="display:flex; gap:6px;">
-          <a href="/services/${service.id}" class="btn btn-ghost" style="padding:4px 10px; font-size:0.8rem;">詳細</a>
-          <button class="btn btn-danger btn-delete" style="padding:4px 10px; font-size:0.8rem;" data-id="${service.id}" data-name="${service.name}">削除</button>
-        </td>
-      </tr>
-    `,
-      )
-      .join('');
+    tbody.innerHTML = renderAdminServiceRows(services);
 
     emptyMsg.style.display = services.length === 0 ? '' : 'none';
     tableWrap.style.display = '';

@@ -27,9 +27,10 @@ import Icon from '../components/Icon.astro';
 </Base>
 
 <script>
-  import { apiFetch, formatDatetime } from '../lib/api';
+  import { apiFetch } from '../lib/api';
   import { showToast } from '../lib/toast';
   import { escapeHtml, formatUnixSec } from '../lib/helpers';
+  import { renderLinkedSessionRows } from '../lib/safe-markup';
   import type { ActiveSession, ActiveBffSessionSummary } from '@0g0-id/api-types';
 
   const loadingEl = document.getElementById('loading')!;
@@ -139,21 +140,7 @@ import Icon from '../components/Icon.astro';
       emptyEl.style.display = '';
       return;
     }
-    listEl.innerHTML = sessions.map(s => `
-      <div class="flex items-center justify-between py-3.5 border-b last:border-b-0" style="border-color: var(--color-border)">
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-1.5 font-semibold text-sm">
-            ${s.service_name
-              ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/></svg>${escapeHtml(s.service_name)}`
-              : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>0g0 ID（IdP セッション）`}
-          </div>
-          <div class="text-xs mt-0.5" style="color: var(--color-muted)">
-            作成: ${formatDatetime(s.created_at)} ／ 有効期限: ${formatDatetime(s.expires_at)}
-          </div>
-        </div>
-        <button class="btn btn-danger btn-sm ml-3" data-revoke="${s.id}">無効化</button>
-      </div>
-    `).join('');
+    listEl.innerHTML = renderLinkedSessionRows(sessions);
     listEl.style.display = '';
     actionsEl.style.display = '';
     } catch {

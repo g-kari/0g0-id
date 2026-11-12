@@ -34,6 +34,7 @@ import ServiceActionsCard from '../../components/services/ServiceActionsCard.ast
 <script>
   import { apiFetch, formatDate } from '../../lib/api';
   import { escapeHtml } from '../../lib/helpers';
+  import { renderAuthorizedUsers, renderDefinitionRows, renderRedirectUriItems } from '../../lib/safe-markup';
   import { showToast } from '../../lib/toast';
   import { setupOwnerSub } from '../../lib/service-owner-sub';
   import type { ServiceSummary } from '@0g0-id/api-types';
@@ -88,16 +89,7 @@ import ServiceActionsCard from '../../components/services/ServiceActionsCard.ast
       ['作成日', formatDate(service.created_at)],
       ...(service.updated_at ? [['更新日', formatDate(service.updated_at)]] : []),
     ];
-    infoTbody.innerHTML = infoRows
-      .map(
-        ([label, value]) => `
-      <tr>
-        <td style="color:var(--color-muted); padding:4px 8px 4px 0; white-space:nowrap;">${label}</td>
-        <td style="padding:4px 0; word-break:break-all;">${value}</td>
-      </tr>
-    `,
-      )
-      .join('');
+    infoTbody.innerHTML = renderDefinitionRows(infoRows);
 
     setupOwnerSub(service, {
       value: document.getElementById('owner-sub-value')!,
@@ -182,16 +174,7 @@ import ServiceActionsCard from '../../components/services/ServiceActionsCard.ast
           '<p style="color:var(--color-muted); font-size:0.875rem;">リダイレクトURIが登録されていません</p>';
         return;
       }
-      urisListEl.innerHTML = currentUris
-        .map(
-          (u) => `
-        <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--color-border);">
-          <code style="font-size:0.8rem; word-break:break-all;">${u.uri}</code>
-          <button class="btn btn-ghost btn-delete-uri" data-id="${u.id}" style="font-size:0.75rem; padding:2px 8px; color:var(--color-danger);">削除</button>
-        </div>
-      `,
-        )
-        .join('');
+      urisListEl.innerHTML = renderRedirectUriItems(currentUris);
 
       document.querySelectorAll('.btn-delete-uri').forEach((btn) => {
         btn.addEventListener('click', async () => {
@@ -246,24 +229,7 @@ import ServiceActionsCard from '../../components/services/ServiceActionsCard.ast
           '<p style="color:var(--color-muted); font-size:0.875rem;">認可済みのユーザーはいません</p>';
         return;
       }
-      usersListEl.innerHTML = currentUsers
-        .map(
-          (u) => `
-        <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--color-border);">
-          <div style="display:flex; align-items:center; gap:8px;">
-            <div style="width:32px; height:32px; border-radius:50%; background:var(--color-surface); display:flex; align-items:center; justify-content:center; font-size:0.875rem; overflow:hidden;">
-              ${u.picture ? `<img src="${u.picture}" style="width:100%;height:100%;object-fit:cover;" alt="">` : (u.name || u.email)[0]?.toUpperCase() || '?'}
-            </div>
-            <div>
-              <div style="font-size:0.875rem;">${u.name || '(名前未設定)'}</div>
-              <div style="font-size:0.75rem; color:var(--color-muted);">${u.email}</div>
-            </div>
-          </div>
-          <button class="btn btn-ghost btn-revoke-user" data-id="${u.id}" style="font-size:0.75rem; padding:2px 8px; color:var(--color-danger);">アクセス失効</button>
-        </div>
-      `,
-        )
-        .join('');
+      usersListEl.innerHTML = renderAuthorizedUsers(currentUsers);
 
       document.querySelectorAll('.btn-revoke-user').forEach((btn) => {
         btn.addEventListener('click', async () => {
