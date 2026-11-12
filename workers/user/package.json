@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@0g0-id/shared": "*",
-    "hono": "4.13.17"
+    "hono": "4.13.18"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.67.0",
