@@ -1,4 +1,5 @@
 import {
+  AUTHORIZE_GET_OPERATION,
   STANDARD_TOKEN_OPERATION,
   DEVICE_CODE_OPERATION,
   DEVICE_VERIFY_OPERATION,
@@ -7,6 +8,7 @@ import {
 } from "./standard-protocol-spec";
 import { ALL_PROVIDERS } from "@0g0-id/shared";
 import { ADDITIONAL_METRICS_PATHS } from "./metrics-spec";
+import { ROUTE_INVENTORY_PATHS } from "./route-inventory-spec";
 
 // IdP 内部向け全API OpenAPI 仕様
 // API 変更時はこのファイルの paths / components.schemas を更新すること
@@ -47,6 +49,14 @@ export const INTERNAL_OPENAPI = {
             required: ["code", "message"],
           },
         },
+      },
+      OAuthError: {
+        type: "object",
+        properties: {
+          error: { type: "string", description: "OAuth 2.0 エラーコード" },
+          error_description: { type: "string", description: "エラーの説明" },
+        },
+        required: ["error", "error_description"],
       },
       AdminAuditLog: {
         type: "object",
@@ -1798,6 +1808,18 @@ export const INTERNAL_OPENAPI = {
           "401": { description: "UNAUTHORIZED" },
         },
       },
+      delete: {
+        tags: ["ユーザー API"],
+        summary: "自分の全セッションを失効",
+        description:
+          "本人のみ。CSRF。リフレッシュトークン、MCP セッション、BFF セッションを失効する。成功は本文なし。",
+        security: [{ BearerAuth: [] }],
+        responses: {
+          "204": { description: "失効成功" },
+          "401": { description: "UNAUTHORIZED — 未認証、ユーザー未存在、または BAN 済み" },
+          "403": { description: "FORBIDDEN — サービス用トークン、またはオリジン不正" },
+        },
+      },
     },
     "/api/users/me/bff-sessions": {
       get: {
@@ -1945,6 +1967,8 @@ export const INTERNAL_OPENAPI = {
     },
     "/api/userinfo": { get: USERINFO_GET_OPERATION, post: USERINFO_POST_OPERATION },
 
+    "/auth/authorize": { get: AUTHORIZE_GET_OPERATION },
+    ...ROUTE_INVENTORY_PATHS,
     ...ADDITIONAL_METRICS_PATHS,
     "/api/metrics": {
       get: {
