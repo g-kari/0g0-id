@@ -44,11 +44,11 @@ vp run docs:api:check
 API 処理・認証/権限・DB・依存・インフラ・課金は変更しません。
 
 [api-id.md](./api-id.md)・[api-user.md](./api-user.md)・[api-admin.md](./api-admin.md)・
-[DBSC](./dbsc.md) は引き続き手書きの設計/運用資料です。上書きしません。
-User/Admin BFF のエンドポイント一覧は下記の双方向チェックで監査します。
-BFF の本文/レスポンス・認証説明の自動生成、IdP の全実装ルート監査、
-DBSC 設計文書の意味的な照合、deploy preflight への組込みは今後の範囲です。
-Issue [#257](https://github.com/g-kari/0g0-id/issues/257) は未完了のまま残します。
+[DBSC](./dbsc.md) の説明文は手書きの設計/運用資料です。生成コマンドは上書きしません。
+User/Admin BFF の Method/Path と、IdP の全ルート在庫は下記の双方向チェックで監査します。
+BFF の本文/レスポンスの自動生成、DBSC 設計文書の意味的な照合、
+deploy 用 secret preflight への組込みは範囲外です。secret preflight は wrangler と
+認証情報を使うため、このオフライン検査とは分けています。
 
 ## BFF の手書き API 一覧の同期確認
 
@@ -57,7 +57,7 @@ Issue [#257](https://github.com/g-kari/0g0-id/issues/257) は未完了のまま�
 `workers/user/src/index.ts` / `workers/admin/src/index.ts` を読み込み、
 Hono の実際の登録済み `routes` と双方向照合するため、サブルーターや共通認証ファクトリの
 エンドポイント、`/auth/dbsc/start`・`/auth/dbsc/refresh`、ヘルスチェック、
-API 404/MPA フォールバックも対象です。現時点で user 33件・admin 51件です。
+API 404/MPA フォールバックも対象です。現時点で user 38件・admin 52件です。
 ハンドラーは呼び出さず、Worker 起動・ネットワーク・環境変数・認証情報・DBを使いません。
 
 - 新しい method/path の登録: 対応するテーブル行がなければ失敗
@@ -98,7 +98,7 @@ IP/UA 統計・ログインイベント一覧の計6行の記載漏れを補い�
 
 合成ルート回帰で実装と両仕様のpath・必須パラメータ・文字形式・Basic認証要件・
 400/404レスポンスを照合します。実行時のルート、認証・データ・依存・設定は変更しません。
-この限定訂正はIdPの全実装ルートを監査するものではなく、Issue #257は未完了のままです。
+この限定訂正だけでは IdP の全実装ルートを監査しません。全件の Method/Path 照合は後述の在庫チェックです。
 
 ## 標準プロトコル契約の追記（2026-10-11）
 
@@ -107,7 +107,7 @@ IP/UA 統計・ログインイベント一覧の計6行の記載漏れを補い�
 [標準プロトコルの実装契約](./standard-protocol-contracts.md)にはgrant別の認証、
 form/JSON、ポーリング、スコープ、応答と既存のaudience制約を記録しています。
 `standard-protocol-spec.ts` は静的な文書データのみです。
-認証・API処理・発行token・依存・DB・CIは変更せず、Issue #257全体は未完了です。
+認証・API処理・発行token・依存・DBは変更しません。全件の Method/Path 照合は後述の在庫チェックです。
 
 Grokレビュー後、BFF専用のdevice確認、cleanup後404と残存期限切れ400、
 認可コード/デバイスの未保存scope fallbackを明確化しました。フルアプリの合成回帰で
@@ -128,8 +128,8 @@ Issue [#257](https://github.com/g-kari/0g0-id/issues/257) の既存未完了範�
 メソッド/パスの追加・削除・変更・仕様だけに残った操作は失敗します。
 複数のハンドラー登録は1操作にまとめ、ALL middleware と他のパスは数えません。
 ハンドラー・DB・通信・環境変数・認証情報は使わず、ファイルを書き換えません。
-これはメトリクス family の操作一覧の検査であり、schema の意味的な自動一致や
-IdP の全ルート監査ではありません。Issue #257 は未完了のままです。
+これはメトリクス family の操作一覧の検査であり、schema の意味的な自動一致ではありません。
+IdP 全体の Method/Path 監査は後述の在庫チェックです。
 
 ### 既存の契約と制限
 
@@ -160,3 +160,25 @@ APIハンドラー、認証/権限、SQL/DB、依存/lockfile、CI、設定、�
 新しい鍵・権限・課金・本番接続は不要です。公開されたAPI文書へ反映するには既存の
 IdP静的assetsビルドを含む通常リリースが必要ですが、このPR自体ではデプロイしません。
 ロールバックはこの限定文書/検査差分をrevertし、既存の文書生成へ戻します。
+
+## IdP 全ルート在庫の同期
+
+`vp run docs:api:check` は生成物、BFF 一覧、メトリクス family に続き、
+`scripts/check-idp-api-docs.ts` を実行します。マウント済み IdP `app.routes` の
+method-specific な全操作を、内部 OpenAPI と `docs/api-id.md` の Method/Path テーブルへ
+双方向照合します。外部 OpenAPI の操作は、その実装と内部仕様の両方に存在する公開サブセットです。
+
+- Hono の `:param` と OpenAPI の `{param}` は同じパラメータとして比較する
+- `/docs` を含むドキュメント配信ルートも対象
+- `ALL` middleware、重複ハンドラー、`x-` 拡張は操作として数えない
+- 仕様だけに残った操作、実装だけの操作、手書き一覧の過不足は失敗する
+- ハンドラー・DB・通信・環境変数・認証情報は使わず、ファイルを書き換えない
+
+照合するのは Method と Path です。各フィールドの意味、middleware の安全性、
+DBSC 設計文書の文章が実装と一致することは、引き続きレビュー対象です。
+secret 用の deploy preflight には組み込みません。CI のドキュメント同期ステップがゲートです。
+
+足りなかった内部操作は、動的クライアント登録、リソースサーバー、本人のエクスポートと
+ログイン統計、現在以外のトークン失効、管理者の BAN・所有サービス・セッション・ロックアウト、
+DBSC、パスキー、メール登録、標準認可、ドキュメント配信です。動的クライアント登録は外部仕様にも追加しました。
+API ハンドラー、認証、SQL、依存、設定は変更していません。

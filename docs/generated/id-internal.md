@@ -20,6 +20,218 @@
 | BasicAuth | http / basic | サービス認証: &#96;client_id:client_secret&#96; をBase64エンコード |
 | BearerAuth | http / bearer / JWT | アクセストークン（ES256 JWT、有効期限15分） |
 
+## DBSC
+
+### POST /auth/dbsc/bind
+
+DBSC 端末公開鍵のバインド
+
+BFF 専用。serviceBindingMiddleware（X-Internal-Secret または Basic）。X-BFF-Origin が session.bff_origin と一致する必要がある。有効セッションだけを対象にし、既にバインド済みは 409。公開鍵は ES256 / P-256 の x と y のみ。
+
+**認証**: 仕様に記載なし
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| X-BFF-Origin | header | ✓ | string |  | 呼び出し元 BFF のオリジン。セッションの bff_origin と一致が必要。 |
+
+**リクエスト本文**: 必須
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| public_jwk | ✓ | object | additionalProperties: false |  |
+| public_jwk.crv | ✓ | string | enum: ["P-256"] |  |
+| public_jwk.kty | ✓ | string | enum: ["EC"] |  |
+| public_jwk.x | ✓ | string | minLength: 1 |  |
+| public_jwk.y | ✓ | string | minLength: 1 |  |
+| session_id | ✓ | string | minLength: 1; maxLength: 128 |  |
+
+**レスポンス**
+
+#### 200
+
+バインド結果
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | object |  |  |
+| data.bound_at | ✓ | integer |  | UNIX 秒 |
+| data.session_id | ✓ | string |  |  |
+
+#### 400
+
+BAD_REQUEST または VALIDATION_ERROR
+
+#### 403
+
+FORBIDDEN — サービスバインディング拒否、または Caller mismatch
+
+#### 404
+
+INVALID_SESSION — セッションが無い、期限切れ、または失効
+
+#### 409
+
+ALREADY_BOUND
+
+#### 500
+
+INTERNAL_ERROR
+
+### POST /auth/dbsc/challenge
+
+DBSC リフレッシュ用 nonce の発行
+
+BFF 専用。認証は bind と同じ。端末バインド済みの有効セッションだけ。TTL は 60 秒。未バインド・期限切れ・不存在は区別せず 404。
+
+**認証**: 仕様に記載なし
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| X-BFF-Origin | header | ✓ | string |  | 呼び出し元 BFF のオリジン。セッションの bff_origin と一致が必要。 |
+
+**リクエスト本文**: 必須
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| session_id | ✓ | string | minLength: 1; maxLength: 128 |  |
+
+**レスポンス**
+
+#### 200
+
+nonce
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | object |  |  |
+| data.expires_at | ✓ | integer |  | UNIX 秒。発行から 60 秒。 |
+| data.nonce | ✓ | string |  |  |
+
+#### 400
+
+BAD_REQUEST または VALIDATION_ERROR
+
+#### 403
+
+FORBIDDEN — サービスバインディング拒否、または Caller mismatch
+
+#### 404
+
+INVALID_SESSION
+
+#### 500
+
+INTERNAL_ERROR
+
+### POST /auth/dbsc/status
+
+BFF セッションの端末バインド状態
+
+BFF 専用。認証は bind と同じ。不存在・失効・期限切れ・X-BFF-Origin 不一致は 403 にせず、device_bound=false かつ device_bound_at=null で 200 を返す。
+
+**認証**: 仕様に記載なし
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| X-BFF-Origin | header | ✓ | string |  | 呼び出し元 BFF のオリジン。セッションの bff_origin と一致が必要。 |
+
+**リクエスト本文**: 必須
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| session_id | ✓ | string | minLength: 1; maxLength: 128 |  |
+
+**レスポンス**
+
+#### 200
+
+バインド状態
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | object |  |  |
+| data.device_bound | ✓ | boolean |  |  |
+| data.device_bound_at | ✓ | integer ∪ null |  | UNIX 秒。未バインドは null。 |
+
+#### 400
+
+BAD_REQUEST または VALIDATION_ERROR
+
+#### 403
+
+FORBIDDEN — サービスバインディング拒否
+
+### POST /auth/dbsc/verify
+
+DBSC proof JWT の検証
+
+BFF 専用。認証は bind と同じ。登録済み公開鍵で ES256 を検証し、aud は session.bff_origin、jti を nonce として一度だけ消費する。失敗理由は INVALID_PROOF にまとめる。本文の追加 audience は使わない。
+
+**認証**: 仕様に記載なし
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| X-BFF-Origin | header | ✓ | string |  | 呼び出し元 BFF のオリジン。セッションの bff_origin と一致が必要。 |
+
+**リクエスト本文**: 必須
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| jwt | ✓ | string | minLength: 1; maxLength: 8192 |  |
+| session_id | ✓ | string | minLength: 1; maxLength: 128 |  |
+
+**レスポンス**
+
+#### 200
+
+検証結果
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | object |  |  |
+| data.session_id | ✓ | string |  |  |
+| data.verified_at | ✓ | integer |  | UNIX 秒 |
+
+#### 400
+
+VALIDATION_ERROR、または INVALID_PROOF
+
+#### 403
+
+FORBIDDEN — サービスバインディング拒否、または Caller mismatch
+
 ## OIDC
 
 ### GET /.well-known/oauth-authorization-server
@@ -934,6 +1146,384 @@ BAD_REQUEST — リクエストボディ不正またはtokenフィールドな�
 
 UNAUTHORIZED — Basic認証失敗
 
+## ドキュメント
+
+### GET /docs
+
+内部 API の Scalar UI
+
+GET /docs/openapi.json を表示する HTML。仕様そのものは OpenAPI 応答が一次情報。
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 200
+
+text/html
+
+### GET /docs/external
+
+外部 API の Scalar UI
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 200
+
+text/html
+
+### GET /docs/external.md
+
+外部 OpenAPI の Markdown
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 200
+
+text/markdown
+
+### GET /docs/external/openapi.json
+
+外部 OpenAPI 文書
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 200
+
+application/json
+
+### GET /docs/openapi.json
+
+内部 OpenAPI 文書
+
+この内部仕様オブジェクトの JSON。
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 200
+
+application/json
+
+### GET /docs/openapi.md
+
+内部 OpenAPI の Markdown
+
+内部仕様から生成した Markdown。
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 200
+
+text/markdown
+
+## パスキー
+
+### GET /auth/passkey
+
+パスキーログイン UI
+
+継続 cookie が有効なブラウザ向け HTML。自動認証はしない。失敗は LOGIN_UNAVAILABLE。
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 200
+
+HTML
+
+#### 400
+
+LOGIN_UNAVAILABLE
+
+### POST /auth/passkey/options
+
+discoverable パスキー challenge
+
+JSON。confirm=true と csrf だけ。exact Origin と継続 cookie。本文上限 32KiB。アカウント検索をしない。成功は WebAuthn options のみ。
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 200
+
+{ options }。所有者・メール・authority は含めない。
+
+#### 400
+
+LOGIN_UNAVAILABLE
+
+#### 403
+
+LOGIN_UNAVAILABLE — 継続状態または CSRF が一致しない
+
+#### 413
+
+LOGIN_UNAVAILABLE — 本文が 32KiB を超える
+
+### GET /auth/passkey/start
+
+ネイティブパスキーログインの開始
+
+PASSKEY_LOGIN_ENABLED が文字列 true のときだけ継続できる。登録済み callback、state、サービス PKCE を再検証し、短命の暗号 cookie を置いて /auth/passkey へ 303 する。proof は消費しない。失敗は LOGIN_UNAVAILABLE。
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 303
+
+/auth/passkey へリダイレクト
+
+#### 400
+
+LOGIN_UNAVAILABLE
+
+### POST /auth/passkey/verify
+
+パスキー署名の検証
+
+application/x-www-form-urlencoded の csrf と credential だけ。本文上限 32KiB。UP/UV、userHandle、RP、origin、challenge、登録世代を検証し、通常の認可コード発行へ合流する。失敗は汎用 LOGIN_UNAVAILABLE。
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 302
+
+登録済み callback へ認可コード付きでリダイレクト
+
+#### 400
+
+LOGIN_UNAVAILABLE
+
+#### 403
+
+LOGIN_UNAVAILABLE
+
+#### 413
+
+LOGIN_UNAVAILABLE
+
+## メール登録
+
+### POST /auth/email/login
+
+結果不明時の署名ログイン再開
+
+メールアドレスだけではログインしない。明示確認のあと新しいパスキーログインへ 303 する。
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 303
+
+/auth/passkey へリダイレクト
+
+#### 400
+
+SIGNUP_UNAVAILABLE
+
+#### 403
+
+SIGNUP_UNAVAILABLE
+
+#### 413
+
+SIGNUP_UNAVAILABLE
+
+### GET /auth/email/register
+
+パスキー登録 UI
+
+確認済みなら登録 UI、そうでなければ署名ログイン案内。この GET では認証しない。
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 200
+
+HTML
+
+#### 400
+
+継続状態が無い場合の案内 HTML
+
+### POST /auth/email/registration/complete
+
+新規アカウントの作成
+
+form の csrf と credential。アカウント作成後も認可コードは出さず、新しいパスキーログインへ 303 する。
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 303
+
+/auth/passkey へリダイレクト
+
+#### 400
+
+SIGNUP_UNAVAILABLE、または復旧案内 HTML
+
+#### 403
+
+SIGNUP_UNAVAILABLE
+
+#### 413
+
+SIGNUP_UNAVAILABLE
+
+### POST /auth/email/registration/options
+
+新規登録用パスキー options
+
+確認済み authority と表示名が必要。成功は WebAuthn options。resident key と UV を要求する。
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 200
+
+{ options }
+
+#### 400
+
+SIGNUP_UNAVAILABLE
+
+#### 403
+
+SIGNUP_UNAVAILABLE
+
+#### 413
+
+SIGNUP_UNAVAILABLE
+
+### GET /auth/email/signup
+
+メール入力 UI
+
+継続 cookie がある場合の HTML。明示操作まで送信しない。
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 200
+
+HTML
+
+#### 400
+
+SIGNUP_UNAVAILABLE
+
+### GET /auth/email/signup/start
+
+メール登録フローの開始
+
+EMAIL_PASSKEY_SIGNUP_ENABLED を含む必須設定が揃ったときだけ継続できる。DB 書き込みと送信はしない。失敗は SIGNUP_UNAVAILABLE。
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 303
+
+/auth/email/signup へリダイレクト
+
+#### 400
+
+SIGNUP_UNAVAILABLE
+
+### POST /auth/email/start
+
+確認メールの送信要求
+
+JSON の csrf、confirm=true、email。既存・抑止・新規・形式外は同じ 202。トークンは応答に含めない。設定や実行基盤が無い場合は SIGNUP_UNAVAILABLE。
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 202
+
+{ status: "accepted", message: "If eligible, follow the email in this browser" }
+
+#### 400
+
+SIGNUP_UNAVAILABLE
+
+#### 403
+
+SIGNUP_UNAVAILABLE
+
+#### 413
+
+SIGNUP_UNAVAILABLE
+
+#### 503
+
+SIGNUP_UNAVAILABLE — waitUntil が無い
+
+### GET /auth/email/verify
+
+メール確認ページ
+
+GET は proof を読まず消費しない。失敗時も確認ページの HTML を返すことがある。
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 200
+
+HTML
+
+#### 400
+
+確認ページ、または SIGNUP_UNAVAILABLE
+
+### POST /auth/email/verify
+
+メール proof の消費
+
+同じブラウザの継続状態に束縛して proof を一度だけ消費する。成功は { next: /auth/email/register }。
+
+**認証**: 仕様に記載なし
+
+**レスポンス**
+
+#### 200
+
+{ next: "/auth/email/register" }
+
+#### 400
+
+SIGNUP_UNAVAILABLE
+
+#### 403
+
+SIGNUP_UNAVAILABLE
+
+#### 413
+
+SIGNUP_UNAVAILABLE
+
 ## ユーザー API
 
 ### GET /api/users/me
@@ -1174,6 +1764,59 @@ FORBIDDEN — オリジン不正
 
 NOT_FOUND — 連携未存在
 
+### GET /api/users/me/data-export
+
+自分のアカウントデータ一括取得
+
+認証済み本人のみ。サービス用トークンと BAN 済みは不可。プロフィール、連携プロバイダー、連携サービス、直近 1000 件のログイン履歴、アクティブセッションを返す。
+
+**認証**: BearerAuth
+
+**レスポンス**
+
+#### 200
+
+エクスポート
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | object |  |  |
+| data.active_sessions | ✓ | array&lt;object&gt; |  |  |
+| data.active_sessions[] |  | object |  |  |
+| data.exported_at | ✓ | string | format: date-time |  |
+| data.login_history | ✓ | array&lt;object&gt; |  |  |
+| data.login_history[] |  | object |  |  |
+| data.profile | ✓ | object |  |  |
+| data.profile.address | ✓ | string ∪ null |  |  |
+| data.profile.created_at | ✓ | string |  |  |
+| data.profile.email | ✓ | string |  |  |
+| data.profile.email_verified | ✓ | boolean |  |  |
+| data.profile.id | ✓ | string |  |  |
+| data.profile.name | ✓ | string |  |  |
+| data.profile.phone | ✓ | string ∪ null |  |  |
+| data.profile.picture | ✓ | string ∪ null |  |  |
+| data.profile.role | ✓ | string |  |  |
+| data.profile.updated_at | ✓ | string |  |  |
+| data.providers | ✓ | array&lt;object&gt; |  |  |
+| data.providers[] |  | object |  |  |
+| data.service_connections | ✓ | array&lt;object&gt; |  |  |
+| data.service_connections[] |  | object |  |  |
+
+#### 401
+
+UNAUTHORIZED — 未認証、ユーザー未存在、または BAN 済み
+
+#### 403
+
+FORBIDDEN — サービス用トークン
+
+#### 500
+
+INTERNAL_ERROR — 関連データの取得失敗
+
 ### GET /api/users/me/login-history
 
 自分のログイン履歴取得
@@ -1215,6 +1858,92 @@ NOT_FOUND — 連携未存在
 #### 401
 
 UNAUTHORIZED
+
+### GET /api/users/me/login-stats
+
+自分のプロバイダー別ログイン統計
+
+本人のみ。days 省略時 30、1〜365。ログイン 0 件のプロバイダーは含まない。不正な days の 400 は code=BAD_REQUEST だが、message は文字列ではなく parseDays の { code: INVALID_REQUEST, message } オブジェクト。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| days | query |  | string |  | 省略時 30。数字のみ、1〜365。範囲外・非数字は 400。 |
+
+**レスポンス**
+
+#### 200
+
+プロバイダー別件数
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | array&lt;object&gt; |  |  |
+| data[] |  | object |  |  |
+| data[].count | ✓ | integer | minimum: 0 |  |
+| data[].provider | ✓ | string |  |  |
+| days | ✓ | integer | minimum: 1; maximum: 365 |  |
+
+#### 400
+
+BAD_REQUEST。message は { code: INVALID_REQUEST, message: string }。
+
+#### 401
+
+UNAUTHORIZED — 未認証、ユーザー未存在、または BAN 済み
+
+#### 403
+
+FORBIDDEN — サービス用トークン
+
+### GET /api/users/me/login-trends
+
+自分の日別ログイントレンド
+
+本人のみ。days は login-stats と同じ。0 件の日は補完しない。不正 days の message 形状も login-stats と同じオブジェクト。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| days | query |  | string |  | 省略時 30。数字のみ、1〜365。範囲外・非数字は 400。 |
+
+**レスポンス**
+
+#### 200
+
+日別件数
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | array&lt;object&gt; |  |  |
+| data[] |  | object |  |  |
+| data[].count | ✓ | integer | minimum: 0 |  |
+| data[].date | ✓ | string |  | YYYY-MM-DD。0件の日は含まない。 |
+| days | ✓ | integer | minimum: 1; maximum: 365 |  |
+
+#### 400
+
+BAD_REQUEST。message は INVALID_REQUEST オブジェクト。
+
+#### 401
+
+UNAUTHORIZED — 未認証、ユーザー未存在、または BAN 済み
+
+#### 403
+
+FORBIDDEN — サービス用トークン
 
 ### GET /api/users/me/providers
 
@@ -1284,6 +2013,48 @@ NOT_FOUND — プロバイダー未連携
 
 CONFLICT — 最後のプロバイダーは解除不可
 
+### GET /api/users/me/security-summary
+
+自分のセキュリティ概要
+
+本人のみ。最後のログインが無い場合 last_login は null。
+
+**認証**: BearerAuth
+
+**レスポンス**
+
+#### 200
+
+セキュリティ概要
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | object |  |  |
+| data.account_created_at | ✓ | string |  |  |
+| data.active_sessions_count | ✓ | integer | minimum: 0 |  |
+| data.connected_services_count | ✓ | integer | minimum: 0 |  |
+| data.last_login | ✓ | object ∪ null |  |  |
+| data.last_login.created_at | ✓ | string |  |  |
+| data.last_login.ip_address | ✓ | string ∪ null |  |  |
+| data.last_login.provider | ✓ | string |  |  |
+| data.linked_providers | ✓ | array&lt;string&gt; |  |  |
+| data.linked_providers[] |  | string |  |  |
+
+#### 401
+
+UNAUTHORIZED — 未認証、ユーザー未存在、または BAN 済み
+
+#### 403
+
+FORBIDDEN — サービス用トークン
+
+#### 500
+
+INTERNAL_ERROR
+
 ### GET /api/users/me/tokens
 
 アクティブセッション一覧取得
@@ -1314,6 +2085,107 @@ CONFLICT — 最後のプロバイダーは解除不可
 #### 401
 
 UNAUTHORIZED
+
+### DELETE /api/users/me/tokens
+
+自分の全セッションを失効
+
+本人のみ。CSRF。リフレッシュトークン、MCP セッション、BFF セッションを失効する。成功は本文なし。
+
+**認証**: BearerAuth
+
+**レスポンス**
+
+#### 204
+
+失効成功
+
+#### 401
+
+UNAUTHORIZED — 未認証、ユーザー未存在、または BAN 済み
+
+#### 403
+
+FORBIDDEN — サービス用トークン、またはオリジン不正
+
+### DELETE /api/users/me/tokens/others
+
+現在以外のリフレッシュトークンを失効
+
+本人のみ。CSRF。body の token_hash は残すセッションのリフレッシュトークン SHA-256。パスの others はリテラルで、トークン ID ではない。BFF セッションと MCP セッションはこの操作では失効しない。
+
+**認証**: BearerAuth
+
+**リクエスト本文**: 必須
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| token_hash | ✓ | string | minLength: 1 |  |
+
+**レスポンス**
+
+#### 200
+
+失効件数
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | object |  |  |
+| data.revoked_count | ✓ | integer | minimum: 0 |  |
+
+#### 400
+
+BAD_REQUEST または VALIDATION_ERROR
+
+#### 401
+
+UNAUTHORIZED — 未認証、ユーザー未存在、または BAN 済み
+
+#### 403
+
+FORBIDDEN — サービス用トークン、またはオリジン不正
+
+### DELETE /api/users/me/tokens/{tokenId}
+
+自分のリフレッシュトークンを 1 件失効
+
+本人のみ。CSRF。tokenId は UUID。他ユーザーの ID や不明な ID は 404。成功は本文なし。BFF セッションは別に失効する。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| tokenId | path | ✓ | string | format: uuid |  |
+
+**レスポンス**
+
+#### 204
+
+失効成功
+
+#### 400
+
+BAD_REQUEST — UUID ではない
+
+#### 401
+
+UNAUTHORIZED — 未認証、ユーザー未存在、または BAN 済み
+
+#### 403
+
+FORBIDDEN — サービス用トークン、またはオリジン不正
+
+#### 404
+
+NOT_FOUND
 
 ## ユーザー API (管理者)
 
@@ -1450,6 +2322,163 @@ NOT_FOUND — ユーザー未存在
 
 CONFLICT — サービスまたはリソースサーバーを所有している
 
+### DELETE /api/users/{id}/ban
+
+ユーザーの BAN を解除
+
+管理者専用。CSRF。BAN されていなければ 409。監査ログ user.unban。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| id | path | ✓ | string | format: uuid | 対象ユーザーID。UUID 以外は 400。 |
+
+**レスポンス**
+
+#### 200
+
+解除後の管理者向けユーザー要約
+
+#### 400
+
+BAD_REQUEST — id が UUID ではない
+
+#### 401
+
+UNAUTHORIZED
+
+#### 403
+
+FORBIDDEN — 管理者権限なし、またはオリジン不正
+
+#### 404
+
+NOT_FOUND
+
+#### 409
+
+CONFLICT — BAN されていない
+
+### PATCH /api/users/{id}/ban
+
+ユーザーを BAN
+
+管理者専用。CSRF。自分自身と admin ロールは 403。既に BAN 済みは 409。成功時はトークン失効を伴い、監査ログ user.ban を残す。本文は不要。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| id | path | ✓ | string | format: uuid | 対象ユーザーID。UUID 以外は 400。 |
+
+**レスポンス**
+
+#### 200
+
+BAN 後の管理者向けユーザー要約
+
+#### 400
+
+BAD_REQUEST — id が UUID ではない
+
+#### 401
+
+UNAUTHORIZED
+
+#### 403
+
+FORBIDDEN — 自分自身、admin ユーザー、権限なし、またはオリジン不正
+
+#### 404
+
+NOT_FOUND
+
+#### 409
+
+CONFLICT — 既に BAN 済み
+
+#### 500
+
+INTERNAL_ERROR
+
+### GET /api/users/{id}/bff-sessions
+
+ユーザーの BFF セッション一覧
+
+管理者専用。has_device_key と device_bound_at を含み、公開鍵 JWK は返さない。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| id | path | ✓ | string | format: uuid | 対象ユーザーID。UUID 以外は 400。 |
+
+**レスポンス**
+
+#### 200
+
+BFF セッション一覧
+
+#### 400
+
+BAD_REQUEST — id が UUID ではない
+
+#### 401
+
+UNAUTHORIZED
+
+#### 403
+
+FORBIDDEN — 管理者権限なし
+
+#### 404
+
+NOT_FOUND
+
+### DELETE /api/users/{id}/bff-sessions/{sessionId}
+
+ユーザーの BFF セッションを 1 件失効
+
+管理者専用。CSRF。revoked_reason は admin_action:<adminUserId>。監査ログ user.bff_session_revoked。リフレッシュトークンは残る。成功は本文なし。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| id | path | ✓ | string | format: uuid | 対象ユーザーID。UUID 以外は 400。 |
+| sessionId | path | ✓ | string | format: uuid |  |
+
+**レスポンス**
+
+#### 204
+
+失効成功
+
+#### 400
+
+BAD_REQUEST — id または sessionId が UUID ではない
+
+#### 401
+
+UNAUTHORIZED
+
+#### 403
+
+FORBIDDEN — 管理者権限なし、またはオリジン不正
+
+#### 404
+
+NOT_FOUND
+
 ### GET /api/users/{id}/lockout
 
 ロックアウト状態取得
@@ -1564,6 +2593,151 @@ NOT_FOUND — ユーザー未存在
 | data[].user_agent |  | string ∪ null |  |  |
 | data[].user_id | ✓ | string |  |  |
 | total |  | integer |  | 総件数 |
+
+#### 401
+
+UNAUTHORIZED
+
+#### 403
+
+FORBIDDEN — 管理者権限なし
+
+#### 404
+
+NOT_FOUND — ユーザー未存在
+
+### GET /api/users/{id}/login-stats
+
+ユーザーのプロバイダー別ログイン統計
+
+管理者専用。days 省略時 30、1〜365。0 件のプロバイダーは含まない。不正 days は BAD_REQUEST で、message は文字列。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| id | path | ✓ | string | format: uuid | 対象ユーザーID。UUID 以外は 400。 |
+| days | query |  | string |  | 省略時 30。数字のみ、1〜365。範囲外・非数字は 400。 |
+
+**レスポンス**
+
+#### 200
+
+プロバイダー別件数
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | array&lt;object&gt; |  |  |
+| data[] |  | object |  |  |
+| data[].count | ✓ | integer | minimum: 0 |  |
+| data[].provider | ✓ | string |  |  |
+| days | ✓ | integer |  |  |
+
+#### 400
+
+BAD_REQUEST — id または days が不正
+
+#### 401
+
+UNAUTHORIZED
+
+#### 403
+
+FORBIDDEN — 管理者権限なし
+
+#### 404
+
+NOT_FOUND
+
+### GET /api/users/{id}/login-trends
+
+ユーザーの日別ログイントレンド
+
+管理者専用。days は login-stats と同じ。0 件の日は補完しない。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| id | path | ✓ | string | format: uuid | 対象ユーザーID。UUID 以外は 400。 |
+| days | query |  | string |  | 省略時 30。数字のみ、1〜365。範囲外・非数字は 400。 |
+
+**レスポンス**
+
+#### 200
+
+日別件数
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | array&lt;object&gt; |  |  |
+| data[] |  | object |  |  |
+| data[].count | ✓ | integer | minimum: 0 |  |
+| data[].date | ✓ | string |  | YYYY-MM-DD。0件の日は含まない。 |
+| days | ✓ | integer |  |  |
+
+#### 400
+
+BAD_REQUEST — id または days が不正
+
+#### 401
+
+UNAUTHORIZED
+
+#### 403
+
+FORBIDDEN — 管理者権限なし
+
+#### 404
+
+NOT_FOUND
+
+### GET /api/users/{id}/owned-services
+
+ユーザーが所有するサービス一覧
+
+管理者専用。client_secret は返さない。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| id | path | ✓ | string | format: uuid | 対象ユーザーID。UUID 以外は 400。 |
+
+**レスポンス**
+
+#### 200
+
+所有サービス
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | array&lt;object&gt; |  |  |
+| data[] |  | object |  |  |
+| data[].allowed_scopes | ✓ | string |  | 保存されているスコープ文字列。 |
+| data[].client_id | ✓ | string |  |  |
+| data[].created_at | ✓ | string |  |  |
+| data[].id | ✓ | string |  |  |
+| data[].name | ✓ | string |  |  |
+
+#### 400
+
+BAD_REQUEST — id が UUID ではない
 
 #### 401
 
@@ -1709,6 +2883,381 @@ FORBIDDEN — 管理者権限なし
 
 NOT_FOUND — ユーザー未存在
 
+### GET /api/users/{id}/tokens
+
+ユーザーのアクティブリフレッシュトークン一覧
+
+管理者専用。本人の GET /api/users/me/tokens と同じセッション配列。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| id | path | ✓ | string | format: uuid | 対象ユーザーID。UUID 以外は 400。 |
+
+**レスポンス**
+
+#### 200
+
+アクティブセッション一覧
+
+#### 400
+
+BAD_REQUEST — id が UUID ではない
+
+#### 401
+
+UNAUTHORIZED
+
+#### 403
+
+FORBIDDEN — 管理者権限なし
+
+#### 404
+
+NOT_FOUND
+
+### DELETE /api/users/{id}/tokens
+
+ユーザーの全トークンを失効
+
+管理者専用。CSRF。リフレッシュトークン、MCP セッション、BFF セッションを失効する。成功は本文なし。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| id | path | ✓ | string | format: uuid | 対象ユーザーID。UUID 以外は 400。 |
+
+**レスポンス**
+
+#### 204
+
+失効成功
+
+#### 400
+
+BAD_REQUEST — id が UUID ではない
+
+#### 401
+
+UNAUTHORIZED
+
+#### 403
+
+FORBIDDEN — 管理者権限なし、またはオリジン不正
+
+#### 404
+
+NOT_FOUND
+
+### DELETE /api/users/{id}/tokens/{tokenId}
+
+ユーザーのリフレッシュトークンを 1 件失効
+
+管理者専用。CSRF。tokenId は UUID。対象ユーザーのトークンでなければ 404。成功は本文なし。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| id | path | ✓ | string | format: uuid | 対象ユーザーID。UUID 以外は 400。 |
+| tokenId | path | ✓ | string | format: uuid |  |
+
+**レスポンス**
+
+#### 204
+
+失効成功
+
+#### 400
+
+BAD_REQUEST — id または tokenId が UUID ではない
+
+#### 401
+
+UNAUTHORIZED
+
+#### 403
+
+FORBIDDEN — 管理者権限なし、またはオリジン不正
+
+#### 404
+
+NOT_FOUND
+
+## リソースサーバー
+
+### GET /api/resources
+
+リソースサーバー一覧
+
+RFC 8707 の resource として受け付ける URI の管理者一覧。Bearer と admin ロール。
+
+**認証**: BearerAuth
+
+**レスポンス**
+
+#### 200
+
+登録済みリソースサーバー
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | array&lt;object&gt; |  |  |
+| data[] |  | object |  |  |
+| data[].allowed_scopes | ✓ | string |  | JSON 配列の文字列。応答ではパースしない。 |
+| data[].allowed_subjects | ✓ | string |  | JSON 配列の文字列。空配列は利用ユーザー制限なし。 |
+| data[].created_at | ✓ | string |  |  |
+| data[].id | ✓ | string |  |  |
+| data[].name | ✓ | string |  |  |
+| data[].owner_user_id | ✓ | string |  |  |
+| data[].updated_at | ✓ | string |  |  |
+| data[].uri | ✓ | string |  | https で fragment なし。登録時に正規化した値。 |
+| total | ✓ | integer | minimum: 0 |  |
+
+#### 401
+
+UNAUTHORIZED
+
+#### 403
+
+FORBIDDEN — 管理者権限なし
+
+#### 500
+
+INTERNAL_ERROR
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
+### POST /api/resources
+
+リソースサーバー登録
+
+管理者専用。CSRF（Origin/Referer）。uri は認可フローと同じ正規化（https、fragment 不可）。重複 URI は 400。allowed_subjects 省略時は空配列（制限なし）。監査ログ resource.create を残す。
+
+**認証**: BearerAuth
+
+**リクエスト本文**: 必須
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| allowed_scopes | ✓ | array&lt;string&gt; | minItems: 1; maxItems: 50 |  |
+| allowed_scopes[] |  | string | maxLength: 100 |  |
+| allowed_subjects |  | array&lt;string&gt; | maxItems: 100 |  |
+| allowed_subjects[] |  | string | minLength: 1; maxLength: 128 |  |
+| name | ✓ | string | minLength: 1; maxLength: 100 |  |
+| uri | ✓ | string | minLength: 1; maxLength: 2048 |  |
+
+**レスポンス**
+
+#### 201
+
+作成したリソースサーバー
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | object |  |  |
+| data.allowed_scopes | ✓ | string |  | JSON 配列の文字列。応答ではパースしない。 |
+| data.allowed_subjects | ✓ | string |  | JSON 配列の文字列。空配列は利用ユーザー制限なし。 |
+| data.created_at | ✓ | string |  |  |
+| data.id | ✓ | string |  |  |
+| data.name | ✓ | string |  |  |
+| data.owner_user_id | ✓ | string |  |  |
+| data.updated_at | ✓ | string |  |  |
+| data.uri | ✓ | string |  | https で fragment なし。登録時に正規化した値。 |
+
+#### 400
+
+VALIDATION_ERROR、不正 URI、または URI 重複
+
+#### 401
+
+UNAUTHORIZED
+
+#### 403
+
+FORBIDDEN — 管理者権限なし、またはオリジン不正
+
+#### 500
+
+INTERNAL_ERROR
+
+### GET /api/resources/{id}
+
+リソースサーバー詳細
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| id | path | ✓ | string |  |  |
+
+**レスポンス**
+
+#### 200
+
+リソースサーバー
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | object |  |  |
+| data.allowed_scopes | ✓ | string |  | JSON 配列の文字列。応答ではパースしない。 |
+| data.allowed_subjects | ✓ | string |  | JSON 配列の文字列。空配列は利用ユーザー制限なし。 |
+| data.created_at | ✓ | string |  |  |
+| data.id | ✓ | string |  |  |
+| data.name | ✓ | string |  |  |
+| data.owner_user_id | ✓ | string |  |  |
+| data.updated_at | ✓ | string |  |  |
+| data.uri | ✓ | string |  | https で fragment なし。登録時に正規化した値。 |
+
+#### 401
+
+UNAUTHORIZED
+
+#### 403
+
+FORBIDDEN — 管理者権限なし
+
+#### 404
+
+NOT_FOUND
+
+#### 500
+
+INTERNAL_ERROR
+
+### PUT /api/resources/{id}
+
+リソースサーバー更新
+
+管理者専用。CSRF。name、allowed_scopes、allowed_subjects を更新する。URI は変えない。監査ログ resource.update。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| id | path | ✓ | string |  |  |
+
+**リクエスト本文**: 必須
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| allowed_scopes | ✓ | array&lt;string&gt; | minItems: 1; maxItems: 50 |  |
+| allowed_scopes[] |  | string |  |  |
+| allowed_subjects | ✓ | array&lt;string&gt; | maxItems: 100 |  |
+| allowed_subjects[] |  | string |  |  |
+| name | ✓ | string | minLength: 1; maxLength: 100 |  |
+
+**レスポンス**
+
+#### 200
+
+更新後のリソースサーバー
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| data | ✓ | object |  |  |
+| data.allowed_scopes | ✓ | string |  | JSON 配列の文字列。応答ではパースしない。 |
+| data.allowed_subjects | ✓ | string |  | JSON 配列の文字列。空配列は利用ユーザー制限なし。 |
+| data.created_at | ✓ | string |  |  |
+| data.id | ✓ | string |  |  |
+| data.name | ✓ | string |  |  |
+| data.owner_user_id | ✓ | string |  |  |
+| data.updated_at | ✓ | string |  |  |
+| data.uri | ✓ | string |  | https で fragment なし。登録時に正規化した値。 |
+
+#### 400
+
+VALIDATION_ERROR
+
+#### 401
+
+UNAUTHORIZED
+
+#### 403
+
+FORBIDDEN — 管理者権限なし、またはオリジン不正
+
+#### 404
+
+NOT_FOUND
+
+#### 500
+
+INTERNAL_ERROR
+
+### DELETE /api/resources/{id}
+
+リソースサーバー削除
+
+管理者専用。CSRF。同じ処理で、その resource に束縛されたリフレッシュトークンを失効する。再登録しても旧 grant は戻らない。成功は本文なし。監査ログ resource.delete。
+
+**認証**: BearerAuth
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| id | path | ✓ | string |  |  |
+
+**レスポンス**
+
+#### 204
+
+削除成功
+
+#### 401
+
+UNAUTHORIZED
+
+#### 403
+
+FORBIDDEN — 管理者権限なし、またはオリジン不正
+
+#### 404
+
+NOT_FOUND
+
+#### 500
+
+INTERNAL_ERROR
+
 ## 公開エンドポイント
 
 ### GET /.well-known/jwks.json
@@ -1745,6 +3294,240 @@ JWK Set
 | status |  | string |  |  |
 | timestamp |  | string | format: date-time |  |
 | worker |  | string |  |  |
+
+## 動的クライアント登録
+
+### POST /api/register
+
+公開クライアントの動的登録
+
+RFC 7591。初期アクセストークンは不要。受け付けるのは token_endpoint_auth_method=none の公開クライアントだけで、PKCE S256 を使う。redirect_uris は 1〜5 件、https（localhost のみ http）、fragment 不可。grant_types は authorization_code と refresh_token のみで、refresh_token には authorization_code が必要。response_types は code のみ。scope は openid と profile/email/phone/address。省略時の保存スコープは profile と email。client_name は任意で最大 100 文字、空なら Dynamic Client。機密クライアントは管理者が /api/services で登録する。登録主体は DCR 用システムユーザー。
+
+**認証**: 仕様に記載なし
+
+**リクエスト本文**: 必須
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| client_name |  | string | maxLength: 100 |  |
+| grant_types |  | array&lt;string&gt; |  |  |
+| grant_types[] |  | string | enum: ["authorization_code", "refresh_token"] |  |
+| redirect_uris | ✓ | array&lt;string&gt; | minItems: 1; maxItems: 5 |  |
+| redirect_uris[] |  | string | maxLength: 2048 |  |
+| response_types |  | array&lt;string&gt; |  |  |
+| response_types[] |  | string | enum: ["code"] |  |
+| scope |  | string |  |  |
+| token_endpoint_auth_method |  | string | enum: ["none"] |  |
+
+**レスポンス**
+
+#### 201
+
+登録成功。registration_access_token はこの応答にだけ含まれ、再表示しない。registration_client_uri は /api/register/{client_id}。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| client_id | ✓ | string |  |  |
+| client_id_issued_at | ✓ | integer |  |  |
+| client_name | ✓ | string |  |  |
+| grant_types | ✓ | array&lt;string&gt; |  |  |
+| grant_types[] |  | string |  |  |
+| redirect_uris | ✓ | array&lt;string&gt; |  |  |
+| redirect_uris[] |  | string |  |  |
+| registration_access_token | ✓ | string |  |  |
+| registration_client_uri | ✓ | string |  |  |
+| response_types | ✓ | array&lt;string&gt; |  |  |
+| response_types[] |  | string | enum: ["code"] |  |
+| scope | ✓ | string |  |  |
+| token_endpoint_auth_method | ✓ | string | enum: ["none"] |  |
+
+#### 400
+
+invalid_redirect_uri または invalid_client_metadata。JSON 以外、保存失敗も同じ形式。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
+### GET /api/register/{clientId}
+
+動的クライアント構成の読み取り
+
+RFC 7592。Authorization: Bearer は registration_access_token であり、ユーザー用 JWT ではない。source=dcr 以外、またはトークン不一致はクライアントの存否を分けず 404/401。応答に registration_access_token は含めない。grant_types は保存値ではなく authorization_code と refresh_token を返す。
+
+**認証**: 仕様に記載なし
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| clientId | path | ✓ | string |  | 登録時に発行した client_id。 |
+
+**レスポンス**
+
+#### 200
+
+クライアントメタデータ。registration_access_token は含まない。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+
+#### 401
+
+invalid_token — registration_access_token が無い、または不一致。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
+#### 404
+
+invalid_client — 未登録、または DCR クライアントではない。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
+### PUT /api/register/{clientId}
+
+動的クライアント構成の置換
+
+RFC 7592。認証は GET と同じ registration_access_token。redirect URI は全置換。body の client_id を付けた場合はパスの client_id と一致が必要。client_secret は発行しない。
+
+**認証**: 仕様に記載なし
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| clientId | path | ✓ | string |  |  |
+
+**リクエスト本文**: 必須
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+
+**レスポンス**
+
+#### 200
+
+更新後のメタデータ。registration_access_token は含まない。
+
+#### 400
+
+invalid_client_metadata / invalid_redirect_uri。JSON 以外や client_id 不一致を含む。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
+#### 401
+
+invalid_token
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
+#### 404
+
+invalid_client
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
+### DELETE /api/register/{clientId}
+
+動的クライアントの削除
+
+RFC 7592。認証は GET と同じ。削除前にそのクライアントのトークンを失効する。成功は本文なし。
+
+**認証**: 仕様に記載なし
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| clientId | path | ✓ | string |  |  |
+
+**レスポンス**
+
+#### 204
+
+削除成功
+
+#### 400
+
+削除処理の失敗。invalid_client_metadata。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
+#### 401
+
+invalid_token
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
+#### 404
+
+invalid_client
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
 
 ## 外部サービス向け API
 
@@ -3250,6 +5033,67 @@ OAuth server_error、または共通REST MISCONFIGURATION/INTERNAL_ERROR。
 | error.code | ✓ | string |  |  |
 | error.message | ✓ | string |  |  |
 
+### GET /auth/authorize
+
+標準 OAuth 2.0 / OIDC 認可エンドポイント
+
+RFC 6749 / RFC 7636 / OIDC Core 1.0 準拠の認可エンドポイント。
+
+MCPクライアント・ネイティブアプリ等が直接HTTPリクエストで利用する。
+PKCE (S256) 必須。認証後、ユーザーは `redirect_uri` に認可コードとともにリダイレクトされる。
+
+```
+GET {redirect_uri}?code=<code>&state=<state>
+```
+
+発行された認可コードは `/api/token` (authorization_code grant) で交換する。
+
+**認証**: 仕様に記載なし
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| response_type | query | ✓ | string | enum: ["code"] | &#96;code&#96; 固定（Authorization Code フロー）。 |
+| client_id | query | ✓ | string |  | 登録済みサービスの &#96;client_id&#96;。 |
+| redirect_uri | query | ✓ | string | format: uri | 認可コードのコールバックURL。管理者が登録したURIリストと一致する必要がある。 |
+| state | query | ✓ | string |  | CSRF対策用のランダム文字列。コールバック時にそのまま返される。 |
+| code_challenge | query | ✓ | string |  | PKCEコードチャレンジ（&#96;code_verifier&#96; をSHA-256でハッシュしBase64urlエンコード）。 |
+| code_challenge_method | query | ✓ | string | enum: ["S256"] | PKCEメソッド。&#96;S256&#96; のみサポート。 |
+| scope | query |  | string |  | リクエストするスコープ（スペース区切り）。許可スコープはサービス設定の &#96;allowed_scopes&#96; に制限される。 |
+| nonce | query |  | string |  | IDトークンに埋め込むランダム値（OIDC Core 1.0 §3.1.2.1）。最大128文字。 |
+
+**レスポンス**
+
+#### 302
+
+プロバイダー選択ページ（USER_ORIGIN/login）にリダイレクト。ユーザーがプロバイダーを選択後、IdP経由で認証が完了し `redirect_uri?code=<code>&state=<state>` にリダイレクトされる。
+
+#### 400
+
+invalid_request — パラメータ不正（`client_id` 無効・`redirect_uri` 未登録・PKCEパラメータ不正など）
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
+#### 429
+
+TOO_MANY_REQUESTS — レートリミット超過
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/Error) |  |  |
+| error |  | object |  |  |
+| error.code | ✓ | string |  |  |
+| error.message | ✓ | string |  |  |
+
 ### GET /auth/callback
 
 OAuthコールバック
@@ -3567,6 +5411,14 @@ BFFまたは登録済みサービスへリダイレクト
 | success |  | integer | enum: [0, 1] |  |
 | user_agent |  | string ∪ null |  |  |
 | user_id | ✓ | string |  |  |
+
+### OAuthError
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
 
 ### Service
 
