@@ -916,6 +916,14 @@ async function main(): Promise<void> {
       const asset = assets.find((name) => /\.(js|css)$/.test(name));
       assert.ok(asset, `${worker} frontend must be built before app smoke`);
       assert.ok((await (await response(`${origins[worker]}/_astro/${asset}`)).text()).length > 0);
+      if (worker === "user") {
+        // The server-rendered OAuth login page links /style.css. It must come
+        // back as a real stylesheet, not the SPA fallback HTML.
+        const style = await response(`${origins.user}/style.css`);
+        assert.match(style.headers.get("content-type") ?? "", /text\/css/);
+        assert.match(await style.text(), /\.login-buttons/);
+        ok("user OAuth login stylesheet served as CSS through real dev server");
+      }
       ok(`${worker} fixture HTML/favicon/Astro asset through real dev server`);
     }
     const discovery = (await (
