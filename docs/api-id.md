@@ -8,6 +8,7 @@
 [`/docs`](https://id.0g0.xyz/docs)（内部） / [`/docs/external`](https://id.0g0.xyz/docs/external)（外部）
 
 本ドキュメントは上記 OpenAPI 3.1 仕様の要約である。リクエスト／レスポンススキーマの一次情報は必ず上記ソースファイルを参照すること。
+Method/Path テーブルは、マウント済みの IdP ルートおよび内部 OpenAPI と `vp run docs:api:check` で双方向照合する。外部仕様はその公開サブセットである。
 
 ## 認証方式
 
@@ -128,6 +129,9 @@ BFF がユーザーの代わりにデバイスコードを承認または拒否�
 | ------ | ---------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/auth/login`          | —              | ログイン開始。`redirect_to` / `state` 必須、`client_id` 指定で外部サービスフロー、PKCE 任意。                                                                                                                                                        |
 | GET    | `/auth/callback`       | —              | 各 SNS プロバイダーからのコールバック。ワンタイム認可コード発行。                                                                                                                                                                                    |
+| GET    | `/auth/steam/callback` | —              | Steam OpenID 2.0 コールバック。default-off。署名済み cookie と単回 transaction を確認する。                                                                                                                                                          |
+| GET    | `/auth/providers`      | —              | 設定済みプロバイダーの真偽値だけを返す。資格情報は含まない。                                                                                                                                                                                         |
+| POST   | `/auth/login`          | フォーム       | Discord/Steam のアカウント連携開始。Origin は USER_ORIGIN 完全一致。署名済み `link_token` を一度だけ消費する。GET の新規連携は受け付けない。                                                                                                         |
 | POST   | `/auth/exchange`       | BasicAuth      | ワンタイムコード → アクセストークン + リフレッシュトークン。PKCE 使用時は `code_verifier` 必須。                                                                                                                                                     |
 | POST   | `/auth/refresh`        | BasicAuth      | リフレッシュトークンローテーション。再使用検出でファミリー全体失効。                                                                                                                                                                                 |
 | POST   | `/auth/logout`         | BasicAuth      | リフレッシュトークンファミリー失効。                                                                                                                                                                                                                 |
@@ -364,10 +368,13 @@ X-BFF-Origin: https://user.0g0.xyz
 | GET    | `/api/users/me/providers`               | 連携 SNS プロバイダー一覧                                                                                                                          |
 | DELETE | `/api/users/me/providers/:provider`     | SNS プロバイダー連携解除（最後の 1 件は 409）                                                                                                      |
 | GET    | `/api/users/me/tokens`                  | 自分のアクティブリフレッシュトークン一覧                                                                                                           |
-| DELETE | `/api/users/me/tokens`                  | 全トークン失効                                                                                                                                     |
+| DELETE | `/api/users/me/tokens`                  | 全トークン失効（リフレッシュトークン、MCP セッション、BFF セッション）                                                                             |
+| DELETE | `/api/users/me/tokens/others`           | 現在以外のリフレッシュトークンを失効。body の `token_hash` は残すトークンの SHA-256。BFF / MCP は対象外                                            |
 | DELETE | `/api/users/me/tokens/:tokenId`         | 個別トークン失効                                                                                                                                   |
 | GET    | `/api/users/me/bff-sessions`            | 自分の BFF セッション一覧（`has_device_key` / `device_bound_at` 含む。公開鍵 JWK は返さない）                                                      |
 | DELETE | `/api/users/me/bff-sessions/:sessionId` | 自分の特定 BFF セッションを失効（self-service・`bff_sessions.revoked_reason` は `user_self_revoke`・他ユーザー所属の sessionId は 404 に畳み込み） |
+
+`GET /api/users/me/login-stats` と `GET /api/users/me/login-trends` は days を省略すると 30、数字のみの 1〜365 を受けます。不正値は 400 `BAD_REQUEST` で、`error.message` には文字列ではなく `{ code: "INVALID_REQUEST", message }` が入ります。管理者の同じパスは、その `message` 文字列を `BAD_REQUEST` の message に入れます。
 
 ### 管理者 API（Bearer + admin ロール必須）
 
@@ -379,6 +386,8 @@ X-BFF-Origin: https://user.0g0.xyz
 | PATCH  | `/api/users/:id/role`                    | ロール変更（自身不可、既存トークン即時失効）                                                                                                            |
 | PATCH  | `/api/users/:id/ban`                     | ユーザー BAN                                                                                                                                            |
 | DELETE | `/api/users/:id/ban`                     | BAN 解除                                                                                                                                                |
+| GET    | `/api/users/:id/lockout`                 | ロックアウト状態（失敗回数、期限、現在ロック中か）                                                                                                      |
+| DELETE | `/api/users/:id/lockout`                 | ロックアウト解除。失敗回数もリセットする                                                                                                                |
 | GET    | `/api/users/:id/services`                | 認可済みサービス一覧                                                                                                                                    |
 | GET    | `/api/users/:id/owned-services`          | 所有サービス一覧                                                                                                                                        |
 | GET    | `/api/users/:id/providers`               | 連携プロバイダー一覧                                                                                                                                    |
@@ -447,6 +456,7 @@ salt 未設定時も既存ヘルパーの互換動作を維持し、salt の変�
 | GET    | `/api/metrics/recent-events`      | BearerAuth（admin） | ログインイベントの複合検索・ページング                                |
 | GET    | `/api/metrics/dbsc-bindings`      | BearerAuth（admin） | アクティブ BFF セッションの端末バインド件数                           |
 | GET    | `/api/admin/audit-logs`           | BearerAuth（admin） | 監査ログ                                                              |
+| GET    | `/api/admin/audit-logs/stats`     | BearerAuth（admin） | 監査ログのアクション別・管理者別・日別集計                            |
 
 詳細なレスポンス・必須フィールド・エラーは [生成済み内部リファレンス](./generated/id-internal.md) を参照してください。
 総合メトリクスの active_sessions は有効なリフレッシュトークン数であり、BFF セッション数ではありません。
@@ -456,6 +466,42 @@ salt 未設定時も既存ヘルパーの互換動作を維持し、salt の変�
 IdP の days は数字のみを受け付け、範囲外は 400 INVALID_REQUEST、IP/UA の days/limit は 400 INVALID_PARAMETER です。
 複数国ログインだけは parseInt の数値接頭辞・既定値・クランプを使用し、範囲外を400にはしません。
 admin BFF の事前検証は別条件です。[BFF との差・検証範囲](./api-reference-generation.md#管理メトリクス契約の同期2026-10-19) を参照してください。
+
+## 7. 動的クライアント登録（`/api/register`）
+
+RFC 7591 / RFC 7592。公開クライアント（`token_endpoint_auth_method=none`）だけを無認証で登録する。機密クライアントは管理者が `/api/services` で登録する。登録・更新・削除のエラーは `{ error, error_description }` です。`GET` / `PUT` / `DELETE` の Bearer は `registration_access_token` であり、ユーザー用 JWT ではありません。同じ操作は外部 OpenAPI にも載せる。
+
+| Method | Path                      | 認証                      | 用途                                                                 |
+| ------ | ------------------------- | ------------------------- | -------------------------------------------------------------------- |
+| POST   | `/api/register`           | —                         | 公開クライアントを登録し、`registration_access_token` を一度だけ返す |
+| GET    | `/api/register/:clientId` | registration_access_token | クライアント構成の読み取り。トークンは再表示しない                   |
+| PUT    | `/api/register/:clientId` | registration_access_token | メタデータと redirect URI を置換する                                 |
+| DELETE | `/api/register/:clientId` | registration_access_token | クライアントを削除し、そのトークンを失効する                         |
+
+## 8. リソースサーバー（`/api/resources`・管理者）
+
+RFC 8707 の `resource` として受け付ける URI のレジストリ。Bearer と admin ロール。作成・更新・削除は CSRF 検証あり。応答の `allowed_scopes` と `allowed_subjects` はパース前の JSON 文字列。削除は対象 resource のリフレッシュトークンも失効する。
+
+| Method | Path                 | 用途                                               |
+| ------ | -------------------- | -------------------------------------------------- |
+| GET    | `/api/resources`     | リソースサーバー一覧                               |
+| POST   | `/api/resources`     | リソースサーバー登録（正規化した https URI）       |
+| GET    | `/api/resources/:id` | リソースサーバー詳細                               |
+| PUT    | `/api/resources/:id` | 名前と許可スコープ、許可ユーザーを更新。URI は固定 |
+| DELETE | `/api/resources/:id` | 削除と、束縛されたリフレッシュトークンの失効       |
+
+## 9. API ドキュメント配信
+
+仕様ブラウザと機械可読な仕様そのもの。認証はない。
+
+| Method | Path                          | 用途                     |
+| ------ | ----------------------------- | ------------------------ |
+| GET    | `/docs`                       | 内部 API の Scalar UI    |
+| GET    | `/docs/openapi.json`          | 内部 OpenAPI             |
+| GET    | `/docs/openapi.md`            | 内部 OpenAPI の Markdown |
+| GET    | `/docs/external`              | 外部 API の Scalar UI    |
+| GET    | `/docs/external/openapi.json` | 外部 OpenAPI             |
+| GET    | `/docs/external.md`           | 外部 OpenAPI の Markdown |
 
 ## エラーレスポンス形式
 

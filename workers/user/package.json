@@ -22,7 +22,7 @@
     "happy-dom": "^21.0.4",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vite-plus": "1.5.1",
+    "vite-plus": "1.6.0",
     "wrangler": "4.156.1"
   }
 }
