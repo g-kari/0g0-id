@@ -30,6 +30,7 @@ import Icon from '../components/Icon.astro';
   import { apiFetch } from '../lib/api';
   import { showToast } from '../lib/toast';
   import { createProvidersLoader } from '../lib/providers-loader';
+  import { renderProviderListHtml } from '../lib/safe-markup';
   import type { ProviderStatus } from '@0g0-id/api-types';
 
   type OAuthProvider = ProviderStatus['provider'];
@@ -63,27 +64,12 @@ import Icon from '../components/Icon.astro';
 
   function render() {
     const linked = getLinkedCount();
-    providerList.innerHTML = statuses.map((status, i) => {
-      const borderStyle = i > 0 ? 'border-top:1px solid var(--color-border);' : '';
-      const isConfigured = isProviderAvailable(status.provider, configured);
-      const actionHtml = status.connected
-        ? `<button class="btn btn-ghost btn-sm" data-unlink="${status.provider}" ${linked <= 1 ? 'disabled title="最後の連携プロバイダーは解除できません"' : ''}>連携解除</button>`
-        : isConfigured
-          ? `<form method="post" action="/auth/link"><input type="hidden" name="provider" value="${status.provider}" /><button type="submit" class="btn btn-primary btn-sm">連携する</button></form>`
-          : ``;
-      const statusLabel = status.connected ? '連携済み' : isConfigured ? '未連携' : '現在利用できません';
-      return `
-        <div style="display:flex; align-items:center; justify-content:space-between; padding:1rem 1.5rem; ${borderStyle}">
-          <div style="display:flex; align-items:center; gap:0.75rem;">
-            ${PROVIDER_ICONS[status.provider]}
-            <div>
-              <div style="font-weight:500; font-size:0.9375rem;">${PROVIDER_LABELS[status.provider]}</div>
-              <div style="font-size:0.75rem; color:var(--color-muted); margin-top:2px;">${statusLabel}</div>
-            </div>
-          </div>
-          ${actionHtml}
-        </div>`;
-    }).join('');
+    providerList.innerHTML = renderProviderListHtml(statuses, {
+      labels: PROVIDER_LABELS,
+      icons: PROVIDER_ICONS,
+      isConfigured: (provider) => isProviderAvailable(provider, configured),
+      linkedCount: linked,
+    });
     warningEl.style.display = linked <= 1 ? '' : 'none';
   }
 

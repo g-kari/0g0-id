@@ -164,6 +164,7 @@ import Admin from '../../layouts/Admin.astro';
   import { apiFetch, formatDatetime } from '../../lib/api';
   import { ReadDeadlineError, readWithDeadline } from '../../lib/read-deadline';
   import { escapeHtml } from '../../lib/helpers';
+  import { renderTrendPointText } from '../../lib/safe-markup';
 
   interface DailyLoginStat { date: string; count: number; }
   interface SuspiciousLogin { user_id: string; country_count: number; countries: string; }
@@ -328,16 +329,17 @@ import Admin from '../../layouts/Admin.astro';
     const xLabels = xLabelIdxs
       .map((i) => {
         const p = points[i];
-        const label = p.d.date.slice(5); // MM-DD
+        const text = renderTrendPointText(p.d.date, p.d.count);
         const anchor = i === 0 ? 'start' : i === data.length - 1 ? 'end' : 'middle';
-        return `<text class="trend-axis-label" x="${p.x.toFixed(1)}" y="${(padTop + plotH + 16).toFixed(1)}" text-anchor="${anchor}">${label}</text>`;
+        return `<text class="trend-axis-label" x="${p.x.toFixed(1)}" y="${(padTop + plotH + 16).toFixed(1)}" text-anchor="${anchor}">${text.label}</text>`;
       })
       .join('');
 
     const dots = points
-      .map(
-        (p) => `<circle class="trend-dot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5"><title>${p.d.date}: ${p.d.count}</title></circle>`,
-      )
+      .map((p) => {
+        const text = renderTrendPointText(p.d.date, p.d.count);
+        return `<circle class="trend-dot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5"><title>${text.title}</title></circle>`;
+      })
       .join('');
 
     renderedTrendWidth = w;

@@ -30,6 +30,7 @@ import ServiceSubsCard from '../../components/users/ServiceSubsCard.astro';
 <script>
   import { apiFetch, formatDate, formatDatetime } from '../../lib/api';
   import { escapeHtml } from '../../lib/helpers';
+  import { renderAdminUserSessions, renderDefinitionRows, renderUserBadges } from '../../lib/safe-markup';
   import { showToast } from '../../lib/toast';
   import type { AdminUserSummary, ProviderStatus, ActiveSession, ActiveBffSessionSummary } from '@0g0-id/api-types';
 
@@ -93,10 +94,7 @@ import ServiceSubsCard from '../../components/users/ServiceSubsCard.astro';
     emailEl.textContent = user.email;
 
     const isBanned = !!user.banned_at;
-    badgesEl.innerHTML = `
-      <span class="badge badge-${user.role}">${user.role === 'admin' ? '管理者' : 'ユーザー'}</span>
-      ${isBanned ? '<span class="badge badge-banned">BAN</span>' : '<span class="badge badge-active">アクティブ</span>'}
-    `;
+    badgesEl.innerHTML = renderUserBadges(user.role, isBanned);
 
     // 基本情報テーブル
     const infoTbody = document.getElementById('info-tbody')!;
@@ -106,12 +104,7 @@ import ServiceSubsCard from '../../components/users/ServiceSubsCard.astro';
       ['ロール', user.role === 'admin' ? '管理者' : 'ユーザー'],
       ['状態', isBanned ? `BAN (${formatDate(user.banned_at!)})` : 'アクティブ'],
     ];
-    infoTbody.innerHTML = infoRows.map(([label, value]) => `
-      <tr>
-        <td style="color:var(--color-muted); padding:4px 8px 4px 0; white-space:nowrap;">${label}</td>
-        <td style="padding:4px 0; word-break:break-all;">${value}</td>
-      </tr>
-    `).join('');
+    infoTbody.innerHTML = renderDefinitionRows(infoRows);
 
     // プロバイダー
     const providersEl = document.getElementById('providers-list')!;
@@ -176,15 +169,7 @@ import ServiceSubsCard from '../../components/users/ServiceSubsCard.astro';
     if (Array.isArray(sessions) && (sessions as ActiveSession[]).length > 0) {
       const sessionList = sessions as ActiveSession[];
       revokeAllBtn.style.display = '';
-      sessionsEl.innerHTML = sessionList.map((s) => `
-        <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--color-border);">
-          <div>
-            <div style="font-size:0.875rem;">${s.service_name ? escapeHtml(s.service_name) : 'BFFセッション'}</div>
-            <div style="font-size:0.75rem; color:var(--color-muted);">作成: ${formatDatetime(s.created_at)} / 有効期限: ${formatDatetime(s.expires_at)}</div>
-          </div>
-          <button class="btn btn-ghost revoke-session-btn" data-id="${s.id}" style="font-size:0.75rem; padding:2px 8px;">無効化</button>
-        </div>
-      `).join('');
+      sessionsEl.innerHTML = renderAdminUserSessions(sessionList);
 
       // 個別セッション無効化
       document.querySelectorAll('.revoke-session-btn').forEach((btn) => {
