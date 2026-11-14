@@ -691,6 +691,240 @@ sub が64桁の16進文字列ではない
 | error.code | ✓ | string |  |  |
 | error.message | ✓ | string |  |  |
 
+## 動的クライアント登録
+
+### POST /api/register
+
+公開クライアントの動的登録
+
+RFC 7591。初期アクセストークンは不要。受け付けるのは token_endpoint_auth_method=none の公開クライアントだけで、PKCE S256 を使う。redirect_uris は 1〜5 件、https（localhost のみ http）、fragment 不可。grant_types は authorization_code と refresh_token のみで、refresh_token には authorization_code が必要。response_types は code のみ。scope は openid と profile/email/phone/address。省略時の保存スコープは profile と email。client_name は任意で最大 100 文字、空なら Dynamic Client。機密クライアントは管理者が /api/services で登録する。登録主体は DCR 用システムユーザー。
+
+**認証**: 仕様に記載なし
+
+**リクエスト本文**: 必須
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| client_name |  | string | maxLength: 100 |  |
+| grant_types |  | array&lt;string&gt; |  |  |
+| grant_types[] |  | string | enum: ["authorization_code", "refresh_token"] |  |
+| redirect_uris | ✓ | array&lt;string&gt; | minItems: 1; maxItems: 5 |  |
+| redirect_uris[] |  | string | maxLength: 2048 |  |
+| response_types |  | array&lt;string&gt; |  |  |
+| response_types[] |  | string | enum: ["code"] |  |
+| scope |  | string |  |  |
+| token_endpoint_auth_method |  | string | enum: ["none"] |  |
+
+**レスポンス**
+
+#### 201
+
+登録成功。registration_access_token はこの応答にだけ含まれ、再表示しない。registration_client_uri は /api/register/{client_id}。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+| client_id | ✓ | string |  |  |
+| client_id_issued_at | ✓ | integer |  |  |
+| client_name | ✓ | string |  |  |
+| grant_types | ✓ | array&lt;string&gt; |  |  |
+| grant_types[] |  | string |  |  |
+| redirect_uris | ✓ | array&lt;string&gt; |  |  |
+| redirect_uris[] |  | string |  |  |
+| registration_access_token | ✓ | string |  |  |
+| registration_client_uri | ✓ | string |  |  |
+| response_types | ✓ | array&lt;string&gt; |  |  |
+| response_types[] |  | string | enum: ["code"] |  |
+| scope | ✓ | string |  |  |
+| token_endpoint_auth_method | ✓ | string | enum: ["none"] |  |
+
+#### 400
+
+invalid_redirect_uri または invalid_client_metadata。JSON 以外、保存失敗も同じ形式。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
+### GET /api/register/{clientId}
+
+動的クライアント構成の読み取り
+
+RFC 7592。Authorization: Bearer は registration_access_token であり、ユーザー用 JWT ではない。source=dcr 以外、またはトークン不一致はクライアントの存否を分けず 404/401。応答に registration_access_token は含めない。grant_types は保存値ではなく authorization_code と refresh_token を返す。
+
+**認証**: 仕様に記載なし
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| clientId | path | ✓ | string |  | 登録時に発行した client_id。 |
+
+**レスポンス**
+
+#### 200
+
+クライアントメタデータ。registration_access_token は含まない。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+
+#### 401
+
+invalid_token — registration_access_token が無い、または不一致。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
+#### 404
+
+invalid_client — 未登録、または DCR クライアントではない。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
+### PUT /api/register/{clientId}
+
+動的クライアント構成の置換
+
+RFC 7592。認証は GET と同じ registration_access_token。redirect URI は全置換。body の client_id を付けた場合はパスの client_id と一致が必要。client_secret は発行しない。
+
+**認証**: 仕様に記載なし
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| clientId | path | ✓ | string |  |  |
+
+**リクエスト本文**: 必須
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object |  |  |
+
+**レスポンス**
+
+#### 200
+
+更新後のメタデータ。registration_access_token は含まない。
+
+#### 400
+
+invalid_client_metadata / invalid_redirect_uri。JSON 以外や client_id 不一致を含む。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
+#### 401
+
+invalid_token
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
+#### 404
+
+invalid_client
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
+### DELETE /api/register/{clientId}
+
+動的クライアントの削除
+
+RFC 7592。認証は GET と同じ。削除前にそのクライアントのトークンを失効する。成功は本文なし。
+
+**認証**: 仕様に記載なし
+
+**パラメータ**
+
+| 名前 | 場所 | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- | --- |
+| clientId | path | ✓ | string |  |  |
+
+**レスポンス**
+
+#### 204
+
+削除成功
+
+#### 400
+
+削除処理の失敗。invalid_client_metadata。
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
+#### 401
+
+invalid_token
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
+#### 404
+
+invalid_client
+
+**Content-Type**: application/json
+
+| フィールド | 必須 | 型 | 制約・既定値 | 説明 |
+| --- | --- | --- | --- | --- |
+| $ |  | object (#/components/schemas/OAuthError) |  |  |
+| error | ✓ | string |  | OAuth 2.0 エラーコード |
+| error_description | ✓ | string |  | エラーの説明 |
+
 ## 認証フロー
 
 ### POST /api/device/code

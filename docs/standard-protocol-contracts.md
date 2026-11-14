@@ -118,5 +118,6 @@ vp check/test、API文書generator、exact-head CIと正式reviewの結果を上
 合成fixtureは既存の公開test鍵とfake D1を用い、実アカウント/本番D1/実クライアント接続の
 証明にはなりません。storage/provider/BFF/MCP/log/backupの最小化と必要保持暗号化は残っています。
 既発行token/clientコピーのPII削除も行っていません。pairwise subは仮名識別子で匿名ではなく、
-JWT署名は暗号化ではありません。候補全体をprivacy方針の達成として扱いません。残るユーザー管理、metrics、DBSC等の未記載操作とその他契約は
-Issue #257の継続範囲です。この限定変更でIssue全体を閉じません。
+JWT署名は暗号化ではありません。候補全体をprivacy方針の達成として扱いません。
+ユーザー管理、metrics、DBSC などの Method/Path は IdP 全ルート在庫チェックで内部仕様と
+`docs/api-id.md` に揃えます。フィールド単位の意味的な一致はこの資料だけでは保証しません。
