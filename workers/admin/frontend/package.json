@@ -15,7 +15,7 @@
     "tailwindcss": "^4.2.2"
   },
   "devDependencies": {
-    "typescript": "^6.0.2"
+    "typescript": "^7.0.0"
   },
   "overrides": {
     "@babel/helper-string-parser": "8.1.2",
