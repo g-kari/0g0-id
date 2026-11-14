@@ -17,7 +17,7 @@ vi.mock("@0g0-id/shared", async (importOriginal) => {
 });
 
 vi.mock("../../utils/scopes", () => ({
-  resolveResourceScopeOrDefault: vi.fn(),
+  resolveResourceScope: vi.fn(),
   isSubjectAllowedForResource: vi.fn(),
 }));
 
@@ -48,7 +48,7 @@ import {
   findUserById,
   findResourceServerByUri,
 } from "@0g0-id/shared";
-import { resolveResourceScopeOrDefault, isSubjectAllowedForResource } from "../../utils/scopes";
+import { resolveResourceScope, isSubjectAllowedForResource } from "../../utils/scopes";
 import { buildTokenResponse } from "../../utils/token-pair";
 import { attemptUnrevokeToken } from "../../utils/token-recovery";
 import {
@@ -447,7 +447,7 @@ describe("handleRefreshTokenGrant", () => {
       vi.mocked(findUserById).mockResolvedValue(mockUser);
       vi.mocked(findResourceServerByUri).mockResolvedValue(mockResourceServer);
       vi.mocked(isSubjectAllowedForResource).mockReturnValue(true);
-      vi.mocked(resolveResourceScopeOrDefault).mockReturnValue("events:read requests:update");
+      vi.mocked(resolveResourceScope).mockReturnValue("events:read requests:update");
       vi.mocked(issueTokenPairWithRecovery).mockResolvedValue({
         ok: true,
         accessToken: "new-access-token",
@@ -483,12 +483,12 @@ describe("handleRefreshTokenGrant", () => {
     it("scope は現在の allowed_scopes 上限で切り詰められる", async () => {
       setupResourceRefresh();
       // 管理者が allowed_scopes を狭めた想定
-      vi.mocked(resolveResourceScopeOrDefault).mockReturnValue("events:read");
+      vi.mocked(resolveResourceScope).mockReturnValue("events:read");
       const c = createMockContext();
       const res = await handleRefreshTokenGrant(c, { refresh_token: "test-rt" });
 
       expect(res.status).toBe(200);
-      expect(resolveResourceScopeOrDefault).toHaveBeenCalledWith(
+      expect(resolveResourceScope).toHaveBeenCalledWith(
         "events:read requests:update",
         mockResourceServer.allowed_scopes,
       );
@@ -506,9 +506,29 @@ describe("handleRefreshTokenGrant", () => {
       expect(body.scope).toBe("events:read");
     });
 
+    it("保存済み scope が OIDC のみ → 400 invalid_scope（リソース権限を既定付与しない）", async () => {
+      setupResourceRefresh();
+      vi.mocked(validateAndRevokeRefreshToken).mockResolvedValue({
+        ok: true,
+        storedToken: { ...mockResourceStoredToken, scope: "openid email profile" },
+      });
+      vi.mocked(resolveResourceScope).mockReturnValue(undefined);
+      const c = createMockContext();
+      const res = await handleRefreshTokenGrant(c, { refresh_token: "test-rt" });
+
+      expect(res.status).toBe(400);
+      expect(resolveResourceScope).toHaveBeenCalledWith(
+        "openid email profile",
+        mockResourceServer.allowed_scopes,
+      );
+      const body = await res.json<Record<string, unknown>>();
+      expect(body.error).toBe("invalid_scope");
+      expect(issueTokenPairWithRecovery).not.toHaveBeenCalled();
+    });
+
     it("切り詰めの結果 scope が残らない → 400 invalid_scope", async () => {
       setupResourceRefresh();
-      vi.mocked(resolveResourceScopeOrDefault).mockReturnValue(undefined);
+      vi.mocked(resolveResourceScope).mockReturnValue(undefined);
       const c = createMockContext();
       const res = await handleRefreshTokenGrant(c, { refresh_token: "test-rt" });
 
