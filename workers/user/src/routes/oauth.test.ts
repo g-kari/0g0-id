@@ -300,3 +300,15 @@ describe("OAuth ログインページ — 未設定プロバイダーのボタ�
     expect(html).not.toContain("Steamでサインイン");
   });
 });
+
+describe("OAuth ログインページ — /style.css の配信", () => {
+  // このページのスタイルシートは frontend/public/style.css が正本で、
+  // wrangler.toml の run_worker_first 除外により Assets から配信される。
+  // 実配信の確認は scripts/ci-app-smoke.ts 側で行う。
+  it("HTMLが /style.css を参照する", async () => {
+    const app = buildApp();
+    const res = await app.request(`/login${REQUIRED_PARAMS}`);
+    const html = await res.text();
+    expect(html).toContain('<link rel="stylesheet" href="/style.css">');
+  });
+});
