@@ -31,7 +31,7 @@
   "overrides": {
     "esbuild": "^0.28.2",
     "nanoid": "6.0.2",
-    "postcss": "8.5.32",
+    "postcss": "8.5.33",
     "semver": "7.8.6",
     "source-map-js": "1.2.2",
     "tinypool": "2.2.0",
