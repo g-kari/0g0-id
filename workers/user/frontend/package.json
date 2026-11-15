@@ -31,7 +31,7 @@
     "hast-util-to-html": "9.0.6",
     "js-yaml": "5.5.0",
     "nanoid": "6.0.2",
-    "postcss": "8.5.32",
+    "postcss": "8.5.33",
     "rolldown": "1.3.2",
     "semver": "7.8.6",
     "sharp": "0.35.5",
