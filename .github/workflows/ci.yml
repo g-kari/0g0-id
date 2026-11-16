@@ -9,7 +9,7 @@ on:
 jobs:
   check:
     name: lint・fmt・型チェック・テスト
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
 
@@ -261,7 +261,7 @@ jobs:
 
   audit:
     name: npm audit（脆弱性チェック）
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
       - name: チェックアウト
