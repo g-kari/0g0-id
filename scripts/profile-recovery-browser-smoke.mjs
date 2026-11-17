@@ -15,7 +15,7 @@ if (!playwrightModule) {
 const require = createRequire(import.meta.url);
 const { chromium, expect } = require(playwrightModule);
 const playwrightVersion = require(path.join(playwrightModule, "package.json")).version;
-assert.equal(playwrightVersion, "1.57.0", "Use the CI-pinned browser test toolchain.");
+assert.equal(playwrightVersion, "1.65.1", "Use the CI-pinned browser test toolchain.");
 const staticRoot = path.resolve("workers/user/dist/client");
 const reportDir = path.resolve(process.env.PROFILE_RECOVERY_REPORT_DIR || "profile-recovery-ui");
 const profile = {

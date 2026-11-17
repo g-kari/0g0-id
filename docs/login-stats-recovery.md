@@ -33,7 +33,7 @@ EnterとSpaceで操作でき、読み込み中の連打は重複した取得を�
 
 通常の `vp check`、`vp test run`、user frontendの `astro build` に加え、
 `scripts/login-stats-browser-smoke.mjs` でビルド済みの実ページを検証します。
-このスクリプトは既存のPlaywright 1.57.0を使い、ループバック上の静的ファイルと
+このスクリプトは既存のPlaywright 1.65.1を使い、ループバック上の静的ファイルと
 合成した2種類のGET応答だけを許可します。外部オリジン、予期しないAPI、変更系リクエストを
 遮断し、実アカウントや認証情報を使いません。CIは既存の使い捨てブラウザ依存を再利用し、
 結果とスクリーンショットを `login-stats-ui` artifactへ保存します。

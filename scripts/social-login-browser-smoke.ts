@@ -36,7 +36,7 @@ async function main() {
   const require = createRequire(import.meta.url);
   const { chromium } = require(modulePath);
   const version = require(path.join(modulePath, "package.json")).version;
-  assert.equal(version, "1.57.0", "Use the CI-pinned Playwright toolchain");
+  assert.equal(version, "1.65.1", "Use the CI-pinned Playwright toolchain");
   const USER = "https://user.0g0.xyz";
   const IDP = "https://id.0g0.xyz";
   const EVIL = "https://evil.example";
@@ -171,9 +171,8 @@ async function main() {
       ]) {
         const successful = scenario === "success" || scenario === "manual-no-js";
         const context: any = await browser.newContext({
-          // Playwright 1.57.0 browserContext.js:128-131 implements "block"
-          // by reading navigator.serviceWorker without handling SecurityError.
-          // Opaque-origin documents throw on that getter before app code runs.
+          // Keep worker registration deterministic with an explicit blocker instead
+          // of browser-managed blocking on opaque-origin synthetic documents.
           serviceWorkers: "allow",
           javaScriptEnabled: scenario !== "manual-no-js",
         });

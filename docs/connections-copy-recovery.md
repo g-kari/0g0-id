@@ -6,7 +6,7 @@
 
 ## 検証
 
-既存 `vp check` / `vp test run`、型CLI/API docs同期、user/admin buildを実行します。合成DOMの成功・NotAllowedError・未提供・連打・後からの明示再試行・フォーカス移動をテストします。正常CI内の既存固定Playwright1.57.0環境で `scripts/connections-copy-browser-smoke.mjs` を実行し、390/1280pxの8ケース（成功・拒否・未提供・遅延失敗と行別再試行）・実画像を確認します。fixtureは合成IDのGETだけで、POST/DELETEを遮断し追加権限は付与しません。実ユーザーや本番APIは使いません。
+既存 `vp check` / `vp test run`、型CLI/API docs同期、user/admin buildを実行します。合成DOMの成功・NotAllowedError・未提供・連打・後からの明示再試行・フォーカス移動をテストします。正常CI内の既存固定Playwright1.65.1環境で `scripts/connections-copy-browser-smoke.mjs` を実行し、390/1280pxの8ケース（成功・拒否・未提供・遅延失敗と行別再試行）・実画像を確認します。fixtureは合成IDのGETだけで、POST/DELETEを遮断し追加権限は付与しません。実ユーザーや本番APIは使いません。
 
 ## 変更履歴
 
