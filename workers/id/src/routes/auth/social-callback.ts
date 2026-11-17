@@ -19,7 +19,7 @@ import {
   validateProviderCredentials,
 } from "../../utils/auth-helpers";
 import { resolveProvider, type ProviderResolution } from "../../utils/provider-resolution";
-import { resolveUserAccount } from "./callback";
+import { resolveUserAccount } from "./callback-account";
 import { finalizeLogin, validateFinalRedirect, redirectWithOAuthError } from "./finalize";
 
 type CallbackContext = Context<{ Bindings: IdpEnv; Variables: { user: TokenPayload } }>;

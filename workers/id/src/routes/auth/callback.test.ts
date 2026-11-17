@@ -42,6 +42,10 @@ vi.mock("../../utils/provider-resolution", () => ({
   resolveProvider: vi.fn(),
 }));
 
+vi.mock("./social-callback", () => ({
+  handleSocialCallback: vi.fn(),
+}));
+
 vi.mock("../../utils/auth-helpers", () => ({
   CALLBACK_PATH: "/auth/callback",
   OAUTH_ERROR_MAP: {
@@ -72,7 +76,7 @@ import {
   verifyCookie,
   isValidProvider,
 } from "@0g0-id/shared";
-import { getCookie } from "hono/cookie";
+import { deleteCookie, getCookie } from "hono/cookie";
 import { resolveProvider } from "../../utils/provider-resolution";
 import {
   parseStateFromCookie,
@@ -82,6 +86,7 @@ import {
   validateServiceFinalRedirect,
 } from "../../utils/auth-helpers";
 import { handleCallback } from "./callback";
+import { handleSocialCallback } from "./social-callback";
 import { finalizeLogin, type LoginFinalizationState } from "./finalize";
 import type { TokenPayload } from "@0g0-id/shared";
 
@@ -139,6 +144,14 @@ function makeRequest(params: Record<string, string>, cookies?: Record<string, st
   return app.request(new Request(url.toString(), { headers }), undefined, mockEnv);
 }
 
+/** 現行の Cookie 削除は state → PKCE の順で、path と secure を固定している。 */
+function expectOAuthCookiesCleared() {
+  expect(vi.mocked(deleteCookie).mock.calls).toEqual([
+    [expect.anything(), "__Host-oauth-state", { path: "/", secure: true }],
+    [expect.anything(), "__Host-oauth-pkce", { path: "/", secure: true }],
+  ]);
+}
+
 /**
  * 正常系テスト向け: state/PKCE 検証〜プロバイダー解決まで全てパスするモックをセットアップ
  */
@@ -160,10 +173,11 @@ function setupSuccessPath(userOverride?: Partial<typeof mockUser>) {
   vi.mocked(validateProviderCredentials).mockReturnValue({ ok: true } as never);
 
   // resolveProvider
+  const upsert = vi.fn().mockResolvedValue(user);
   vi.mocked(resolveProvider).mockResolvedValue({
     ok: true,
     sub: "google-sub-1",
-    upsert: vi.fn().mockResolvedValue(user),
+    upsert,
   });
 
   // finalizeLogin
@@ -178,12 +192,14 @@ function setupSuccessPath(userOverride?: Partial<typeof mockUser>) {
   vi.mocked(sha256).mockResolvedValue("hashed-auth-code");
   vi.mocked(createAuthCode).mockResolvedValue(undefined as never);
   vi.mocked(isAllowedRedirectTo).mockReturnValue(true);
+  return { user, upsert };
 }
 
 // --- テスト ---
 describe("GET /auth/callback", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(handleSocialCallback).mockReset();
   });
 
   // =====================
@@ -307,6 +323,7 @@ describe("GET /auth/callback", () => {
       const body = await res.json<{ error: { code: string; message: string } }>();
       expect(body.error.code).toBe("BAD_REQUEST");
       expect(body.error.message).toBe("Missing code or state");
+      expectOAuthCookiesCleared();
     });
 
     it("state が欠落 → 400 BAD_REQUEST", async () => {
@@ -330,6 +347,7 @@ describe("GET /auth/callback", () => {
       const body = await res.json<{ error: { code: string; message: string } }>();
       expect(body.error.code).toBe("BAD_REQUEST");
       expect(body.error.message).toBe("Missing session cookies");
+      expect(deleteCookie).not.toHaveBeenCalled();
     });
 
     it("PKCE Cookie 検証失敗 → 400 Invalid PKCE cookie", async () => {
@@ -351,6 +369,7 @@ describe("GET /auth/callback", () => {
       const body = await res.json<{ error: { code: string; message: string } }>();
       expect(body.error.code).toBe("BAD_REQUEST");
       expect(body.error.message).toBe("Invalid PKCE cookie");
+      expectOAuthCookiesCleared();
     });
 
     it("state Cookie 検証/パース失敗 → 400 Invalid state cookie", async () => {
@@ -373,6 +392,7 @@ describe("GET /auth/callback", () => {
       const body = await res.json<{ error: { code: string; message: string } }>();
       expect(body.error.code).toBe("BAD_REQUEST");
       expect(body.error.message).toBe("Invalid state cookie");
+      expectOAuthCookiesCleared();
     });
 
     it("state 不一致（timing-safe比較） → 400 State mismatch", async () => {
@@ -396,6 +416,7 @@ describe("GET /auth/callback", () => {
       const body = await res.json<{ error: { code: string; message: string } }>();
       expect(body.error.code).toBe("BAD_REQUEST");
       expect(body.error.message).toBe("State mismatch");
+      expectOAuthCookiesCleared();
     });
   });
 
@@ -875,6 +896,7 @@ describe("GET /auth/callback", () => {
       expect(res.status).toBe(404);
       const body = await res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe("NOT_FOUND");
+      expect(handleProviderLink).not.toHaveBeenCalled();
     });
 
     it("linkUserId あり + BAN ユーザー → 403 ACCOUNT_BANNED", async () => {
@@ -911,6 +933,7 @@ describe("GET /auth/callback", () => {
       const body = await res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe("ACCOUNT_BANNED");
       expect(recordFailedAttempt).not.toHaveBeenCalled();
+      expect(handleProviderLink).not.toHaveBeenCalled();
     });
 
     it("linkUserId あり + プロバイダーが既に別ユーザーにリンク → 409 PROVIDER_ALREADY_LINKED", async () => {
@@ -944,6 +967,255 @@ describe("GET /auth/callback", () => {
       expect(res.status).toBe(409);
       const body = await res.json<{ error: { code: string } }>();
       expect(body.error.code).toBe("PROVIDER_ALREADY_LINKED");
+    });
+
+    it("linkUserId あり + リンク成功 → upsert せず既存ユーザーで 302", async () => {
+      const { upsert } = setupSuccessPath();
+      vi.mocked(parseStateFromCookie).mockResolvedValue({
+        ...mockStateData,
+        linkUserId: "link-user-1",
+      });
+      vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: "link-user-1" });
+      vi.mocked(handleProviderLink).mockResolvedValue({
+        ok: true,
+        user: { ...mockUser, id: "link-user-1" },
+      });
+
+      const res = await makeRequest(
+        { code: "auth-code", state: "id-state-123" },
+        {
+          "__Host-oauth-state": "signed-state-cookie",
+          "__Host-oauth-pkce": "signed-pkce-cookie",
+        },
+      );
+      expect(res.status).toBe(302);
+      expect(upsert).not.toHaveBeenCalled();
+      expect(handleProviderLink).toHaveBeenCalledWith(
+        mockEnv.DB,
+        "link-user-1",
+        "google",
+        "google-sub-1",
+      );
+      expect(createAuthCode).toHaveBeenCalledWith(
+        mockEnv.DB,
+        expect.objectContaining({ userId: "link-user-1" }),
+      );
+    });
+
+    it("リンク後のユーザーが BAN → 403 ACCOUNT_BANNED（コードは発行しない）", async () => {
+      const { upsert } = setupSuccessPath();
+      vi.mocked(parseStateFromCookie).mockResolvedValue({
+        ...mockStateData,
+        linkUserId: "link-user-1",
+      });
+      vi.mocked(findUserById).mockResolvedValue({ ...mockUser, id: "link-user-1" });
+      vi.mocked(handleProviderLink).mockResolvedValue({
+        ok: true,
+        user: { ...mockUser, id: "link-user-1", banned_at: "2024-06-01T00:00:00Z" },
+      });
+
+      const res = await makeRequest(
+        { code: "auth-code", state: "id-state-123" },
+        {
+          "__Host-oauth-state": "signed-state-cookie",
+          "__Host-oauth-pkce": "signed-pkce-cookie",
+        },
+      );
+      expect(res.status).toBe(403);
+      const body = await res.json<{ error: { code: string; message: string } }>();
+      expect(body.error).toEqual({
+        code: "ACCOUNT_BANNED",
+        message: "Your account has been suspended",
+      });
+      expect(upsert).not.toHaveBeenCalled();
+      expect(handleProviderLink).toHaveBeenCalledOnce();
+      expect(createAuthCode).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("薄い成功・失敗経路の特徴", () => {
+    it("discord の state は error と code より先にソーシャルコールバックへ委譲する", async () => {
+      vi.mocked(handleSocialCallback).mockImplementation((c) =>
+        Promise.resolve(c.json({ error: { code: "DELEGATED" } }, 418)),
+      );
+      vi.mocked(getCookie).mockImplementation((_c, name) =>
+        name === "__Host-oauth-state" ? "signed-state-cookie" : undefined,
+      );
+      vi.mocked(parseStateFromCookie).mockResolvedValue({ ...mockStateData, provider: "discord" });
+
+      const res = await makeRequest(
+        { error: "access_denied", code: "auth-code", state: "id-state-123" },
+        { "__Host-oauth-state": "signed-state-cookie" },
+      );
+      expect(res.status).toBe(418);
+      expect(handleSocialCallback).toHaveBeenCalledOnce();
+      expect(vi.mocked(handleSocialCallback).mock.calls[0]?.[1]).toBe("discord");
+      expect(resolveProvider).not.toHaveBeenCalled();
+      expect(deleteCookie).not.toHaveBeenCalled();
+    });
+
+    it("steam の state を共通コールバックで受けても discord ハンドラへ委譲する", async () => {
+      vi.mocked(handleSocialCallback).mockImplementation((c) =>
+        Promise.resolve(c.json({ error: { code: "DELEGATED" } }, 418)),
+      );
+      vi.mocked(getCookie).mockImplementation((_c, name) =>
+        name === "__Host-oauth-state" ? "signed-state-cookie" : undefined,
+      );
+      vi.mocked(parseStateFromCookie).mockResolvedValue({ ...mockStateData, provider: "steam" });
+
+      const res = await makeRequest(
+        { error: "access_denied", code: "auth-code", state: "id-state-123" },
+        { "__Host-oauth-state": "signed-state-cookie" },
+      );
+      expect(res.status).toBe(418);
+      expect(vi.mocked(handleSocialCallback).mock.calls[0]?.[1]).toBe("discord");
+      expect(resolveProvider).not.toHaveBeenCalled();
+    });
+
+    it("通常プロバイダーで PKCE Cookie だけが無い → 検証も削除もせず Missing session cookies", async () => {
+      vi.mocked(getCookie).mockImplementation((_c, name) =>
+        name === "__Host-oauth-state" ? "signed-state-cookie" : undefined,
+      );
+      vi.mocked(parseStateFromCookie).mockResolvedValue(mockStateData);
+
+      const res = await makeRequest({ code: "auth-code", state: "id-state-123" });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string; message: string } }>();
+      expect(body.error).toEqual({ code: "BAD_REQUEST", message: "Missing session cookies" });
+      expect(verifyCookie).not.toHaveBeenCalled();
+      expect(deleteCookie).not.toHaveBeenCalled();
+    });
+
+    it("state に provider が無い → Missing provider in state", async () => {
+      setupSuccessPath();
+      vi.mocked(parseStateFromCookie).mockResolvedValue({
+        ...mockStateData,
+        provider: undefined,
+      } as unknown as typeof mockStateData);
+
+      const res = await makeRequest(
+        { code: "auth-code", state: "id-state-123" },
+        {
+          "__Host-oauth-state": "signed-state-cookie",
+          "__Host-oauth-pkce": "signed-pkce-cookie",
+        },
+      );
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string; message: string } }>();
+      expect(body.error).toEqual({ code: "BAD_REQUEST", message: "Missing provider in state" });
+      expect(isValidProvider).not.toHaveBeenCalled();
+      expect(resolveProvider).not.toHaveBeenCalled();
+    });
+
+    it("資格情報エラーの code と message をそのまま返す", async () => {
+      setupSuccessPath();
+      vi.mocked(validateProviderCredentials).mockReturnValue({
+        ok: false,
+        code: "PROVIDER_NOT_CONFIGURED",
+        message: "Google provider is not configured",
+      });
+
+      const res = await makeRequest(
+        { code: "auth-code", state: "id-state-123" },
+        {
+          "__Host-oauth-state": "signed-state-cookie",
+          "__Host-oauth-pkce": "signed-pkce-cookie",
+        },
+      );
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string; message: string } }>();
+      expect(body.error).toEqual({
+        code: "PROVIDER_NOT_CONFIGURED",
+        message: "Google provider is not configured",
+      });
+      expect(resolveProvider).not.toHaveBeenCalled();
+    });
+
+    it("Cookie が無い既知の error → マップされた JSON メッセージ", async () => {
+      vi.mocked(getCookie).mockReturnValue(undefined);
+
+      const res = await makeRequest({ error: "access_denied" });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string; message: string } }>();
+      expect(body.error).toEqual({ code: "OAUTH_ERROR", message: "Access was denied" });
+      expectOAuthCookiesCleared();
+    });
+
+    it("Cookie が無い未知の error → Authentication failed", async () => {
+      vi.mocked(getCookie).mockReturnValue(undefined);
+
+      const res = await makeRequest({ error: "not_a_real_error" });
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string; message: string } }>();
+      expect(body.error).toEqual({ code: "OAUTH_ERROR", message: "Authentication failed" });
+    });
+
+    it("state Cookie を解釈できない error → リダイレクトせず JSON", async () => {
+      vi.mocked(getCookie).mockReturnValue("signed-state-cookie");
+      vi.mocked(parseStateFromCookie).mockResolvedValue(null);
+
+      const res = await makeRequest(
+        { error: "server_error" },
+        { "__Host-oauth-state": "signed-state-cookie" },
+      );
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string; message: string } }>();
+      expect(body.error).toEqual({ code: "OAUTH_ERROR", message: "Server error occurred" });
+      expect(handleSocialCallback).not.toHaveBeenCalled();
+      expectOAuthCookiesCleared();
+    });
+
+    it("BFF の戻り先が不許可な error → JSON のまま止める", async () => {
+      vi.mocked(getCookie).mockReturnValue("signed-state-cookie");
+      vi.mocked(parseStateFromCookie).mockResolvedValue(mockStateData);
+      vi.mocked(isAllowedRedirectTo).mockReturnValue(false);
+
+      const res = await makeRequest(
+        { error: "access_denied" },
+        { "__Host-oauth-state": "signed-state-cookie" },
+      );
+      expect(res.status).toBe(400);
+      const body = await res.json<{ error: { code: string; message: string } }>();
+      expect(body.error).toEqual({ code: "OAUTH_ERROR", message: "Access was denied" });
+      expect(res.headers.get("Location")).toBeNull();
+    });
+
+    it("通常ログインは交換引数、Cookie 削除、UUID の順を保つ", async () => {
+      const ids: string[] = [];
+      const generate = crypto.randomUUID.bind(crypto);
+      vi.spyOn(crypto, "randomUUID").mockImplementation(() => {
+        const id = generate();
+        ids.push(id);
+        return id;
+      });
+      try {
+        const { upsert } = setupSuccessPath();
+        const res = await makeRequest(
+          { code: "auth-code", state: "id-state-123" },
+          {
+            "__Host-oauth-state": "signed-state-cookie",
+            "__Host-oauth-pkce": "signed-pkce-cookie",
+          },
+        );
+        expect(res.status).toBe(302);
+        expect(handleSocialCallback).not.toHaveBeenCalled();
+        expect(resolveProvider).toHaveBeenCalledWith(
+          expect.anything(),
+          "google",
+          "auth-code",
+          "pkce-verifier-value",
+          "https://id.0g0.xyz/auth/callback",
+        );
+        expect(ids).toHaveLength(2);
+        expect(upsert).toHaveBeenCalledWith(mockEnv.DB, ids[0]);
+        expect(createAuthCode).toHaveBeenCalledWith(
+          mockEnv.DB,
+          expect.objectContaining({ id: ids[1], userId: mockUser.id }),
+        );
+        expectOAuthCookiesCleared();
+      } finally {
+        vi.mocked(crypto.randomUUID).mockRestore();
+      }
     });
   });
 });
