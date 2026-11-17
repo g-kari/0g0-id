@@ -15,7 +15,7 @@
   "dependencies": {
     "@0g0-id/shared": "*",
     "@simplewebauthn/server": "14.1.0",
-    "hono": "4.13.18",
+    "hono": "4.13.19",
     "jose": "^6.2.17",
     "tldts": "^7.5.1",
     "tslib": "2.9.1",
