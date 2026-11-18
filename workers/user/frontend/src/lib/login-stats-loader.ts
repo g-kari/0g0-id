@@ -79,6 +79,12 @@ export function createLoginStatsLoader(options: LoginStatsLoaderOptions): LoginS
     stopFocusTracking?.();
     const requestId = ++generation;
     let restoreRetryFocus = isRetry && ownerDocument.activeElement === options.retryButton;
+    if (ownerDocument.activeElement === options.retryButton) {
+      // Hiding/disabling the focused button drops its focus in some
+      // browsers but not others. Blur explicitly so focus tracking starts
+      // from a deterministic state; this focus loss is not user intent.
+      options.retryButton.blur();
+    }
     display({ kind: "loading", requestId, days });
 
     // Start after hiding/disabling Retry: its own focus loss is not user intent.
