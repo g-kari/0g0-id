@@ -44,8 +44,11 @@ describe("new provider discovery", () => {
       new NodeURL("../../pages/providers.astro", import.meta.url),
       "utf8",
     );
-    expect(source).toContain("isProviderAvailable(status.provider, configured)");
-    expect(source).toContain("const actionHtml = status.connected");
+    expect(source).toContain("isProviderAvailable(provider, configured)");
+    expect(source).toContain("renderProviderListHtml");
     expect(source).toContain("configured = {};\n      try");
+    const markup = readFileSync(new NodeURL("../safe-markup.ts", import.meta.url), "utf8");
+    expect(markup).toContain("const actionHtml = status.connected");
+    expect(markup).toContain("options.isConfigured(status.provider)");
   });
 });

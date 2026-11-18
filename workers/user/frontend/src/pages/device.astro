@@ -82,6 +82,7 @@ import Base from '../layouts/Base.astro';
 
 <script>
   import { applyProviderAvailability } from "../lib/provider-availability";
+  import { renderDeviceScopeBadges } from "../lib/safe-markup";
   type Step = 'code' | 'login' | 'approve' | 'done' | 'denied';
 
   const steps = ['code', 'login', 'approve', 'done', 'denied'] as const;
@@ -202,7 +203,7 @@ import Base from '../layouts/Base.astro';
       approveService.textContent = data.data.service_name ?? '不明なサービス';
       const scopes: string[] = data.data.scopes ?? [];
       if (scopes.length > 0) {
-        scopesList.innerHTML = scopes.map(s => `<span class="text-xs font-medium px-2.5 py-1 rounded-full" style="background: rgba(115,134,45,0.1); color: var(--color-accent)">${s}</span>`).join('');
+        scopesList.innerHTML = renderDeviceScopeBadges(scopes);
         scopesSection.style.display = '';
       }
       showStep('approve');

@@ -38,6 +38,7 @@
 | ファイル                                               | 概要                                                   |
 | ------------------------------------------------------ | ------------------------------------------------------ |
 | [dbsc.md](./dbsc.md)                                   | DBSC（Device Bound Session Credentials）仕様・フロー図 |
+| [asvs-v5-gap-analysis.md](./asvs-v5-gap-analysis.md)   | OWASP ASVS 5.0.0 の L2 ギャップ分析（#269）            |
 | [environment-variables.md](./environment-variables.md) | 全 Worker の環境変数・シークレット・Bindings 一覧      |
 | [asset-generation.md](./asset-generation.md)           | 静的アセット生成（JWKS / OIDC）・鍵ローテーション手順  |
 

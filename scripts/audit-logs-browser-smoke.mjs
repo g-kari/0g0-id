@@ -16,7 +16,7 @@ if (!playwrightModule) {
 const require = createRequire(import.meta.url);
 const { chromium, expect } = require(playwrightModule);
 const playwrightVersion = require(path.join(playwrightModule, "package.json")).version;
-assert.equal(playwrightVersion, "1.57.0", "Use the CI-pinned browser test toolchain.");
+assert.equal(playwrightVersion, "1.65.1", "Use the CI-pinned browser test toolchain.");
 const staticRoot = path.resolve("workers/admin/dist/client");
 const reportDir = path.resolve(process.env.AUDIT_LOGS_REPORT_DIR || "audit-logs-ui");
 const auditPath = "/api/audit-logs";

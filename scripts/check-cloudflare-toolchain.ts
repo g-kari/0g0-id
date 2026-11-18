@@ -20,9 +20,9 @@ export function checkCloudflareToolchain(repository: string): void {
   const seen = new Set<string>();
   for (const worker of ["id", "user", "admin", "mcp"]) {
     const requireWorker = createRequire(path.join(repository, "workers", worker, "package.json"));
-    for (const [name, version] of [
-      ["@cloudflare/vite-plugin", "1.67.0"],
-      ["wrangler", "4.156.1"],
+    for (const [name, version, miniflareVersion] of [
+      ["@cloudflare/vite-plugin", "1.69.1", "5.20261110.0-beta"],
+      ["wrangler", "4.161.0", "5.20261110.2-beta"],
     ] as const) {
       // The plugin exposes an import-only entry, so require.resolve(name) cannot
       // resolve it. Locate its manifest in this worker's Node search path instead.
@@ -50,6 +50,20 @@ export function checkCloudflareToolchain(repository: string): void {
           : path.resolve(path.dirname(entry), "../package.json");
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { version: string };
       assert.equal(manifest.version, version, `${name} reviewed version changed`);
+      if (name === "@cloudflare/vite-plugin") {
+        const nestedWranglerManifest = JSON.parse(
+          readFileSync(requireParent.resolve("wrangler/package.json"), "utf8"),
+        ) as { version: string };
+        assert.equal(nestedWranglerManifest.version, "4.160.0", "Plugin nested Wrangler changed");
+        const nestedWranglerEntry = realpathSync(requireParent.resolve("wrangler"));
+        const nestedWranglerBundle = readFileSync(nestedWranglerEntry, "utf8");
+        const nestedUndici = [
+          ...new Set(
+            [...nestedWranglerBundle.matchAll(/undici@(\d+\.\d+\.\d+)/g)].map((m) => m[1]),
+          ),
+        ];
+        assert.deepEqual(nestedUndici, ["7.30.1"], "Plugin nested Wrangler bundle changed");
+      }
       const bundle = readFileSync(entry, "utf8");
       const bundled = [
         ...new Set([...bundle.matchAll(/undici@(\d+\.\d+\.\d+)/g)].map((m) => m[1])),
@@ -59,11 +73,24 @@ export function checkCloudflareToolchain(repository: string): void {
         `[cloudflare-inventory] ${name}@${version}: bundled Undici ${bundled.join(", ")} remains version-affected`,
       );
       const miniflare = realpathSync(requireParent.resolve("miniflare"));
+      if (name === "@cloudflare/vite-plugin") {
+        const nestedWranglerEntry = realpathSync(requireParent.resolve("wrangler"));
+        const nestedWranglerRequire = createRequire(nestedWranglerEntry);
+        assert.equal(
+          realpathSync(nestedWranglerRequire.resolve("miniflare")),
+          miniflare,
+          "Plugin nested Wrangler resolved a different Miniflare",
+        );
+      }
       const requireMiniflare = createRequire(miniflare);
       const mfManifest = JSON.parse(
         readFileSync(requireMiniflare.resolve("miniflare/package.json"), "utf8"),
       ) as { version: string };
-      assert.equal(mfManifest.version, "5.20261101.0-beta");
+      assert.equal(
+        mfManifest.version,
+        miniflareVersion,
+        `${name} reviewed Miniflare version changed`,
+      );
       const undiciManifest = realpathSync(requireMiniflare.resolve("undici/package.json"));
       const undici = JSON.parse(readFileSync(undiciManifest, "utf8")) as { version: string };
       assert.equal(undici.version, "7.30.2", `Unpatched external Undici at ${undiciManifest}`);

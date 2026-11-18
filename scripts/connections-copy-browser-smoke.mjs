@@ -10,7 +10,7 @@ if (!modulePath)
   throw new Error("Set CONNECTIONS_COPY_PLAYWRIGHT_MODULE to the CI-pinned Playwright install.");
 const require = createRequire(import.meta.url);
 const { chromium, expect } = require(modulePath);
-assert.equal(require(path.join(modulePath, "package.json")).version, "1.57.0");
+assert.equal(require(path.join(modulePath, "package.json")).version, "1.65.1");
 const root = path.resolve("workers/user/dist/client");
 const reportDir = path.resolve(process.env.CONNECTIONS_COPY_REPORT_DIR || "connections-copy-ui");
 const sub = "synthetic-sub-" + "a".repeat(64);
