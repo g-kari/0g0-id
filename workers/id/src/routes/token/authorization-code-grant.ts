@@ -11,7 +11,7 @@ import {
 } from "@0g0-id/shared";
 import {
   resolveEffectiveScope,
-  resolveResourceScopeOrDefault,
+  resolveResourceScope,
   isSubjectAllowedForResource,
 } from "../../utils/scopes";
 import {
@@ -177,13 +177,10 @@ export async function handleAuthorizationCodeGrant(
           400,
         );
       }
-      // スコープはリソースサーバー側の登録スコープが上限。
-      // クライアントがリソース用スコープを要求していない場合（OIDC
-      // スコープのみの場合）は、登録済みの許可スコープをすべて付与する
-      const resourceScope = resolveResourceScopeOrDefault(
-        authCode.scope,
-        resourceServer.allowed_scopes,
-      );
+      // スコープはクライアントが明示的に要求したものと、リソースサーバー側の
+      // 登録スコープの積集合に限定する。OIDC スコープのみ・未指定の場合に
+      // リソース権限を既定付与しない。
+      const resourceScope = resolveResourceScope(authCode.scope, resourceServer.allowed_scopes);
       if (resourceScope === undefined) {
         return c.json({ error: "invalid_scope", error_description: "No valid scope" }, 400);
       }
