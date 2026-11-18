@@ -25,9 +25,7 @@ describe("resolveResourceScope", () => {
   it("有効なスコープが残らなければ undefined", () => {
     expect(resolveResourceScope("profile email", resourceScopes)).toBeUndefined();
     expect(resolveResourceScope("openid email profile", resourceScopes)).toBeUndefined();
-    expect(
-      resolveResourceScope("phone address offline_access", resourceScopes),
-    ).toBeUndefined();
+    expect(resolveResourceScope("phone address offline_access", resourceScopes)).toBeUndefined();
   });
 
   it("スコープ未指定では resource スコープを付与しない（全スコープ既定付与の廃止）", () => {

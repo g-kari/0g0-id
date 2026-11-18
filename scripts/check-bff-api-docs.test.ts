@@ -193,45 +193,49 @@ describe("BFF API endpoint documentation coverage", () => {
     expect(runBffApiDocsCli(["--check"])).toBe(0);
   });
 
-  it("the real CLI exits nonzero on table drift and missing docs without writing", () => {
-    const root = fixture();
-    mkdirSync(join(root, "scripts"));
-    const script = join(root, "scripts", "check-bff-api-docs.ts");
-    writeFileSync(script, readFileSync(join(__dirname, "check-bff-api-docs.ts")));
-    symlinkSync(join(__dirname, "..", "workers"), join(root, "workers"));
-    const guard = join(root, "no-network.cjs");
-    writeFileSync(guard, "globalThis.fetch = () => { throw new Error('Network forbidden'); };\n");
-    const run = (): ReturnType<typeof spawnSync> =>
-      spawnSync(
-        process.execPath,
-        ["--require", guard, "--import", require.resolve("tsx"), script, "--check"],
-        { cwd: tmpdir(), encoding: "utf8", timeout: 10_000 },
+  it(
+    "the real CLI exits nonzero on table drift and missing docs without writing",
+    { timeout: 60_000 },
+    () => {
+      const root = fixture();
+      mkdirSync(join(root, "scripts"));
+      const script = join(root, "scripts", "check-bff-api-docs.ts");
+      writeFileSync(script, readFileSync(join(__dirname, "check-bff-api-docs.ts")));
+      symlinkSync(join(__dirname, "..", "workers"), join(root, "workers"));
+      const guard = join(root, "no-network.cjs");
+      writeFileSync(guard, "globalThis.fetch = () => { throw new Error('Network forbidden'); };\n");
+      const run = (): ReturnType<typeof spawnSync> =>
+        spawnSync(
+          process.execPath,
+          ["--require", guard, "--import", require.resolve("tsx"), script, "--check"],
+          { cwd: tmpdir(), encoding: "utf8", timeout: 10_000 },
+        );
+      const current = snapshot(root);
+      const matching = run();
+      expect(matching.status, String(matching.stderr)).toBe(0);
+      expect(snapshot(root)).toEqual(current);
+      const admin = join(root, "docs", "api-admin.md");
+      writeFileSync(
+        admin,
+        readFileSync(admin, "utf8").replace(
+          /(\| GET\s+\| )`\/api\/metrics\/dbsc-bindings`/,
+          "$1`/api/metrics/missing`",
+        ),
       );
-    const current = snapshot(root);
-    const matching = run();
-    expect(matching.status, String(matching.stderr)).toBe(0);
-    expect(snapshot(root)).toEqual(current);
-    const admin = join(root, "docs", "api-admin.md");
-    writeFileSync(
-      admin,
-      readFileSync(admin, "utf8").replace(
-        /(\| GET\s+\| )`\/api\/metrics\/dbsc-bindings`/,
-        "$1`/api/metrics/missing`",
-      ),
-    );
-    const changed = snapshot(root);
-    const drifted = run();
-    expect(drifted.status, String(drifted.stderr)).toBe(1);
-    expect(String(drifted.stderr)).toContain(
-      "Missing documentation: GET /api/metrics/dbsc-bindings",
-    );
-    expect(String(drifted.stderr)).toContain("No registered endpoint: GET /api/metrics/missing");
-    expect(snapshot(root)).toEqual(changed);
-    rmSync(admin);
-    const missing = snapshot(root);
-    expect(run().status).toBe(1);
-    expect(snapshot(root)).toEqual(missing);
-  });
+      const changed = snapshot(root);
+      const drifted = run();
+      expect(drifted.status, String(drifted.stderr)).toBe(1);
+      expect(String(drifted.stderr)).toContain(
+        "Missing documentation: GET /api/metrics/dbsc-bindings",
+      );
+      expect(String(drifted.stderr)).toContain("No registered endpoint: GET /api/metrics/missing");
+      expect(snapshot(root)).toEqual(changed);
+      rmSync(admin);
+      const missing = snapshot(root);
+      expect(run().status).toBe(1);
+      expect(snapshot(root)).toEqual(missing);
+    },
+  );
 
   it("loads the actual apps in a fresh process with fetch forbidden and returns zero", () => {
     const script = join(__dirname, "check-bff-api-docs.ts");

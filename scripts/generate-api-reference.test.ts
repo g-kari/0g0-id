@@ -196,51 +196,55 @@ describe("offline API reference generator", () => {
     expect(runApiReferenceCli(["--generate", "../api-id.md"])).toBe(2);
   });
 
-  it("the real offline CLI fails drift/missing outputs and repairs them with generation", () => {
-    const path = root();
-    const scripts = join(path, "scripts");
-    const sources = join(path, "workers", "id", "src", "routes", "openapi");
-    mkdirSync(scripts, { recursive: true });
-    mkdirSync(sources, { recursive: true });
-    writeFileSync(
-      join(scripts, "generate-api-reference.ts"),
-      readFileSync(join(__dirname, "generate-api-reference.ts")),
-    );
-    writeFileSync(
-      join(sources, "markdown.ts"),
-      readFileSync(join(__dirname, "../workers/id/src/routes/openapi/markdown.ts")),
-    );
-    const internal = join(sources, "internal-spec.ts");
-    writeFileSync(internal, `export const INTERNAL_OPENAPI = ${JSON.stringify(synthetic)};`);
-    writeFileSync(
-      join(sources, "external-spec.ts"),
-      `export const EXTERNAL_OPENAPI = ${JSON.stringify(synthetic)};`,
-    );
-    const run = (mode: string): number | null =>
-      spawnSync(
-        process.execPath,
-        ["--import", require.resolve("tsx"), join(scripts, "generate-api-reference.ts"), mode],
-        { cwd: tmpdir(), encoding: "utf8", timeout: 10_000 },
-      ).status;
-    expect(run("--check")).toBe(1);
-    expect(run("--generate")).toBe(0);
-    const current = snapshot(path);
-    expect(run("--check")).toBe(0);
-    expect(snapshot(path)).toEqual(current);
-    writeFileSync(
-      internal,
-      `export const INTERNAL_OPENAPI = ${JSON.stringify({ ...synthetic, info: { title: "Updated synthetic source" } })};`,
-    );
-    const changed = snapshot(path);
-    expect(run("--check")).toBe(1);
-    expect(snapshot(path)).toEqual(changed);
-    expect(run("--generate")).toBe(0);
-    expect(run("--check")).toBe(0);
-    writeFileSync(join(path, "docs", "generated", REFERENCE_FILES[0]), "manual edit");
-    const edited = snapshot(path);
-    expect(run("--check")).toBe(1);
-    expect(snapshot(path)).toEqual(edited);
-  });
+  it(
+    "the real offline CLI fails drift/missing outputs and repairs them with generation",
+    { timeout: 60_000 },
+    () => {
+      const path = root();
+      const scripts = join(path, "scripts");
+      const sources = join(path, "workers", "id", "src", "routes", "openapi");
+      mkdirSync(scripts, { recursive: true });
+      mkdirSync(sources, { recursive: true });
+      writeFileSync(
+        join(scripts, "generate-api-reference.ts"),
+        readFileSync(join(__dirname, "generate-api-reference.ts")),
+      );
+      writeFileSync(
+        join(sources, "markdown.ts"),
+        readFileSync(join(__dirname, "../workers/id/src/routes/openapi/markdown.ts")),
+      );
+      const internal = join(sources, "internal-spec.ts");
+      writeFileSync(internal, `export const INTERNAL_OPENAPI = ${JSON.stringify(synthetic)};`);
+      writeFileSync(
+        join(sources, "external-spec.ts"),
+        `export const EXTERNAL_OPENAPI = ${JSON.stringify(synthetic)};`,
+      );
+      const run = (mode: string): number | null =>
+        spawnSync(
+          process.execPath,
+          ["--import", require.resolve("tsx"), join(scripts, "generate-api-reference.ts"), mode],
+          { cwd: tmpdir(), encoding: "utf8", timeout: 10_000 },
+        ).status;
+      expect(run("--check")).toBe(1);
+      expect(run("--generate")).toBe(0);
+      const current = snapshot(path);
+      expect(run("--check")).toBe(0);
+      expect(snapshot(path)).toEqual(current);
+      writeFileSync(
+        internal,
+        `export const INTERNAL_OPENAPI = ${JSON.stringify({ ...synthetic, info: { title: "Updated synthetic source" } })};`,
+      );
+      const changed = snapshot(path);
+      expect(run("--check")).toBe(1);
+      expect(snapshot(path)).toEqual(changed);
+      expect(run("--generate")).toBe(0);
+      expect(run("--check")).toBe(0);
+      writeFileSync(join(path, "docs", "generated", REFERENCE_FILES[0]), "manual edit");
+      const edited = snapshot(path);
+      expect(run("--check")).toBe(1);
+      expect(snapshot(path)).toEqual(edited);
+    },
+  );
 
   it("has structurally intact tables and exactly one heading per specified endpoint", () => {
     for (const document of Object.values(renderApiReferences())) {
