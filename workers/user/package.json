@@ -13,11 +13,11 @@
   },
   "dependencies": {
     "@0g0-id/shared": "*",
-    "hono": "4.13.18"
+    "hono": "4.13.19"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.69.1",
-    "@cloudflare/workers-types": "5.20261115.1",
+    "@cloudflare/workers-types": "5.20261116.1",
     "@types/node": "^26.6.6",
     "happy-dom": "^21.0.4",
     "tsx": "^4.23.15",

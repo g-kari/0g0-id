@@ -15,7 +15,7 @@
   "dependencies": {
     "@0g0-id/shared": "*",
     "@simplewebauthn/server": "14.1.0",
-    "hono": "4.13.18",
+    "hono": "4.13.19",
     "jose": "^6.2.17",
     "tldts": "^7.5.1",
     "tslib": "2.9.1",
@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.69.1",
-    "@cloudflare/workers-types": "5.20261115.1",
+    "@cloudflare/workers-types": "5.20261116.1",
     "@types/node": "^26.6.6",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
