@@ -28,7 +28,7 @@
       "magic-string": "1.4.5"
     },
     "devalue": "6.0.3",
-    "hast-util-to-html": "9.0.6",
+    "hast-util-to-html": "9.0.7",
     "js-yaml": "5.5.0",
     "nanoid": "6.0.2",
     "postcss": "8.5.33",
