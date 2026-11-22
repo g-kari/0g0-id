@@ -37,7 +37,7 @@
     "sharp": "0.35.5",
     "shiki": "4.6.0",
     "smol-toml": "1.9.1",
-    "source-map-js": "1.2.3",
+    "source-map-js": "1.2.4",
     "svgo": "4.1.0",
     "tslib": "2.9.1",
     "unist-util-visit": "5.2.0",
