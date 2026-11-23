@@ -17,7 +17,7 @@
     "@simplewebauthn/server": "14.1.0",
     "hono": "4.13.19",
     "jose": "^6.2.17",
-    "tldts": "^7.5.1",
+    "tldts": "^7.5.5",
     "tslib": "2.9.1",
     "zod": "^4.6.7"
   },
