@@ -15,11 +15,20 @@ assert.equal(read(join(root, "package.json")).devDependencies.typescript, "6.0.3
 const rootTs = rootRequire("typescript");
 assert.equal(rootTs.version, "6.0.3");
 assert.equal(typeof rootTs.createProgram, "function");
-const vpRequire = createRequire(rootRequire.resolve("vite-plus/package.json"));
+const cliPackagePath = rootRequire.resolve("vite-plus/package.json");
+const cliPackage = read(cliPackagePath);
+const vpRequire = createRequire(cliPackagePath);
 const corePackagePath = vpRequire.resolve("vite/package.json");
 const corePackage = read(corePackagePath);
-assert.equal(corePackage.name, "@voidzero-dev/vite-plus-core");
-assert.equal(corePackage.version, read(rootRequire.resolve("vite-plus/package.json")).version);
+const declaredCore = cliPackage.dependencies?.vite;
+const coreAlias = /^npm:(@voidzero-dev\/vite-plus-core)@(\d+\.\d+\.\d+)$/.exec(declaredCore ?? "");
+assert(coreAlias, `Unsupported Vite+ core dependency: ${declaredCore}`);
+assert.equal(corePackage.name, coreAlias[1]);
+assert.equal(
+  corePackage.version,
+  coreAlias[2],
+  `Vite+ ${cliPackage.version} requires ${declaredCore}, resolved ${corePackage.name}@${corePackage.version}`,
+);
 const coreRequire = createRequire(corePackagePath);
 const vitestPackagePath = vpRequire.resolve("vitest/package.json");
 assert.equal(read(vitestPackagePath).version, read(join(root, "package.json")).overrides.vitest);
